@@ -1,6 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+allowBuilds:
+  '@tailwindcss/oxide': true
+  unrs-resolver: true
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.11.5'
   - '@turbo/darwin-arm64@2.11.5'
