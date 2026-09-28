@@ -1,0 +1,1581 @@
+## Detailed Features
+
+## 1. Overview
+
+- Users can connect wallets across supported blockchains.
+- Users own their underlying assets.
+- Users can invest in manager-created baskets.
+- Managers define basket strategies and target allocations.
+- The platform executes asset acquisition/rebalancing according to the basket strategy.
+- Users retain control over whether to participate in rebalances.
+- Users can withdraw/cancel their investment at any time.
+- Portfolio state and transactions are verifiable on-chain.
+- Manager and organization information is separately verified by the platform.
+
+---
+
+# 2. Public Basket Discovery
+
+Users **do not need to log in** to explore the platform.
+
+Unauthenticated users can:
+
+- View available baskets
+- View basket performance
+- View basket strategy
+- View asset allocation
+- View asset weightages
+- View manager information
+- View organization/firm information
+- View manager experience
+- View basket fees
+- View rebalance frequency
+- View minimum investment amount
+- View supported assets
+- View sector allocation
+- View historical changes
+- Research the basket before investing
+
+The purpose is to make basket discovery completely public while requiring authentication only when the user wants to perform an investment action.
+
+---
+
+# 3. Basket Discovery and Search
+
+Users should be able to search and filter baskets using structured metrics.
+
+### Basic filters
+
+- Manager
+- Organization / firm
+- Manager experience
+- Basket performance
+- YoY growth
+- Historical performance
+- Rebalance frequency
+- Minimum investment amount
+- Manager fee
+- Platform fee
+- Subscription fee
+- Asset classes
+- Individual assets
+- Asset weightage
+- Sector
+- Risk metrics
+- Basket age
+- Number of investors
+- Other relevant basket metrics
+
+Example:
+
+```
+Find baskets where:
+
+Manager experience > 5 years
+YoY growth > X%
+BTC exposure > 20%
+Minimum investment < $500
+Rebalance frequency = Monthly
+Manager fee < X%
+```
+
+---
+
+# 4. AI-Powered Basket Search
+
+In addition to traditional filters, users should be able to describe their requirements in natural language.
+
+Example:
+
+> "Show me baskets with high BTC and ETH exposure, low manager fees, monthly rebalancing, minimum investment below $500, and managers with at least five years of experience."
+> 
+
+The AI converts the requirement into structured search criteria and returns relevant baskets.
+
+Another example:
+
+> "I want a diversified crypto basket with exposure to BTC, ETH, SOL and tokenized Treasuries, but I don't want more than 30% in any single asset."
+> 
+
+The platform can translate this into:
+
+```
+Assets:
+BTC
+ETH
+SOL
+Tokenized Treasuries
+
+Maximum single-asset weight:
+30%
+
+Diversification:
+Required
+```
+
+---
+
+# 5. Basket Research
+
+Before investing, the platform should encourage the user to perform **deep research** rather than treating a basket simply as a buy button.
+
+The research experience should include:
+
+### Basket
+
+- Investment thesis
+- Strategy
+- Investment objective
+- Target assets
+- Asset allocation
+- Asset weightage
+- Sector allocation
+- Historical performance
+- Volatility
+- Drawdown
+- Rebalance history
+- Rebalance frequency
+- Historical basket versions
+- Fees
+- Minimum investment
+- Risk information
+- Current portfolio
+- Manager commentary
+
+### Manager
+
+- Manager profile
+- Experience
+- Professional background
+- Qualifications
+- Track record
+- Organization / firm
+- Team
+- Verification status
+- Relevant documents
+- Public history
+- Previous baskets
+- Current baskets
+- Manager changes
+
+The manager/organization architecture already separates private verification information from public organization information, allowing only appropriate information to be exposed publicly.
+
+---
+
+# 6. User Authentication
+
+Users can browse baskets without authentication.
+
+Authentication becomes necessary when the user wants to invest or perform account-specific actions.
+
+The authentication flow is wallet-based:
+
+```
+Connect Wallet
+      ↓
+Wallet signature
+      ↓
+Backend verifies signature
+      ↓
+Identify User
+      ↓
+Identify Investment Wallet
+      ↓
+Create / refresh session
+      ↓
+Authenticated User
+```
+
+The existing architecture uses Reown / WalletConnect for wallet connection, backend signature verification, and Supabase for the application session layer.
+
+---
+
+# 7. Multi-Chain Wallet Support
+
+Users can use supported wallets across supported chains.
+
+Conceptually:
+
+```
+USER
+ │
+ └── INVESTMENT WALLET
+       │
+       ├── Ethereum
+       ├── Base
+       ├── BNB
+       ├── Arbitrum
+       └── Solana
+```
+
+The current authentication architecture defines one active investment wallet with multiple chain accounts/addresses.
+
+Future plans also include supporting **multiple independent wallets**, such as:
+
+```
+Investment Wallet A
+ ├── Phantom
+ └── ...
+
+Investment Wallet B
+ ├── MetaMask
+ └── ...
+```
+
+with users eventually being able to add wallets from settings.
+
+---
+
+# 8. Email and Phone Verification
+
+Wallet authentication establishes the user's platform identity.
+
+However, before the user can invest, they must verify:
+
+```
+Email ✓
+Phone ✓
+```
+
+This is required primarily so the platform can communicate important investment-related information.
+
+Examples:
+
+- Basket updates
+- Manager updates
+- Rebalance notifications
+- Execution notifications
+- Portfolio drift notifications
+- Important account notifications
+
+The authentication architecture treats email and phone as contact information separate from wallet identity.
+
+---
+
+# 9. Investment Eligibility
+
+The investment flow is:
+
+```
+Browse Basket
+      ↓
+Research Basket
+      ↓
+Research Manager
+      ↓
+Connect / Authenticate Wallet
+      ↓
+Verify Email
+      ↓
+Verify Phone
+      ↓
+Eligible to Invest
+```
+
+A user who has not completed the required contact verification should not be able to initiate an investment.
+
+---
+
+# 10. First Investment
+
+Once the user has completed the required verification:
+
+```
+Select Basket
+      ↓
+Enter Investment Amount
+      ↓
+Review Basket
+      ↓
+Review Allocation
+      ↓
+Review Fees
+      ↓
+Review Execution
+      ↓
+Confirm
+      ↓
+Wallet Authorization
+      ↓
+On-chain Execution
+      ↓
+Portfolio Created
+```
+
+---
+
+# 11. Investment Example
+
+Suppose a basket has:
+
+```
+BTC       25%
+SOL       30%
+ETH       10%
+RWA       35%
+```
+
+The user invests:
+
+```
+100 USDC
+```
+
+The target allocation is:
+
+```
+BTC       25 USDC
+SOL       30 USDC
+ETH       10 USDC
+RWA       35 USDC
+```
+
+However, the user should **not expect exactly 100 USDC worth of acquired assets** because execution costs may apply.
+
+Potential costs include:
+
+- Platform fee
+- Basket/manager fee
+- DEX fee
+- RWA execution fee
+- Slippage
+- Network/transaction fee
+- Other applicable execution costs
+
+Therefore:
+
+```
+100 USDC
+   ↓
+Investment amount
+   ↓
+Fees + execution costs
+   ↓
+Net capital deployed
+   ↓
+Asset acquisition
+```
+
+---
+
+# 12. Investment Preview
+
+Before signing, the user should receive a clear transaction preview.
+
+Example:
+
+```
+Investment Summary
+
+Basket:
+Crypto + RWA Growth
+
+Investment:
+100 USDC
+
+Target Allocation:
+
+BTC       25%
+SOL       30%
+ETH       10%
+RWA       35%
+
+Estimated Platform Fee:
+$X
+
+Estimated Basket/Manager Fee:
+$X
+
+Estimated Transaction Fee:
+$X
+
+Estimated Slippage:
+$X
+
+Estimated Net Investment:
+$X
+
+[Confirm Investment]
+```
+
+The exact execution amount should be based on live execution conditions.
+
+---
+
+# 13. Asset Acquisition
+
+After the user confirms the investment:
+
+```
+User
+ ↓
+USDC
+ ↓
+Portfolio / Execution Layer
+ ↓
+Required swaps
+ ↓
+DEX / RWA protocol / supported venue
+ ↓
+Target assets
+ ↓
+User portfolio
+```
+
+For example:
+
+```
+100 USDC
+   │
+   ├── BTC acquisition
+   ├── SOL acquisition
+   ├── ETH acquisition
+   └── RWA acquisition
+```
+
+The platform's execution architecture should remain separate from the manager's strategy definition.
+
+The manager defines:
+
+```
+Target:
+BTC 25%
+SOL 30%
+ETH 10%
+RWA 35%
+```
+
+The execution engine determines how to move the user's current portfolio toward that target.
+
+---
+
+# 14. User Ownership
+
+The intended product behavior is:
+
+> **The user owns the underlying assets rather than receiving merely an off-chain representation of their investment.**
+> 
+
+Conceptually:
+
+```
+User
+ ↓
+Portfolio
+ ↓
+BTC
+SOL
+ETH
+RWA
+```
+
+The exact custody/account model is a separate architecture decision and must be defined per chain and asset type.
+
+The portfolio architecture already distinguishes the user's **actual portfolio** from the manager's **model portfolio**, with actual ownership/state determined from on-chain state.
+
+---
+
+# 15. No Lock-in
+
+Users should not have a mandatory investment lock-in period.
+
+The intended behavior is:
+
+```
+Invest
+  ↓
+Hold
+  ↓
+Withdraw whenever user wants
+```
+
+The user can choose to leave the basket without waiting for a scheduled maturity period.
+
+---
+
+# 16. Withdrawal
+
+The user should have a clear:
+
+```
+Withdraw
+```
+
+action.
+
+Conceptually:
+
+```
+User Portfolio
+      ↓
+Withdraw
+      ↓
+Select amount/assets
+      ↓
+Review transaction
+      ↓
+Confirm
+      ↓
+On-chain execution
+      ↓
+Assets returned to user's wallet
+```
+
+No manager approval should be required merely for the user to exercise their withdrawal right, subject to the actual mechanics and constraints of the particular asset/RWA.
+
+---
+
+# 17. Cancel Basket
+
+Users should also be able to stop following a basket.
+
+```
+Basket
+  ↓
+Cancel / Exit
+  ↓
+User stops participating
+```
+
+The platform should distinguish:
+
+```
+Cancel following basket
+```
+
+from:
+
+```
+Withdraw assets
+```
+
+because these are conceptually different operations.
+
+For example:
+
+```
+Cancel basket
+→ Stop future rebalance participation
+
+Withdraw
+→ Convert/transfer the user's holdings
+```
+
+The exact UX can combine them when the user wants to fully exit.
+
+---
+
+# 18. Basket Subscription Fees
+
+Some baskets may charge recurring subscription fees.
+
+Supported frequencies can include:
+
+- Monthly
+- Quarterly
+- Yearly
+- Other configured periods
+
+Example:
+
+```
+Basket Subscription
+
+$10 / month
+```
+
+The user explicitly authorizes the recurring payment mechanism.
+
+Conceptually:
+
+```
+User
+ ↓
+Subscribe
+ ↓
+Authorize recurring payment
+ ↓
+Subscription active
+ ↓
+Periodic payment
+```
+
+The exact implementation depends on the supported chain/payment authorization mechanism.
+
+---
+
+# 19. Subscription Management
+
+Users should be able to see:
+
+```
+Subscription
+────────────────
+Basket:
+AI Infrastructure
+
+Frequency:
+Monthly
+
+Amount:
+$10
+
+Next payment:
+Date
+
+Status:
+Active
+```
+
+Actions:
+
+```
+Cancel Subscription
+```
+
+or, where supported:
+
+```
+Change Payment Method
+```
+
+Subscription payment authorization should be separate from basket investment execution.
+
+---
+
+# 20. Basket Updates
+
+A manager can publish a new basket version.
+
+The existing basket architecture treats the manager's strategy as a **versioned model portfolio** rather than overwriting the previous allocation.
+
+Example:
+
+### v1
+
+```
+BTC 25%
+SOL 30%
+ETH 10%
+RWA 35%
+```
+
+Manager publishes:
+
+### v2
+
+```
+BTC 30%
+SOL 25%
+ETH 15%
+RWA 30%
+```
+
+The user's existing portfolio is not silently changed.
+
+---
+
+# 21. Rebalance Notification
+
+When a new basket version is published:
+
+```
+Manager publishes new version
+          ↓
+Users notified
+          ↓
+User reviews rebalance
+```
+
+Example:
+
+> **Rebalance available**
+> 
+> 
+> The manager has updated the basket allocation.
+> 
+> BTC: 25% → 30%
+> 
+> SOL: 30% → 25%
+> 
+> ETH: 10% → 15%
+> 
+> RWA: 35% → 30%
+> 
+> Review the changes before deciding whether to participate.
+> 
+
+---
+
+# 22. User Controls Rebalance Participation
+
+The user has two choices:
+
+```
+[Participate]
+[Skip]
+```
+
+The manager publishing a new version **does not automatically execute a trade in the user's portfolio**.
+
+This preserves user control.
+
+The existing architecture explicitly defines the behavior that a user can review, apply, or skip a manager rebalance.
+
+---
+
+# 23. User Confirms Rebalance
+
+If the user chooses:
+
+```
+Participate
+```
+
+the platform calculates a new execution plan.
+
+```
+Current Portfolio
+       ↓
+Latest Basket Version
+       ↓
+Rebalance Engine
+       ↓
+Execution Plan
+       ↓
+Fees + Slippage
+       ↓
+User Confirmation
+       ↓
+On-chain Execution
+```
+
+---
+
+# 24. Rebalance Example
+
+Current portfolio:
+
+```
+BTC 25%
+SOL 30%
+ETH 10%
+RWA 35%
+```
+
+New basket target:
+
+```
+BTC 30%
+SOL 25%
+ETH 15%
+RWA 30%
+```
+
+The engine determines the required transition:
+
+```
+BTC
+BUY
+
+SOL
+SELL
+
+ETH
+BUY
+
+RWA
+SELL
+```
+
+The actual transaction quantities are calculated using the user's **current holdings and current market conditions**, not simply using the original investment amount.
+
+This current-state approach is a core part of the portfolio architecture.
+
+---
+
+# 25. Rebalance Fees
+
+A rebalance is a new execution event.
+
+Therefore the user should see applicable costs again:
+
+```
+Rebalance
+
+Estimated trading fee
+Estimated platform fee
+Estimated network fee
+Estimated slippage
+Other applicable costs
+```
+
+The user confirms the rebalance after reviewing these costs.
+
+---
+
+# 26. Skipping a Rebalance
+
+If the user chooses:
+
+```
+Skip
+```
+
+then:
+
+```
+Manager Target = New Version
+User Portfolio = Unchanged
+```
+
+Example:
+
+```
+Applied Version: v1
+Latest Version: v2
+Status: OUT_OF_DATE
+```
+
+No assets are bought or sold.
+
+---
+
+# 27. Multiple Skipped Rebalances
+
+If the user skips:
+
+```
+v2
+v3
+v4
+```
+
+and later chooses to participate in:
+
+```
+v5
+```
+
+the platform should **not replay**:
+
+```
+v1 → v2
+v2 → v3
+v3 → v4
+v4 → v5
+```
+
+Instead:
+
+```
+CURRENT ACTUAL PORTFOLIO
+           ↓
+LATEST TARGET v5
+           ↓
+ONE EXECUTION PLAN
+```
+
+This is explicitly part of the current portfolio/rebalance architecture.
+
+---
+
+# 28. Portfolio Drift
+
+Users can manually modify their portfolio.
+
+For example, the basket target is:
+
+```
+BTC 40%
+ETH 30%
+SOL 30%
+```
+
+The user independently sells SOL.
+
+Now the portfolio may become:
+
+```
+BTC 40%
+ETH 30%
+SOL 0%
+USDC 30%
+```
+
+This creates:
+
+```
+PORTFOLIO DRIFT
+```
+
+The platform should detect this rather than assuming the user's holdings always equal the manager's model.
+
+---
+
+# 29. Drift Detection
+
+The platform continuously/recurrently reconciles:
+
+```
+Manager Target
+      vs
+User Actual Holdings
+```
+
+Conceptually:
+
+```
+Target
+  │
+  │ compare
+  ▼
+Actual
+  │
+  ├── Aligned
+  │
+  └── Drifted
+```
+
+The existing architecture defines the blockchain as the source of truth for actual portfolio state, with the portfolio reconciler comparing expected and actual holdings.
+
+---
+
+# 30. Drift Notification
+
+If significant drift is detected:
+
+> **Portfolio drift detected**
+> 
+> 
+> Your current portfolio no longer matches the basket's target allocation.
+> 
+> SOL: 30% target → 0% actual
+> 
+> USDC: 0% target → 30% actual
+> 
+> [Review Portfolio]
+> 
+
+No automatic buyback should occur merely because the user manually changed their holdings.
+
+---
+
+# 31. Fix Portfolio
+
+The platform can provide:
+
+```
+Fix Portfolio
+```
+
+The engine calculates:
+
+```
+Current Portfolio
+       ↓
+Latest Basket Target
+       ↓
+Fix Plan
+```
+
+Example:
+
+```
+SELL USDC
+$3,000
+
+BUY SOL
+$3,000
+```
+
+The user reviews and confirms the fix.
+
+---
+
+# 32. Customized Portfolio
+
+The user may intentionally want to deviate from the manager.
+
+Therefore, the platform should support:
+
+```
+Keep Custom Allocation
+```
+
+Example:
+
+```
+Manager Target:
+
+BTC 40%
+ETH 30%
+SOL 30%
+
+User:
+
+BTC 45%
+ETH 40%
+SOL 15%
+```
+
+The user can explicitly maintain this customized state.
+
+The platform should not repeatedly attempt to restore the manager's allocation without user authorization. The existing architecture distinguishes **ALIGNED**, **DRIFTED**, and **CUSTOMIZED** states for this reason.
+
+---
+
+# 33. Portfolio States
+
+Recommended user-facing states:
+
+### ALIGNED
+
+```
+Actual ≈ Target
+```
+
+No action required.
+
+### REBALANCE AVAILABLE
+
+```
+New manager version available
+```
+
+User needs to review.
+
+### DRIFTED
+
+```
+Actual ≠ Target
+```
+
+User can review/fix.
+
+### CUSTOMIZED
+
+```
+User intentionally deviates from strategy
+```
+
+### EXECUTION PENDING
+
+```
+Transaction awaiting execution/confirmation
+```
+
+### EXECUTION FAILED
+
+```
+Execution did not fully complete
+```
+
+---
+
+# 34. Manager Updates
+
+Managers can publish informational updates that are not necessarily rebalances.
+
+Examples:
+
+- Strategy commentary
+- Market commentary
+- Basket thesis update
+- Risk update
+- Important asset information
+- RWA information
+- Strategy explanation
+
+Users invested in the basket should receive notifications according to their notification preferences.
+
+---
+
+# 35. Manager Verification
+
+Users should be able to research the manager before investing.
+
+Manager information may include:
+
+```
+Manager
+  ↓
+Experience
+  ↓
+Organization
+  ↓
+Team
+  ↓
+Verification status
+  ↓
+Public documents/information
+  ↓
+Manager history
+```
+
+The organization system keeps verification information private while exposing appropriate public organization information.
+
+---
+
+# 36. Organization / Firm Information
+
+For a professional manager, users can see:
+
+```
+Organization
+ ├── Name
+ ├── Verification status
+ ├── Jurisdiction
+ ├── Experience
+ ├── Team
+ ├── Public information
+ ├── Baskets
+ └── Manager history
+```
+
+The organization is the durable manager entity, while individual people are organization members/manager assignments.
+
+---
+
+# 37. Manager History
+
+Users should be able to understand who has managed a basket historically.
+
+Example:
+
+```
+Basket Manager History
+
+Alice
+Jan 2026 → Sep 2026
+
+Bob
+Sep 2026 → Present
+```
+
+Removing a manager should not erase historical records.
+
+The existing organization architecture explicitly recommends preserving manager assignments and historical relationships rather than deleting them.
+
+---
+
+# 38. On-Chain Architecture
+
+The platform should be designed as an on-chain system.
+
+High-level architecture:
+
+```
+                    PLATFORM
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+       MANAGER                    USER
+          │                         │
+          ▼                         ▼
+   Basket Strategy             Wallet
+          │                         │
+          ▼                         ▼
+    Basket Version            User Portfolio
+          │                         │
+          └──────────┬──────────────┘
+                     ▼
+              PORTFOLIO ENGINE
+                     │
+                     ▼
+             EXECUTION ENGINE
+                     │
+                     ▼
+              ON-CHAIN PROGRAM
+                     │
+           ┌─────────┼─────────┐
+           │         │         │
+          DEX       RWA     Protocol
+           │         │         │
+           └─────────┼─────────┘
+                     ▼
+                 BLOCKCHAIN
+```
+
+The portfolio architecture separates the manager model portfolio, user actual portfolio, and execution layer.
+
+---
+
+# 39. Portfolio Data
+
+The platform should not rely on one provider for every asset.
+
+For crypto/token assets:
+
+```
+Blockchain
+   ↓
+Blockchain data/indexing provider
+   ↓
+Portfolio Data Layer
+```
+
+For RWAs:
+
+```
+RWA protocol / issuer / RWA data provider
+   ↓
+Portfolio Data Layer
+```
+
+The platform should normalize all assets into a universal asset model.
+
+---
+
+# 40. Universal Asset Model
+
+Conceptually:
+
+```
+Asset
+ ├── asset_id
+ ├── asset_type
+ ├── chain
+ ├── contract_address
+ ├── symbol
+ ├── decimals
+ ├── issuer
+ └── data_provider
+```
+
+This becomes important as the platform expands beyond crypto.
+
+The future roadmap already includes:
+
+- US and international stocks
+- ETFs
+- Treasuries
+- Commodities
+- Equity indices
+- Currency/rates products
+- Pre-IPO Web2/Web3 exposure
+- Fixed deposits
+- Recurring deposits
+
+---
+
+# 41. Common Portfolio Transition Engine
+
+First investment, rebalance, and drift correction should use the same fundamental mechanism:
+
+```
+CURRENT STATE
+      ↓
+TARGET STATE
+      ↓
+TRANSITION PLAN
+      ↓
+USER AUTHORIZATION
+      ↓
+EXECUTION
+      ↓
+RECONCILIATION
+```
+
+### First investment
+
+```
+USDC
+ ↓
+Basket Target
+```
+
+### Rebalance
+
+```
+Current Portfolio
+ ↓
+New Basket Target
+```
+
+### Drift fix
+
+```
+Current Portfolio
+ ↓
+Latest Basket Target
+```
+
+This should be a core platform abstraction.
+
+---
+
+# 42. Transaction Safety
+
+Every execution should have constraints such as:
+
+```
+Maximum slippage
+Minimum output
+Transaction deadline
+Allowed assets
+Allowed execution venues
+Basket version
+Portfolio ID
+```
+
+A stale execution plan should expire rather than executing against materially changed market conditions.
+
+---
+
+# 43. Failed or Partial Execution
+
+The platform must account for:
+
+```
+SUCCESS
+PARTIAL
+FAILED
+```
+
+Example:
+
+```
+SELL BTC ✓
+BUY ETH ✓
+BUY RWA ✗
+```
+
+The portfolio should be reconciled after execution.
+
+Then:
+
+```
+Actual Holdings
+      ↓
+Remaining Difference
+      ↓
+New Fix Plan
+```
+
+The existing architecture explicitly treats failed/partial execution as an incomplete state that must be reconciled rather than simply marked successful.
+
+---
+
+# 44. Notifications
+
+Users should be able to receive notifications for:
+
+### Investment
+
+- Investment completed
+- Investment failed
+- Transaction confirmation
+
+### Basket
+
+- Basket update
+- Manager update
+- Strategy update
+
+### Rebalance
+
+- New rebalance
+- Rebalance approved
+- Rebalance completed
+- Rebalance failed
+- Rebalance skipped
+
+### Portfolio
+
+- Portfolio drift
+- Fix available
+- Portfolio restored
+- Customized portfolio
+
+### Subscription
+
+- Subscription payment upcoming
+- Subscription payment completed
+- Subscription payment failed
+- Subscription cancelled
+
+---
+
+# 45. Fees
+
+The platform should make fees transparent before every relevant transaction.
+
+Potential fee categories:
+
+```
+Platform Fee
+Basket / Manager Fee
+Subscription Fee
+DEX Fee
+RWA Protocol Fee
+Network Fee
+Slippage / Price Impact
+```
+
+The user should see the estimated/known costs before authorizing an investment or rebalance wherever technically possible.
+
+---
+
+# 46. No Silent Asset Changes
+
+A core product rule should be:
+
+> **The platform should not silently move user assets merely because a manager changed the basket.**
+> 
+
+Instead:
+
+```
+Manager changes strategy
+       ↓
+User notified
+       ↓
+User reviews
+       ↓
+User confirms
+       ↓
+Execution
+```
+
+This preserves the user-control principle of the platform.
+
+---
+
+# 47. Decentralized Architecture Principle
+
+The platform should avoid making the backend a hidden custodian.
+
+Conceptually:
+
+```
+Backend
+  ↓
+Calculate
+Observe
+Index
+Notify
+Prepare
+Reconcile
+
+On-chain Program
+  ↓
+Enforce
+Validate
+Execute authorized actions
+
+Blockchain
+  ↓
+Authoritative ownership/state
+```
+
+The exact custody model should still be finalized separately for each chain and asset type.
+
+---
+
+# 48. Future Asset Expansion
+
+The basket abstraction should not be limited to cryptocurrencies.
+
+Future categories include:
+
+```
+Crypto
+ ├── BTC
+ ├── ETH
+ └── SOL
+
+RWAs
+ ├── Treasuries
+ ├── Tokenized funds
+ └── Other tokenized assets
+
+Traditional Assets
+ ├── US Stocks
+ ├── International Stocks
+ ├── ETFs
+ ├── Commodities
+ └── Equity Indices
+
+Financial Products
+ ├── Fixed Deposits
+ └── Recurring Deposits
+
+Private / Pre-IPO
+ ├── Web2 companies
+ └── Web3 companies
+```
+
+These future categories are already identified in the project's roadmap.
+
+---
+
+# 49. Core User Journey
+
+The entire product experience can be summarized as:
+
+```
+                    PUBLIC USER
+                         │
+                         ▼
+                  DISCOVER BASKETS
+                         │
+                         ▼
+                   SEARCH / FILTER
+                         │
+                         ▼
+                    AI DISCOVERY
+                         │
+                         ▼
+                  RESEARCH BASKET
+                         │
+                         ▼
+                  RESEARCH MANAGER
+                         │
+                         ▼
+                   CONNECT WALLET
+                         │
+                         ▼
+                 VERIFY EMAIL/PHONE
+                         │
+                         ▼
+                 ENTER INVESTMENT
+                         │
+                         ▼
+                  REVIEW FEES/RISK
+                         │
+                         ▼
+                    CONFIRM
+                         │
+                         ▼
+                 ON-CHAIN EXECUTION
+                         │
+                         ▼
+                  OWN PORTFOLIO
+                         │
+             ┌───────────┴────────────┐
+             │                        │
+        HOLD / MONITOR          MANAGER UPDATE
+             │                        │
+             │                        ▼
+             │                  REBALANCE
+             │                        │
+             │                ┌───────┴───────┐
+             │                │               │
+             │              APPLY            SKIP
+             │                │
+             │                ▼
+             │           RE-EXECUTE
+             │
+             ▼
+       USER MANUAL CHANGE
+             │
+             ▼
+        PORTFOLIO DRIFT
+             │
+             ▼
+       REVIEW / FIX / KEEP CUSTOM
+             │
+             ▼
+          WITHDRAW
+```

@@ -1,0 +1,1594 @@
+## Basket Creation
+
+## 1. Purpose
+
+This document defines the complete fund-manager-side basket creation
+workflow. It covers the journey from opening the manager workspace
+through drafting a basket, defining its strategy and commercial terms,
+submitting it for platform review, publishing it, and managing future
+updates.
+
+The document is written to guide product design, backend/API
+implementation, database design, authorization, review operations, and
+frontend development.
+
+A basket is a **versioned investment strategy owned by a verified
+organization**. Individual users act on the basket through organization
+membership and basket-level assignments. A basket is not the manager's
+personal wallet or the user's portfolio.
+
+### 1.1 Core principles
+
+1. Only an organization cleared by the platform for manager operations
+can create a basket.
+2. A basket belongs to an organization; people receive permissions
+through membership and basket assignments.
+3. A draft is private and is never investable.
+4. A basket becomes public/investable only after required platform
+review and publication.
+5. A published strategy is immutable as a version. Changes create a new
+version or a controlled change request.
+6. Publishing a new strategy does not silently trade user assets.
+7. The manager defines the model portfolio; the execution engine
+calculates user-specific transactions from actual holdings and
+current conditions.
+8. All material actions, reviews, approvals, and publications are
+auditable.
+9. Fees, minimum investment, risks, supported assets, and rebalance
+behavior must be clearly disclosed.
+10. The platform should distinguish facts, estimates, historical
+performance, and manager-provided claims.
+
+---
+
+## 2. Scope
+
+### Included
+
+- Manager workspace entry and authorization
+- Basket creation and draft management
+- Basket identity, thesis, and public description
+- Asset selection and target allocation
+- Portfolio constraints and validation
+- Rebalance configuration
+- Manager and team assignment
+- Fees and minimum investment
+- Risk and disclosure information
+- Preview and submission
+- Platform review and change requests
+- Approval and publication
+- Basket versioning and history
+- Post-publication management
+- Basket pause, retirement, and archival
+- Notifications and audit events
+- High-level data model and API boundaries
+
+### Not defined in detail
+
+- User investment execution and custody implementation
+- Chain-specific smart contract/program architecture
+- Legal determination of whether a particular basket is a regulated
+product
+- Exact fee settlement contract design
+- Asset-provider integration details
+- Performance calculation methodology for every asset class
+
+These systems must integrate with the basket model but should be
+specified separately.
+
+---
+
+## 3. Relationship to the Manager and User Architecture
+
+The platform separates identity, organization, basket strategy, and
+investor portfolio.
+
+```
+User
+ ├── Investor account
+ └── Organization Membership
+       └── Organization
+            ├── Verification
+            ├── Members and roles
+            ├── Payout wallet
+            └── Baskets
+                 ├── Basket metadata
+                 ├── Published versions
+                 ├── Rebalance proposals
+                 └── Manager assignments
+
+Investor User
+ └── Investor Portfolio
+      ├── Actual holdings (on-chain source of truth)
+      ├── Applied basket version
+      └── Execution history
+```
+
+### Important distinctions
+
+---
+
+Concept                             Meaning
+
+---
+
+User                                An authenticated person/account
+
+Organization                        The verified manager entity that
+owns the basket
+
+Membership                          A user's relationship and role
+within an organization
+
+Basket                              A durable investment
+strategy/product record
+
+Basket version                      An immutable snapshot of a strategy
+and its disclosures
+
+Manager assignment                  A time-bounded responsibility
+relationship between a person and a
+basket
+
+Model portfolio                     Target allocation defined by the
+basket version
+
+Investor portfolio                  Actual assets held by an investor
+
+Rebalance proposal                  A proposed new strategy version,
+subject to review and user choice
+
+## Execution plan A user-specific set of
+trades/transfers derived from
+actual holdings and a target
+
+The organization remains the durable basket owner when an individual
+manager leaves. Manager history should be preserved.
+
+---
+
+## 4. Actors and Responsibilities
+
+---
+
+Actor                               Responsibilities
+
+---
+
+Organization Owner                  Owns organization-level
+administration; can create and
+submit baskets subject to policy
+
+Organization Admin                  Performs delegated basket
+operations according to granted
+permissions
+
+Basket Lead Manager                 Owns the strategy workflow for an
+assigned basket; prepares drafts
+and updates
+
+Basket Co-manager                   Contributes to basket operations
+within assigned permissions
+
+Analyst                             Researches assets and prepares
+analysis; normally cannot publish
+
+Viewer                              Read-only access
+
+Platform Reviewer                   Reviews basket completeness,
+disclosures, supported assets, and
+policy compliance
+
+Platform Approver                   Approves or rejects submissions
+according to separation-of-duties
+policy
+
+Platform Publisher/System           Publishes an approved version and
+emits associated events
+
+## Investor Researches public baskets and
+chooses whether to invest or
+participate in updates
+
+A user may hold different roles in different organizations. A role alone
+should not grant access to every basket in an organization if
+basket-level restrictions apply.
+
+---
+
+## 5. Eligibility and Access Control
+
+### 5.1 Organization eligibility
+
+Before creating a basket, the system must confirm that:
+
+- The organization exists and is active.
+- Required organization verification is approved.
+- The organization is not suspended or blocked from creating products.
+- The user has an active membership.
+- The user's membership role and permissions allow basket creation.
+- Any required manager-specific clearance is current.
+- The organization has accepted applicable platform terms and
+disclosures.
+
+Do not rely only on a frontend-hidden button. The backend must enforce
+every permission.
+
+### 5.2 Suggested permissions
+
+Permissions should be explicit and configurable. Suggested capabilities:
+
+- `basket.create`
+- `basket.read_private`
+- `basket.edit_draft`
+- `basket.submit`
+- `basket.withdraw_submission`
+- `basket.view_review_feedback`
+- `basket.respond_to_changes`
+- `basket.propose_update`
+- `basket.pause_request`
+- `basket.retire_request`
+- `basket.assign_manager`
+- `basket.manage_fees`
+- `basket.view_analytics`
+
+Approval and publication permissions should normally remain
+platform-controlled, not organization-controlled.
+
+### 5.3 Suggested default role mapping
+
+---
+
+Action                    Owner          Admin   Lead Manager      Analyst       Viewer
+
+---
+
+Create draft                Yes   Configurable            Yes     Optional           No
+
+Edit own draft              Yes            Yes            Yes   If granted           No
+
+Edit another                Yes            Yes   Configurable           No           No
+manager's draft
+
+Assign basket               Yes   Configurable  No by default           No           No
+managers
+
+Submit for review           Yes   Configurable            Yes           No           No
+
+Respond to review           Yes            Yes            Yes   If granted           No
+
+Propose new                 Yes   Configurable            Yes     Optional           No
+version
+
+Approve/publicly             No             No             No           No           No
+publish
+
+## View private Yes Configurable Assigned If granted No
+analytics baskets
+
+All role mappings are defaults, not hard-coded assumptions. Permission
+changes must be auditable.
+
+---
+
+## 6. Basket Lifecycle
+
+### 6.1 Primary lifecycle
+
+```
+DRAFT
+  │
+  ├── Save / continue editing
+  │
+  └── Submit
+        ↓
+     SUBMITTED
+        ↓
+   UNDER_REVIEW
+        │
+        ├── CHANGES_REQUIRED
+        │       ↓
+        │   MANAGER_UPDATING
+        │       ↓
+        │   RESUBMITTED
+        │       ↓
+        │   UNDER_REVIEW
+        │
+        ├── REJECTED
+        │
+        └── APPROVED
+                ↓
+           PUBLICATION_PENDING
+                ↓
+             PUBLISHED
+                ↓
+              ACTIVE
+                │
+       ┌────────┼───────────┐
+       │        │           │
+     PAUSED  RETIREMENT   NEW VERSION
+                │           │
+                ↓           ↓
+             RETIRED     REVIEW FLOW
+                            │
+                            └──→ PUBLISHED
+```
+
+### 6.2 State definitions
+
+---
+
+State                   Meaning                 Public/investable?
+
+---
+
+`DRAFT`                 Manager is creating or  No
+editing an unpublished
+
+basket
+
+`SUBMITTED`             Manager submitted the   No
+draft; awaiting queue
+
+processing
+
+`UNDER_REVIEW`          Platform review is in   No
+progress
+
+`CHANGES_REQUIRED`      Reviewer requested      No
+changes or more
+
+information
+
+`MANAGER_UPDATING`      Manager is addressing   No
+feedback
+
+`RESUBMITTED`           Updated submission      No
+returned to the review
+
+queue
+
+`REJECTED`              Submission was          No
+declined; reason is
+
+recorded
+
+`APPROVED`              Review passed;          No
+publication has not
+
+necessarily completed
+
+`PUBLICATION_PENDING`   Approved version is     Not until publication
+being published/indexed succeeds
+
+`PUBLISHED`             Public version is       Depends on activation
+available               status
+
+`ACTIVE`                Basket is currently     Yes, subject to product
+open to eligible        rules
+investor actions
+
+`PAUSED`                New investments and/or  Public page may remain
+updates are temporarily visible; investability
+disabled according to   depends on pause reason
+policy
+
+`RETIREMENT_PENDING`    Retirement request is   Existing investors
+being                   remain visible
+processed/reviewed
+
+`RETIRED`               No new investments;     Public history remains
+historical record
+
+remains available
+
+## `ARCHIVED` Administrative terminal Normally not investable
+state for a non-active
+basket
+
+Avoid a single `approved` boolean. Store state transitions with actor,
+time, reason, and related version.
+
+### 6.3 State transition rules
+
+- A draft may be edited by authorized organization members.
+- Submission freezes the submitted snapshot for review. Edits should
+not mutate the review snapshot.
+- A change request returns the manager to an editable working copy.
+- Rejection must include an internal reason and, where appropriate, a
+manager-visible explanation.
+- Approval applies to a specific version/hash, not to a mutable basket
+record.
+- Publication should be idempotent and should only occur for an
+approved version.
+- Pausing and retirement should not erase investor positions, past
+versions, or performance history.
+- A published basket update must create a new version rather than
+overwriting the current one.
+
+---
+
+## 7. End-to-End Manager Journey
+
+```
+Manager Workspace
+      ↓
+Baskets
+      ↓
+Create Basket
+      ↓
+Create Draft
+      ↓
+Complete Basket Sections
+      ↓
+Run Validation
+      ↓
+Preview Public Page
+      ↓
+Submit for Review
+      ↓
+Platform Review
+      ├── Changes Required → Edit → Resubmit
+      ├── Rejected → Close / Create New Draft
+      └── Approved → Publish → Active
+                               ↓
+                      Monitor / Update / Pause
+```
+
+### Step 1 --- Open manager workspace
+
+The manager signs in using the platform's wallet-based authentication
+and opens the organization workspace.
+
+The UI should show: - Current organization - Verification status -
+User's organization role - Basket permissions - Existing baskets grouped
+by lifecycle status - Drafts and pending review tasks - Relevant policy
+notices
+
+If the organization is not eligible, show the reason and the required
+next action. Do not silently permit draft submission when the
+organization is suspended or unverified.
+
+### Step 2 --- Start creation
+
+The user selects **Create Basket**.
+
+The backend creates a basket ID and a draft version. The draft is
+associated with the current organization and creator.
+
+Initial values: - Status: `DRAFT` - Version number: `1` - Visibility:
+private - Investability: disabled - Created by: authenticated user -
+Organization: current organization
+
+The basket should autosave or provide explicit save feedback. Draft
+recovery should be supported.
+
+### Step 3 --- Complete the creation wizard
+
+Use a section-based wizard with progress and validation:
+
+1. Basic information
+2. Investment objective and thesis
+3. Assets and allocation
+4. Strategy constraints
+5. Rebalance methodology
+6. Managers and responsibilities
+7. Fees and minimum investment
+8. Risk and disclosures
+9. Review and preview
+
+Allow managers to save incomplete drafts and return later. Mark required
+and optional fields clearly.
+
+### Step 4 --- Validate and preview
+
+Before submission, run server-side validation and show: - Missing
+fields - Unsupported assets - Invalid or non-normalized weights -
+Constraint violations - Missing disclosures - Invalid fee
+configuration - Unassigned required manager - Inconsistent rebalance
+configuration
+
+Provide a preview that resembles the public basket page. Clearly label
+unpublished content as a preview.
+
+### Step 5 --- Submit
+
+The manager confirms the submission. The server creates an immutable
+submission snapshot, records the submitting user and timestamp, and
+changes the lifecycle state to `SUBMITTED`.
+
+The manager should see: - Submission reference - Submitted version -
+Submission timestamp - Expected review process description (without
+promising a specific SLA unless one exists) - Current status - Ability
+to withdraw only if platform policy allows and review has not reached a
+restricted stage
+
+### Step 6 --- Platform review
+
+The reviewer receives a review task and sees a read-only snapshot plus
+relevant organization and manager context.
+
+The reviewer can: - Approve - Request changes - Reject - Escalate for
+specialist review
+
+Every decision requires an authenticated reviewer, timestamp, decision,
+and reason. Sensitive internal notes should be separated from
+manager-visible feedback.
+
+### Step 7 --- Resolve changes
+
+If changes are required: - Show each issue against a section or field. -
+Distinguish blocking issues from recommendations. - Allow the manager to
+update a working copy. - Preserve the original submitted snapshot and
+reviewer comments. - Re-run validation before resubmission.
+
+The manager resubmits a new snapshot. The previous review and feedback
+remain available in history.
+
+### Step 8 --- Approval and publication
+
+Upon approval: - Mark the reviewed version approved. - Publish only that
+exact version. - Generate or update the public basket page and search
+index. - Record the publication event and effective time. - Notify
+relevant subscribers/followers where applicable. - Make investment
+availability consistent with asset, jurisdiction, and platform policy.
+
+Publication failure must not be reported as success. Retry safely using
+an idempotency key and expose a pending/error state to operations.
+
+### Step 9 --- Post-publication management
+
+The manager can: - View basket overview and analytics - Publish
+informational updates - Propose a new basket version - Request a pause -
+Request retirement - Manage permitted basket assignments - Review user
+engagement and rebalance participation metrics
+
+The manager cannot directly alter a user's actual portfolio merely by
+changing the model allocation.
+
+---
+
+## 8. Basket Data Specification
+
+### 8.1 Basic identity
+
+Required or conditionally required fields:
+
+---
+
+Field                   Description             Validation / notes
+
+---
+
+`basket_id`             Stable unique           Generated by backend
+identifier
+
+`organization_id`       Owning organization     Must be eligible
+
+`slug`                  Public URL identifier   Unique; changes should
+redirect or preserve
+aliases
+
+`name`                  Public basket name      Required; length and
+content policy limits
+
+`short_description`     Summary for             Required; bounded
+cards/search            length
+
+`long_description`      Detailed public         Optional or required by
+description             policy
+
+`category`              Main strategy/category  From controlled
+label                   taxonomy
+
+`tags`                  Search labels           Controlled and
+validated
+
+`icon_or_image`         Basket artwork          Optional; validate file
+type and ownership
+
+`language`              Content language        ISO language code
+
+`created_by`            Draft creator           Authenticated user ID
+
+## `created_at` Creation timestamp Server-generated
+
+Do not let a manager imply platform endorsement through names, logos, or
+descriptions.
+
+### 8.2 Investment objective and thesis
+
+Recommended fields: - `investment_objective` - `investment_thesis` -
+`strategy_description` - `methodology` - `intended_investor_profile` -
+`investment_horizon` (if meaningful) - `key_assumptions` -
+`known_limitations` - `strategy_risks`
+
+The UI should prompt the manager to explain: - What the basket is
+intended to do - What rules determine inclusion/exclusion - Why the
+selected assets are included - What conditions may cause the strategy to
+change - What risks and limitations investors should understand
+
+Do not represent an objective or historical result as a guaranteed
+return.
+
+### 8.3 Asset selection
+
+Each constituent should be a reference to a canonical platform asset
+record, not free-form ticker text alone.
+
+Suggested constituent fields:
+
+Field                 Description
+
+---
+
+`asset_id`            Canonical asset identifier
+`target_weight_bps`   Target weight in basis points
+`min_weight_bps`      Optional lower bound
+`max_weight_bps`      Optional upper bound
+`rationale`           Manager's inclusion rationale
+`effective_from`      Version effective time
+`status`              Included, removed, or pending review
+
+Use basis points or fixed-precision decimal values rather than binary
+floating-point percentages. For example, 25% is 2500 basis points.
+
+Asset metadata should include, as applicable: - Asset type/class -
+Chain/network - Contract address or instrument identifier -
+Decimals/precision - Issuer/protocol - Trading or transfer support -
+Jurisdiction and eligibility constraints - Pricing/data source -
+Liquidity or redemption constraints - Whether the asset is currently
+enabled for basket use
+
+The basket UI should show unsupported or unavailable assets as blocking
+errors, not silently drop them.
+
+### 8.4 Allocation validation
+
+For a fully invested target allocation:
+
+```
+sum(target_weight_bps) = 10,000
+```
+
+If cash or an unallocated reserve is supported, represent it explicitly
+as an asset/weight or define a documented allocation policy. Do not
+allow unexplained gaps.
+
+Validate: - All weights are non-negative. - Sum equals the configured
+total. - No duplicate asset rows unless the model explicitly supports
+them. - Each asset is allowed for the organization, basket type, and
+supported jurisdiction. - Each target weight respects min/max limits. -
+Concentration constraints are met. - Asset count is within configured
+limits. - Required asset metadata is present. - Weight rounding is
+deterministic and visible.
+
+If shorting, leverage, derivatives, or negative weights are not
+supported, reject them at both API and UI layers.
+
+### 8.5 Portfolio-level constraints
+
+Potential configuration: - Maximum weight per asset - Minimum number of
+assets - Maximum number of assets - Maximum exposure by asset class -
+Maximum exposure by sector - Maximum exposure by issuer - Minimum cash
+reserve - Stablecoin exposure cap - RWA exposure cap - Geographic
+exposure constraints - Restricted-asset rules
+
+Only enable constraints that the execution system can actually enforce.
+A displayed constraint that is not enforceable can mislead managers and
+investors.
+
+---
+
+## 9. Rebalance Configuration
+
+A basket defines a **target strategy and rebalance policy**, not an
+automatic right to move investor assets.
+
+### 9.1 Configuration fields
+
+- `rebalance_mode`: scheduled, threshold-based, manager-proposed, or
+supported combination
+- `scheduled_frequency`: daily/weekly/monthly/quarterly/custom, if
+supported
+- `drift_threshold_bps`: optional threshold
+- `minimum_rebalance_interval`: optional cooldown
+- `rebalance_window`: optional execution window
+- `manager_review_required`: whether a manager must propose/confirm
+- `rebalance_rationale_required`: required for strategy changes
+- `user_consent_mode`: must reflect the platform's user-controlled
+execution model
+- `execution_constraints`: slippage, expiry, venue/asset restrictions,
+and other supported parameters
+
+### 9.2 Distinguish three operations
+
+---
+
+Operation                           Meaning
+
+---
+
+Strategy version update             Manager changes the model target
+
+Rebalance proposal                  A reviewed/published proposal for
+investors to consider
+
+## Investor execution A user-specific transaction plan
+and user authorization
+
+A new basket version may trigger a notification and make a rebalance
+available, but it must not by itself execute trades for existing
+investors.
+
+### 9.3 User consent and execution
+
+The current product behavior is user-controlled: 1. Manager creates a
+new version/proposal. 2. Platform reviews and publishes it. 3. Invested
+users are notified. 4. Each user reviews the changes. 5. A user may
+participate or skip. 6. If participating, the system computes a plan
+from actual holdings and current conditions. 7. The user reviews costs
+and authorizes execution. 8. The platform reconciles the resulting
+on-chain state.
+
+If a user skips a version and later participates in a newer one,
+calculate from the user's current actual portfolio to the latest
+selected target. Do not replay every skipped version as a sequence of
+trades.
+
+### 9.4 Rebalance change summary
+
+For every strategy update, generate a comparison between the prior
+published version and the proposed version: - Added assets - Removed
+assets - Weight increases/decreases - Unchanged assets - Constraint
+changes - Rebalance policy changes - Fee changes - Manager assignment
+changes
+
+Require a manager-authored reason for material changes. Show factual
+differences separately from the manager's explanation and any modeled
+impact estimates.
+
+---
+
+## 10. Managers and Basket Assignments
+
+A basket can have one or more assigned managers, subject to product
+policy.
+
+Suggested assignment fields: - `user_id` - `organization_id` -
+`basket_id` - `basket_role` (lead, co-manager, analyst, etc.) -
+`permissions` - `status` - `started_at` - `ended_at` - `assigned_by` -
+`reason`
+
+Before assignment: - Confirm active organization membership. - Confirm
+required verification/clearance. - Confirm role eligibility. - Confirm
+the user is not suspended. - Record assignment approval if policy
+requires it.
+
+When a manager leaves or is removed: - Revoke their permissions
+promptly. - End the assignment; do not delete it. - Preserve prior
+published versions and manager attribution. - Identify affected
+baskets. - Apply the configured policy: require reassignment, pause the
+basket, or allow organization-level continuity. - Notify affected
+investors when the public manager relationship materially changes.
+
+Do not automatically delete or transfer a basket when a person leaves.
+
+---
+
+## 11. Fees and Commercial Terms
+
+Fee fields should be explicit, versioned, and displayed before investor
+authorization.
+
+Potential fee categories: - Subscription fee - Initial investment/entry
+fee - Rebalance fee - Manager fee - Platform fee - Other
+product-specific fee
+
+For percentage-based fees, define: - Rate in basis points - Calculation
+base - Maximum cap, if any - Minimum charge, if any - Currency/asset of
+collection - Collection timing - Recipient allocation -
+Refund/cancellation behavior - Applicable tax treatment (as configured
+by legal/finance policy)
+
+Example fee calculation, if the product adopts a percentage fee with a
+cap:
+
+```
+fee = min(fee_base × rate, maximum_fee_cap)
+```
+
+This formula is illustrative; the exact fee base and cap semantics must
+be fixed in the fee policy.
+
+### 11.1 Validation
+
+- Fees cannot be negative.
+- Rates must be within platform-configured limits.
+- A cap must use a compatible currency/denomination.
+- Recurring subscription frequency must be supported.
+- Free baskets must be represented explicitly with zero values.
+- Any fee change after publication must create a new reviewed version.
+- Do not charge or collect a fee merely because a draft or proposal
+exists.
+
+### 11.2 Fee transparency
+
+The public basket page and investor transaction preview should
+distinguish: - Manager fees - Platform fees - Subscription fees -
+Network costs - DEX/protocol/RWA costs - Estimated slippage/price impact
+
+Do not imply that estimated execution costs are guaranteed. Show
+estimates and their timestamp/expiry where available.
+
+---
+
+## 12. Minimum Investment and Eligibility
+
+Suggested fields: - `minimum_investment` - `investment_currency` -
+`maximum_investment` (optional) - `minimum_increment` (optional) -
+`supported_chains` - `supported_investment_assets` -
+`eligible_jurisdictions` / restrictions -
+`investor_eligibility_policy` - `availability_status`
+
+Validate that the minimum is compatible with: - Supported execution
+routes - Asset minimums and precision - Fee calculations - RWA issuer
+minimums, where relevant - Any platform or jurisdiction limits
+
+The public page should clearly distinguish a platform minimum from an
+asset/issuer minimum.
+
+---
+
+## 13. Risk, Disclosures, and Public Content
+
+Required disclosures should be configurable by asset class,
+jurisdiction, and product type.
+
+Potential sections: - Strategy-specific risks - Volatility and drawdown
+context - Liquidity and redemption constraints - Smart contract/protocol
+risks - Stablecoin and depeg risks - Custody and wallet risks - RWA
+issuer, legal, transfer, and redemption risks - Data limitations - Fees
+and conflicts - No guarantee of performance - Relevant jurisdictional
+eligibility notices
+
+Managers should provide the strategy-specific content; platform-managed
+mandatory notices should be injected from approved templates.
+
+Do not permit managers to remove mandatory platform disclosures. Keep
+the exact disclosure version attached to the basket version that was
+reviewed and published.
+
+### 13.1 Public vs private information
+
+Public basket information may include: - Name and description -
+Objective and thesis - Current published allocation - Supported assets -
+Rebalance policy - Fee schedule - Minimum investment - Risk
+disclosures - Published performance and methodology - Rebalance/version
+history - Organization and assigned managers - Verification status,
+where approved for display
+
+Keep private: - Government identity documents - Private addresses and
+contact details - Internal reviewer notes - Sensitive KYB/KYC records -
+Unpublished drafts - Security credentials - Private user portfolio
+details
+
+---
+
+## 14. Review and Approval Workflow
+
+### 14.1 Review stages
+
+Recommended review checklist:
+
+**A. Completeness** - Required fields present - Valid content and
+media - All required disclosures included - Fee terms complete - Minimum
+investment specified or explicitly not applicable
+
+**B. Asset eligibility** - Assets exist in the canonical registry -
+Assets are enabled for the product - Correct network/instrument
+identifiers - No unsupported or restricted constituents - Data and
+execution support confirmed
+
+**C. Allocation** - Weights normalize correctly - Constraints are met -
+No accidental duplicates - Concentration rules pass - Portfolio
+composition matches the stated methodology
+
+**D. Strategy and public communication** - Thesis and methodology are
+understandable - Claims are appropriately qualified - Risks are
+disclosed - Historical performance is not presented as a guarantee -
+Public copy does not misrepresent verification or platform involvement
+
+**E. Manager and organization** - Organization remains eligible -
+Assigned managers have valid membership and permissions - Required
+manager clearance is current - Conflicts and relevant disclosures are
+handled
+
+**F. Commercial terms** - Fees conform to configured policy - Caps and
+calculation bases are clear - Recurring fees are supported - Fee display
+matches backend configuration
+
+**G. Operational readiness** - Required pricing/data feeds exist -
+Execution routes or asset workflows are available - Transaction
+constraints can be enforced - Monitoring and reconciliation can support
+the basket
+
+### 14.2 Reviewer outcomes
+
+---
+
+Outcome                             Effect
+
+---
+
+Approve                             Marks the exact submitted version
+as approved
+
+Changes required                    Returns actionable feedback;
+manager creates a revised snapshot
+
+Reject                              Closes the submission with a
+recorded reason
+
+## Escalate Routes to compliance, legal, asset
+operations, or another specialist
+
+Approval should not be treated as a guarantee of performance, safety, or
+legal suitability. It indicates that the platform's configured review
+process was completed for the reviewed version.
+
+### 14.3 Separation of duties
+
+For higher-risk products, use separate reviewer and approver identities.
+Define when one person may perform both roles. Store the policy and the
+actual actors for every decision.
+
+### 14.4 Review records
+
+For every review event, record: - Basket ID - Version ID - Submission
+ID - Reviewer/approver ID - Decision - Internal notes - Manager-visible
+feedback - Checklist results - Timestamp - Policy/checklist version -
+Content hash or immutable snapshot reference
+
+---
+
+## 15. Versioning and Publication
+
+### 15.1 Version model
+
+A basket has stable identity and multiple immutable versions.
+
+```
+Basket B
+ ├── v1 (published)
+ ├── v2 (published)
+ ├── v3 (draft / under review)
+ └── current_published_version = v2
+```
+
+A version should capture all investor-relevant configuration: - Basket
+name and descriptions - Thesis and methodology - Asset list and
+weights - Constraints - Rebalance settings - Fee schedule - Minimum
+investment - Risk disclosures - Manager attribution, where applicable -
+Required legal/policy notice versions
+
+### 15.2 Draft editing
+
+Drafts can be mutable, but every submission creates a frozen snapshot.
+The system should preserve: - Working draft ID - Submitted snapshot ID -
+Version number - Content hash - Created/submitted timestamps
+
+### 15.3 Publishing an update
+
+For an existing basket: 1. Clone the current working configuration into
+a new draft version. 2. Edit the proposed changes. 3. Produce a diff
+against the current published version. 4. Validate and preview. 5.
+Submit for review. 6. Receive approval or changes. 7. Publish the
+approved version. 8. Preserve the old version and set the new current
+version. 9. Notify affected users.
+
+Do not mutate historical published versions.
+
+### 15.4 Effective time
+
+Store both approval time and effective/publication time. If scheduled
+activation is supported, the effective time must be explicit and
+visible. Until the new version is effective, the prior version remains
+current.
+
+---
+
+## 16. Post-Publication Operations
+
+### 16.1 Manager dashboard
+
+Suggested dashboard sections:
+
+**Overview** - Basket status - Current published version - Last update -
+Pending review tasks - Key notices
+
+**Strategy** - Current allocation - Constraints - Rebalance policy -
+Version history
+
+**Audience and activity** - Investor count - Subscriptions - Rebalance
+participation - User activity, subject to privacy policy
+
+**Analytics** - AUM/invested value, with clear definition and
+timestamp - Performance metrics and methodology - Historical
+allocation - Fees/revenue, where permitted - Execution outcomes
+
+**Management** - Assigned managers - Drafts - Review feedback - Update
+proposals - Pause/retirement requests
+
+### 16.2 Informational updates
+
+Managers may publish commentary that does not change the model
+portfolio. Such updates should have: - Title - Body - Author -
+Timestamp - Basket association - Optional attachments - Review
+requirement, depending on policy
+
+Clearly distinguish commentary from a formal strategy version or
+rebalance proposal.
+
+### 16.3 Pause
+
+A pause may be requested by an authorized manager or imposed by the
+platform. Record: - Initiator - Reason - Scope (new investments, new
+rebalance proposals, all activity, etc.) - Start time - Expected review
+date, if any - Resume decision and actor
+
+Do not imply that pausing a basket freezes or locks investor assets
+unless the underlying asset mechanics actually do so.
+
+### 16.4 Retirement
+
+Retirement should: - Disable new investment according to policy. -
+Preserve public historical information. - Preserve investor positions
+and transaction history. - Define how outstanding subscriptions and
+pending rebalances are handled. - Notify affected users. - Retain
+manager attribution and version history.
+
+Retirement must not be implemented as a hard delete.
+
+---
+
+## 17. Notifications
+
+### Manager notifications
+
+- Draft submitted
+- Review started
+- Changes required
+- Submission approved/rejected
+- Publication succeeded/failed
+- New version published
+- Pause/retirement request updated
+- Manager assignment changed
+- Relevant operational issue
+
+### Investor notifications
+
+- Basket newly published (where followed or relevant)
+- New version/rebalance available
+- Fee or minimum changes
+- Manager change
+- Basket paused
+- Basket resumed
+- Basket retired
+- Material risk/disclosure update
+
+Notifications should state the actual change. Avoid claiming that
+investor assets were moved unless execution is confirmed on-chain.
+
+---
+
+## 18. Suggested Database Model
+
+This is a logical starting point; exact types and normalization depend
+on the selected database.
+
+```
+baskets
+-------
+id
+organization_id
+slug
+lifecycle_status
+visibility
+current_published_version_id
+created_by
+created_at
+updated_at
+paused_at
+retired_at
+
+basket_versions
+---------------
+id
+basket_id
+version_number
+version_status
+name
+short_description
+long_description
+objective
+thesis
+methodology
+minimum_investment
+investment_currency
+rebalance_config_json
+fee_config_json
+risk_disclosures_json
+content_hash
+created_by
+created_at
+submitted_at
+approved_at
+published_at
+effective_at
+
+basket_version_assets
+---------------------
+id
+basket_version_id
+asset_id
+target_weight_bps
+min_weight_bps
+max_weight_bps
+rationale
+created_at
+
+basket_constraints
+------------------
+id
+basket_version_id
+constraint_type
+constraint_value
+configuration_json
+
+basket_manager_assignments
+--------------------------
+id
+basket_id
+organization_id
+user_id
+basket_role
+permissions_json
+status
+assigned_by
+started_at
+ended_at
+reason
+
+basket_submissions
+------------------
+id
+basket_id
+basket_version_id
+submitted_by
+status
+submitted_at
+closed_at
+content_hash
+
+basket_reviews
+--------------
+id
+submission_id
+reviewer_id
+decision
+checklist_json
+internal_notes
+manager_feedback
+policy_version
+created_at
+
+basket_review_comments
+----------------------
+id
+review_id
+section_key
+field_key
+severity
+comment
+resolution_status
+created_at
+resolved_at
+
+basket_publications
+-------------------
+id
+basket_id
+basket_version_id
+published_by
+publication_status
+published_at
+effective_at
+failure_reason
+
+basket_updates
+--------------
+id
+basket_id
+author_id
+title
+body
+status
+created_at
+published_at
+
+basket_audit_events
+-------------------
+id
+basket_id
+actor_user_id
+event_type
+old_value_json
+new_value_json
+reason
+created_at
+correlation_id
+```
+
+### Data-model notes
+
+- Use foreign keys and uniqueness constraints for basket/version
+identity.
+- Enforce one current published version per basket.
+- Keep version snapshots immutable after submission; published
+versions must be immutable.
+- Use decimal/fixed-point or integer basis points for allocation and
+fees.
+- Store sensitive review material in appropriately restricted
+tables/storage.
+- Prefer soft deletion/status transitions for durable business
+records.
+- Keep audit events append-only.
+- Use an outbox/event pattern for publication and notifications so
+database commits and external side effects can be reconciled.
+- Consider a separate asset registry and eligibility table rather than
+embedding all asset metadata in basket rows.
+
+---
+
+## 19. Suggested API Surface
+
+Illustrative REST-style endpoints; adapt to the project's API
+conventions.
+
+---
+
+Method                  Endpoint                                           Purpose
+
+---
+
+`POST`                  `/organizations/{orgId}/baskets`                   Create basket and
+initial draft
+
+`GET`                   `/organizations/{orgId}/baskets`                   List organization's
+baskets
+
+`GET`                   `/baskets/{basketId}`                              Get basket details
+subject to visibility
+
+`PATCH`                 `/baskets/{basketId}/draft`                        Update current editable
+draft
+
+`POST`                  `/baskets/{basketId}/validate`                     Run validation
+
+`GET`                   `/baskets/{basketId}/preview`                      Render manager preview
+
+`POST`                  `/baskets/{basketId}/submissions`                  Submit a frozen version
+snapshot
+
+`GET`                   `/baskets/{basketId}/submissions`                  List submissions and
+decisions
+
+`POST`                  `/submissions/{submissionId}/withdraw`             Withdraw if policy
+permits
+
+`POST`                  `/baskets/{basketId}/versions`                     Create a new draft
+version
+
+`GET`                   `/baskets/{basketId}/versions`                     List version history
+
+`POST`                  `/baskets/{basketId}/pause-requests`               Request pause
+
+`POST`                  `/baskets/{basketId}/retirement-requests`          Request retirement
+
+`POST`                  `/baskets/{basketId}/assignments`                  Assign manager
+
+## `DELETE` `/baskets/{basketId}/assignments/{assignmentId}` End assignment (prefer
+explicit revoke
+endpoint in production)
+
+Platform-only endpoints should handle review decisions and publication,
+for example: - `POST /admin/submissions/{id}/decision` -
+`POST /admin/baskets/{id}/publish`
+
+### API safeguards
+
+- Authenticate every private endpoint.
+- Authorize against organization membership and basket-level
+permissions.
+- Validate organization and asset eligibility server-side.
+- Use idempotency keys for submission/publication operations.
+- Apply optimistic concurrency (`ETag`, version number, or equivalent)
+to prevent overwriting concurrent edits.
+- Never accept a client-supplied `approved`, `published`, or
+`current_version` value as authoritative.
+- Return structured validation errors tied to field/section
+identifiers.
+- Rate-limit sensitive actions and log security-relevant events.
+
+---
+
+## 20. Frontend UX Requirements
+
+### 20.1 Basket list
+
+Provide tabs/filters for: - Drafts - Under review - Changes required -
+Published/active - Paused - Retired
+
+Each card/row should show name, status, current version, last updated,
+and available actions.
+
+### 20.2 Creation wizard
+
+- Save progress automatically or provide a clear save action.
+- Display progress and incomplete sections.
+- Allow back/forward navigation without losing data.
+- Use controlled asset selection from the platform registry.
+- Provide allocation editing with both percentage and precise
+normalized value.
+- Show total allocation live.
+- Surface constraint errors immediately where possible.
+- Provide field-level explanations and examples.
+- Keep mandatory disclosures visible and non-removable.
+- Clearly distinguish draft data from published data.
+
+### 20.3 Allocation editor
+
+For each asset, show: - Asset name/symbol and chain/instrument - Target
+weight - Optional min/max - Remove action - Validation status
+
+Show a summary: - Total target weight - Remaining/unallocated weight -
+Asset count - Largest constituent - Category/sector exposure if
+supported
+
+Do not silently normalize incorrect allocations. If automatic
+normalization is offered, show the before/after result and require
+confirmation.
+
+### 20.4 Review feedback
+
+Display: - Review status - Reviewer feedback - Field/section anchors -
+Severity - Resolution status - Resubmission action
+
+Keep internal notes hidden from managers.
+
+### 20.5 Public preview
+
+Preview should include: - Overview and thesis - Allocation - Rebalance
+methodology - Fees and minimums - Risk disclosures - Organization and
+manager information - Version/publication details
+
+Mark unpublished previews clearly and do not expose them to public
+search.
+
+---
+
+## 21. Validation Rules and Error Handling
+
+Submission must fail if any blocking condition is present.
+
+Examples: - Organization is not eligible. - User lacks permission. -
+Basket name is missing or invalid. - Required thesis/disclosures are
+missing. - Asset is unsupported or restricted. - Allocation total is
+invalid. - Portfolio constraints are violated. - Fee settings are
+invalid. - Minimum investment is incompatible with supported routes. -
+Required manager is missing or ineligible. - Rebalance settings are
+contradictory. - Required review/policy fields are incomplete.
+
+Use stable machine-readable error codes, such as: - `ORG_NOT_ELIGIBLE` -
+`PERMISSION_DENIED` - `BASKET_NAME_REQUIRED` - `ASSET_UNSUPPORTED` -
+`ALLOCATION_TOTAL_INVALID` - `CONSTRAINT_VIOLATION` -
+`FEE_CONFIGURATION_INVALID` - `DISCLOSURE_MISSING` -
+`MANAGER_ASSIGNMENT_REQUIRED` - `VERSION_CONFLICT`
+
+Non-blocking warnings may include: - High concentration - Limited
+history - Low liquidity - Missing optional commentary - Potentially
+confusing description
+
+Warnings should not be presented as approval or investment advice.
+
+---
+
+## 22. Security, Audit, and Reliability
+
+### Security
+
+- Enforce organization- and basket-level authorization on the server.
+- Protect private drafts and review records from public access.
+- Restrict KYC/KYB documents and internal notes to authorized roles.
+- Sanitize manager-authored text and validate uploaded media.
+- Use secure session handling and wallet-authentication controls.
+- Require additional confirmation for high-impact actions.
+- Record role changes and manager assignment changes.
+- Do not expose investor-level information to managers beyond approved
+analytics.
+
+### Auditability
+
+For every material action, record: - Actor - Organization - Basket and
+version - Action/event type - Previous and new values where
+appropriate - Reason - Timestamp - Request/correlation ID - Review
+decision, if applicable
+
+### Reliability
+
+- Make submission and publication idempotent.
+- Use transactional state changes.
+- Use an outbox for notifications and search indexing.
+- Retry transient failures without duplicate publication.
+- Reconcile publication status with public-page/search-index state.
+- Preserve failed execution or publication records for investigation.
+- Monitor queue age, review SLA, publication failures, and invalid
+state transitions.
+
+---
+
+## 23. Analytics and Reporting
+
+Manager analytics may include: - Number of investors - Total invested
+value/AUM, with explicit calculation and timestamp - Basket
+performance - Historical allocation - Rebalance participation and skip
+rates - Subscription count - Fee revenue by category - Basket version
+activity - Execution success/partial/failure counts
+
+Definitions must be consistent. For example, distinguish investor
+deposits from current portfolio value and distinguish gross fees from
+net revenue. Do not expose private investor identities or balances
+unless explicitly authorized and necessary.
+
+Performance reporting should include methodology, source, time period,
+and limitations. Never present historical performance as a promise of
+future results.
+
+---
+
+## 24. Acceptance Criteria
+
+The basket creation feature is ready for release when:
+
+1. Only eligible organizations and authorized members can create
+baskets.
+2. A new basket starts as a private draft.
+3. Managers can save, resume, and edit drafts without losing data.
+4. The wizard supports all required basket configuration sections.
+5. Assets are selected from a validated canonical registry.
+6. Allocation and configured constraints are validated server-side.
+7. Fee and minimum-investment configurations are validated and
+previewed.
+8. Required disclosures cannot be removed by the manager.
+9. A manager can preview the public presentation before submission.
+10. Submission creates an immutable review snapshot.
+11. Reviewers can approve, request changes, reject, or escalate.
+12. Manager-visible feedback is separated from internal notes.
+13. Resubmission preserves prior review history.
+14. Only an approved version can be published.
+15. Publication is idempotent and its outcome is observable.
+16. Published versions cannot be edited in place.
+17. A new strategy update creates a new version and a visible diff.
+18. A published update does not automatically trade investor assets.
+19. Manager removal preserves history and revokes permissions.
+20. Pause and retirement preserve historical data and investor records.
+21. Public pages expose only approved/public fields.
+22. Every material operation produces an audit record.
+23. API authorization and validation cannot be bypassed by manipulating
+the frontend.
+24. Errors are actionable and mapped to stable error codes.
+
+---
+
+## 25. Open Product Decisions
+
+These decisions should be resolved before implementation is considered
+final:
+
+1. **Basket scope:** Are baskets limited to spot tokens at launch, or
+do they include RWAs from day one?
+2. **Publication model:** Does approval automatically publish, or does
+the manager choose a publication time?
+3. **Review SLA:** Is there a target review turnaround, and how is it
+communicated?
+4. **Approval separation:** Which basket categories require a second
+approver?
+5. **Edit policy:** Can a submission be withdrawn after review begins?
+6. **Rebalance modes:** Which schedules and thresholds are supported at
+launch?
+7. **User consent:** Confirm that every rebalance requires explicit
+user participation and transaction authorization.
+8. **Fees:** Define the exact fee base, cap, collection timing, refund
+policy, and recipient split.
+9. **Minimums:** Define whether minimums apply per initial investment,
+per subsequent investment, or both.
+10. **Performance:** Define methodology, benchmark policy, source data,
+and treatment of fees.
+11. **Asset support:** Define who approves new assets and how assets can
+be disabled after publication.
+12. **Pause:** Define whether pause blocks new investment, rebalance
+proposals, or all activity.
+13. **Retirement:** Define treatment of subscriptions and outstanding
+user actions.
+14. **Manager changes:** Define whether a manager change requires review
+and whether the basket pauses during reassignment.
+15. **Legal/compliance:** Determine jurisdiction- and asset-specific
+requirements with qualified professionals.
+
+These are explicit product decisions, not assumptions to hide in code.
+
+---
+
+## 26. Final Mental Model
+
+```
+VERIFIED ORGANIZATION
+        │
+        ▼
+AUTHORIZED MEMBER
+        │
+        ▼
+CREATE BASKET DRAFT
+        │
+        ├── Identity and description
+        ├── Objective and thesis
+        ├── Assets and target weights
+        ├── Constraints
+        ├── Rebalance policy
+        ├── Managers
+        ├── Fees and minimums
+        └── Risks and disclosures
+        │
+        ▼
+VALIDATE + PREVIEW
+        │
+        ▼
+SUBMIT IMMUTABLE SNAPSHOT
+        │
+        ▼
+PLATFORM REVIEW
+        │
+        ├── CHANGES REQUIRED → EDIT → RESUBMIT
+        ├── REJECTED
+        └── APPROVED
+                │
+                ▼
+             PUBLISH
+                │
+                ▼
+          PUBLIC BASKET
+                │
+       ┌────────┼──────────┐
+       │        │          │
+    INVEST   NEW VERSION  PAUSE/RETIRE
+                │
+                ▼
+          PLATFORM REVIEW
+                │
+                ▼
+        PUBLISH NEW VERSION
+                │
+                ▼
+      USERS REVIEW / APPLY / SKIP
+                │
+                ▼
+   USER-AUTHORIZED EXECUTION ONLY
+```
+
+**Final product rule:** The manager creates and maintains a reviewed,
+versioned model portfolio. The platform governs publication. Investors
+retain control over whether and when a proposed strategy change is
+applied to their actual holdings.
+
+---

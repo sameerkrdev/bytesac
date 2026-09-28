@@ -1,0 +1,836 @@
+## Auth Flow
+
+# User Authentication Flow
+
+## 1. Scope
+
+This document covers authentication for **normal platform users/investors only**.
+
+Fund-manager onboarding, organizations/firms, manager verification, team members, and manager permissions are separate systems.
+
+---
+
+## 2. Authentication Architecture
+
+| Component | Responsibility |
+| --- | --- |
+| **Reown / WalletConnect** | Wallet connection and Web3 authentication |
+| **Backend** | Signature verification, wallet identification and account orchestration |
+| **Supabase** | Application user/session layer, contacts and preferences |
+
+```
+USER
+  │
+  ▼
+Reown / WalletConnect
+  │
+  │ wallet connection + signature
+  ▼
+BACKEND
+  │
+  │ verify + identify wallet
+  ▼
+SUPABASE SESSION
+  │
+  ▼
+AUTHENTICATED USER
+```
+
+---
+
+## 3. Core Identity Model
+
+### One normal user account = one active investment wallet
+
+The platform uses a wallet-centric identity model.
+
+A normal user has **one logical active investment wallet**, which can contain accounts/addresses on multiple supported blockchains.
+
+```
+USER
+  │
+  └── ONE ACTIVE INVESTMENT WALLET
+             │
+             ├── Ethereum → 0xABC...
+             ├── Base     → 0xABC...
+             ├── BNB      → 0xABC...
+             ├── Arbitrum → 0xABC...
+             └── Solana   → 7xY...
+```
+
+Therefore:
+
+```
+1 User
+   ↓
+1 Investment Wallet
+   ↓
+N Chain Accounts / Addresses
+```
+
+The wallet address is **not** the platform `user_id`.
+
+```
+user_id ≠ wallet address
+```
+
+The platform generates its own internal identity:
+
+```
+users
+────────────────────
+id: usr_123456
+created_at
+status
+```
+
+---
+
+## 4. Wallet and Chain Identity
+
+The platform separates the **investment wallet** from its **chain-specific addresses**.
+
+### Investment Wallet
+
+Represents the user's logical investment-wallet identity.
+
+```
+investment_wallets
+────────────────────────
+id
+user_id
+wallet_provider
+status
+created_at
+```
+
+### Chain Wallet Account
+
+Represents the address/account belonging to that investment wallet on a particular blockchain.
+
+```
+wallet_addresses
+────────────────────────
+id
+investment_wallet_id
+chain
+address
+verified
+verified_at
+created_at
+```
+
+Relationship:
+
+```
+USER
+  │
+  ▼
+INVESTMENT WALLET
+  │
+  ├── Ethereum → Address
+  ├── Base     → Address
+  ├── BNB      → Address
+  ├── Arbitrum → Address
+  └── Solana   → Address
+```
+
+The wallet provider is not the identity:
+
+```
+MetaMask ≠ user
+Phantom ≠ user
+```
+
+The provider is the interface used to access/sign for the relevant wallet account.
+
+---
+
+## 5. Signup and Login
+
+There is a single authentication entry point:
+
+```
+Connect Wallet
+      ↓
+Reown / WalletConnect
+      ↓
+Select / Connect Wallet
+      ↓
+Select Supported Chain / Account
+      ↓
+Sign Authentication Message
+      ↓
+Backend Verifies Signature
+      ↓
+Identify Chain + Address
+      ↓
+Find Associated Investment Wallet
+      ↓
+┌───────────────┴───────────────┐
+│                               │
+EXISTS                       NOT FOUND
+│                               │
+LOGIN                         SIGNUP
+│                               │
+│                    Create investment wallet
+│                    Register chain address
+│                               │
+└───────────────┬───────────────┘
+                ↓
+        Supabase Session
+                ↓
+       AUTHENTICATED USER
+```
+
+Wallet connection alone is **not** authentication.
+
+The user must prove control of the connected chain account by signing.
+
+---
+
+## 6. New User
+
+The user sees:
+
+```
+┌──────────────────────────────────┐
+│                                  │
+│       Welcome to YourPlatform    │
+│                                  │
+│ Build, discover and invest in    │
+│ on-chain investment baskets.     │
+│                                  │
+│       [ Connect Wallet ]         │
+│                                  │
+└──────────────────────────────────┘
+```
+
+The user selects a supported wallet.
+
+Examples:
+
+```
+Phantom
+MetaMask
+Other supported wallets
+```
+
+After connection, the platform identifies the connected chain and address.
+
+If the chain/address is not registered:
+
+```
+Connect wallet
+      ↓
+Identify chain + address
+      ↓
+Sign authentication message
+      ↓
+Verify signature
+      ↓
+Chain/address not registered
+      ↓
+Create internal user_id
+      ↓
+Create investment wallet
+      ↓
+Register chain address
+      ↓
+Create Supabase session
+      ↓
+User authenticated
+```
+
+Example:
+
+```
+New user
+   ↓
+MetaMask
+   ↓
+Ethereum
+   ↓
+0xABC...
+   ↓
+usr_123456
+```
+
+The same investment wallet can later register supported addresses/accounts on additional chains.
+
+---
+
+## 7. Existing User
+
+If the connected chain/address is already associated with an investment wallet:
+
+```
+Connect wallet
+      ↓
+Identify chain + address
+      ↓
+Sign authentication message
+      ↓
+Verify signature
+      ↓
+Chain/address found
+      ↓
+Identify investment wallet
+      ↓
+Identify user
+      ↓
+Create/refresh Supabase session
+      ↓
+User authenticated
+```
+
+Example:
+
+```
+Ethereum
+0xABC...
+   ↓
+Investment Wallet: iw_123
+   ↓
+User: usr_123456
+```
+
+No new user account is created.
+
+---
+
+## 8. Connecting Another Chain
+
+A user can connect/register another supported chain under the **same investment wallet**.
+
+Example:
+
+```
+Existing
+
+User
+ ↓
+Investment Wallet
+ ↓
+Ethereum
+0xABC...
+```
+
+Later:
+
+```
+Connect Base
+      ↓
+Sign
+      ↓
+Verify
+      ↓
+Base address registered
+      ↓
+Same investment wallet
+```
+
+Result:
+
+```
+USER
+ │
+ └── INVESTMENT WALLET
+       ├── Ethereum → 0xABC...
+       └── Base     → 0xABC...
+```
+
+Another chain can be added in the same way.
+
+```
+USER
+ │
+ └── INVESTMENT WALLET
+       ├── Ethereum
+       ├── Base
+       ├── BNB
+       ├── Arbitrum
+       └── Solana
+```
+
+The exact address may be the same or different depending on the blockchain and wallet/account architecture.
+
+---
+
+## 9. Adding a Chain Account
+
+Adding a new chain account is different from creating a new user.
+
+```
+Connect wallet on new chain
+          ↓
+Identify chain + address
+          ↓
+Sign authentication message
+          ↓
+Verify ownership
+          ↓
+Check existing association
+          ↓
+Associate with existing
+investment wallet
+          ↓
+Chain account added
+```
+
+It does **not** create another user account when the platform can establish that the new chain account belongs to the user's existing investment wallet.
+
+---
+
+## 10. Different Independent Wallet
+
+The one-wallet rule applies to **independent investment wallets**, not to chain addresses belonging to the same investment wallet.
+
+For example:
+
+```
+MetaMask Investment Wallet
+   ├── Ethereum → 0xABC...
+   ├── Base     → 0xABC...
+   └── BNB      → 0xABC...
+```
+
+is one investment wallet.
+
+But a completely separate wallet:
+
+```
+Wallet A
+   ↓
+Investment Wallet 1
+
+Wallet B
+   ↓
+?
+```
+
+is not automatically attached to the same user.
+
+If Wallet B is not registered, the platform follows the defined new-wallet flow.
+
+The platform does not automatically merge independent wallets based on:
+
+- Name
+- Email
+- Phone
+- Wallet provider
+- Device
+- IP address
+- Other indirect signals
+
+---
+
+## 11. Wallet Migration
+
+Changing the user's active investment wallet is a separate future feature.
+
+It is not part of normal authentication.
+
+Potential future flow:
+
+```
+Account Settings
+      ↓
+Change Investment Wallet
+      ↓
+Authenticate existing wallet
+      ↓
+Authenticate new wallet
+      ↓
+Migration / asset transfer
+      ↓
+New investment wallet becomes active
+```
+
+---
+
+## 12. Multi-Chain
+
+The platform supports a **multi-chain investment wallet model**.
+
+The important distinction is:
+
+```
+ONE USER
+   ↓
+ONE ACTIVE INVESTMENT WALLET
+   ↓
+MULTIPLE CHAIN ACCOUNTS / ADDRESSES
+```
+
+For example:
+
+```
+Investment Wallet
+ │
+ ├── Ethereum → 0xABC...
+ ├── Base     → 0xABC...
+ ├── BNB      → 0xABC...
+ ├── Arbitrum → 0xABC...
+ └── Solana   → 7xY...
+```
+
+Therefore, the database should **not** store `chain` and `address` directly as the identity of the investment wallet.
+
+Instead:
+
+```
+investment_wallets
+        │
+        │ 1:N
+        ▼
+wallet_addresses
+```
+
+This allows the platform to add additional supported chains without creating additional user accounts.
+
+---
+
+## 13. Email, Phone and Notifications
+
+Email and phone are **optional contact information**, not the primary Web3 identity.
+
+```
+Wallet authentication
+        ↓
+Authenticated user
+
+Email / Phone
+        ↓
+Communication
+```
+
+They can be added after wallet authentication and verified independently.
+
+```
+contacts
+────────────────────
+id
+user_id
+type
+value
+verified
+verified_at
+```
+
+Supported types:
+
+```
+email
+phone
+```
+
+Verification:
+
+```
+Email → OTP / verification link
+Phone → OTP
+```
+
+Users can skip adding contact information and do it later.
+
+Notification preferences are stored separately:
+
+```
+notification_preferences
+────────────────────────
+user_id
+rebalance
+portfolio_updates
+manager_updates
+offers
+product_updates
+marketing
+```
+
+Security and important account notifications are separate from optional marketing preferences.
+
+---
+
+## 14. Session, Logout and Re-authentication
+
+After successful wallet authentication, the application uses the Supabase session instead of requiring a wallet signature on every page.
+
+```
+Wallet signature
+      ↓
+Verify
+      ↓
+Identify user
+      ↓
+Supabase session
+      ↓
+Authenticated application
+```
+
+### Logout
+
+Logout terminates the application session.
+
+It does not remove:
+
+- The investment wallet
+- Registered chain addresses
+- Their relationship with the user
+
+### Session expiry
+
+An expired session requires wallet re-authentication:
+
+```
+Session expired
+      ↓
+Connect wallet
+      ↓
+Sign message
+      ↓
+Recognize chain + address
+      ↓
+Identify investment wallet
+      ↓
+New session
+```
+
+---
+
+## 15. Database Model
+
+### Users
+
+```
+users
+────────────────────
+id
+created_at
+status
+```
+
+### Investment Wallets
+
+```
+investment_wallets
+────────────────────────
+id
+user_id
+wallet_provider
+status
+created_at
+```
+
+### Wallet Addresses
+
+```
+wallet_addresses
+────────────────────────
+id
+investment_wallet_id
+chain
+address
+verified
+verified_at
+created_at
+```
+
+### Contacts
+
+```
+contacts
+────────────────────
+id
+user_id
+type
+value
+verified
+verified_at
+```
+
+### Notification Preferences
+
+```
+notification_preferences
+────────────────────────
+user_id
+rebalance
+portfolio_updates
+manager_updates
+offers
+product_updates
+marketing
+```
+
+Core relationship:
+
+```
+USER
+ │
+ ├── ONE ACTIVE INVESTMENT WALLET
+ │       │
+ │       ├── Ethereum address
+ │       ├── Base address
+ │       ├── BNB address
+ │       ├── Arbitrum address
+ │       └── Solana address
+ │
+ ├── CONTACTS
+ │
+ └── NOTIFICATION PREFERENCES
+```
+
+---
+
+## 16. Authentication Boundary
+
+Authentication establishes **who is accessing the platform** and which investment wallet they are associated with.
+
+It does not handle:
+
+- Basket allocation
+- Portfolio construction
+- Rebalancing
+- Trade execution
+- DEX routing
+- RWA execution
+
+Those belong to the respective platform systems.
+
+```
+AUTHENTICATION
+      ↓
+USER
+      ↓
+INVESTMENT WALLET
+      ↓
+CHAIN ACCOUNTS / ADDRESSES
+      ↓
+PLATFORM SYSTEMS
+      ├── Portfolio
+      ├── Baskets
+      ├── Execution
+      └── Settings
+```
+
+---
+
+## 17. Final Flow
+
+```
+                         USER
+                           │
+                           ▼
+                  [ Connect Wallet ]
+                           │
+                           ▼
+                Reown / WalletConnect
+                           │
+                           ▼
+                Select Chain / Account
+                           │
+                           ▼
+                [ Sign Authentication ]
+                           │
+                           ▼
+                  Verify Signature
+                           │
+                           ▼
+              Identify Chain + Address
+                           │
+                           ▼
+              Find Investment Wallet
+                           │
+                    ┌──────┴──────┐
+                    │             │
+                  EXISTS       NOT FOUND
+                    │             │
+                    ▼             ▼
+                  LOGIN         SIGNUP
+                    │             │
+                    │       Create user
+                    │             │
+                    │       Create investment
+                    │          wallet
+                    │             │
+                    │       Register chain
+                    │          address
+                    │             │
+                    └──────┬──────┘
+                           ▼
+                  Supabase Session
+                           │
+                           ▼
+                  AUTHENTICATED USER
+                           │
+                 ┌─────────┴─────────┐
+                 │                   │
+           Contact added        Skip for now
+                 │                   │
+          ┌──────┴──────┐            │
+          ▼             ▼            │
+        Email         Phone          │
+          │             │            │
+       Verify         Verify         │
+          │             │            │
+          └──────┬──────┘            │
+                 │                   │
+                 └─────────┬─────────┘
+                           ▼
+                    PLATFORM HOME
+```
+
+---
+
+## 18. Final Decisions
+
+| Decision | Final |
+| --- | --- |
+| Primary authentication | Wallet |
+| Wallet connection | Reown / WalletConnect |
+| Application session | Supabase |
+| Internal user identity | Platform-generated `user_id` |
+| Wallet address as `user_id` | No |
+| Normal users | One active investment wallet |
+| Chains per investment wallet | Multiple |
+| Chain accounts/addresses | Multiple |
+| Wallet provider as identity | No |
+| Different independent wallet | Separate wallet/account unless migrated through defined future flow |
+| Automatic wallet merging | No |
+| Email | Optional |
+| Phone | Optional |
+| Wallet signature | Required |
+| Logout | Ends session |
+| Session expiry | Re-authenticate wallet |
+| Wallet migration | Future separate feature |
+| Fund manager authentication | Separate flow |
+| Organization/firm | Separate system |
+
+## Core Principle
+
+```
+                 NORMAL USER
+                      │
+                      ▼
+                USER ACCOUNT
+                      │
+                      ▼
+         ONE ACTIVE INVESTMENT WALLET
+                      │
+             ┌────────┼────────┐
+             ▼        ▼        ▼
+          Ethereum   Base     Solana
+             │        │        │
+          Address  Address  Address
+             │        │        │
+             └────────┼────────┘
+                      ▼
+             Wallet Authentication
+                      │
+                      ▼
+              Supabase Session
+                      │
+                      ▼
+             AUTHENTICATED USER
+```

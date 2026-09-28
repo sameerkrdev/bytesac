@@ -1,0 +1,15 @@
+# Future Plans
+
+- Add support for multiple wallets
+    - Connect Phantom, then add MetaMask wallet from settings and many more wallets
+- Add more investment options
+    - Fixed deposit
+    - Recurring Deposit
+- Add more assets
+    - US stocks and other countries’ stocks
+    - ETFs
+    - Treasuires
+    - Commodities
+    - Equity Indices
+    - Currency and Rates
+    - Pre-IPO —> Web2 and Web3 Companies (MetaDAO)

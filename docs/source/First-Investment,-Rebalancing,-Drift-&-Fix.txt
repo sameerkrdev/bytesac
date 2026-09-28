@@ -1,0 +1,2223 @@
+# First Investment, Rebalancing, Drift & Fix
+## Product flows, portfolio mechanics, adapter architecture and implementation decisions
+
+**Document status:** Architecture proposal  
+**Scope:** First investment, manager-published basket changes, user skips, external wallet activity, drift detection, fix/repair and on-chain execution.  
+**Asset scope:** Approved crypto, crypto tokens and approved RWAs on supported chains.  
+**Data-source decision:** Alchemy for supported crypto/token chain data; a separate RWA data provider for RWA-specific data. The RWA vendor remains to be selected.
+
+> This document separates existing product decisions from implementation proposals. Anything labelled **Decision required** should be finalized before production implementation.
+
+---
+
+# 1. Executive Summary
+
+The platform should maintain three separate views:
+
+1. **Manager strategy:** the target allocation in a published basket version.
+2. **User basket allocation:** the platform's logical accounting of what the user has allocated to a particular basket.
+3. **Verified holdings:** what the user actually owns or controls, as established by the relevant chain or RWA/issuer records.
+
+These views must not be conflated. A user can skip a manager update, manually sell assets, hold the same token in multiple baskets, transfer tokens away, or experience a failed/partial transaction. The system must therefore calculate actions from the latest verified state, not from assumptions or stale trade instructions.
+
+```text
+Manager publishes immutable basket version
+                    │
+                    ▼
+             Target allocation
+                    │
+                    ├─────────────────────┐
+                    ▼                     ▼
+             First investment       Existing position
+                    │                     │
+                    ▼                     ├── New version → Rebalance available
+             Initial transition          │
+                    │                     └── Wallet activity → Drift / mismatch
+                    └──────────────┬──────┘
+                                   ▼
+                         Portfolio Transition
+                              Planner
+                                   ▼
+                         User authorization
+                                   ▼
+                       Chain / venue adapters
+                                   ▼
+                         On-chain execution
+                                   ▼
+                            Reconciliation
+```
+
+**Recommended core abstraction:** one portfolio-transition planner with different entry reasons:
+- `INITIAL_INVESTMENT`
+- `MODEL_REBALANCE`
+- `DRIFT_REPAIR`
+- `USER_CUSTOMIZATION`
+- `WITHDRAWAL` (if/when supported)
+
+The planner proposes a transition. It does not itself custody assets, sign transactions, or assume execution succeeded.
+
+---
+
+# 2. Product and Architecture Principles
+
+1. A manager publishes **target weights**, not user-specific trade orders.
+2. Publishing a new basket version never trades user assets by itself.
+3. A user can review and skip a rebalance. Skipping causes no trade.
+4. If a user later applies a newer version, plan directly from current holdings to the selected target; do not replay skipped versions.
+5. User wallet activity can create strategy drift, a basket allocation mismatch, or both.
+6. Assets held in one wallet may belong to multiple basket allocations or be unassigned/manual holdings.
+7. Never treat all tokens in a wallet as belonging to a basket merely because the basket includes that token.
+8. Shared assets require aggregate balance accounting across affected baskets.
+9. Fixing a missing quantity and rebalancing weights are different operations.
+10. Provider events are observations and triggers; they are not the final source of ownership truth.
+11. Every trade must be authorized under the chosen custody/authority model and constrained on-chain where possible.
+12. Reconcile after execution. Submitted does not mean successful.
+13. RWA execution, ownership, transferability, pricing and settlement may differ materially from ordinary crypto swaps.
+14. Do not promise exact target weights: price movement, fees, slippage, minimum trade sizes, liquidity and rounding can leave residual differences.
+
+---
+
+# 3. Terminology
+
+| Term | Meaning |
+|---|---|
+| Basket | A manager's investment strategy available on the platform |
+| Basket version | Immutable published snapshot of assets and target weights |
+| Target allocation | Desired allocation defined by the selected basket version |
+| Applied version | Latest basket version the user explicitly accepted for their position |
+| Latest version | Most recent active/published version |
+| Basket position | User's logical position in one basket |
+| Wallet holdings | Aggregate assets visible in the user's wallet/accounts |
+| Attributed holdings | Portion of verified holdings assigned to a basket under the platform's ledger rules |
+| Unassigned holdings | Assets in the wallet not allocated to a basket |
+| Drift | Difference between actual portfolio weights and the selected target |
+| Allocation mismatch | Difference between recorded basket allocations and holdings available to back them |
+| Rebalance | Transition from current allocation to a newly selected manager target |
+| Fix / repair | User-approved action to address drift or a mismatch |
+| Customization | User's explicit choice to retain an allocation different from the manager's target |
+| Adapter | A boundary component translating our normalized request/model to a provider, chain, wallet or venue-specific interface |
+| Execution plan | Reviewable, time-bounded set of proposed operations |
+| Reconciliation | Comparing expected state with confirmed chain/issuer state and updating platform records |
+
+**Important distinction:** `OUT_OF_DATE` is about versions; `DRIFTED` is about weights; `REPAIR_REQUIRED` is about whether recorded allocations are backed by available holdings. These can occur together.
+
+---
+
+# 4. System Context and Responsibility Boundaries
+
+```text
+                           USER / WALLET
+                                │
+                                ▼
+                         Product API / UI
+                                │
+             ┌──────────────────┼──────────────────┐
+             ▼                  ▼                  ▼
+      Basket Service     Portfolio Service    Notification
+             │                  │
+             ▼                  ▼
+      Version Registry   Transition Planner
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+             Data/Price Layer        Execution Orchestrator
+                    │                       │
+        ┌───────────┴──────────┐            ▼
+        ▼                      ▼      Adapter Interfaces
+   Alchemy Adapter       RWA Data Adapter   │
+        │                      │      ┌─────┼───────────┐
+        ▼                      ▼      ▼     ▼           ▼
+ Crypto/token chain     RWA provider  Wallet Chain    Venue /
+ data + webhooks        / issuer data Adapter Adapter Protocol
+                                               │
+                                               ▼
+                                         Blockchain /
+                                         RWA settlement
+                                               │
+                                               ▼
+                                         Reconciliation
+```
+
+## 4.1 Basket Service
+
+Owns:
+- basket metadata and lifecycle;
+- manager-authored draft allocations;
+- validation and review workflow;
+- immutable version creation and publication;
+- mapping of each version to approved assets.
+
+Does not:
+- calculate a user's exact trades;
+- hold user keys;
+- silently trigger execution.
+
+## 4.2 Portfolio Service
+
+Owns:
+- user-to-basket positions;
+- applied version per position;
+- basket subledger;
+- snapshots and portfolio state;
+- user-specific status and action history.
+
+It must distinguish a logical allocation from raw wallet balances.
+
+## 4.3 Transition Planner
+
+Owns:
+- current-to-target calculations;
+- buy/sell/netting decisions;
+- constraints and tolerance evaluation;
+- generation of an execution plan;
+- plan expiry and re-planning rules.
+
+It should be deterministic for a fixed input snapshot and planner version, apart from explicitly time-dependent quotes.
+
+## 4.4 Execution Orchestrator
+
+Owns:
+- selecting a supported route;
+- building and simulating operations;
+- requesting user authorization/signature;
+- submitting or coordinating execution;
+- tracking transaction state;
+- handing confirmed results to reconciliation.
+
+It must not treat a quote, provider response, or submitted transaction as a fill.
+
+## 4.5 Data and Adapter Layer
+
+Owns:
+- provider-specific integrations;
+- normalized balance, activity, price and asset data;
+- retries, rate limits and provider health;
+- mapping of external identifiers to canonical platform asset IDs.
+
+## 4.6 Reconciler
+
+Owns:
+- confirming actual holdings after activity;
+- identifying missing or unexpected assets;
+- comparing actual state to basket allocation and target;
+- updating statuses and emitting idempotent events.
+
+---
+
+# 5. Data Provider and Adapter Architecture
+
+## 5.1 Provider routing decision
+
+Use provider selection by asset/data domain rather than a single universal provider.
+
+| Domain | Selected direction | Adapter |
+|---|---|---|
+| Crypto/token balances and wallet activity | Alchemy | `CryptoDataAdapter` / `AlchemyAdapter` |
+| RWA asset, holder, transfer, redemption or issuer data | Separate RWA provider, vendor TBD | `RwaDataAdapter` |
+| Execution state and balances | Relevant blockchain and protocol | `ChainAdapter` |
+| Token/crypto swap quotes and execution | Approved DEX/aggregator routes | `VenueAdapter` / `DexAdapter` |
+| RWA subscription, transfer or redemption | Issuer/provider/venue | `RwaExecutionAdapter` |
+| User authorization | Wallet/authority model for the chain | `WalletAdapter` / `AuthorityAdapter` |
+| Price and valuation | Asset-specific approved source(s) | `PricingAdapter` |
+
+Alchemy should be used for supported crypto/token activity. It should not be assumed to provide authoritative RWA ownership or issuer lifecycle data. The exact RWA provider should be selected after defining the initial RWA assets, chains, issuers and jurisdictions.
+
+## 5.2 Why adapters are required
+
+Do not let product or portfolio logic call Alchemy, a particular RWA vendor, a DEX SDK, or a chain RPC directly.
+
+Without adapters, provider changes leak through the system:
+- response schemas spread into application code;
+- switching vendors requires rewriting portfolio logic;
+- one provider outage can contaminate business logic;
+- testing becomes dependent on live external services;
+- asset types with different semantics become incorrectly treated alike.
+
+With adapters, internal services use our canonical model while provider-specific code stays at the boundary.
+
+## 5.3 Suggested adapter interfaces
+
+These are conceptual TypeScript-style interfaces, not final code.
+
+```ts
+interface CryptoDataAdapter {
+  getNativeBalance(input: WalletRef): Promise<NativeBalance>;
+  getTokenBalances(input: WalletRef): Promise<TokenBalance[]>;
+  getTransaction(input: ChainTxRef): Promise<NormalizedTransaction>;
+  subscribeWallet(input: WalletRef, callbackUrl: string): Promise<SubscriptionRef>;
+  verifyWebhook(input: WebhookRequest): Promise<NormalizedActivity[]>;
+}
+
+interface RwaDataAdapter {
+  getInstrument(input: RwaInstrumentRef): Promise<RwaInstrument>;
+  getHolderPosition(input: RwaHolderRef): Promise<RwaPosition>;
+  getActivity(input: RwaHolderRef, cursor?: string): Promise<RwaActivityPage>;
+  getTransferability(input: RwaPositionRef): Promise<Transferability>;
+  getRedemptionState(input: RwaPositionRef): Promise<RedemptionState>;
+}
+
+interface ChainAdapter {
+  getFinality(input: ChainTxRef): Promise<FinalityState>;
+  getNativeBalance(input: ChainWalletRef): Promise<Amount>;
+  getTokenBalance(input: TokenAccountRef): Promise<Amount>;
+  simulate(input: UnsignedOperation): Promise<SimulationResult>;
+  submit(input: SignedOperation): Promise<SubmissionResult>;
+  getTransactionResult(input: ChainTxRef): Promise<ChainExecutionResult>;
+}
+
+interface PricingAdapter {
+  getQuote(input: QuoteRequest): Promise<PriceQuote>;
+  getValuation(input: ValuationRequest): Promise<Valuation>;
+}
+
+interface VenueAdapter {
+  getQuote(input: SwapRequest): Promise<NormalizedQuote>;
+  buildOperation(input: NormalizedQuote): Promise<UnsignedOperation>;
+  decodeResult(input: ChainExecutionResult): Promise<NormalizedFill[]>;
+}
+
+interface RwaExecutionAdapter {
+  checkEligibility(input: EligibilityRequest): Promise<EligibilityResult>;
+  preview(input: RwaOrderRequest): Promise<RwaOrderPreview>;
+  submit(input: AuthorizedRwaOrder): Promise<RwaOrderResult>;
+  getOrderStatus(input: RwaOrderRef): Promise<RwaOrderStatus>;
+}
+```
+
+An adapter should expose only the capabilities it actually supports. For example, a provider may support balances and activity but not execution. Avoid one oversized interface with methods that every vendor cannot implement.
+
+## 5.4 Canonical normalized records
+
+### Asset identity
+
+```text
+Asset
+  asset_id                  # stable platform ID
+  asset_type                # CRYPTO | TOKEN | RWA
+  canonical_name
+  symbol
+  economic_identity
+  issuer_id                 # nullable
+  status
+```
+
+### Deployment
+
+```text
+AssetDeployment
+  deployment_id
+  asset_id
+  chain_id
+  token_standard
+  contract_or_mint
+  decimals
+  deployment_status
+```
+
+### Data source mapping
+
+```text
+AssetDataSource
+  asset_id
+  provider_id
+  provider_asset_ref
+  data_capabilities         # balance, activity, price, etc.
+  priority
+  status
+```
+
+### Execution route
+
+```text
+ExecutionRoute
+  route_id
+  asset_id
+  chain_id
+  route_type                # DEX_SWAP | ISSUER_SUBSCRIPTION | REDEMPTION...
+  venue_or_provider_id
+  settlement_asset_id
+  min_amount
+  max_amount
+  eligibility_rule_id
+  execution_adapter
+  status
+```
+
+Do not use `symbol` as a unique identifier. The same symbol can refer to unrelated tokens or different representations of an instrument. Use canonical `asset_id` plus deployment/issuer identity.
+
+## 5.5 Adapter selection and fallback
+
+Recommended selection order:
+1. Check that the asset is active in the Asset Registry.
+2. Check the user's chain, region and eligibility.
+3. Check route status and capability.
+4. Check data freshness and provider health.
+5. Select a route allowed for that asset and operation.
+6. Record which provider, adapter and route produced the quote/plan.
+
+Fallback rules:
+- A second read provider may be used for non-authoritative cross-checking if configured.
+- Do not silently substitute an execution venue if the substitution changes asset, custody, eligibility or slippage assumptions.
+- If a provider is unavailable and no approved fallback exists, show data unavailable and defer planning/execution.
+- Never treat a cached balance as current enough for a trade without a freshness check and execution-time validation.
+
+## 5.6 RWA-specific adapter boundary
+
+RWA adapters need additional concepts that crypto adapters may not have:
+- issuer and legal instrument identity;
+- investor/jurisdiction eligibility;
+- KYC/allowlist status where required;
+- subscription windows and minimums;
+- off-chain settlement or delayed issuance;
+- transfer restrictions and pause/freeze states;
+- redemption windows, fees and settlement delays;
+- corporate actions or NAV-based valuation;
+- issuer/provider status and document references.
+
+An RWA may be represented by an on-chain token, but that does not mean it can be swapped freely on a DEX or transferred to every wallet. Registry eligibility and route capability must be checked per instrument and route.
+
+---
+
+# 6. Portfolio Ownership and Custody Architecture Decisions
+
+There are three main architecture patterns. These are alternatives, not interchangeable implementation details.
+
+## Model A — User wallet holds assets; user signs each action
+
+```text
+User Wallet
+   │ owns assets
+   │ signs every investment/rebalance
+   ▼
+Transaction / Program / Router
+   ▼
+DEX or eligible RWA route
+```
+
+**Benefits**
+- User retains direct asset control.
+- No standing delegation is required.
+- Easy to explain: every action is individually authorized.
+
+**Trade-offs**
+- User must be present to sign each action.
+- Multi-step rebalances can be inconvenient.
+- Cross-chain execution is not atomic.
+- Some RWA routes may require a different wallet or eligibility process.
+
+**Suitable when:** explicit per-action consent and non-custodial control are the primary product requirement.
+
+## Model B — User wallet with limited delegation/authority
+
+```text
+User Wallet / Token Accounts
+          │
+          │ constrained authority
+          ▼
+Portfolio Program / Smart Account
+          │
+          ▼
+Approved route / DEX / protocol
+```
+
+**Benefits**
+- Can reduce repeated approvals.
+- Can enable user-approved automated execution within a defined scope.
+- Authority can potentially be limited by asset, amount, destination, time or program rules, depending on chain design.
+
+**Trade-offs**
+- Authority semantics differ significantly across Solana, EVM and Bitcoin.
+- Revocation, expiry, spending limits and token-account behavior are chain-specific.
+- A bug in the authority layer can have broad consequences.
+- Not every RWA transfer or protocol supports delegated execution.
+
+**Suitable when:** the product requires repeat execution with narrowly scoped, explicitly granted authority and the chain supports enforceable constraints.
+
+**Decision required:** specify exactly what can be delegated, to whom, for which assets, under what limits and how it is revoked. Do not use the word “delegation” as if it meant the same thing on every chain.
+
+## Model C — Program-controlled per-user vault/portfolio
+
+```text
+User
+ │ deposits
+ ▼
+Per-user Portfolio / Vault
+ │ holds or controls assets
+ ▼
+Program / Smart Contract
+ │ executes approved operations
+ ▼
+DEX / RWA route
+```
+
+**Benefits**
+- Clear per-user portfolio boundary.
+- Execution and portfolio state can be coordinated by a program.
+- Easier to isolate one user's portfolio from another than a pooled vault.
+- Can make portfolio accounting more explicit.
+
+**Trade-offs**
+- Assets are held in program-controlled accounts or contracts, not the user's ordinary wallet.
+- Withdrawal, emergency exit, upgrade authority and program security become critical.
+- RWA custody, issuer eligibility and legal characterization need separate review.
+- Some chains/assets may not support a consistent vault model.
+
+**Suitable when:** the product needs program-enforced portfolio operations and the custody implications are acceptable.
+
+## Model D — Shared pooled vault
+
+```text
+                 Shared Vault
+               /      |       \
+            User A  User B   User C
+            shares  shares   shares
+```
+
+**Benefits**
+- Potentially net trades at pooled level.
+- Shared liquidity and capital efficiency may reduce repeated execution.
+
+**Trade-offs**
+- Requires share accounting and deposit/withdrawal pricing.
+- One user's actions can affect pooled execution and accounting.
+- User-level customization and skipped versions become more complex.
+- Legal and operational complexity can resemble a pooled investment product.
+- Per-user drift is not equivalent to vault-level drift.
+
+**MVP direction:** investigate a per-user portfolio model first, consistent with user-level accounting and individual rebalance consent. This is a direction for design, not a claim that custody or legal review is complete.
+
+## Decision comparison
+
+| Criterion | User signs each action | Limited delegation | Per-user vault | Shared vault |
+|---|---|---|---|---|
+| Direct wallet control | High | Depends on authority | Lower while deposited | Indirect via shares |
+| Repeated UX | More signatures | Potentially smoother | Potentially smoother | Potentially smooth |
+| User-level isolation | Wallet-level | Depends on design | Explicit | Requires share accounting |
+| Automated execution | No, unless user signs | Possible within scope | Possible under program rules | Possible at pooled level |
+| Chain portability | Wallet-specific | Highly chain-specific | Highly chain-specific | Protocol-specific |
+| Accounting complexity | Moderate | Moderate/high | Moderate/high | High |
+| RWA suitability | Route-specific | Route-specific | Custody/issuer-specific | Significant review required |
+
+No model should be called “non-custodial” or “fully decentralized” solely because a smart contract is involved. Key control, upgrade authority, pause powers, asset custody, execution permissions and recovery paths all matter.
+
+---
+
+# 7. Chain and Execution Adapter Architecture
+
+The platform supports different chains, but should not pretend they share identical transaction semantics.
+
+```text
+Portfolio Transition Plan
+          │
+          ▼
+   Execution Orchestrator
+          │
+          ▼
+   Chain Adapter Registry
+   ├── Solana Adapter
+   ├── EVM Adapter
+   │    ├── Ethereum
+   │    ├── Base
+   │    ├── BNB Chain
+   │    └── Polygon
+   └── Bitcoin Adapter
+          │
+          ▼
+   Venue / Protocol Adapters
+   ├── DEX / Aggregator
+   ├── RWA Provider
+   └── Issuer / Redemption
+```
+
+## 7.1 Chain adapter responsibilities
+
+Each chain adapter should normalize:
+- chain identity and finality;
+- wallet/account references;
+- native and token balances;
+- transaction construction and simulation;
+- fee estimation;
+- submission and transaction lookup;
+- confirmed result parsing;
+- token precision and account requirements;
+- chain-specific errors.
+
+## 7.2 Solana
+
+The Solana adapter must account for:
+- wallet public keys and token accounts;
+- SPL token mint identity and decimals;
+- associated token account creation where required;
+- transaction size and instruction composition;
+- recent blockhash validity and confirmation;
+- program-derived accounts if the selected portfolio model uses them;
+- CPI and program/venue constraints;
+- priority fees and compute limits where relevant.
+
+Alchemy is the planned crypto/token data provider for supported Solana data. Execution should still be verified against Solana transaction state and relevant account balances. A webhook is a trigger, not final proof.
+
+## 7.3 EVM chains: Ethereum, Base, BNB Chain and Polygon
+
+The EVM adapter should normalize:
+- chain ID;
+- native coin and ERC-20 balances;
+- allowance/approval state where used;
+- transaction nonce and gas;
+- EIP-1559 or chain-specific fee behavior;
+- receipt status and logs;
+- contract call simulation;
+- confirmation/finality policy.
+
+Even though these chains share EVM transaction patterns, do not assume every deployed asset, router, token or RWA is available across them. Each asset deployment and execution route must be separately registered and approved.
+
+## 7.4 Bitcoin
+
+Bitcoin is not an account-based smart-contract environment like Solana or EVM. A generic ERC-20-style “portfolio vault” or delegated token allowance should not be assumed.
+
+The Bitcoin adapter must use a Bitcoin-compatible execution and custody model, such as user-signed UTXO transactions or a specifically reviewed supported protocol. Rebalancing may require a separate signing flow, and atomic multi-asset swaps cannot be assumed.
+
+**Decision required:** define what Bitcoin exposure means in the product (native BTC, wrapped representation, or a protocol-specific asset). Register and disclose the exact instrument and route.
+
+## 7.5 Venue adapters
+
+A DEX/aggregator adapter should:
+- return normalized quotes;
+- disclose quote timestamp and expiry;
+- identify route and intermediate assets;
+- provide minimum output / maximum input constraints;
+- build an unsigned operation;
+- parse actual fills and fees;
+- report partial or failed outcomes.
+
+A venue adapter must not be allowed to select arbitrary tokens or contracts. It should receive only assets/routes permitted by the Asset Registry and execution policy.
+
+---
+
+# 8. Basket Creation, Validation and Versioning
+
+## 8.1 Manager workflow
+
+```text
+Manager Workspace
+      ↓
+Create / edit basket draft
+      ↓
+Select approved assets
+      ↓
+Set target weights
+      ↓
+Validate basket constraints
+      ↓
+Submit for platform review
+      ↓
+Approve / request changes
+      ↓
+Publish immutable version
+      ↓
+Notify existing users
+```
+
+## 8.2 Validation before publication
+
+Validate at least:
+- weights sum to 100% (within a documented precision policy);
+- every asset is active and approved;
+- every asset has a usable deployment and eligible route for the basket's supported context;
+- no duplicate canonical asset appears under multiple deployment aliases unless explicitly supported;
+- minimum/maximum weight rules are satisfied;
+- basket constraints and disclosures are present;
+- removed assets have a defined treatment for existing users;
+- RWA assets have applicable eligibility and transfer restrictions recorded;
+- the manager is authorized to submit the change.
+
+Publication should create an immutable version. A correction should create a subsequent version or a formally controlled superseding record, not silently mutate a version already used by users.
+
+## 8.3 Example versions
+
+**v1**
+
+| Asset | Weight |
+|---|---:|
+| BTC | 40% |
+| ETH | 30% |
+| SOL | 20% |
+| USDC | 10% |
+
+**v2**
+
+| Asset | Weight |
+|---|---:|
+| BTC | 35% |
+| ETH | 35% |
+| SOL | 20% |
+| ARB | 10% |
+
+**v3**
+
+| Asset | Weight |
+|---|---:|
+| BTC | 30% |
+| ETH | 40% |
+| SOL | 20% |
+| ARB | 10% |
+
+A version stores strategy intent. It does not store a fixed set of trade quantities for all users.
+
+## 8.4 Version lifecycle
+
+```text
+DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED → PUBLISHED
+                         │
+                         └── REQUEST_CHANGES → DRAFT
+```
+
+Once published, a version should be immutable. A user position separately tracks `applied_version_id` and can be behind the latest published version.
+
+---
+
+# 9. First Investment — End-to-End Flow
+
+## 9.1 User journey
+
+```text
+Connect wallet
+      ↓
+Select approved basket
+      ↓
+Select network / portfolio model
+      ↓
+Enter investment amount
+      ↓
+Check supported assets and routes
+      ↓
+Calculate target quantities and costs
+      ↓
+Show preview and disclosures
+      ↓
+User approves/signs
+      ↓
+Execute funding and acquisitions
+      ↓
+Wait for confirmation / settlement
+      ↓
+Reconcile actual results
+      ↓
+Create basket position and applied version
+```
+
+## 9.2 Pre-flight checks
+
+Before building a transaction:
+1. Confirm the wallet is connected to the intended chain.
+2. Confirm the basket version is active and investable.
+3. Confirm all target assets are approved for this chain and route.
+4. Check asset precision, minimum order, liquidity and route availability.
+5. Check user eligibility for each RWA route, if any.
+6. Confirm the input asset (for example USDC) is accepted.
+7. Estimate fees, price impact and expected output.
+8. Check whether the selected custody/authority model is initialized.
+9. Generate a plan with a short expiry.
+10. Re-check critical state at execution time.
+
+## 9.3 Example: first investment with two assets
+
+Illustrative allocation only:
+
+- Investment: 10,000 units of a funding stablecoin.
+- Asset A target: 60%.
+- Asset B target: 40%.
+
+Ignoring fees and price movement:
+- Asset A target value = 6,000.
+- Asset B target value = 4,000.
+
+The planner requests quotes and converts target values into executable quantities. The recorded position must use actual confirmed quantities and fees. It must not assume that exactly 6,000 and 4,000 of value were received.
+
+## 9.4 First investment with cash residual
+
+Suppose the plan allocates 60/40 but:
+- Asset A route fills;
+- Asset B quote expires;
+- some funding remains unspent.
+
+Do not create a fully aligned position based on the intended allocation. Record:
+- actual acquired assets;
+- remaining funding asset;
+- fees paid;
+- failed or pending leg;
+- current applied/target status.
+
+Offer the user a fresh plan for the remaining amount if appropriate. Do not automatically retry an expired quote.
+
+## 9.5 First investment involving an RWA
+
+```text
+Select basket
+    ↓
+RWA route/eligibility check
+    ↓
+User eligibility satisfied?
+    ├── No → Explain requirement; do not execute
+    └── Yes
+          ↓
+Check minimum, window, price/NAV and settlement
+          ↓
+Preview subscription / purchase
+          ↓
+User authorization
+          ↓
+Provider / issuer / venue order
+          ↓
+Pending settlement / issuance
+          ↓
+Confirm issuer and/or chain record
+          ↓
+Record position
+```
+
+An RWA order may be asynchronous. A successful API submission is not necessarily a completed investment. Model `PENDING_SETTLEMENT`, `ISSUANCE_PENDING`, `SETTLED`, `REJECTED` and `CANCELLED` as appropriate to the chosen provider.
+
+---
+
+# 10. First Investment: Architectural Cases
+
+## Case 1 — All assets on one chain and immediately swappable
+
+Use one chain adapter and one or more approved venue adapters. The plan can potentially be composed into one transaction if the chain and venue support it. Still reconcile each output.
+
+## Case 2 — Basket spans multiple chains
+
+A basket can contain assets deployed on different chains only if the product explicitly supports multi-chain investment.
+
+There is generally no assumption of atomic execution across chains. Model each chain leg independently:
+- chain-specific funding and gas;
+- bridge or transfer step, if supported;
+- pending state;
+- partial completion;
+- retry and refund/compensation path.
+
+For MVP, consider restricting each basket position to one execution chain unless multi-chain orchestration is a required launch feature.
+
+## Case 3 — One crypto asset and one RWA
+
+Use separate route adapters and settlement semantics. The crypto leg may settle immediately while the RWA leg remains pending. The portfolio must represent partial investment and not claim that the basket is fully invested until the defined completion criteria are met.
+
+## Case 4 — Asset is in the basket but has no executable route
+
+Do not silently omit it or redistribute its weight. Block investment or require a reviewed fallback target/version. Display the unavailable asset and the reason.
+
+## Case 5 — User has insufficient gas
+
+Show the required network fee and provide the supported funding path, if any. Do not consume investment funds or submit a transaction that cannot be executed safely.
+
+---
+
+# 11. Manager Rebalance Flow
+
+## 11.1 Manager publishes a target change
+
+```text
+Manager opens basket
+       ↓
+Creates new draft version
+       ↓
+Changes asset list / weights
+       ↓
+Reviews diff against previous version
+       ↓
+Submits for review
+       ↓
+Platform validates and approves
+       ↓
+Publishes version N+1
+       ↓
+Creates rebalance-available state for eligible users
+       ↓
+Sends notifications
+```
+
+## 11.2 Manager sees
+
+The manager dashboard should show:
+- old and new target weights;
+- assets added and removed;
+- weight increases/decreases;
+- number of users with positions;
+- number of users who applied, skipped or have not responded;
+- execution/acceptance metrics, if permitted by product policy;
+- warnings for assets whose routes or eligibility changed.
+
+Managers should not see or control user private keys and should not be able to force an individual user's rebalance.
+
+## 11.3 User sees
+
+The user preview should include:
+- current applied version and latest version;
+- target allocation changes;
+- current verified holdings;
+- estimated buys and sells;
+- expected fees and slippage;
+- any RWA eligibility or settlement restrictions;
+- plan expiry;
+- explicit Apply and Skip choices.
+
+---
+
+# 12. Rebalance Planner Mechanics
+
+## 12.1 Inputs
+
+```text
+portfolio_id
+current_verified_positions
+current_basket_subledger
+selected_target_version
+price_snapshot
+route_quotes
+fees_and_gas
+slippage_policy
+minimum_trade_values
+dust_policy
+asset_constraints
+user_exclusions / customizations
+planner_version
+```
+
+## 12.2 Basic allocation math
+
+For a fully valued portfolio:
+
+```text
+Portfolio Value = Σ(Current Asset Quantity × Valuation Price)
+
+Target Value(asset) = Portfolio Value × Target Weight(asset)
+
+Value Difference(asset) = Target Value - Current Asset Value
+```
+
+Interpretation:
+- positive difference: potential buy;
+- negative difference: potential sell;
+- near zero: no action if within configured tolerance.
+
+The actual quantity is determined by the quote and execution route, not merely by dividing by a stale reference price.
+
+## 12.3 Example: simple rebalance
+
+Current value = $10,000.
+
+| Asset | Current value | New target | Target value | Indicative action |
+|---|---:|---:|---:|---|
+| BTC | $4,000 | 35% | $3,500 | Sell $500 |
+| ETH | $3,000 | 35% | $3,500 | Buy $500 |
+| SOL | $2,000 | 20% | $2,000 | No trade |
+| USDC | $1,000 | 0% | $0 | Sell/use $1,000 |
+| ARB | $0 | 10% | $1,000 | Buy $1,000 |
+
+This is a planning illustration. The execution plan must net funding requirements, fees and route constraints. It may not be possible to sell all USDC and buy the exact target amounts due to fees and market movement.
+
+## 12.4 Trade netting
+
+The planner should prefer a coherent net transition rather than independent asset-by-asset orders.
+
+Example:
+- Sell $500 BTC.
+- Sell $1,000 USDC.
+- Buy $500 ETH.
+- Buy $1,000 ARB.
+
+The planner must check whether sale proceeds are available before dependent buys. If transactions are not atomic, it must represent intermediate states and avoid spending proceeds that have not settled.
+
+## 12.5 Thresholds and tolerances
+
+Potential controls:
+- absolute weight difference threshold;
+- relative drift threshold;
+- minimum trade value;
+- minimum asset quantity;
+- max slippage;
+- max price impact;
+- max network fee;
+- quote expiry;
+- maximum number of route legs;
+- minimum interval between executions.
+
+Do not hardcode arbitrary values into the product logic. Define platform defaults and allow approved per-basket or per-route overrides. The same threshold should not automatically be used for every asset class: illiquid RWAs and liquid tokens have different constraints.
+
+## 12.6 Cash and fees
+
+Decide whether fees are:
+- paid separately by the user;
+- deducted from the funding asset;
+- deducted from the portfolio;
+- charged by an RWA provider during settlement.
+
+The planner must reserve enough for network fees and must not allocate 100% of the portfolio to target assets if doing so leaves no execution fee balance where one is required.
+
+## 12.7 Removed assets
+
+If a manager removes an asset in a new version, the plan needs a disposition policy:
+- sell it into a permitted settlement asset;
+- retain it as an excluded/legacy position;
+- offer a user-selected alternative, if allowed;
+- block the transition if no safe route exists.
+
+Do not assume that every asset can be sold at any time. For RWAs, redemption windows, transfer restrictions or issuer controls may prevent immediate disposal.
+
+---
+
+# 13. Skip Behavior and Version Catch-up
+
+## 13.1 Single skip
+
+User has applied v1. Manager publishes v2. User selects Skip.
+
+Result:
+- no transaction;
+- holdings remain unchanged;
+- `applied_version_id` remains v1;
+- `latest_version_id` is v2;
+- position is `OUT_OF_DATE` if otherwise healthy.
+
+## 13.2 Multiple skipped versions
+
+```text
+v1 applied
+v2 published → skipped
+v3 published → skipped
+v4 published → skipped
+v5 published
+```
+
+If the user chooses to apply v5, calculate:
+
+```text
+Current verified holdings → v5 target
+```
+
+Do not replay v1→v2→v3→v4→v5.
+
+## 13.3 Skip then manual trade
+
+If the user skips v2 and then manually buys more ETH, the next application uses the actual post-trade holdings. It does not use the snapshot from the time v2 was published.
+
+## 13.4 Skip does not mean customization
+
+Skipping means “do not apply this version now.” It does not automatically mean the user has permanently customized their basket. Customization should require an explicit user action and a clearly defined product behavior.
+
+---
+
+# 14. Manual Wallet Activity, Attribution and Shared Assets
+
+## 14.1 Why wallet balance is not basket allocation
+
+A wallet may hold:
+- assets from Basket A;
+- assets from Basket B;
+- assets acquired manually;
+- unallocated stablecoins;
+- assets transferred in from elsewhere;
+- dust and airdrops.
+
+A raw token balance cannot tell the platform which basket economically owns each unit. Maintain a basket subledger and a separate view of aggregate wallet holdings.
+
+## 14.2 Example: two baskets share TCS
+
+Illustrative user allocations:
+
+| Basket | RELIANCE | TCS | INFY | NTPC |
+|---|---:|---:|---:|---:|
+| Basket A | 25 | 50 | 0 | 0 |
+| Basket B | 0 | 33.33 | 50 | 0 |
+| Manual/unassigned | 0 | 5 | 0 | 50 |
+| Total expected wallet | 25 | 88.33 | 50 | 50 |
+
+The user sells 20 TCS manually. The wallet now has 68.33 TCS, while basket subledgers still allocate 83.33 TCS.
+
+The platform has a 15 TCS shortfall against the combined basket allocation. It must not assume the sale came from Basket A or Basket B without an explicit allocation policy or user decision.
+
+## 14.3 Shared-asset shortfall resolution
+
+The system should:
+1. detect the shortfall against aggregate allocation;
+2. identify all baskets that include the asset;
+3. flag every affected basket row;
+4. prevent execution plans from spending unavailable units;
+5. present one shared resolution flow;
+6. let the user choose a supported allocation adjustment or restoration;
+7. record the allocation decision and reconcile.
+
+Do not create two separate repair buys if one aggregate purchase can resolve the same shortfall. If the user restores the full shortfall, update the subledger consistently across affected baskets.
+
+## 14.4 Manual asset purchases
+
+If a user manually buys an asset included in a basket, do not automatically allocate it to that basket. It may be:
+- unassigned;
+- explicitly added to one basket;
+- explicitly split across baskets, if the product supports that action.
+
+If the user later chooses to allocate it, record the action, selected basket and effective time. Do not infer intent from the asset symbol alone.
+
+## 14.5 External transfer out
+
+A transfer can reduce a wallet balance without being a sale. It may create the same backing shortfall, but the UI should identify it as a transfer where data supports that interpretation. Offer repair or allocation adjustment; do not claim that the user sold the asset if the transaction only shows a transfer.
+
+## 14.6 Token accounts and wallet changes
+
+On Solana, balances may be held in multiple token accounts. On EVM chains, tokens are commonly associated with wallet addresses and contracts. The chain adapter must normalize these differences while preserving enough source detail for reconciliation. Do not assume one account per asset across every chain.
+
+---
+
+# 15. Drift and Mismatch Taxonomy
+
+Use distinct internal reason codes.
+
+| Code | Meaning | Typical cause |
+|---|---|---|
+| `MODEL_VERSION_PENDING` | New target version not applied | User skipped or has not reviewed |
+| `WEIGHT_DRIFT` | Actual basket weights differ from selected target | Price changes, manual trade, incomplete execution |
+| `ALLOCATION_SHORTFALL` | Basket subledger exceeds verified available units | Manual sale/transfer or reconciliation issue |
+| `UNASSIGNED_ASSET` | Wallet contains an asset not attributed to a basket | Manual buy, transfer in, airdrop |
+| `UNSUPPORTED_ASSET` | Activity includes an asset the platform cannot value/route | New token or unsupported deployment |
+| `DATA_STALE` | Current balance/price cannot be trusted | Provider outage or indexing delay |
+| `EXECUTION_INCOMPLETE` | Planned transition did not fully complete | Partial fill or failed leg |
+| `RWA_PENDING_SETTLEMENT` | RWA order is not fully settled | Issuer/provider processing |
+| `CUSTOMIZED` | User explicitly chose to deviate | User accepts a custom allocation |
+
+A portfolio can have multiple flags. Avoid one mutually exclusive status field that loses information. Store an overall display state plus independent reason flags.
+
+---
+
+# 16. Drift Detection and Monitoring
+
+## 16.1 Data flow
+
+```text
+Crypto/token wallet activity
+          │
+          ▼
+       Alchemy
+          │
+          ▼
+  Webhook / polling event
+          │
+          ├─────────────────────────────┐
+          │                             │
+          ▼                             ▼
+ RWA activity/position            Our program events
+          │                             │
+          ▼                             ▼
+  RWA Data Adapter              Chain event processor
+          └──────────────┬──────────────┘
+                         ▼
+                  Normalized event
+                         ▼
+                 Reconciliation queue
+                         ▼
+                  Chain / issuer read
+                         ▼
+                 Verified snapshot
+                         ▼
+           Compare subledger and target
+                         ▼
+                  State + notification
+```
+
+## 16.2 Event handling
+
+Every event should:
+- be authenticated according to the provider's mechanism;
+- be mapped to a chain, wallet, asset and transaction;
+- have a deduplication key;
+- tolerate duplicate delivery;
+- tolerate out-of-order delivery;
+- be stored for audit;
+- trigger a fresh balance/position read when necessary.
+
+A webhook should normally enqueue reconciliation, not directly overwrite the authoritative position.
+
+## 16.3 Reconciliation frequency
+
+Use event-driven checks after relevant activity and periodic reconciliation as a safety net. Exact cadence should be chosen based on chain/provider capabilities, cost, expected user experience and finality. Reconcile again before generating or executing a material plan.
+
+## 16.4 Drift calculation
+
+For valued assets:
+
+```text
+Actual Weight(asset) = Asset Value / Total Attributed Basket Value
+Weight Drift(asset) = Actual Weight - Target Weight
+```
+
+For an allocation mismatch, compare quantities rather than weights:
+
+```text
+Available Quantity(asset)
+    vs
+Sum of Attributed Basket Quantities(asset)
+```
+
+These calculations answer different questions and should produce different reason codes.
+
+## 16.5 Notification behavior
+
+Example:
+
+> **Portfolio activity needs review**  
+> Your wallet activity changed the holdings associated with this basket. Review the affected assets and choose whether to restore the quantity, update your allocation or keep a custom portfolio.
+
+For a version update:
+
+> **A new basket version is available**  
+> Review the manager's changes. Applying them will create a new execution plan. Skipping leaves your current holdings unchanged.
+
+Notifications should not imply that a trade has been executed or that a user must follow the manager's target.
+
+---
+
+# 17. Fix and Repair Design
+
+## 17.1 Fix is not one universal operation
+
+The Fix screen should first explain what is wrong:
+- weight drift;
+- missing quantity / allocation shortfall;
+- unapplied manager version;
+- incomplete transaction;
+- stale or unavailable data.
+
+Then show options that are safe for that condition.
+
+## 17.2 Option A — Restore missing quantity
+
+Example:
+- Basket subledger attributes 50 units of Asset X.
+- Verified available quantity backing that allocation is 35.
+- Shortfall is 15 units.
+
+If the asset has an eligible buy route, propose buying 15 units (plus any needed fee reserve) after the user reviews and authorizes it.
+
+After buying:
+- reconcile actual quantity;
+- update the subledger only after confirmed execution;
+- revalue the portfolio;
+- recalculate weight drift.
+
+Restoring quantity does not guarantee the target weight is restored. If price changed, the portfolio may still be drifted.
+
+## 17.3 Option B — Accept current holdings / revise allocation
+
+If the user does not want to buy missing units:
+- show affected baskets;
+- show the shortfall;
+- show how a proposed reduction would affect each basket;
+- require an explicit user choice;
+- preserve an audit record.
+
+For shared assets, never silently choose which basket absorbs the shortfall. If the platform does not support per-basket allocation edits, explain that and offer only supported alternatives.
+
+## 17.4 Option C — Rebalance to the latest target
+
+If a new manager version is pending, it may be more efficient to build one plan from the current verified state directly to that target. This avoids a repair trade immediately followed by a second rebalance.
+
+This is allowed only when:
+- current holdings are sufficiently fresh and verified;
+- all required routes are available;
+- the plan accounts for the mismatch;
+- the user sees the combined effect;
+- the user explicitly authorizes the plan.
+
+## 17.5 Option D — Keep custom allocation
+
+Allow the user to acknowledge that they want to retain their current allocation, if supported by product rules. This should suppress repeated prompts for the same unchanged condition while still allowing future meaningful alerts or a user-requested restore.
+
+## 17.6 Fix example: sold asset
+
+Target:
+- BTC 40%
+- ETH 30%
+- SOL 30%
+
+User sells half of their SOL externally. Actual value weights may now differ from target.
+
+Fix preview:
+- current holdings and values;
+- missing or drifted SOL;
+- estimated cost to restore;
+- potential sell/buy alternatives;
+- fees, slippage and plan expiry.
+
+If the user selects Restore, build a fresh plan. If the user selects Keep Custom, record that choice. Do not automatically buy SOL simply because Alchemy detected a sale.
+
+---
+
+# 18. Multiple Combined Scenarios
+
+## Scenario A — Manager update and external drift at the same time
+
+Starting target v1:
+- BTC 40%
+- ETH 30%
+- SOL 30%
+
+User manually sells SOL. Then manager publishes v2:
+- BTC 35%
+- ETH 35%
+- SOL 20%
+- ARB 10%
+
+Correct behavior:
+1. detect and reconcile the manual sale;
+2. mark the position as drifted/mismatched as applicable;
+3. mark v2 as available;
+4. when the user reviews, calculate one plan from current verified holdings to v2;
+5. do not first restore v1 and then rebalance to v2 unless the user explicitly requests that sequence.
+
+## Scenario B — User skips v2, then applies v4 after a manual buy
+
+User applied v1, skipped v2 and v3, manually bought ETH, then chooses Apply on v4.
+
+Correct behavior:
+- use the current verified portfolio including the manual ETH;
+- do not use the v1 snapshot;
+- do not replay v2 or v3;
+- include only holdings attributed to the basket or explicitly selected by the user;
+- show the effect of unassigned ETH before including it.
+
+## Scenario C — Shared asset sold while two baskets use it
+
+Basket A and Basket B both attribute units of the same token. User sells some of that token in an external wallet transaction.
+
+Correct behavior:
+- compare actual balance with aggregate attributed quantity;
+- flag both affected baskets;
+- create one shared shortfall case;
+- let the user choose how to resolve it;
+- do not send duplicated buys from each basket without aggregate coordination.
+
+## Scenario D — Rebalance removes an illiquid RWA
+
+Manager publishes a version removing an RWA. The RWA has a monthly redemption window and cannot be sold on a DEX.
+
+Correct behavior:
+- mark the asset as requiring an issuer/redemption route;
+- show whether the next window is available;
+- do not generate a fictional immediate sell;
+- allow the user to retain the legacy position or wait for the supported redemption path, according to product policy;
+- do not mark the basket fully aligned if the old asset remains outside the new target unless the product explicitly treats it as an excluded legacy holding.
+
+## Scenario E — Partial execution across routes
+
+A plan sells BTC successfully, buys ETH successfully, but the ARB route fails.
+
+Correct behavior:
+- record actual fills and fees;
+- mark `PARTIALLY_COMPLETED`;
+- reconcile;
+- create a new plan from the actual post-execution state;
+- do not replay the original plan or assume the failed leg can be retried unchanged.
+
+## Scenario F — User transfers an asset to another wallet
+
+The user transfers a basket asset out. The activity event is a transfer, not necessarily a sale.
+
+Correct behavior:
+- reconcile the source wallet;
+- show that the asset left the monitored wallet;
+- determine whether the product supports external custody/portfolio tracking for the destination;
+- if not, mark the affected basket allocation as unbacked or externally held, depending on verified facts;
+- do not label it a sale without evidence.
+
+## Scenario G — Provider outage or stale balance
+
+Alchemy or the RWA provider stops returning current data.
+
+Correct behavior:
+- mark the affected data as stale;
+- do not generate a material trade plan from stale balances;
+- retry or use a pre-approved independent read fallback;
+- if no trusted data is available, defer the action and show the limitation.
+
+## Scenario H — User has manual/unassigned assets in the same token
+
+User has 100 units of a token: 60 attributed to Basket A, 20 to Basket B and 20 unassigned. A rebalance of Basket A requires selling 10 units.
+
+Correct behavior:
+- sell only from the quantity the user authorized and the basket's attribution policy permits;
+- do not consume the unassigned 20 by assumption;
+- preserve the remaining aggregate accounting;
+- reconcile actual balances after execution.
+
+## Scenario I — Price movement between preview and signature
+
+The user previews a plan, but the quote expires before signing.
+
+Correct behavior:
+- reject/expire the stale plan;
+- request a new quote and calculate a new plan;
+- show changed amounts and fees;
+- require fresh user approval if material details changed.
+
+## Scenario J — RWA order accepted but not settled
+
+The provider accepts a subscription request, but token issuance is pending.
+
+Correct behavior:
+- mark the order pending, not completed;
+- avoid counting unissued tokens as available holdings;
+- poll or consume provider status updates;
+- reconcile against issuer and/or chain records before marking settled.
+
+---
+
+# 19. Execution Plan, Authorization and Safety
+
+## 19.1 Plan contents
+
+```text
+ExecutionPlan
+  plan_id
+  portfolio_id
+  reason
+  source_snapshot_id
+  target_version_id
+  created_at
+  expires_at
+  planner_version
+  route_set
+  estimated_fees
+  slippage_policy
+  status
+```
+
+Each plan leg should record:
+- input and output asset IDs;
+- amount or quantity;
+- route/adapter;
+- quote identifier and timestamp;
+- minimum output / maximum input;
+- expected fee;
+- transaction reference;
+- execution state;
+- confirmed actual fill.
+
+## 19.2 Authorization
+
+The user should authorize the plan under the selected chain model. A manager's signature or platform approval is not a substitute for user authorization unless the user has separately granted a valid, limited authority.
+
+For delegated/automated execution, store and enforce:
+- authorized assets;
+- allowed program/contract or route;
+- maximum amount/value;
+- expiry;
+- revocation state;
+- applicable basket/portfolio scope;
+- any per-transaction or cumulative limits.
+
+Exact enforceability is chain-specific and must be designed separately for Solana, EVM and Bitcoin.
+
+## 19.3 On-chain checks
+
+Where technically supported, enforce:
+- caller/authority;
+- approved assets and routes;
+- input amount and spend limits;
+- minimum output / slippage;
+- deadline/expiry;
+- correct portfolio or vault;
+- permitted destination;
+- replay protection / nonce;
+- pause/emergency behavior.
+
+Off-chain validation is useful but must not be the only protection for constraints that can be enforced on-chain.
+
+## 19.4 Plan invalidation
+
+Invalidate or require re-planning if:
+- quote expires;
+- source holdings materially change;
+- basket target changes;
+- route becomes inactive;
+- eligibility changes;
+- execution limits change;
+- a prior plan leg partially executes;
+- chain state invalidates the operation.
+
+---
+
+# 20. Transaction State Machine
+
+A suggested state model:
+
+```text
+DRAFT
+  ↓
+READY_FOR_REVIEW
+  ↓
+APPROVED_BY_USER
+  ↓
+SUBMITTED
+  ↓
+PENDING_CONFIRMATION
+  ├── CONFIRMED
+  ├── FAILED
+  └── UNKNOWN / NEEDS_RECONCILIATION
+```
+
+For multi-leg or asynchronous execution:
+
+```text
+PLAN
+  ├── LEG 1: CONFIRMED
+  ├── LEG 2: FAILED
+  └── LEG 3: PENDING
+          ↓
+    PARTIALLY_COMPLETED
+          ↓
+      RECONCILE
+          ↓
+  NEW REMAINING-STATE PLAN
+```
+
+For RWA operations, include provider-specific states such as `SUBMITTED`, `ELIGIBILITY_PENDING`, `SETTLEMENT_PENDING`, `ISSUANCE_PENDING`, `REDEEMABLE`, `REDEEMING` and `SETTLED` only where the chosen provider supports them.
+
+Never retry a transaction blindly. First determine whether it was accepted, confirmed, reverted, replaced or left in an unknown state.
+
+---
+
+# 21. Portfolio and Rebalance Status Model
+
+Prefer separate dimensions over one overloaded enum.
+
+## Version status
+- `CURRENT`
+- `OUT_OF_DATE`
+- `SKIPPED`
+
+## Allocation status
+- `ALIGNED`
+- `WEIGHT_DRIFT`
+- `CUSTOMIZED`
+
+## Backing/reconciliation status
+- `VERIFIED`
+- `REPAIR_REQUIRED`
+- `DATA_STALE`
+- `RECONCILIATION_PENDING`
+
+## Execution status
+- `NONE`
+- `READY`
+- `APPROVED`
+- `EXECUTING`
+- `PARTIALLY_COMPLETED`
+- `COMPLETED`
+- `FAILED`
+- `EXPIRED`
+
+The UI can derive a headline state from these dimensions while retaining the full internal state. For example, a position may simultaneously be `OUT_OF_DATE`, `REPAIR_REQUIRED` and have no active execution.
+
+---
+
+# 22. Suggested Data Model
+
+The schema below is conceptual. Final fields and indexing should follow the chosen database and on-chain architecture.
+
+## `baskets`
+```text
+id
+manager_id
+name
+status
+created_at
+updated_at
+```
+
+## `basket_versions`
+```text
+id
+basket_id
+version_number
+status
+published_at
+effective_at
+content_hash
+created_at
+```
+
+## `basket_version_assets`
+```text
+version_id
+asset_id
+target_weight
+min_weight
+max_weight
+```
+
+## `user_portfolios`
+```text
+id
+user_id
+basket_id
+wallet_id
+applied_version_id
+portfolio_model
+overall_status
+created_at
+updated_at
+```
+
+## `basket_positions`
+```text
+portfolio_id
+asset_id
+attributed_quantity
+valuation
+actual_weight
+position_status
+updated_at
+```
+
+## `wallet_asset_balances`
+```text
+wallet_id
+chain_id
+asset_deployment_id
+verified_quantity
+snapshot_block_or_slot
+observed_at
+finality_state
+source_adapter
+```
+
+## `unassigned_positions`
+```text
+wallet_id
+asset_id
+quantity
+source_activity_id
+updated_at
+```
+
+## `portfolio_activity`
+```text
+id
+wallet_id
+chain_id
+transaction_ref
+activity_type
+asset_id
+quantity
+direction
+provider
+observed_at
+confirmed_at
+dedupe_key
+processing_status
+```
+
+## `transition_plans`
+```text
+id
+portfolio_id
+reason
+source_snapshot_id
+target_version_id
+status
+planner_version
+created_at
+expires_at
+approved_at
+completed_at
+```
+
+## `transition_plan_legs`
+```text
+id
+plan_id
+leg_index
+asset_in
+asset_out
+amount_in
+min_amount_out
+route_id
+quote_ref
+status
+transaction_ref
+actual_amount_in
+actual_amount_out
+fee_amount
+```
+
+## `drift_cases`
+```text
+id
+portfolio_id
+reason_code
+target_version_id
+detected_at
+severity
+status
+resolved_at
+resolution_type
+```
+
+## `shared_asset_shortfalls`
+```text
+id
+wallet_id
+asset_id
+verified_quantity
+aggregate_attributed_quantity
+shortfall_quantity
+status
+detected_at
+resolved_at
+```
+
+## `allocation_decisions`
+```text
+id
+user_id
+wallet_id
+asset_id
+affected_portfolios
+decision_type
+decision_payload
+created_at
+```
+
+Persist snapshots and activity provenance so a portfolio can be audited and reconstructed. Avoid using only a mutable `total_value` field as the source of truth.
+
+---
+
+# 23. API and Service Boundaries
+
+Possible internal operations:
+
+```text
+POST /baskets/{basketId}/versions
+POST /basket-versions/{versionId}/submit
+POST /basket-versions/{versionId}/publish
+
+POST /portfolios/{portfolioId}/investment-preview
+POST /portfolios/{portfolioId}/invest
+
+POST /portfolios/{portfolioId}/rebalance-preview
+POST /transition-plans/{planId}/approve
+POST /transition-plans/{planId}/skip
+
+POST /portfolios/{portfolioId}/fix-preview
+POST /drift-cases/{caseId}/resolve
+
+GET  /portfolios/{portfolioId}
+GET  /portfolios/{portfolioId}/activity
+GET  /transition-plans/{planId}
+```
+
+These are illustrative endpoint names, not a locked API contract. Keep user authorization, manager permissions and platform review permissions distinct.
+
+---
+
+# 24. Notification and User Experience Rules
+
+Show the user:
+- which basket is affected;
+- whether the cause is a new version, weight drift, shortfall, or failed execution;
+- which assets are affected;
+- whether the data is confirmed or still pending;
+- estimated trades, fees and slippage when relevant;
+- whether the action is reversible or has settlement constraints;
+- the exact action requiring authorization.
+
+Avoid:
+- presenting an external wallet event as a manager rebalance;
+- implying that Skip is a trade;
+- automatically restoring a sold asset;
+- displaying a stale plan as executable;
+- marking an asynchronous RWA request as invested before settlement;
+- treating an entire wallet as one basket.
+
+---
+
+# 25. Security, Operational and Failure Considerations
+
+- Use least-privilege provider API keys and secure webhook verification.
+- Deduplicate events and make handlers idempotent.
+- Use chain-appropriate finality before updating confirmed positions.
+- Record the quote, route and planner version used for every plan.
+- Re-simulate or revalidate immediately before execution where supported.
+- Keep user authorization separate from manager publishing authority.
+- Define emergency pause, upgrade authority and recovery procedures for any program/vault.
+- Do not make backend admin keys capable of silently moving user assets.
+- Rate-limit plan creation and protect against duplicate submissions.
+- Keep an auditable record of skips, customizations, approvals and repairs.
+- Monitor provider lag, reconciliation failures, execution failure rates and stale quotes.
+- For RWAs, handle provider outages, eligibility changes, issuer pauses, redemption windows and asynchronous settlement explicitly.
+
+---
+
+# 26. Architecture Decisions — Decision Register
+
+| ID | Decision | Current direction | Must be finalized |
+|---|---|---|---|
+| AD-01 | Crypto/token data provider | Alchemy | Exact products, chains and webhook coverage |
+| AD-02 | RWA data provider | Separate provider | Vendor per initial RWA/issuer/region |
+| AD-03 | Data normalization | Internal canonical asset/portfolio model | Schema and mapping rules |
+| AD-04 | Custody | Investigate per-user portfolio first | User-signed vs delegation vs vault |
+| AD-05 | Shared vs per-user portfolio | Per-user model for MVP investigation | Final on-chain/accounting design |
+| AD-06 | Rebalance consent | User applies or skips | Whether any future opt-in automation is offered |
+| AD-07 | Planner | One current-state transition planner | Exact optimization and tolerance policy |
+| AD-08 | Shared asset attribution | Explicit subledger and aggregate checks | Allocation policy for external shortfalls |
+| AD-09 | RWA execution | Per-asset route adapter | Issuer, venue, settlement and eligibility |
+| AD-10 | Cross-chain baskets | Do not assume atomicity | Restrict MVP or build saga/orchestration |
+| AD-11 | Pricing | Asset/route-specific pricing adapter | Approved sources, freshness and fallback |
+| AD-12 | Drift threshold | Configurable policy | Defaults by asset class and basket |
+| AD-13 | Bitcoin | Bitcoin-specific adapter/model | Supported BTC representation and execution |
+| AD-14 | Program upgrades/pauses | Explicitly governed | Authority, timelock and recovery policy |
+
+---
+
+# 27. Recommended MVP Scope
+
+A staged approach reduces the number of failure modes introduced at once.
+
+## Stage 1 — Portfolio and planning foundation
+- immutable basket versions;
+- per-user basket position model;
+- canonical asset registry;
+- normalized price/balance interfaces;
+- first-investment preview;
+- rebalance preview;
+- explicit Apply and Skip;
+- manual activity reconciliation;
+- no unattended trading.
+
+## Stage 2 — Controlled on-chain execution
+- one chosen chain/custody model;
+- approved token routes;
+- user-authorized investment and rebalance;
+- transaction state tracking;
+- reconciliation and partial-failure handling.
+
+## Stage 3 — Drift and repair
+- Alchemy activity ingestion for supported crypto/tokens;
+- RWA provider integration when the RWA scope is defined;
+- shared asset shortfall detection;
+- Fix/repair preview and explicit authorization;
+- custom allocation support if product-approved.
+
+## Stage 4 — More chains and asset classes
+- chain-specific adapters;
+- additional DEX/aggregator routes;
+- RWA subscription/redemption adapters;
+- multi-chain orchestration only when required and reviewed;
+- optional limited automation only after authority, safety and consent design is complete.
+
+This is a suggested delivery sequence, not a claim that the integrations or contracts already exist.
+
+---
+
+# 28. Acceptance Criteria
+
+The feature should not be considered complete until these behaviors are testable:
+
+1. A first investment creates a position from confirmed execution results.
+2. A published basket version does not trigger a transaction.
+3. A user can skip without changing holdings or applied version.
+4. Applying a later version calculates from current verified holdings.
+5. Manual buys are not silently assigned to baskets.
+6. Manual sells/transfers can create a shortfall or drift case.
+7. A shared asset shortfall flags all affected basket rows and avoids duplicate repair buys.
+8. Quantity restoration and weight rebalance are presented as different actions.
+9. A combined current-to-latest-target plan can be generated when safe.
+10. Expired quotes require re-planning and renewed approval where material.
+11. Partial execution updates only confirmed results.
+12. A provider webhook duplicate does not create duplicate portfolio activity.
+13. Provider outage or stale data blocks unsafe planning/execution.
+14. RWA orders remain pending until the configured settlement confirmation is met.
+15. Chain-specific constraints are enforced by the relevant adapter and, where possible, on-chain program.
+16. Every user skip, approval, customization and repair is auditable.
+
+---
+
+# 29. Final Architecture Summary
+
+```text
+                     MANAGER
+                        │
+                Publish basket version
+                        │
+                        ▼
+                 Target allocation
+                        │
+                        ▼
+USER ── First investment / existing portfolio
+                        │
+                        ▼
+               Portfolio subledger
+                        │
+           ┌────────────┴────────────┐
+           ▼                         ▼
+    Version update              Wallet activity
+           │                         │
+      Rebalance                Alchemy / RWA adapter
+           │                         │
+           │                    Reconciliation
+           │                         │
+           └────────────┬────────────┘
+                        ▼
+            Current verified state
+                        │
+                        ▼
+             Transition / Fix Planner
+                        │
+                        ▼
+              Review + authorization
+                        │
+                        ▼
+             Execution orchestrator
+                        │
+        ┌───────────────┼────────────────┐
+        ▼               ▼                ▼
+   Chain adapter    DEX adapter     RWA adapter
+        │               │                │
+        └───────────────┼────────────────┘
+                        ▼
+              Chain / issuer settlement
+                        │
+                        ▼
+                 Reconciliation
+                        │
+                        ▼
+               Updated portfolio state
+```
+
+**Central design rule:** the manager controls the strategy definition, the user controls whether to follow it, the backend plans and monitors, adapters isolate provider and chain differences, and confirmed chain/issuer state determines what the platform records as actually held.
+
+---
+
+# Reconciled Multi-Chain Architecture and Shared-Position Rules
+
+> This section consolidates the additional architecture notes and scenarios supplied for this project. It describes the proposed behaviour of our platform. It does not claim that the third-party Smallcase implementation works exactly this way.
+
+## 30. Architecture boundaries
+
+The system has five primary layers:
+
+1. **Portfolio and Basket Engine** — basket versions, target allocations, investment intents, logical user allocations, drift, and rebalance transitions.
+2. **Universal Asset Registry** — approved economic instruments, chain deployments, price references, provider metadata, execution routes, and eligibility/transfer rules.
+3. **Eligibility and Policy Engine** — evaluates a user, instrument, provider, route, jurisdiction, and operation together.
+4. **Execution Planner and Router** — converts a desired portfolio transition into a deterministic plan and dispatches each step to a suitable adapter.
+5. **Activity, Indexing, and Reconciliation** — ingests chain/provider activity, updates the activity ledger, reconciles observed positions, and derives the actual portfolio.
+
+```text
+Manager → Basket Engine → Asset Registry → Eligibility
+                                      ↓
+User intent → Transition Engine → Execution Planner
+                                      ↓
+                               Execution Router
+                     ┌────────────────┼─────────────────┐
+                     ↓                ↓                 ↓
+               Chain Adapter   Cross-chain Adapter   RWA Adapter
+                     └────────────────┼─────────────────┘
+                                      ↓
+                       Chains / venues / providers
+                                      ↓
+                   Indexers → Event Processor → Ledger
+                                      ↓
+                              Reconciliation
+                                      ↓
+                           Actual Portfolio / Drift
+```
+
+Keep portfolio semantics chain-agnostic. Keep signing, transaction construction, confirmation, finality, and protocol calls chain-specific. An asset is not assumed to be available on every network.
+
+## 31. Universal Asset Registry: instrument, deployment, route
+
+Do not model every contract address as a different economic asset. Separate:
+
+- **Instrument**: the economic identity selected by a manager or held in a portfolio.
+- **Deployment**: a chain-specific token or representation of that instrument.
+- **Execution route**: a way to acquire, sell, redeem, transfer, or otherwise interact with it.
+
+```text
+INSTRUMENT
+  instrument_id
+  canonical_name
+  asset_type
+  issuer
+  economic_identity
+       │
+       ├── DEPLOYMENT (Ethereum, contract/token identifier)
+       ├── DEPLOYMENT (Base, contract/token identifier)
+       └── DEPLOYMENT (Solana, mint/address)
+                │
+                └── EXECUTION ROUTES
+                    ├── DEX swap
+                    ├── provider subscription
+                    ├── secondary market
+                    └── redemption
+```
+
+Suggested registry fields (nullable where not applicable):
+
+| Entity | Fields |
+|---|---|
+| Instrument | `instrument_id`, `name`, `asset_type`, `issuer_id`, `economic_identity`, `status` |
+| Deployment | `deployment_id`, `instrument_id`, `chain_id`, `token_address_or_mint`, `decimals`, `deployment_status` |
+| Route | `route_id`, `instrument_id`, `deployment_id`, `provider_id`, `venue`, `action`, `settlement_asset`, `min_amount`, `max_amount`, `route_status` |
+| Price reference | `instrument_id`, `source`, `price_type`, `currency`, `updated_at`, `confidence/status` |
+| Eligibility policy | `instrument_id`, `route_id`, `jurisdiction`, `identity_requirements`, `transfer_policy`, `effective_period` |
+
+The manager selects only approved instruments. They should not be able to introduce an arbitrary contract address as a basket constituent. Platform review controls registry approval and route activation.
+
+### Asset-type scope
+
+The current scope described for the platform is crypto assets, crypto tokens, and RWAs. Keep the schema extensible, but do not imply that ETFs, stocks, bonds, LP tokens, yield tokens, or other future instruments are currently supported merely because the registry can represent them.
+
+## 32. Multi-chain and provider routing
+
+A basket may contain instruments deployed on different chains. The basket definition should refer to the instrument, while the execution plan resolves the eligible deployment and route at execution time.
+
+Illustrative route selection:
+
+```text
+Instrument
+  ↓
+Find active deployments
+  ↓
+Find supported execution routes
+  ↓
+Check user eligibility and jurisdiction
+  ↓
+Check settlement asset, liquidity, limits, and route status
+  ↓
+Select route(s) and produce execution steps
+```
+
+Adapters are capabilities, not a guarantee that a provider supports every asset or chain. Candidate adapter families include Solana DEX, EVM DEX, bridge/cross-chain, and RWA-provider integrations. Provider names such as Ondo, Securitize, Backed, or Centrifuge are examples from the supplied research notes, not confirmed integrations or commitments.
+
+Do not force an RWA onto the user's default chain. If an instrument exists only on Ethereum, the route may execute on Ethereum even if the user also has a Solana wallet. If a supported native deployment exists on multiple chains, routing can choose among those deployments subject to policy and cost constraints. Do not assume bridging is available or permissible.
+
+## 33. Eligibility is route-specific
+
+Avoid a single `user.kyc_status` boolean as the sole authorization decision. Evaluate the combination:
+
+```text
+USER + INSTRUMENT + PROVIDER + ROUTE + JURISDICTION + ACTION
+                              ↓
+                    ELIGIBILITY DECISION
+              ALLOWED / KYC_REQUIRED / RESTRICTED
+```
+
+Direct subscription, secondary-market purchase, transfer, redemption, and cross-chain movement may have different rules. Store policy outcomes and their evidence/version so that an operation can be audited later. Re-check eligibility before execution, especially for delayed or asynchronous operations.
+
+This document does not establish legal eligibility for any jurisdiction. Provider terms and applicable legal/compliance review must determine actual policy values.
+
+## 34. Operation, step, and transaction are different objects
+
+An investment or rebalance is a user-level **operation**, not necessarily one blockchain transaction. A single operation can contain multiple steps and transactions, possibly across chains or providers.
+
+```text
+operation
+  ├── operation_step
+  │     └── blockchain_transaction
+  ├── operation_step
+  │     └── provider_request
+  └── operation_step
+        └── blockchain_transaction
+```
+
+Recommended entities:
+
+- `investment_operations`: `operation_id`, `user_id`, `portfolio_id`, `basket_id`, `basket_version`, `operation_type`, `status`, timestamps, idempotency key.
+- `operation_steps`: `step_id`, `operation_id`, `sequence`, `chain_id`, `route_id`, `action`, input/output asset and amount, status, retry policy.
+- `blockchain_transactions`: `tx_id`, `step_id`, `chain_id`, transaction hash, nonce/sequence where applicable, confirmation/finality status.
+- `provider_requests`: `request_id`, `step_id`, provider reference, request/response status, reconciliation metadata.
+
+A multi-step operation can be partially completed. Never mark the whole operation successful merely because one transaction succeeded. Resume from verified state; do not blindly replay completed steps.
+
+## 35. Shared physical positions versus logical basket allocations
+
+There are two valid custody/accounting models, and the platform must make the choice explicit.
+
+### Model A — isolated execution accounts or vaults
+
+Each basket has its own execution account/vault. Positions are physically separated. This simplifies attribution but can increase account/program complexity and may duplicate holdings.
+
+### Model B — one physical master portfolio with logical sub-ledgers
+
+A user has one physical position per asset/deployment, while internal allocations attribute quantities or value to individual baskets.
+
+```text
+USER MASTER PORTFOLIO (physical)
+  BTC  4,000
+  ETH  5,000
+  SOL  4,000
+  AVAX 2,000
+       │
+       ├── Basket A logical allocation
+       └── Basket B logical allocation
+```
+
+For Model B, the portfolio engine must distinguish:
+- actual physical position,
+- allocated position per basket,
+- unallocated/manual position,
+- pending/in-flight amounts,
+- liabilities or reserved amounts, if applicable.
+
+Do not infer that a physical asset is free to satisfy a new basket merely because it is the same token. Existing quantities may already be attributed to another basket. Compute the aggregate target and the net change.
+
+### Example: adding Basket B
+
+Basket A: $10,000; BTC 40%, ETH 30%, SOL 30%.
+Basket B: $5,000; ETH 40%, SOL 20%, AVAX 40%.
+
+Existing Basket A allocation:
+- BTC $4,000
+- ETH $3,000
+- SOL $3,000
+
+New Basket B allocation:
+- ETH $2,000
+- SOL $1,000
+- AVAX $2,000
+
+Combined target:
+- BTC $4,000
+- ETH $5,000
+- SOL $4,000
+- AVAX $2,000
+
+The new physical purchases are the incremental difference, assuming no unallocated assets or other constraints: buy ETH $2,000, SOL $1,000, and AVAX $2,000. The engine must not count Basket A's allocated ETH/SOL as available to Basket B without changing attribution.
+
+### Example: rebalance Basket A while Basket B stays unchanged
+
+Basket A v2 target at $10,000: BTC $3,000, ETH $4,000, SOL $3,000.
+Basket B remains: ETH $2,000, SOL $1,000, AVAX $2,000.
+
+Combined target: BTC $3,000, ETH $6,000, SOL $4,000, AVAX $2,000.
+If the current master positions are BTC $4,000, ETH $5,000, SOL $4,000, AVAX $2,000, the net transition is sell BTC $1,000 and buy ETH $1,000. Do not execute each basket in isolation if the chosen custody model is a shared master portfolio; derive one net plan while preserving basket-level accounting.
+
+## 36. External/manual trades and shared-asset discrepancies
+
+External wallet activity may change physical holdings without changing the user's intended basket allocations. The activity tracker should ingest relevant transfers/swaps and reconciliation should compare observed positions with expected allocations.
+
+For a shared asset, a shortage may affect multiple baskets. Do not arbitrarily assign the missing quantity to one basket based only on the token balance.
+
+Example:
+- Basket A expects 50 TCS.
+- Basket B expects 33.33 TCS.
+- Combined expected allocation is 83.33 TCS.
+- User manually sells 30 TCS from the wallet.
+- The observed physical balance is now short by 30 TCS, assuming no other movements.
+
+Create a discrepancy against the shared position and identify every basket allocation that depends on it. The UI may show the affected baskets and a shared resolution workflow. Avoid generating independent buy orders for each basket, which could over-repair the same shortage.
+
+Possible resolution choices:
+1. **Restore**: buy the missing quantity/value, subject to current prices, route availability, slippage limits, and user authorization.
+2. **Accept/allocate the change**: reduce logical basket allocations according to an explicit user-selected policy (for example, selected basket quantities or a disclosed pro-rata method).
+3. **Keep as custom/unallocated**: where product rules permit, record the external change as user customization rather than silently restoring the manager target.
+
+The choice and resulting allocation changes must be visible and auditable. A manual sale alone does not reveal which basket the user intended to reduce.
+
+## 37. Fix is not always “buy the old quantity”
+
+A quantity-only repair can be misleading when prices have changed. If 25 units are missing, buying exactly 25 units restores quantity but may not restore target weights or the original dollar value.
+
+Separate these concepts:
+- **Reconciliation**: establish the best-supported actual positions from chain/provider state.
+- **Repair/restore**: execute a user-approved plan to address a discrepancy.
+- **Rebalance**: move the portfolio toward a selected basket version's target weights.
+- **Customization**: accept a user-selected deviation from the manager target.
+
+A robust Fix flow should calculate from current prices and actual portfolio value. Where a rebalance is pending, the planner may combine the required changes into one net transition, provided it preserves the user's intent and all policy constraints. Do not buy units only to sell them immediately if a safe net plan can achieve the selected final state.
+
+### Shared TCS example: affected rows and actions
+
+When a shared TCS position is short:
+- mark the shared physical position as discrepant;
+- mark all dependent basket allocations as affected;
+- show one coordinated Fix/Review action for the shared issue;
+- prevent conflicting rebalance operations from executing against stale assumptions;
+- after resolution and reconciliation, recompute each basket's status independently.
+
+The interface may display a Fix action on each basket row for discoverability, but those actions must reference the same underlying discrepancy and be idempotent. They must not create duplicate repair orders. Rebalance should be disabled only for the affected basket/operation scope required by the selected accounting model; unrelated baskets should remain usable when safe.
+
+## 38. Weight calculation, fractional quantities, and price movement
+
+Where fractional quantities are supported, target quantity can be computed as:
+
+`target_quantity = (portfolio_value × target_weight) / current_price`
+
+For each instrument, the execution planner compares target value/quantity with reconciled current value/quantity and accounts for:
+- price timestamp and source,
+- fractional precision and token decimals,
+- minimum order/subscription size,
+- available balance and reserved funds,
+- fees, spread, slippage, and price impact,
+- route-specific limits,
+- dust and residual cash,
+- pending transactions and settlement status.
+
+A repair based on the old quantity may not restore weights after price movement. Recompute against the chosen current target and current valuation. Fractional support removes whole-share rounding constraints but does not remove minimum notional, token precision, liquidity, or provider restrictions.
+
+## 39. State and concurrency safeguards
+
+Use explicit states for operations and portfolios, including at least:
+- aligned,
+- drifted,
+- customized,
+- action required / discrepancy,
+- execution pending,
+- partially executed,
+- failed,
+- reconciling.
+
+Before executing a plan:
+1. Reconcile current positions.
+2. Confirm the basket version and user intent are still current.
+3. Re-evaluate eligibility and route status.
+4. Recompute the transition if balances, prices, or pending operations changed.
+5. Reserve/lock the relevant assets or serialize conflicting operations.
+6. Execute with idempotency and per-step status tracking.
+7. Reconcile final on-chain/provider state before declaring completion.
+
+Two operations that touch the same shared physical position must not independently spend or sell the same quantity. Use position-level reservation or serialization, and release reservations only after verified completion/failure handling.
+
+## 40. User-facing value proposition
+
+The product should not rely only on users being unable to see basket weights. The supplied notes identify ongoing utility in:
+- translating allocations into executable amounts,
+- one coordinated review/apply flow,
+- managing recurring investments,
+- handling price movement and fractional quantities,
+- monitoring manager-published versions,
+- tracking skipped updates and drift,
+- consolidating execution and status across chains,
+- showing external activity and offering explicit repair/customization,
+- handling provider-specific RWA subscriptions and settlement states.
+
+These are product capabilities to build and validate, not guarantees that every chain/provider route will support every operation.
+
+## 41. Open architecture decisions to lock before implementation
+
+| Decision | Options | Required decision / implication |
+|---|---|---|
+| Physical custody | Per-basket vaults; shared master portfolio | Determines attribution, isolation, transaction routing, and repair semantics. |
+| Shared-asset attribution | Fixed basket ledgers; pro-rata; user-directed; hybrid | Define how shortages, exits, and external trades affect logical allocations. |
+| Fix semantics | Restore quantity; restore value/weights; accept customization; combined transition | Avoid ambiguous “Fix” behavior and duplicate trades. |
+| Cross-chain movement | No bridging; selected bridges; provider-native deployment only | Never assume a bridge exists or is allowed for an RWA. |
+| RWA execution | Direct subscription; secondary market; provider inventory; supported combination | Configure per instrument and route, including asynchronous states. |
+| Eligibility | Global account status; contextual policy engine | Prefer contextual evaluation for instrument/action/jurisdiction/route. |
+| Price authority | One source; source hierarchy; route quote | Specify freshness, fallback, and valuation confidence. |
+| Rebalance scope | Per basket; aggregate master transition | Must match the chosen custody and accounting model. |
+| External activity | Ignore; detect only; detect and offer resolution | If detected, distinguish observation from user intent. |
+
+Until these are decided, mark the affected behaviour as **proposed** rather than implemented or final.
+
+## 42. Source and assumption boundaries
+
+This specification incorporates the project's supplied investment/rebalancing, basket creation, asset registry, onboarding, and feature material, plus the two additional scenario documents. Treat provider names and Smallcase behaviour in the supplied notes as reference material, not proof of a particular provider capability or of Smallcase's internal implementation. Verify external integrations, legal eligibility, provider route support, and chain-specific execution details before implementation.

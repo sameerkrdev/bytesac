@@ -1,0 +1,365 @@
+# Assets
+
+## 1. Purpose
+
+The Asset Registry is the platform's approved inventory of investable
+instruments. It allows managers to select approved assets for baskets
+while keeping economic identity separate from chain deployments,
+providers, and execution routes.
+
+**Core principle:** the basket and portfolio layers are chain-agnostic;
+chain- and provider-specific behavior belongs in the execution layer.
+
+```
+Manager → Basket Engine → Asset Registry
+                         ├── Crypto Asset → DEX Adapter
+                         └── RWA Asset → RWA Router → Provider / Venue Adapter
+                                           ↓
+                                      Chain Adapter
+                                           ↓
+                                       Blockchain
+```
+
+The registry defines what an asset is, where it is available, and which
+routes and rules apply. The execution system determines how an eligible
+user can acquire, sell, redeem, or transfer it.
+
+## 2. Supported scope
+
+### Initial platform scope
+
+- Native crypto and approved crypto tokens.
+- Approved tokenized real-world assets (RWAs).
+- Initial chain support: Solana, Ethereum, Base, Bitcoin, BNB Chain,
+and Polygon.
+
+Support is configured per asset and per route. The platform must not
+assume that every asset is available on every supported chain.
+
+### Future instrument categories
+
+The data model should be extensible to stocks, ETFs, fixed income,
+commodities, indices, pre-IPO assets, fixed deposits, recurring
+deposits, and broker-held assets. These are future categories, not
+automatically enabled MVP assets.
+
+## 3. Registry data model
+
+Use a logical instrument as the canonical record. Do not treat every
+contract address or chain representation as a separate economic asset.
+
+```
+INSTRUMENT
+  instrument_id
+  name
+  symbol
+  asset_type
+  economic_identity
+  issuer_id
+  risk_metadata
+  status
+
+DEPLOYMENTS
+  deployment_id
+  instrument_id
+  chain
+  token_standard
+  contract_or_mint_address
+  decimals
+  deployment_status
+
+EXECUTION ROUTES
+  route_id
+  instrument_id
+  chain
+  provider_id
+  venue
+  execution_method
+  settlement_asset
+  minimum_amount
+  route_status
+
+ELIGIBILITY RULES
+  rule_id
+  instrument_id
+  provider_id
+  route_id
+  jurisdiction
+  user_criteria
+  kyc_requirement
+  transfer_restrictions
+  rule_status
+```
+
+Keep issuer, provider, deployment, route, pricing, and eligibility
+information in related records rather than duplicating them into a
+single asset row. A single instrument can have multiple deployments and
+routes, each with different constraints.
+
+## 4. Asset types
+
+```
+CRYPTO
+  BTC, ETH, SOL, etc.
+
+STABLECOIN
+  USDC, etc.
+
+RWA
+  TOKENIZED_TREASURY
+  TOKENIZED_EQUITY
+  TOKENIZED_FUND
+  TOKENIZED_BOND
+  TOKENIZED_COMMODITY
+  TOKENIZED_PRIVATE_CREDIT
+  Other approved tokenized instruments
+```
+
+Each type may require different pricing, settlement, execution, and
+ownership handling. The model should not assume that every instrument is
+an ERC-20 or even a blockchain token.
+
+## 5. Asset onboarding and approval
+
+```
+Asset proposed
+     ↓
+Classify instrument and identify issuer
+     ↓
+Validate economic identity and source information
+     ↓
+Add supported chain deployments
+     ↓
+Configure pricing and market-data sources
+     ↓
+Configure execution routes and settlement assets
+     ↓
+Define eligibility and transfer rules
+     ↓
+Risk / operations / compliance review
+     ↓
+Platform approval
+     ↓
+ACTIVE in Asset Registry
+```
+
+### Crypto and token onboarding
+
+1. Identify the chain and native/token asset type.
+2. For tokens, verify the contract or mint address and read on-chain
+metadata where available.
+3. Validate token identity, decimals, issuer/project information, and
+relevant risks.
+4. Configure pricing, liquidity, and supported execution venues.
+5. Approve the asset before it becomes selectable by managers.
+
+### RWA onboarding
+
+1. Identify the economic instrument, issuer, and provider.
+2. Record each chain deployment independently; do not infer cross-chain
+availability.
+3. Configure available purchase, sale, redemption, and transfer routes.
+4. Record settlement assets, minimums, pricing source, processing
+model, and any asynchronous states.
+5. Define route-specific eligibility, jurisdiction, KYC/AML, allowlist,
+and transfer restrictions.
+6. Complete review and activate only the approved instrument and
+routes.
+
+Managers should search and select from approved assets. They should not
+be able to add arbitrary contract addresses directly to a published
+basket.
+
+## 6. RWA execution routes
+
+An RWA can have more than one way to acquire or dispose of it. Model
+each route separately.
+
+---
+
+Route                   Typical flow            Registry considerations
+
+---
+
+Direct issuance /       User → eligibility      KYC/AML, investor
+subscription            checks →                eligibility, provider
+issuer/provider →       API, minimums,
+settlement → token or   asynchronous settlement
+claim
+
+Secondary market        User → approved         Venue availability,
+venue/DEX → RWA token   liquidity, transfer
+permissions, price and
+slippage
+
+Platform inventory      Platform-held inventory Inventory ownership,
+→ user, where legally   custody model, pricing,
+and operationally       settlement, legal
+supported               approval
+
+Redemption              User position →         Redemption eligibility,
+provider request →      fees, lockups,
+processing → settlement processing time and
+status tracking
+
+## Cross-chain transfer Source deployment → Explicitly supported
+supported source/destination
+bridge/transport → pair, bridge
+destination deployment constraints,
+destination eligibility
+
+Do not assume that an RWA can be bridged to every chain. Some assets are
+deployed natively on several networks; others are available on only one
+network. Cross-chain support must be explicitly configured for the
+instrument and route.
+
+## 7. Eligibility and compliance
+
+Do not use a single platform-wide `user.kyc_status` as the only
+decision. Eligibility can depend on the combination of:
+
+```
+USER
+ + INSTRUMENT
+ + ISSUER / PROVIDER
+ + EXECUTION ROUTE
+ + JURISDICTION
+ + TRANSACTION TYPE
+        ↓
+ELIGIBILITY ENGINE
+        ↓
+ALLOWED / RESTRICTED / KYC REQUIRED / REVIEW REQUIRED
+```
+
+For example, direct subscription and secondary-market acquisition of the
+same instrument may have different requirements. Rules may also differ
+by jurisdiction, chain, transfer type, and investor status.
+
+Store the rule source, effective status, and any provider-specific
+verification reference needed for audit. A route must not be offered
+when the user or transaction fails its applicable rules.
+
+## 8. Multi-chain architecture
+
+```
+PORTFOLIO LAYER
+  Basket → Basket Version → Target Allocation
+  User Portfolio → Actual Positions → Drift / Rebalance
+                         ↓
+ASSET REGISTRY
+  Instrument → Deployments → Execution Routes → Eligibility
+                         ↓
+TRANSITION ENGINE
+  Current State → Target State → Execution Plan
+                         ↓
+EXECUTION ROUTER
+  ├── Solana DEX Adapter
+  ├── EVM DEX Adapter
+  ├── Bitcoin Adapter (where supported)
+  ├── RWA Provider Adapters
+  └── Cross-chain Adapter (only for supported routes)
+                         ↓
+CHAIN / PROVIDER INTEGRATIONS
+  Solana | Ethereum | Base | Bitcoin | BNB Chain | Polygon | ...
+                         ↓
+ACTIVITY & RECONCILIATION
+  Chain events + provider updates → Activity Ledger
+                                  → Reconciliation
+                                  → Actual Portfolio
+```
+
+The portfolio is a logical view; actual holdings remain tied to their
+underlying chain, account, and instrument representation. The execution
+router selects a valid route based on the asset, user's eligible routes,
+available balances, and execution constraints.
+
+## 9. Execution status and reconciliation
+
+Crypto swaps may settle on-chain promptly, while subscriptions,
+redemptions, and other RWA actions can be asynchronous. Support
+route-specific lifecycle states, such as:
+
+`PLANNED` → `SUBMITTED` → `PENDING_PROVIDER` / `PENDING_CHAIN` →
+`SETTLED` / `FAILED`
+
+Track provider references and chain transaction identifiers. Do not mark
+an RWA operation complete merely because a request was accepted.
+Reconcile provider updates and on-chain balances before updating the
+user's actual portfolio. Handle partial completion and failures
+explicitly.
+
+## 10. Asset lifecycle
+
+- `DRAFT` --- being configured.
+- `UNDER_REVIEW` --- awaiting review.
+- `CHANGES_REQUIRED` --- additional information or changes needed.
+- `APPROVED` --- approved but not necessarily enabled for selection.
+- `ACTIVE` --- selectable for permitted use and routes.
+- `PAUSED` --- temporarily unavailable for new execution.
+- `DEPRECATED` --- no longer offered for new baskets; existing
+positions remain tracked.
+- `RETIRED` --- retired according to the platform's lifecycle policy.
+
+A paused route should not automatically imply that every deployment or
+route for the instrument is paused. Apply status at the appropriate
+instrument, deployment, or route level.
+
+## 11. Example registry records
+
+### Example: tokenized Treasury instrument
+
+```
+Instrument ID: RWA-TBILL-001
+Name: Tokenized US Treasury Fund
+Asset Type: TOKENIZED_TREASURY
+Issuer: XYZ
+Deployments: Ethereum, Base, Solana (only after verification)
+Settlement: USDC
+Purchase Routes: configured per chain/provider
+Redemption: Provider route
+Transferability: route/deployment-specific
+KYC: route-specific
+Jurisdiction Eligibility: defined by applicable rules
+Minimum Investment: $100 (example; configure from verified terms)
+Status: ACTIVE only after review
+```
+
+### Example: tokenized gold instrument
+
+```
+Instrument ID: RWA-GOLD-002
+Name: Tokenized Gold
+Asset Type: TOKENIZED_COMMODITY
+Issuer / Provider: Provider B
+Deployments: Ethereum, Polygon, Avalanche (only after verification)
+Purchase Route: configured secondary-market route
+KYC: determined by the applicable route
+Transfer Restrictions: deployment-specific
+Status: ACTIVE only after review
+```
+
+These are illustrative records, not verified live listings or assertions
+that the named instruments, providers, chains, or terms are currently
+available.
+
+## 12. Integration boundaries
+
+- **Asset Registry:** canonical instrument identity, deployments,
+route availability, metadata, and status.
+- **Basket Engine:** target allocations and basket versions; it
+references approved instrument IDs.
+- **Eligibility Engine:** determines whether a user may use a specific
+instrument and route.
+- **Execution Router:** chooses and invokes a supported route.
+- **Chain/provider adapters:** handle protocol-specific calls and
+responses.
+- **Pricing and data adapters:** normalize market data without making
+a data provider the source of asset identity.
+- **Activity and reconciliation:** reconcile chain events and provider
+lifecycle updates into actual holdings.
+
+**Design rule:** the Asset Registry decides what an instrument is and
+which deployments/routes are supported; the Basket Engine decides the
+target allocation; the Eligibility Engine decides which routes are
+permitted; and the Execution Router coordinates how the transition is
+carried out.

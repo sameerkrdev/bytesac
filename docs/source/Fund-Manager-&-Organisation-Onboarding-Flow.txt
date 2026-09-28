@@ -1,0 +1,2218 @@
+## Fund Manager & Organisation Onboarding Flow
+
+## 1. Purpose
+
+This document defines the proposed fund-manager onboarding and organization lifecycle for the platform.
+
+The key design principle is:
+
+> **A fund manager is onboarded through an Organization, while the person authenticates through a User account and wallet.**
+> 
+
+The platform separates:
+
+- User authentication
+- Fund-manager application
+- Organization creation
+- Organization verification
+- Organization membership
+- Organization payout wallet
+- Basket ownership/management
+- Public manager history
+- Platform verification
+
+This allows an individual manager and a professional firm to use the same core organization model while keeping private verification information separate from public information.
+
+---
+
+# 2. Recommended Final Architecture
+
+```
+                         PLATFORM
+                            │
+                            ▼
+                  FUND MANAGER APPLICATION
+                            │
+                     Basic Screening
+                            │
+                     Wallet Collection
+                            │
+                    Wallet Ownership Proof
+                            │
+                  ┌─────────┴─────────┐
+                  │                   │
+          Existing User         User Doesn't Exist
+                  │                   │
+                  │             Create Pending User
+                  │                   │
+                  └─────────┬─────────┘
+                            │
+                            ▼
+                 Grant Organization Creation
+                       Permission
+                            │
+                            ▼
+                    USER LOGIN / ACCESS
+                            │
+                            ▼
+                CREATE MANAGER ORGANIZATION
+                            │
+               ┌────────────┴────────────┐
+               │                         │
+           Individual                  Firm
+               │                         │
+          Personal KYC              Business KYB
+          + experience              + ownership
+          + documents                + documents
+               │                         │
+               └────────────┬────────────┘
+                            │
+                            ▼
+                    ORGANIZATION SETUP
+                            │
+                            ▼
+                      UNDER REVIEW
+                            │
+                            ▼
+                    PLATFORM VERIFICATION
+                            │
+                 ┌──────────┴──────────┐
+                 │                     │
+              APPROVED               REJECTED
+                 │
+                 ▼
+          VERIFIED ORGANIZATION
+                 │
+       ┌─────────┼─────────┐
+       │         │         │
+    Members    Wallets   Baskets
+       │
+       ▼
+ Member Add / Remove / Role Changes
+       │
+       ▼
+ Platform Verification where required
+```
+
+---
+
+# 3. Core Entities
+
+The system should keep these concepts separate.
+
+```
+User
+  │
+  ├── Authentication wallet
+  ├── Email
+  ├── Phone
+  └── Investor account
+       │
+       └── Investment wallet
+
+User
+  │
+  └── Organization Membership
+           │
+           ▼
+      Organization
+           │
+           ├── Owner
+           ├── Members
+           ├── Payout Wallet
+           ├── Verification
+           ├── Public Profile
+           └── Baskets
+```
+
+Important:
+
+```
+USER ≠ ORGANIZATION ≠ WALLET ≠ MEMBERSHIP
+```
+
+A person can:
+
+- be a normal investor;
+- own an organization;
+- belong to other organizations;
+- manage baskets;
+- invest in baskets;
+- perform different roles in different organizations.
+
+---
+
+# 4. Stage 1 — Become a Fund Manager Application
+
+The public platform contains:
+
+```
+Become a Fund Manager
+```
+
+The applicant submits an initial application.
+
+The first form should collect enough information for your team to understand and screen the applicant, but it should not necessarily contain the complete KYC/KYB package.
+
+## Initial Application
+
+### Applicant
+
+```
+Applicant type
+- Individual
+- Firm / Company
+
+Full name
+Email
+Phone
+Country / jurisdiction
+Website
+Professional background
+Investment experience
+Relevant qualifications
+Reason for becoming a manager
+Types of baskets they intend to create
+```
+
+The applicant also provides:
+
+```
+Wallet address
+```
+
+However:
+
+> **Do not treat a typed wallet address as proof of ownership.**
+> 
+
+The address is only an identifier until ownership is cryptographically verified.
+
+---
+
+# 5. Stage 2 — Platform Team Contact
+
+After application submission:
+
+```
+Application
+    ↓
+Submitted
+    ↓
+Internal Screening
+    ↓
+Team Contacts Applicant
+```
+
+Your team can communicate with the applicant and perform the initial screening.
+
+Possible statuses:
+
+```
+SUBMITTED
+SCREENING
+CONTACTED
+ADDITIONAL_INFORMATION_REQUIRED
+SCREENING_APPROVED
+SCREENING_REJECTED
+```
+
+This stage is intentionally lightweight.
+
+The purpose is to decide whether the applicant should proceed to the full organization setup.
+
+---
+
+# 6. Stage 3 — Basic Verification
+
+Your team performs the initial/basic verification.
+
+This can include:
+
+```
+Identity sanity check
+Contact verification
+Professional background check
+Basic experience review
+Basic wallet review
+Conflict / risk screening
+```
+
+The exact checks should depend on the jurisdictions and asset types supported by the platform.
+
+If the applicant passes:
+
+```
+screening_status = approved
+```
+
+The platform can proceed to wallet authentication and organization creation.
+
+---
+
+# 7. Stage 4 — Wallet Address Verification
+
+The applicant provides a wallet address.
+
+The platform determines whether that wallet already belongs to a User.
+
+```
+Wallet Address
+      │
+      ▼
+Search wallet
+      │
+ ┌────┴─────┐
+ │          │
+Exists    Doesn't exist
+ │          │
+ ▼          ▼
+Use       Create
+existing  pending User
+User          │
+              ▼
+        Verify wallet ownership
+```
+
+## Important change from the original proposal
+
+Do **not** create an immediately active account merely because someone typed an address.
+
+Recommended process:
+
+```
+Wallet address submitted
+        ↓
+Pending user created if needed
+        ↓
+User connects wallet
+        ↓
+User signs authentication message
+        ↓
+Wallet ownership verified
+        ↓
+User account activated
+```
+
+This prevents someone from claiming another person's wallet address.
+
+---
+
+# 8. Existing User
+
+If the wallet already belongs to an existing platform user:
+
+```
+Application
+    ↓
+Wallet matched
+    ↓
+Existing User identified
+    ↓
+Grant organization-creation permission
+```
+
+The user retains their existing investor account.
+
+The platform does not convert the user into a different account.
+
+Instead:
+
+```
+Existing User
+    │
+    ├── Investor
+    │
+    └── Organization Owner
+```
+
+---
+
+# 9. New User
+
+If the wallet does not belong to an existing platform user:
+
+```
+Application
+    ↓
+Wallet address received
+    ↓
+No matching User
+    ↓
+Create pending User record
+    ↓
+User connects wallet
+    ↓
+User signs message
+    ↓
+Wallet ownership verified
+    ↓
+User account activated
+    ↓
+Grant organization-creation permission
+```
+
+The newly created user can then log into the platform.
+
+---
+
+# 10. Organization Creation Permission
+
+Passing the initial fund-manager screening should grant a special platform permission.
+
+Example:
+
+```
+can_create_manager_organization = true
+```
+
+This is better than immediately giving the user a permanent manager role.
+
+The permission means:
+
+> "This user has passed the initial screening and is allowed to create a manager organization application."
+> 
+
+It does **not** mean:
+
+> "This organization has already been verified."
+> 
+
+---
+
+# 11. Stage 5 — User Creates Organization
+
+The user logs into the platform.
+
+They see:
+
+```
+Create Manager Organization
+```
+
+They select:
+
+```
+Organization Type
+
+○ Individual
+○ Firm / Company
+```
+
+The organization is then created in:
+
+```
+DRAFT
+```
+
+The user becomes the initial:
+
+```
+Owner
+```
+
+Example:
+
+```
+User
+  │
+  └── Owner
+        │
+        ▼
+    Organization
+```
+
+---
+
+# 12. Individual Organization
+
+For an individual manager:
+
+```
+Organization Type = INDIVIDUAL
+```
+
+Potential information:
+
+```
+Legal name
+Public display name
+Country / jurisdiction
+Address
+Date of birth
+Government identity documents
+Proof of address
+Professional history
+Investment experience
+Qualifications
+Relevant registrations/licenses
+Website / social / professional links
+Investment philosophy
+Manager biography
+```
+
+Sensitive documents remain private.
+
+---
+
+# 13. Firm Organization
+
+For a firm:
+
+```
+Organization Type = FIRM
+```
+
+Potential information:
+
+```
+Legal company name
+Public display name
+Company registration number
+Jurisdiction
+Registered address
+Business address
+Website
+Business description
+Company registration documents
+Ownership information
+Directors
+Beneficial owners
+Authorized representatives
+Relevant licenses / registrations
+Business experience
+Investment activity
+Other required compliance documents
+```
+
+The exact required documents should be configurable based on:
+
+```
+Organization type
+Jurisdiction
+Asset/product type
+Regulatory requirements
+Platform policy
+```
+
+---
+
+# 14. Organization Payout Wallet
+
+During organization setup, the Owner must provide a dedicated Solana wallet.
+
+Purpose:
+
+> **Receive basket fees / manager-related payouts.**
+> 
+
+This wallet should be modeled separately from:
+
+- the owner's personal/investor wallet;
+- the owner's authentication wallet;
+- other organization wallets;
+- execution wallets.
+
+Recommended model:
+
+```
+Organization
+    │
+    └── Payout Wallet
+           │
+           ├── chain = Solana
+           ├── address
+           ├── ownership_verified
+           └── status
+```
+
+---
+
+# 15. Payout Wallet Ownership Verification
+
+The Owner provides:
+
+```
+Solana wallet address
+```
+
+Then:
+
+```
+Enter wallet
+      ↓
+Connect wallet
+      ↓
+Sign verification message
+      ↓
+Verify ownership
+      ↓
+Save payout wallet
+```
+
+The platform should never assume that entering an address proves control of the wallet.
+
+Recommended status:
+
+```
+UNVERIFIED
+VERIFYING
+VERIFIED
+REPLACEMENT_PENDING
+REVOKED
+```
+
+---
+
+# 16. Changing the Organization Payout Wallet
+
+The Owner can request a replacement.
+
+Example:
+
+```
+Current payout wallet
+Solana: ABC...XYZ
+
+[Change Wallet]
+```
+
+Recommended flow:
+
+```
+Owner requests wallet change
+        ↓
+New Solana wallet submitted
+        ↓
+New wallet ownership signature
+        ↓
+Platform verification / security checks
+        ↓
+New wallet approved
+        ↓
+Old wallet becomes inactive
+        ↓
+New wallet becomes active
+```
+
+Do not simply overwrite the old address.
+
+Keep the history:
+
+```
+Wallet A
+  active: 2026-01-01 → 2026-09-27
+
+Wallet B
+  active: 2026-09-27 → present
+```
+
+This creates an auditable history.
+
+For security-sensitive wallet changes, consider requiring an additional platform review or delay before the replacement becomes active.
+
+---
+
+# 17. Organization Submission
+
+Once all required information and documents are uploaded:
+
+```
+Organization
+     ↓
+Owner completes setup
+     ↓
+Submit for verification
+     ↓
+UNDER_REVIEW
+```
+
+At this point the organization is not publicly verified.
+
+---
+
+# 18. Organization Verification
+
+The platform team reviews:
+
+```
+Organization information
+Documents
+Identity
+Business information
+Ownership
+Experience
+Wallet ownership
+Required compliance checks
+```
+
+The result can be:
+
+```
+APPROVED
+```
+
+or:
+
+```
+REJECTED
+```
+
+or:
+
+```
+CHANGES_REQUIRED
+```
+
+The `CHANGES_REQUIRED` state is important because it allows your team to ask for missing or incorrect information without forcing the applicant to restart the process.
+
+---
+
+# 19. Recommended Organization Statuses
+
+Use a proper state machine.
+
+```
+DRAFT
+   ↓
+SUBMITTED
+   ↓
+UNDER_REVIEW
+   │
+   ├── CHANGES_REQUIRED
+   │        │
+   │        ▼
+   │     RESUBMITTED
+   │        │
+   │        └──────► UNDER_REVIEW
+   │
+   ├── REJECTED
+   │
+   └── APPROVED
+          ↓
+       VERIFIED
+```
+
+Do not use only:
+
+```
+approved = true/false
+```
+
+The state history is important for auditability.
+
+---
+
+# 20. Public Organization Profile
+
+After approval, the organization gets a public profile.
+
+Example:
+
+```
+ABC Capital
+✓ Verified Organization
+
+Type
+Firm
+
+Jurisdiction
+Singapore
+
+About
+...
+
+Experience
+...
+
+Verification
+Verified by Platform
+
+Members
+Alice
+Bob
+Charlie
+
+Baskets
+Crypto Index
+RWA Income
+AI Infrastructure
+```
+
+Only approved/public information should be shown.
+
+---
+
+# 21. Private vs Public Organization Data
+
+This distinction is critical.
+
+## Private
+
+Never expose sensitive verification material publicly:
+
+```
+Government ID
+Passport
+Aadhaar / PAN or equivalent
+Proof of address
+Private phone
+Private email
+Sensitive compliance reports
+Internal review notes
+Private ownership documents
+Private personal information
+```
+
+## Public
+
+Potentially expose:
+
+```
+Organization name
+Organization type
+Public description
+Jurisdiction
+Public experience
+Public manager biography
+Verification status
+Verification date
+Public website
+Public basket information
+Current organization members/managers
+Manager history
+Relevant public registrations
+```
+
+The exact public fields should be configurable.
+
+---
+
+# 22. Organization Changes After Verification
+
+This is one of the most important parts of the new design.
+
+Once an organization is verified, the Owner must not directly overwrite verified public information.
+
+Instead:
+
+```
+Verified Organization
+       ↓
+Owner edits information
+       ↓
+Create Change Request
+       ↓
+Pending Verification
+       ↓
+Platform Review
+       ↓
+Approved
+       ↓
+New information becomes public
+```
+
+Until approval:
+
+> **The currently approved public information remains visible.**
+> 
+
+The pending changes should not replace the verified public version.
+
+---
+
+# 23. Organization Versioning
+
+Treat important public organization information as versioned.
+
+Example:
+
+```
+Organization Version 1
+    ↓
+Approved
+    ↓
+Organization Version 2
+    ↓
+Approved
+    ↓
+Organization Version 3
+```
+
+Example:
+
+```
+Version 1
+Name: ABC Capital
+Description: ...
+Members: Alice, Bob
+
+Version 2
+Name: ABC Digital Capital
+Description: ...
+Members: Alice, Bob, Charlie
+```
+
+Keep previous versions internally for auditability.
+
+---
+
+# 24. Different Verification Requirements
+
+The required information should depend on the organization type.
+
+```
+Individual
+    ↓
+Individual verification requirements
+
+Firm
+    ↓
+Business/KYB requirements
+```
+
+Do not hard-code one universal checklist.
+
+Recommended model:
+
+```
+verification_requirement_templates
+```
+
+with conditions such as:
+
+```
+organization_type
+jurisdiction
+product_type
+required_documents
+required_fields
+required_checks
+```
+
+This gives you room to expand internationally.
+
+---
+
+# 25. Adding Organization Members
+
+The Owner can initiate:
+
+```
+Organization
+    ↓
+Members
+    ↓
+Add Member
+```
+
+The Owner provides:
+
+```
+Wallet address
+Role
+Email
+Phone
+Required identity/government information
+Required documents
+```
+
+However, I recommend one important refinement:
+
+> **The Owner should not become the permanent custodian of another person's sensitive KYC documents.**
+> 
+
+Prefer:
+
+```
+Owner invites/proposes member
+        ↓
+Member wallet is identified
+        ↓
+Platform verifies / collects required information
+        ↓
+Member proves wallet ownership
+        ↓
+Platform reviews documents
+        ↓
+Member approved
+        ↓
+Membership activated
+```
+
+If your operational process requires the Owner to submit the information initially, store it in the platform's secure verification system and restrict access to authorized verification staff.
+
+---
+
+# 26. Existing Member User
+
+If the wallet already belongs to a platform user:
+
+```
+Owner enters wallet
+       ↓
+Existing User found
+       ↓
+Create Membership Application
+       ↓
+Verification
+       ↓
+Approved
+       ↓
+Membership Active
+```
+
+The existing User account remains unchanged.
+
+The new relationship is:
+
+```
+User
+  │
+  └── Membership
+          │
+          ├── Organization
+          └── Role
+```
+
+---
+
+# 27. New Member User
+
+If the wallet does not belong to an existing user:
+
+```
+Owner enters wallet
+       ↓
+No User found
+       ↓
+Create pending User
+       ↓
+Invite / notify person
+       ↓
+Person connects wallet
+       ↓
+Signs authentication message
+       ↓
+Wallet ownership verified
+       ↓
+Platform verification
+       ↓
+Membership activated
+```
+
+Again:
+
+> **Never activate a wallet-based identity solely because someone entered the address.**
+> 
+
+---
+
+# 28. Organization Member Roles
+
+Recommended organization-level roles:
+
+```
+OWNER
+ADMIN
+MANAGER
+ANALYST
+VIEWER
+```
+
+Example:
+
+```
+ABC Capital
+
+Alice   → OWNER
+Bob     → ADMIN
+Charlie → MANAGER
+David   → ANALYST
+Emma    → VIEWER
+```
+
+Permissions should be role-based.
+
+For example:
+
+```
+OWNER
+├── Organization settings
+├── Members
+├── Payout wallet
+├── Baskets
+├── Verification submissions
+└── Ownership transfer
+
+ADMIN
+├── Members
+├── Baskets
+└── Organization operations
+
+MANAGER
+├── Assigned baskets
+└── Basket management
+
+ANALYST
+├── Analytics
+└── Read / research permissions
+
+VIEWER
+└── Read-only access
+```
+
+The exact permissions should be configurable.
+
+---
+
+# 29. Member Verification Status
+
+Do not model membership as only:
+
+```
+exists / doesn't exist
+```
+
+Use lifecycle states:
+
+```
+INVITED
+PENDING_WALLET_VERIFICATION
+PENDING_DOCUMENTS
+UNDER_REVIEW
+APPROVED
+ACTIVE
+CHANGES_REQUIRED
+REJECTED
+REMOVAL_REQUESTED
+REVOKED
+```
+
+This gives the operations team visibility into every member onboarding.
+
+---
+
+# 30. Member Removal
+
+The new flow is correct in one important respect:
+
+> **Removing a member should remove the organization membership, not erase the historical person or basket records.**
+> 
+
+Recommended flow:
+
+```
+Owner
+  ↓
+Remove / Revoke Member
+  ↓
+Membership status = REVOKED
+  ↓
+Member loses organization permissions
+  ↓
+Historical relationship preserved
+```
+
+Do not hard-delete the membership.
+
+---
+
+# 31. What Happens to the Member's Baskets?
+
+This requires an important refinement to the proposed flow.
+
+Do not automatically delete a basket because its manager leaves.
+
+Instead separate:
+
+```
+Basket
+```
+
+from:
+
+```
+Basket Manager Assignment
+```
+
+Example:
+
+```
+Basket
+  ├── Basket ID
+  ├── Versions
+  ├── Performance history
+  ├── Investors
+  └── Current Manager
+```
+
+and:
+
+```
+Manager Assignment
+  ├── Basket
+  ├── Organization
+  ├── User
+  ├── Role
+  ├── Started At
+  └── Ended At
+```
+
+This allows the historical record to survive.
+
+---
+
+# 32. Manager Removal From a Basket
+
+Suppose:
+
+```
+ABC Capital
+   │
+   └── Alice manages
+          │
+          └── Crypto Index
+```
+
+Alice leaves.
+
+Do not erase:
+
+```
+Crypto Index
+```
+
+Instead:
+
+```
+Alice
+  │
+  └── Manager Assignment
+          status = ENDED
+          ended_at = ...
+```
+
+The basket can then enter a defined state such as:
+
+```
+MANAGER_REMOVED
+```
+
+or:
+
+```
+MANAGER_REVIEW_REQUIRED
+```
+
+depending on your product policy.
+
+---
+
+# 33. Critical Product Decision: Basket Ownership vs Manager Attribution
+
+You need to explicitly define:
+
+> Does a basket belong to the Organization, or to the individual Manager?
+> 
+
+For the architecture we have been building, the cleanest model is:
+
+```
+Basket belongs to Organization
+```
+
+while:
+
+```
+Manager is assigned to the Basket
+```
+
+Therefore:
+
+```
+Organization
+    │
+    └── Basket
+           │
+           └── Manager Assignment
+                  │
+                  └── User
+```
+
+This means when a manager leaves:
+
+- the organization keeps the basket;
+- the manager's historical association remains;
+- the manager loses edit permissions;
+- the basket can be paused, reassigned, or retired according to policy;
+- investors can see the manager history.
+
+This is substantially safer than deleting or transferring ownership implicitly.
+
+---
+
+# 34. Public Manager History
+
+Your idea of public history is valuable and should be implemented as an explicit feature.
+
+Example:
+
+```
+Crypto Index
+
+Current Manager
+ABC Capital
+
+Manager History
+
+Alice
+Manager
+Jan 2026 → Sep 2026
+Status: Former Manager
+
+Bob
+Manager
+Sep 2026 → Present
+Status: Current Manager
+```
+
+This creates transparency without deleting history.
+
+---
+
+# 35. Public Organization Member History
+
+The organization can show:
+
+```
+Current Team
+
+Alice
+Owner
+
+Bob
+Manager
+
+Charlie
+Analyst
+```
+
+And where appropriate:
+
+```
+Former Team Members
+
+David
+Former Manager
+Jan 2026 → Aug 2026
+```
+
+Do not expose sensitive personal information merely because historical membership is public.
+
+---
+
+# 36. Manager Removal Notification
+
+If a manager associated with a basket is removed:
+
+```
+Member Revoked
+       ↓
+Find affected baskets
+       ↓
+Find affected investors
+       ↓
+Create notification
+```
+
+Example:
+
+```
+Important update
+
+The manager associated with
+"Crypto Index" is no longer associated
+with ABC Capital.
+
+The basket's manager status has changed.
+Please review the latest basket information.
+```
+
+Do not imply that investor assets were transferred unless that actually happened.
+
+---
+
+# 37. New Manager Notification
+
+If a new manager is assigned to an existing basket:
+
+```
+New Manager Assigned
+       ↓
+Find affected investors
+       ↓
+Create notification
+```
+
+Example:
+
+```
+Manager update
+
+ABC Capital has assigned a new manager
+to "Crypto Index".
+
+Review the updated manager profile
+and basket information.
+```
+
+Notifications should describe the factual change.
+
+---
+
+# 38. Basket State When Manager Leaves
+
+You need an explicit policy.
+
+Recommended states:
+
+```
+DRAFT
+UNDER_REVIEW
+PUBLISHED
+PAUSED
+MANAGER_REMOVED
+REASSIGNMENT_REQUIRED
+RETIRED
+ARCHIVED
+```
+
+Example:
+
+```
+Manager removed
+      ↓
+Basket = REASSIGNMENT_REQUIRED
+      ↓
+Organization assigns new manager
+      ↓
+Platform verifies required changes
+      ↓
+Basket returns to PUBLISHED
+```
+
+Alternatively, if your policy allows the basket to remain active under the organization without a named individual manager, you can define:
+
+```
+Current Manager = Organization
+```
+
+But this should be an explicit business rule rather than an accidental side effect.
+
+---
+
+# 39. Public Changes Must Be Auditable
+
+For every important change, keep:
+
+```
+who changed it
+what changed
+old value
+new value
+submitted_at
+reviewed_at
+approved_at
+approved_by
+effective_at
+reason
+```
+
+Example:
+
+```
+Organization Change
+
+Field:
+description
+
+Old:
+"Crypto investment company"
+
+New:
+"Digital asset investment manager"
+
+Submitted:
+2026-09-27
+
+Approved:
+2026-09-28
+
+Approved by:
+Platform Compliance Admin
+```
+
+---
+
+# 40. Recommended Database Model
+
+A high-level relational model:
+
+```
+users
+----------------
+id
+status
+created_at
+
+wallets
+----------------
+id
+user_id
+chain
+address
+wallet_type
+verified
+verified_at
+
+fund_manager_applications
+----------------
+id
+applicant_user_id
+applicant_type
+status
+submitted_at
+reviewed_at
+
+organizations
+----------------
+id
+type
+status
+public_name
+public_description
+created_at
+verified_at
+
+organization_memberships
+----------------
+id
+organization_id
+user_id
+role
+status
+joined_at
+left_at
+
+organization_verifications
+----------------
+id
+organization_id
+status
+verification_version
+reviewed_by
+reviewed_at
+
+organization_documents
+----------------
+id
+organization_id
+document_type
+storage_reference
+verification_status
+uploaded_at
+reviewed_at
+
+organization_wallets
+----------------
+id
+organization_id
+chain
+address
+wallet_type
+status
+verified_at
+
+organization_wallet_history
+----------------
+id
+organization_wallet_id
+address
+status
+valid_from
+valid_to
+
+organization_change_requests
+----------------
+id
+organization_id
+version
+status
+submitted_by
+submitted_at
+reviewed_by
+reviewed_at
+
+baskets
+----------------
+id
+organization_id
+status
+public_name
+created_at
+
+basket_manager_assignments
+----------------
+id
+basket_id
+organization_id
+user_id
+role
+status
+started_at
+ended_at
+
+basket_versions
+----------------
+id
+basket_id
+version_number
+status
+published_at
+
+notifications
+----------------
+id
+user_id
+type
+entity_type
+entity_id
+read_at
+created_at
+```
+
+---
+
+# 41. Recommended Relationship Model
+
+```
+USER
+ │
+ ├──────────────► WALLET
+ │
+ ├──────────────► INVESTOR ACCOUNT
+ │
+ └──────────────► ORGANIZATION MEMBERSHIP
+                       │
+                       ▼
+                  ORGANIZATION
+                       │
+             ┌─────────┼─────────┐
+             │         │         │
+          MEMBERS    WALLETS    BASKETS
+             │                   │
+             │                   │
+             └──────────┐        │
+                        ▼        ▼
+                       USER ◄── MANAGER ASSIGNMENT
+```
+
+---
+
+# 42. Complete End-to-End Flow
+
+## A. Manager Application
+
+```
+Public Platform
+      ↓
+Become a Fund Manager
+      ↓
+Application Form
+      ↓
+Submit
+      ↓
+Application = SUBMITTED
+```
+
+## B. Initial Platform Screening
+
+```
+Platform Team
+      ↓
+Review application
+      ↓
+Contact applicant
+      ↓
+Basic verification
+      ↓
+SCREENING_APPROVED
+```
+
+## C. Wallet Authentication
+
+```
+Request wallet address
+      ↓
+Search existing User
+      ↓
+Existing?
+   ┌──┴──┐
+  YES    NO
+   │      │
+   │   Create pending User
+   │      │
+   └──┬───┘
+      ↓
+Wallet connection
+      ↓
+Signature
+      ↓
+Wallet ownership verified
+```
+
+## D. Organization Creation
+
+```
+Grant organization creation permission
+      ↓
+User logs in
+      ↓
+Create Organization
+      ↓
+Select:
+Individual / Firm
+      ↓
+Owner assigned
+      ↓
+Complete organization information
+      ↓
+Upload required documents
+      ↓
+Add Solana payout wallet
+      ↓
+Sign wallet verification
+      ↓
+Submit
+      ↓
+UNDER_REVIEW
+```
+
+## E. Organization Approval
+
+```
+Platform Team
+      ↓
+Review information
+      ↓
+Review documents
+      ↓
+Verify wallet
+      ↓
+Verify individual / firm
+      ↓
+APPROVED
+      ↓
+Organization = VERIFIED
+      ↓
+Public profile becomes active
+```
+
+## F. Organization Changes
+
+```
+Owner edits verified information
+      ↓
+Change Request created
+      ↓
+Current public version remains visible
+      ↓
+Platform reviews proposed change
+      ↓
+Approved
+      ↓
+New version becomes public
+```
+
+## G. Add Member
+
+```
+Owner
+  ↓
+Add Member
+  ↓
+Wallet + role + contact information
+  ↓
+Existing User?
+ ┌──────┴──────┐
+YES            NO
+ │              │
+Existing       Pending User
+User           creation
+ │              │
+ └──────┬───────┘
+        ↓
+Wallet ownership verification
+        ↓
+Required documents
+        ↓
+Platform review
+        ↓
+APPROVED
+        ↓
+Organization Membership = ACTIVE
+```
+
+## H. Remove Member
+
+```
+Owner
+  ↓
+Remove / Revoke Member
+  ↓
+Membership = REVOKED
+  ↓
+Permissions removed
+  ↓
+Historical membership preserved
+  ↓
+Find affected baskets
+  ↓
+Update manager assignment
+  ↓
+Update public manager history
+  ↓
+Notify affected investors
+```
+
+---
+
+# 43. Important Changes From the Previous Architecture
+
+## Change 1 — Manager application and organization creation are separate
+
+### Previous
+
+```
+Application
+   ↓
+Verification
+   ↓
+Manager Account
+   ↓
+Manager Workspace
+```
+
+### New
+
+```
+Application
+   ↓
+Initial Screening
+   ↓
+Wallet Authentication
+   ↓
+User
+   ↓
+Organization Creation
+   ↓
+Organization Verification
+   ↓
+Manager Workspace
+```
+
+This is a cleaner separation between the person and the organization.
+
+---
+
+# 44. Change 2 — Manager is no longer a simple User role
+
+Previously the conceptual model included:
+
+```
+User
+ └── Role
+      ├── Investor
+      └── Fund Manager
+```
+
+The new architecture should instead emphasize:
+
+```
+User
+ ├── Investor
+ │
+ └── Organization Membership
+        └── Organization
+              └── Manager permissions
+```
+
+The user is a person.
+
+The organization is the manager entity.
+
+The membership grants the person authority within that organization.
+
+---
+
+# 45. Change 3 — Organization becomes the durable owner of baskets
+
+Recommended:
+
+```
+Organization
+   │
+   └── Basket
+          │
+          └── Manager Assignment
+```
+
+Not:
+
+```
+Individual User
+   │
+   └── Basket
+```
+
+This is especially important for firms.
+
+If an employee leaves:
+
+```
+Employee leaves
+     ↓
+Membership revoked
+     ↓
+Basket remains with organization
+```
+
+---
+
+# 46. Change 4 — Payout wallet is a dedicated organization resource
+
+Do not mix:
+
+```
+User authentication wallet
+```
+
+with:
+
+```
+Organization payout wallet
+```
+
+Recommended:
+
+```
+User Wallet
+     ↓
+Authentication / personal investing
+
+Organization Payout Wallet
+     ↓
+Basket fees / organization payouts
+```
+
+The payout wallet is verified separately.
+
+---
+
+# 47. Change 5 — Organization changes require re-verification
+
+The new requirement is stronger than the previous model.
+
+Do not let:
+
+```
+Verified Organization
+```
+
+be directly edited into:
+
+```
+New Public Organization
+```
+
+Instead:
+
+```
+Verified Version
+      ↓
+Change Request
+      ↓
+Review
+      ↓
+Approved Version
+```
+
+This protects the integrity of public manager information.
+
+---
+
+# 48. Change 6 — Membership has its own verification workflow
+
+A member should not become active merely because the Owner adds their wallet.
+
+Instead:
+
+```
+Owner proposes member
+      ↓
+Platform verification
+      ↓
+Wallet ownership proof
+      ↓
+Documents
+      ↓
+Approval
+      ↓
+Membership active
+```
+
+---
+
+# 49. Change 7 — Historical records must never be deleted
+
+For:
+
+```
+Organizations
+Members
+Manager assignments
+Baskets
+Basket versions
+Wallets
+Verification decisions
+Public profiles
+```
+
+prefer:
+
+```
+status + timestamps + history
+```
+
+over hard deletion.
+
+This is particularly important for investment products where users may need to understand historical manager relationships.
+
+---
+
+# 50. Change 8 — Public history becomes a first-class concept
+
+The platform should not only show:
+
+```
+Current Manager
+```
+
+It should also maintain:
+
+```
+Manager History
+```
+
+This allows investors to understand:
+
+```
+Who managed this basket?
+When?
+Who manages it now?
+When did the change happen?
+```
+
+---
+
+# 51. Recommended Final Mental Model
+
+```
+                         USER
+                          │
+             ┌────────────┴────────────┐
+             │                         │
+       INVESTOR CONTEXT          ORGANIZATION
+             │                         │
+      Investment Wallet          Memberships
+                                       │
+                                       ▼
+                                ORGANIZATION
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    │                  │                  │
+                 MEMBERS          PAYOUT WALLET        BASKETS
+                    │                                     │
+                    │                                     │
+                    └──────────────────────┐              │
+                                           ▼              ▼
+                                         USERS ◄── MANAGER ASSIGNMENTS
+                                                          │
+                                                          ▼
+                                                   BASKET HISTORY
+```
+
+---
+
+# 52. Final Product Principles
+
+### Principle 1
+
+> **Wallet proves control of an identity, not organization approval.**
+> 
+
+### Principle 2
+
+> **User identity and organization identity are separate.**
+> 
+
+### Principle 3
+
+> **Organization owns the manager business context and baskets.**
+> 
+
+### Principle 4
+
+> **Membership grants a user authority inside an organization.**
+> 
+
+### Principle 5
+
+> **Sensitive verification information stays private.**
+> 
+
+### Principle 6
+
+> **Public verified information changes only after platform approval.**
+> 
+
+### Principle 7
+
+> **Payout wallet is separate from personal/authentication wallets.**
+> 
+
+### Principle 8
+
+> **Removing a member removes permissions, not history.**
+> 
+
+### Principle 9
+
+> **Removing a manager does not automatically delete the basket.**
+> 
+
+### Principle 10
+
+> **Manager changes affecting investors generate appropriate notifications.**
+> 
+
+### Principle 11
+
+> **All important verification and membership changes are auditable.**
+> 
+
+### Principle 12
+
+> **The organization remains the durable entity even when individual managers change.**
+> 
+
+---
+
+# 53. Recommended Final Flow
+
+```
+┌──────────────────────────────┐
+│ 1. Become Fund Manager      │
+│    Application               │
+└──────────────┬───────────────┘
+               ↓
+┌──────────────────────────────┐
+│ 2. Platform Screening        │
+│    Team Contact + Review     │
+└──────────────┬───────────────┘
+               ↓
+┌──────────────────────────────┐
+│ 3. Wallet Address            │
+│    + Ownership Verification  │
+└──────────────┬───────────────┘
+               ↓
+        Existing User?
+          /        \
+        Yes         No
+         │           │
+         │      Create Pending User
+         │           │
+         └─────┬─────┘
+               ↓
+┌──────────────────────────────┐
+│ 4. Grant Organization        │
+│    Creation Permission       │
+└──────────────┬───────────────┘
+               ↓
+┌──────────────────────────────┐
+│ 5. User Creates Organization │
+│    Individual / Firm         │
+│    Becomes Owner              │
+└──────────────┬───────────────┘
+               ↓
+┌──────────────────────────────┐
+│ 6. Complete Org Setup        │
+│    KYC / KYB                 │
+│    Experience                │
+│    Documents                 │
+│    Solana Payout Wallet      │
+└──────────────┬───────────────┘
+               ↓
+┌──────────────────────────────┐
+│ 7. Organization Under Review │
+└──────────────┬───────────────┘
+               ↓
+       Platform Verification
+          /            \
+      Approved       Changes Required
+         │                 │
+         ↓                 └──→ Resubmit
+   VERIFIED ORG
+         │
+         ├───────────────┐
+         │               │
+      Members         Baskets
+         │               │
+         │          Manager Assignment
+         │               │
+         │               ▼
+         │        Public Basket History
+         │
+         ▼
+  Member Verification
+         │
+         ▼
+     Active Member
+         │
+         └──→ Role / Permission Management
+
+Verified Org Change
+         ↓
+Change Request
+         ↓
+Platform Review
+         ↓
+Approved New Version
+         ↓
+Public Update
+
+Member Removed
+         ↓
+Membership Revoked
+         ↓
+Permissions Removed
+         ↓
+Historical Record Preserved
+         ↓
+Affected Baskets Identified
+         ↓
+Manager History Updated
+         ↓
+Affected Investors Notified
+```

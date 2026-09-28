@@ -1,0 +1,1388 @@
+## Detailed Features
+
+## 1. Fund Manager Eligibility
+
+A fund manager on the platform can be:
+
+- An **individual**
+- A **firm / company / organization**
+
+The platform is open to applications from anyone who wants to become a fund manager, but **no applicant can immediately publish a basket**.
+
+Every prospective fund manager must first pass the platform's internal review and verification process.
+
+The manager model separates:
+
+```
+Individual / Person
+        ↓
+User Account
+        ↓
+Organization
+        ↓
+Organization Membership
+        ↓
+Manager Permissions
+        ↓
+Baskets
+```
+
+For firms, the organization becomes the durable entity that owns/manages baskets, while individual people are assigned to the organization and its baskets through memberships/manager assignments.
+
+---
+
+# 2. Become a Fund Manager
+
+Anyone interested in becoming a fund manager must complete:
+
+> **Become Fund Manager Form**
+> 
+
+The initial form collects information required for the platform team to understand and screen the applicant.
+
+### Individual applicant
+
+Potential information:
+
+- Full name
+- Contact information
+- Country / jurisdiction
+- Professional background
+- Investment experience
+- Qualifications
+- Investment philosophy
+- Previous experience
+- Intended investment strategies
+- Other relevant information
+
+### Firm applicant
+
+Potential information:
+
+- Firm/company name
+- Country / jurisdiction
+- Website
+- Business information
+- Investment experience
+- Team information
+- Company background
+- Intended investment strategies
+- Other relevant information
+
+The detailed KYC/KYB and verification process happens separately after the initial application.
+
+---
+
+# 3. Initial Platform Review
+
+After the application is submitted:
+
+```
+Become Fund Manager Form
+          ↓
+Application Submitted
+          ↓
+Platform Team Review
+          ↓
+Team Contacts Applicant
+          ↓
+Initial Screening
+```
+
+The platform team can:
+
+- Contact the applicant
+- Request additional information
+- Review the submitted profile
+- Perform initial background checks
+- Determine whether the applicant should proceed to detailed verification
+
+Possible application states:
+
+```
+SUBMITTED
+SCREENING
+CONTACTED
+ADDITIONAL_INFORMATION_REQUIRED
+SCREENING_APPROVED
+SCREENING_REJECTED
+```
+
+---
+
+# 4. In-Depth Fund Manager Verification
+
+Passing the initial application review does **not** immediately make the applicant a verified fund manager.
+
+The applicant must go through the platform's internal verification process.
+
+The objective is to:
+
+> **Verify the individual/firm and reduce the risk of fraud and misleading investment products on the platform.**
+> 
+
+---
+
+# 5. Individual Verification
+
+For an individual manager, the platform can review information such as:
+
+- Identity
+- Government-issued documents
+- Address
+- Professional background
+- Investment experience
+- Qualifications
+- Relevant registrations/licenses where applicable
+- Public professional history
+- Previous investment activity
+- Other relevant information required by the platform
+
+The exact verification requirements can depend on the applicant's jurisdiction and the type of baskets/assets they intend to manage.
+
+---
+
+# 6. Firm Verification
+
+For a firm/organization, the platform can perform business-level verification.
+
+Potential checks include:
+
+- Legal company identity
+- Company registration
+- Jurisdiction
+- Registered address
+- Business information
+- Ownership information
+- Directors
+- Beneficial owners
+- Authorized representatives
+- Relevant licenses/registrations
+- Business history
+- Investment activity
+- Firm website/public presence
+- Other required corporate documents
+
+The platform's organization architecture already separates private verification information from the organization's public profile.
+
+---
+
+# 7. Verification Clearance
+
+The manager receives permission to publish baskets **only after the required internal review and verification has been completed successfully**.
+
+```
+Become Fund Manager
+        ↓
+Initial Review
+        ↓
+Detailed Verification
+        ↓
+Platform Clearance
+        ↓
+Manager Organization Approved
+        ↓
+Permission to Publish Baskets
+```
+
+This permission should be treated separately from simply having a user account.
+
+Conceptually:
+
+```
+User
+  ≠
+Verified Fund Manager
+```
+
+A user can exist on the platform without being authorized to create/publish investment baskets.
+
+---
+
+# 8. Verified Fund Manager / Organization
+
+After successful verification:
+
+```
+User
+  ↓
+Verified Organization
+  ↓
+Manager Permissions
+  ↓
+Create Basket
+```
+
+For a firm:
+
+```
+Organization
+ ├── Owner
+ ├── Managers
+ ├── Analysts
+ ├── Admins
+ └── Other members
+```
+
+The organization can then manage its baskets and team according to the permissions assigned to each member.
+
+---
+
+# 9. Fund Manager Organization
+
+A fund manager should operate through an organization rather than treating an individual wallet as the entire manager identity.
+
+```
+FUND MANAGER ORGANIZATION
+        │
+        ├── Organization Profile
+        ├── Verification
+        ├── Team
+        ├── Roles & Permissions
+        ├── Payout Wallet
+        └── Baskets
+```
+
+This supports both:
+
+```
+Individual Manager
+```
+
+and:
+
+```
+Professional Firm
+```
+
+without requiring two completely separate manager systems.
+
+---
+
+# 10. Team Management
+
+A fund manager/organization can add additional team members.
+
+Example:
+
+```
+ABC Capital
+ │
+ ├── Alice — Owner
+ ├── Bob — Admin
+ ├── Charlie — Manager
+ ├── David — Analyst
+ └── Emma — Viewer
+```
+
+The organization can manage:
+
+- Members
+- Roles
+- Permissions
+- Basket assignments
+- Access to organization information
+- Manager responsibilities
+
+The existing organization architecture defines roles such as Owner, Admin, Manager, Analyst and Viewer as the basis for organization-level permissions.
+
+---
+
+# 11. Team Member Verification
+
+Adding someone to the organization should not automatically make them an active manager.
+
+Conceptually:
+
+```
+Owner adds member
+        ↓
+Member invitation
+        ↓
+Wallet ownership verification
+        ↓
+Required information/documents
+        ↓
+Platform review where required
+        ↓
+Member approved
+        ↓
+Membership ACTIVE
+```
+
+This keeps the organization owner from bypassing platform-level verification requirements.
+
+---
+
+# 12. Role-Based Permissions
+
+The organization should have granular permissions.
+
+Example:
+
+### Owner
+
+Can:
+
+- Manage organization
+- Manage members
+- Manage roles
+- Manage payout wallet
+- Create baskets
+- Assign managers
+- Submit baskets for review
+- Manage organization settings
+
+### Admin
+
+Can:
+
+- Manage team members
+- Manage organization operations
+- Manage baskets where permitted
+
+### Manager
+
+Can:
+
+- Create baskets
+- Manage assigned baskets
+- Prepare strategy updates
+- Create rebalance proposals
+- Publish manager updates
+
+### Analyst
+
+Can:
+
+- Research assets
+- Prepare analysis
+- View portfolio/strategy information
+- Support managers
+
+### Viewer
+
+Can:
+
+- View organization information
+- View permitted basket information
+
+The exact permission matrix should be configurable rather than hard-coded to only these roles.
+
+---
+
+# 13. Creating a Basket
+
+After the organization has been approved, an authorized manager can create a basket.
+
+```
+Manager Workspace
+        ↓
+Create Basket
+        ↓
+Basket Draft
+        ↓
+Configure Strategy
+        ↓
+Submit for Platform Review
+```
+
+The basket should initially exist as:
+
+```
+DRAFT
+```
+
+and should **not** be publicly investable.
+
+---
+
+# 14. Basket Creation Information
+
+The manager should provide complete information about the basket.
+
+### Basic information
+
+- Basket name
+- Description
+- Investment objective
+- Investment thesis
+- Strategy
+- Risk information
+- Intended investor profile
+
+### Portfolio
+
+- Assets
+- Target weights
+- Minimum/maximum weights where applicable
+- Asset categories
+- Sectors
+- Geographic exposure
+- Expected diversification
+
+### Rebalancing
+
+- Rebalance frequency
+- Rebalance methodology
+- Rebalance thresholds
+- Conditions that can trigger a rebalance
+- Manager's rebalance philosophy
+
+### Management
+
+- Organization
+- Basket manager(s)
+- Team members involved
+- Responsibilities
+- Relevant manager experience
+
+### Commercial terms
+
+- Minimum investment
+- Manager fee
+- Platform fee where applicable
+- Subscription fee
+- Other applicable charges
+
+---
+
+# 15. Basket Strategy Review
+
+Before a basket can be published, the platform's internal team reviews the proposed strategy.
+
+The review should cover:
+
+```
+Basket
+ │
+ ├── Strategy
+ ├── Investment thesis
+ ├── Assets
+ ├── Asset weights
+ ├── Risk characteristics
+ ├── Rebalance frequency
+ ├── Rebalance methodology
+ ├── Manager(s)
+ ├── Organization
+ └── Fees
+```
+
+The objective is to ensure that the basket information is complete, understandable, and suitable for platform publication under the platform's review criteria.
+
+---
+
+# 16. Basket Internal Review
+
+The workflow should be:
+
+```
+Manager Creates Basket
+        ↓
+DRAFT
+        ↓
+Manager Completes Information
+        ↓
+Submit for Review
+        ↓
+PLATFORM REVIEW
+        ↓
+   ┌────┴─────┐
+   │          │
+Changes     Approved
+Required      │
+   │          ▼
+   │       Published
+   │
+   └──→ Manager Updates
+             ↓
+          Resubmit
+```
+
+A basket should not become publicly investable before the required platform review is complete.
+
+---
+
+# 17. Basket Review Checklist
+
+The internal team should review at least:
+
+### Strategy
+
+- What is the investment thesis?
+- What objective is the basket trying to achieve?
+- What methodology is being used?
+
+### Assets
+
+- Which assets are included?
+- Why are they included?
+- Are they supported by the platform?
+- Are there any asset-specific restrictions?
+
+### Weighting
+
+- What percentage does each asset represent?
+- Does the allocation make sense according to the stated strategy?
+- Are there concentration limits?
+
+### Rebalancing
+
+- How frequently will the basket be reviewed?
+- What triggers a rebalance?
+- What methodology will be used?
+- How are users notified?
+- What information will users receive?
+
+### Management
+
+- Who manages the basket?
+- What is each manager's responsibility?
+- What organization is responsible for the basket?
+
+### Fees
+
+- Is there a subscription fee?
+- Is there an investment/management fee?
+- Are there other applicable fees?
+- Are all fees clearly disclosed?
+
+---
+
+# 18. Public Basket Information
+
+The goal is that an end user should have enough information to perform meaningful research before investing.
+
+A basket page should expose:
+
+```
+BASKET
+ │
+ ├── Overview
+ ├── Investment Thesis
+ ├── Strategy
+ ├── Current Allocation
+ ├── Historical Allocation
+ ├── Performance
+ ├── Returns
+ ├── Risk Metrics
+ ├── Rebalance History
+ ├── Fees
+ ├── Minimum Investment
+ ├── Manager
+ ├── Organization
+ └── Team
+```
+
+---
+
+# 19. Manager Information on Basket Page
+
+Users should be able to see the manager(s) responsible for the basket.
+
+Example:
+
+```
+Managed By
+
+Alice Smith
+Portfolio Manager
+
+Experience:
+8 years
+
+Organization:
+ABC Capital
+
+Role:
+Lead Manager
+```
+
+The user can then navigate to:
+
+```
+Manager Profile
+```
+
+and:
+
+```
+Organization Profile
+```
+
+---
+
+# 20. Organization Profile
+
+The organization profile should provide public information such as:
+
+```
+ABC Capital
+✓ Verified
+
+About
+...
+
+Experience
+...
+
+Jurisdiction
+...
+
+Team
+...
+
+Baskets
+...
+
+Manager History
+...
+```
+
+Sensitive documents and private verification material should remain restricted to authorized platform personnel.
+
+---
+
+# 21. Government / Verification Documents
+
+Users can be provided with appropriate **public verification/document details**, but sensitive government documents should not simply be exposed publicly.
+
+A better structure is:
+
+```
+Verification
+
+Identity:
+Verified ✓
+
+Organization:
+Verified ✓
+
+Registration:
+Verified
+
+Relevant License:
+Verified / Not Applicable
+
+Documents:
+Verified by Platform
+```
+
+Where legally and operationally appropriate, the platform can expose public registration numbers, document types, issuing jurisdiction, verification status, or other non-sensitive details.
+
+The underlying private documents remain in the platform's secure verification system.
+
+---
+
+# 22. Basket Performance
+
+Users should be able to research historical basket performance.
+
+Potential metrics:
+
+- Total return
+- Periodic returns
+- YoY return
+- Monthly performance
+- Volatility
+- Maximum drawdown
+- Performance history
+- Historical allocation
+- Rebalance history
+
+Performance should be clearly distinguished from future expectations.
+
+---
+
+# 23. Basket Rebalance History
+
+Every meaningful basket strategy change should be versioned.
+
+Example:
+
+```
+Basket Rebalance History
+
+v1
+BTC 40%
+ETH 30%
+SOL 30%
+
+v2
+BTC 35%
+ETH 35%
+SOL 20%
+ARB 10%
+
+v3
+BTC 30%
+ETH 40%
+SOL 20%
+ARB 10%
+```
+
+The previous basket versions should remain available for historical analysis. The platform's existing architecture already treats basket strategy as a versioned model portfolio rather than overwriting previous targets.
+
+---
+
+# 24. Publishing a Rebalance
+
+A manager should not simply click:
+
+```
+Rebalance
+```
+
+and publish a new allocation.
+
+Instead, the manager creates a detailed rebalance proposal.
+
+```
+Current Basket
+      ↓
+Create Rebalance
+      ↓
+Change Assets / Weights
+      ↓
+Provide Reason
+      ↓
+Explain Expected Impact
+      ↓
+Submit for Review
+      ↓
+Platform Review
+      ↓
+Publish New Basket Version
+```
+
+---
+
+# 25. Rebalance Reason
+
+Every rebalance should contain a clear explanation.
+
+Example:
+
+> **Reason for rebalance**
+> 
+> 
+> We are reducing SOL exposure from 30% to 20% because the strategy has reduced its allocation to higher-volatility assets and increased its allocation to BTC and ETH.
+> 
+
+The explanation should describe the manager's stated rationale rather than simply showing numerical changes.
+
+---
+
+# 26. Rebalance Change Summary
+
+The user should be able to immediately understand what changed.
+
+Example:
+
+```
+Previous Allocation     New Allocation
+
+BTC    25%       →      30%    +5%
+SOL    30%       →      20%   -10%
+ETH    10%       →      15%    +5%
+RWA    35%       →      35%     0%
+```
+
+---
+
+# 27. Rebalance Impact
+
+The manager should explain the expected portfolio impact.
+
+For example:
+
+```
+Expected Impact
+
+BTC exposure:
+Increases
+
+SOL exposure:
+Decreases
+
+Portfolio volatility:
+Expected to change
+
+RWA exposure:
+Unchanged
+
+Diversification:
+Changes due to asset-weight adjustments
+```
+
+Where quantitative claims are made, the platform should distinguish historical/estimated metrics from guaranteed outcomes.
+
+---
+
+# 28. Rebalance Review by Platform
+
+The platform team reviews the proposed rebalance before publication.
+
+Review:
+
+```
+Current Strategy
+       ↓
+Proposed Strategy
+       ↓
+Asset Changes
+       ↓
+Weight Changes
+       ↓
+Reason
+       ↓
+Expected Impact
+       ↓
+Rebalance Methodology
+       ↓
+Platform Review
+```
+
+Then:
+
+```
+APPROVE
+```
+
+or:
+
+```
+CHANGES_REQUIRED
+```
+
+---
+
+# 29. Rebalance Publication
+
+Once approved:
+
+```
+New Basket Version
+        ↓
+Published
+        ↓
+Historical Version Preserved
+        ↓
+Invested Users Notified
+        ↓
+Users Review
+        ↓
+Participate / Skip
+```
+
+The user's existing holdings remain unchanged until the user chooses to participate.
+
+This preserves the user-controlled rebalance model already defined for the platform.
+
+---
+
+# 30. Manager Revenue Model
+
+Fund managers can monetize baskets through several mechanisms.
+
+## A. Subscription Fee
+
+A manager can create a basket with a recurring subscription.
+
+Supported frequencies can include:
+
+- Monthly
+- Quarterly
+- Yearly
+
+Example:
+
+```
+Basket Subscription
+
+$10 / month
+```
+
+or:
+
+```
+$50 / quarter
+```
+
+or:
+
+```
+$150 / year
+```
+
+The exact recurring-payment mechanism is a separate implementation decision.
+
+---
+
+# 31. Investment-Based Manager Fee
+
+When a user invests into a basket, the manager can receive a fee based on the investment amount.
+
+Example:
+
+```
+User invests:
+$1,000
+
+Manager fee:
+1%
+
+Manager fee:
+$10
+```
+
+You also specified a **maximum fee cap**, so the fee model can be represented as:
+
+```
+Manager Fee =
+min(
+    Investment Amount × Fee %
+    ,
+    Maximum Fee Cap
+)
+```
+
+This should be clearly disclosed before the user confirms the investment.
+
+---
+
+# 32. Rebalance-Based Manager Fee
+
+When a user chooses to participate in a rebalance, the manager can again receive a percentage-based fee according to the basket's configured fee model.
+
+Example:
+
+```
+Rebalance amount:
+$2,000
+
+Manager fee:
+1%
+
+Manager fee:
+$20
+```
+
+with the applicable maximum cap where configured.
+
+The user should see the fee before confirming the rebalance.
+
+---
+
+# 33. Free Baskets
+
+A manager can also publish a basket with:
+
+```
+Subscription Fee = $0
+Investment Fee = $0
+Rebalance Fee = $0
+```
+
+or whichever fee categories the platform permits to be zero.
+
+This allows managers to create free baskets to:
+
+- Build an audience
+- Demonstrate their strategy
+- Build a track record
+- Attract users
+- Introduce users to their organization
+
+---
+
+# 34. Fee Transparency
+
+Every basket should clearly disclose:
+
+```
+Fees
+
+Subscription:
+$X / month
+
+Investment fee:
+X%
+
+Maximum investment fee:
+$X
+
+Rebalance fee:
+X%
+
+Maximum rebalance fee:
+$X
+
+Other platform/execution fees:
+As applicable
+```
+
+Users should never have to discover the manager's fee structure after investing.
+
+---
+
+# 35. Manager Revenue Flow
+
+Conceptually:
+
+```
+USER
+  │
+  ├── Subscription
+  │       ↓
+  │    Manager Revenue
+  │
+  ├── Initial Investment
+  │       ↓
+  │    Manager Fee
+  │
+  └── Rebalance
+          ↓
+       Manager Fee
+```
+
+The organization's payout wallet is maintained separately from the manager's personal authentication/investment wallet. The existing manager architecture explicitly defines a dedicated organization payout wallet.
+
+---
+
+# 36. Manager Payout Wallet
+
+Manager/organization revenue should be paid to the organization's configured payout wallet.
+
+```
+Organization
+      │
+      ▼
+Payout Wallet
+      │
+      ▼
+Manager Revenue
+```
+
+The payout wallet should have its own ownership verification and lifecycle rather than being treated as the manager's login wallet.
+
+---
+
+# 37. Basket Lifecycle
+
+A basket should have a controlled lifecycle:
+
+```
+DRAFT
+  ↓
+SUBMITTED
+  ↓
+UNDER_REVIEW
+  │
+  ├── CHANGES_REQUIRED
+  │        ↓
+  │      DRAFT
+  │
+  └── APPROVED
+          ↓
+       PUBLISHED
+          ↓
+        ACTIVE
+          │
+          ├── New Rebalance
+          │
+          ├── Manager Change
+          │
+          ├── PAUSED
+          │
+          └── RETIRED
+```
+
+---
+
+# 38. Manager Rebalance Lifecycle
+
+```
+CURRENT BASKET
+      ↓
+MANAGER CREATES REBALANCE
+      ↓
+ADD REASON
+      ↓
+DEFINE NEW ALLOCATION
+      ↓
+DEFINE EXPECTED IMPACT
+      ↓
+SUBMIT
+      ↓
+PLATFORM REVIEW
+      │
+      ├── CHANGES_REQUIRED
+      │
+      └── APPROVED
+              ↓
+        NEW BASKET VERSION
+              ↓
+          USERS NOTIFIED
+              ↓
+       USER REVIEWS CHANGE
+              ↓
+       ┌──────┴──────┐
+       │             │
+     APPLY          SKIP
+       │
+       ▼
+  EXECUTION PLAN
+       │
+       ▼
+ USER CONFIRMATION
+       │
+       ▼
+ ON-CHAIN EXECUTION
+```
+
+---
+
+# 39. Manager Dashboard
+
+A manager should have a dashboard containing:
+
+```
+Organization
+ ├── Overview
+ ├── Team
+ ├── Members
+ ├── Roles
+ └── Payouts
+
+Baskets
+ ├── Active
+ ├── Draft
+ ├── Under Review
+ ├── Published
+ └── Retired
+
+Analytics
+ ├── Investors
+ ├── AUM / invested value
+ ├── Performance
+ ├── Rebalance participation
+ └── Basket activity
+
+Updates
+ ├── Strategy updates
+ └── Rebalance proposals
+```
+
+---
+
+# 40. Basket Manager Dashboard
+
+For each basket:
+
+```
+Basket
+ │
+ ├── Current Version
+ ├── Current Allocation
+ ├── Performance
+ ├── Investors
+ ├── Fees
+ ├── Rebalance History
+ ├── Pending Rebalances
+ ├── Manager(s)
+ └── Organization
+```
+
+---
+
+# 41. Manager Analytics
+
+Managers can see product-level information such as:
+
+- Number of investors
+- Total invested amount
+- Basket growth
+- Rebalance participation
+- Number of users who skipped rebalances
+- Basket performance
+- Historical basket versions
+- Subscription count
+- Subscription revenue
+- Investment fee revenue
+- Rebalance fee revenue
+
+The platform should maintain a clear distinction between **analytics** and **control over user assets**.
+
+---
+
+# 42. Complete Fund Manager Journey
+
+```
+                         APPLICANT
+                             │
+                             ▼
+                Become Fund Manager Form
+                             │
+                             ▼
+                    PLATFORM SCREENING
+                             │
+                             ▼
+                     INTERNAL REVIEW
+                             │
+                             ▼
+                    IN-DEPTH VERIFICATION
+                             │
+                   ┌─────────┴─────────┐
+                   │                   │
+                INDIVIDUAL            FIRM
+                   │                   │
+              Identity/KYC         Business/KYB
+              Verification         Verification
+                   │                   │
+                   └─────────┬─────────┘
+                             ▼
+                     PLATFORM CLEARANCE
+                             │
+                             ▼
+                    VERIFIED ORGANIZATION
+                             │
+                             ▼
+                     ORGANIZATION OWNER
+                             │
+                 ┌───────────┴───────────┐
+                 │                       │
+              TEAM                    BASKETS
+                 │                       │
+                 ▼                       ▼
+         Roles & Permissions       Create Basket
+                                         │
+                                         ▼
+                                  Strategy + Thesis
+                                         │
+                                         ▼
+                                      Assets
+                                         │
+                                         ▼
+                                      Weights
+                                         │
+                                         ▼
+                                  Rebalance Strategy
+                                         │
+                                         ▼
+                                  Manager / Team
+                                         │
+                                         ▼
+                                   Fee Structure
+                                         │
+                                         ▼
+                                  PLATFORM REVIEW
+                                         │
+                              ┌──────────┴──────────┐
+                              │                     │
+                          CHANGES                  APPROVED
+                          REQUIRED                    │
+                              │                      ▼
+                              └──────────────►   PUBLISHED
+                                                     │
+                                                     ▼
+                                                  USERS
+                                                     │
+                                                     ▼
+                                                INVESTMENT
+                                                     │
+                                                     ▼
+                                             FUTURE REBALANCE
+                                                     │
+                                                     ▼
+                                          Manager creates proposal
+                                                     │
+                                                     ▼
+                                              Reason + Impact
+                                                     │
+                                                     ▼
+                                             Platform Review
+                                                     │
+                                                     ▼
+                                             New Version
+                                                     │
+                                                     ▼
+                                               User Review
+```
+
+# 43. Short Version
+
+The entire **Fund Manager system** can be summarized as:
+
+```
+ANYONE
+  │
+  ▼
+Become Fund Manager Form
+  │
+  ▼
+Platform Team Review
+  │
+  ▼
+In-Depth Individual / Firm Verification
+  │
+  ▼
+Platform Clearance
+  │
+  ▼
+Verified Organization
+  │
+  ├── Team Members
+  ├── Roles & Permissions
+  ├── Payout Wallet
+  └── Baskets
+         │
+         ▼
+    Create Basket
+         │
+         ├── Thesis
+         ├── Strategy
+         ├── Assets
+         ├── Weights
+         ├── Rebalance Strategy
+         ├── Managers
+         ├── Fees
+         └── Other Information
+         │
+         ▼
+    Platform Review
+         │
+         ▼
+      PUBLISHED
+         │
+         ▼
+       USERS
+         │
+         ▼
+      INVEST
+         │
+         ▼
+  Manager Earns Applicable Fees
+         │
+         ▼
+   Manager Creates Rebalance
+         │
+         ├── Reason
+         ├── Changes
+         ├── Expected Impact
+         └── New Allocation
+         │
+         ▼
+    Platform Review
+         │
+         ▼
+    New Basket Version
+         │
+         ▼
+    Users Notified
+         │
+         ▼
+   User Apply / Skip
+```
+
+This gives you a clean separation between **fund-manager verification, organization management, basket approval, manager monetization, and user-controlled portfolio rebalancing**.
