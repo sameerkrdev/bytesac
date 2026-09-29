@@ -66,7 +66,8 @@ Investor Web / Mobile                     Manager Web
                          |
                  Chains / venues / issuers
 
- Durable state: PostgreSQL (Supabase)
+ Durable state: PostgreSQL (Supabase-hosted; backend-only access, schema app)
+ Sessions: backend-managed (sessions table)
  Async/cache: Redis + BullMQ
  Files: Cloudflare R2
 ```
@@ -74,8 +75,10 @@ Investor Web / Mobile                     Manager Web
 ## 4. Major modules and responsibilities
 
 ### Identity and access
-- Wallet connection is a client capability; signature verification and session issuance are backend responsibilities.
+- Wallet connection is a client capability; signature verification and session issuance are backend responsibilities. Sessions are backend-managed (`sessions` table, opaque hashed tokens); Supabase is PostgreSQL only and is not the session issuer (ADR-003).
 - Maintain user identity separately from wallet addresses and chain accounts.
+- Chain-account association is scoped by verification method: an EOA signature registers all supported EVM chains, ERC-1271/6492 signatures register only the verified chain, and cross-family additions require an explicit logged-in "Add chain account" (ADR-004).
+- Release 1 has no user-initiated wallet unlink; compromised addresses are disabled through audited ops commands, and recovery is a future wallet-migration feature.
 - Enforce role and resource permissions on the server.
 - Support contact verification and notification preferences as separate account concerns.
 - Wallet authentication does not imply transaction authority.
@@ -202,7 +205,7 @@ Do not force an asset onto the user's default chain. Do not assume a bridge exis
 
 Names are indicative; align final names with existing migrations and implementation conventions.
 
-- `users`, `wallets`, `wallet_addresses`, `contacts`, `notification_preferences`, `sessions`
+- `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
 - `manager_applications`, `verification_cases`, `verification_evidence`
 - `organizations`, `organization_versions`, `organization_memberships`, `organization_permissions`, `organization_payout_wallets`
 - `instruments`, `deployments`, `providers`, `execution_routes`, `price_references`, `eligibility_policies`
@@ -213,13 +216,15 @@ Names are indicative; align final names with existing migrations and implementat
 - `drift_cases`, `shared_asset_shortfalls`, `allocation_decisions`, `valuation_snapshots`
 - `audit_events`, `outbox_events`, `idempotency_records`
 
+`audit_events` is append-only and carries no foreign keys, so audit history survives any change to referenced rows.
+
 Use foreign keys, unique constraints, check constraints and indexes for invariants that can be enforced in the database. Store quantities and money using exact decimal/numeric representations or integer base units; do not use binary floating point for financial calculations.
 
 ## 8. Provider and stack baseline
 
 | Concern | Selected direction |
 |---|---|
-| Web | React + TypeScript |
+| Web | Next.js (App Router) + React + TypeScript |
 | UI | shadcn/ui + Tailwind; Motion selectively |
 | Mobile | Expo + React Native |
 | Monorepo | Turborepo + pnpm |
@@ -228,6 +233,11 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | ORM/migrations | Drizzle + Drizzle Kit |
 | Async/cache | Redis + BullMQ |
 | Wallet UX | Reown AppKit |
+| Sessions | Backend-managed sessions table (not Supabase Auth) |
+| Validation | Zod (shared contracts package) |
+| Email OTP | Resend |
+| SMS OTP | Twilio Verify (`twilio` SDK pinned to 6.1.1 to satisfy the repo's minimum-release-age policy; no release-age exclusions) |
+| Tests | Vitest |
 | EVM authentication | SIWE |
 | Solana authentication | SIWS |
 | Blockchain RPC/events | Alchemy, behind adapters |

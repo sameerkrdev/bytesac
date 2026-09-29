@@ -29,7 +29,7 @@ Deliver a production-grade foundation for Bytesac and a working wallet-based sig
 | Topic | Decision |
 |---|---|
 | Session issuer | **Backend-managed `sessions` table.** Supabase is used only as PostgreSQL, not as the auth/session issuer. Supersedes "Supabase session" in `docs/source/User-Authentication-Flow.txt` and prior D-003 wording. |
-| Session transport | Web: opaque token in `HttpOnly; Secure; SameSite=Lax` cookie via same-origin Next proxy. Mobile: same opaque token as bearer, stored in `expo-secure-store`. Server stores only a hash. |
+| Session transport | Web: opaque token in `HttpOnly; Secure; SameSite=Lax` cookie via same-origin Next proxy. Mobile: same opaque token as bearer, stored in `expo-secure-store`, sent with header `X-Client: mobile`. Server stores only a hash. |
 | Session lifetime | Web: 12 h idle / 7 d absolute. Mobile: 7 d idle / 30 d absolute. Sliding idle renewal; logout revokes; "log out all devices". |
 | Release-1 auth chains | Solana (SIWS) + EVM (SIWE) on Ethereum, Base, BNB Chain, Arbitrum. |
 | Chain-account association | **Verification method decides scope.** EVM signature that ECDSA-recovers to the address (EOA, including EIP-7702-delegated EOAs) proves the key and registers all 4 supported EVM chains from one proof. ERC-1271 (deployed contract wallet) or ERC-6492 (undeployed/counterfactual) signatures register **only the chain verified**; other EVM chains for the same address need their own per-chain verification via "Add chain account". Solana ed25519 registers `solana`. Cross-family addition only via explicit logged-in "Add chain account" with a fresh signature. Refused if the address belongs to another user, or if the user already has a **different** address in that family (independent wallet — future feature). Logged-out sign-in with an unknown address always creates a new user. Method and evidence (challenge id, verified chain) are stored per address row. |
@@ -37,8 +37,8 @@ Deliver a production-grade foundation for Bytesac and a working wallet-based sig
 | Session security | No token rotation on sliding renewal (avoids concurrent-request races); token rotation on security events (successful add chain account). DB-time expiry checks on every request, no session caching, so logout/suspension take effect immediately; suspension revokes all sessions. Suspicious-activity policy for release 1: visibility (sessions list), audit, manual revoke; automated detection deferred. |
 | CSRF / CORS | API sends **no CORS headers** (web is same-origin via Next proxy; mobile is native), so browsers cannot call the API cross-origin. Cookie-authenticated mutations and `/auth/verify` (login CSRF) require an allowlisted `Origin` (missing Origin rejected) and `X-Requested-With: bytesac`. |
 | Wallet unlink & recovery (release 1) | **No user-initiated unlink.** Every user keeps ≥1 verified address. Compromised/inaccessible wallet → platform ops disables the address (`disabled`) and revokes sessions via an audited ops command; recovery/replacement is the future wallet-migration feature. Reactivation only by ops, audited. |
-| Database authorization | Backend is the only DB client. Tables in a dedicated `app` schema not exposed through Supabase Data API; `anon`/`authenticated` have no grants; RLS enabled with no permissive policies as defense-in-depth against accidental exposure. API connects as least-privilege role `bytesac_api` (DML on `app` only); migrations run as `bytesac_migrator`. Authorization is enforced in the application layer; every protected query is scoped by the session's `userId`. |
-| Data retention | Expired/consumed/rejected challenges purged after 7 days; revoked/expired sessions and contact verifications after 90 days; audit events retained 7 years (OPEN: confirm with compliance per jurisdiction). Purge by a scheduled BullMQ job. |
+| Database authorization | Backend is the only DB client. Tables in a dedicated `app` schema not exposed through Supabase Data API; `anon`/`authenticated` have no grants; RLS enabled with role-scoped policies as defense-in-depth against accidental exposure. API connects as least-privilege role `bytesac_api` (DML on `app` only); migrations run as the schema-owner role. Authorization is enforced in the application layer; every protected query is scoped by the session's `userId`. |
+| Data retention | Expired/consumed/rejected challenges purged after 7 days (except those referenced as address evidence); revoked/expired sessions and contact verifications after 90 days; audit events retained 7 years (OPEN: confirm with compliance per jurisdiction). Purge by a scheduled BullMQ job. |
 | OTP providers | Email: Resend, backend-generated OTP (HMAC-hashed). Phone: Twilio Verify. Both behind adapters. |
 | Code structure | Express API + `packages/contracts` (Zod) + `packages/api-client` + Next rewrite proxy (Approach 1). |
 | Schema library | Zod. |
@@ -104,15 +104,15 @@ Conventions: UUIDv7 primary keys; `timestamptz`; status columns are Postgres enu
 
 - The backend is the only database client. Supabase Auth, its JWT claims and the Supabase Data API are not used.
 - All tables live in schema `app`, which is not in Supabase's exposed Data API schemas; `anon` and `authenticated` roles have no privileges on it.
-- RLS is enabled on every `app` table with no permissive policies, as defense-in-depth: if the schema were ever exposed, Supabase client roles still read nothing. It is not the primary authorization mechanism.
-- Roles: `bytesac_api` (runtime; `SELECT/INSERT/UPDATE` on `app` tables, no `DELETE`, no DDL; granted `BYPASSRLS` or table-level policies scoped to this role — whichever Supabase permits, confirmed in planning); `bytesac_migrator` (DDL, used only by `db:migrate`); `bytesac_retention` (DELETE limited to the purge job's tables).
+- RLS is enabled on every `app` table with permissive policies scoped to `bytesac_api` and `bytesac_retention` only, as defense-in-depth: if the schema were ever exposed, Supabase client roles still read nothing. Default privileges on schema `app` are revoked from PUBLIC, `anon` and `authenticated`. RLS is not the primary authorization mechanism.
+- Roles: `bytesac_api` (runtime; `SELECT/INSERT/UPDATE` on `app` tables, no `DELETE`, no DDL; access via role-scoped RLS policies (no `BYPASSRLS`)); the schema-owner role (Supabase `postgres`; local superuser) used only by `db:migrate`; `bytesac_retention` (DELETE limited to the purge job's tables).
 - Application-layer authorization: every protected query filters by `req.auth.userId` from the session; repository methods take `userId` as a required argument for user-owned data. Negative tests cover cross-user access.
 
 ### 4.3 Data retention
 
 | Data | Retention | Mechanism |
 |---|---|---|
-| `auth_challenges` (consumed, rejected, or expired) | 7 days after `expires_at` | Purge job |
+| `auth_challenges` (consumed, rejected, or expired) | 7 days after `expires_at`, except challenges referenced by `wallet_addresses.verification_challenge_id` (address evidence) | Purge job |
 | `sessions` (revoked or expired) | 90 days after revocation/expiry | Purge job |
 | `contact_verifications` (resolved) | 90 days after `resolved_at` | Purge job |
 | `contacts` (`replaced`) | Retained while the user exists | — |
@@ -133,7 +133,7 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
 ### 5.1 Sign in (signup or login)
 
 1. Client connects a wallet via Reown AppKit. UI shows "Connected" as a distinct step from "Sign to verify" (connection is not authentication).
-2. `POST /v1/auth/challenge { purpose: "sign_in", chainFamily, chain, address }` → server validates chain/address, stores a `pending` challenge, returns `{ challengeId, message }`.
+2. `POST /v1/auth/challenge { purpose: "sign_in", chain, address }` (chain family is derived from `chain`) → server validates chain/address, stores a `pending` challenge, returns `{ challengeId, message }`.
    - EVM: EIP-4361 (SIWE) message.
    - Solana: SIWS (CAIP-122 style) message.
    - Both include `domain` (`AUTH_DOMAIN`), `uri` (`AUTH_URI`), nonce, issuedAt, expirationTime (+5 min), chain id, and the statement: *"Sign in to Bytesac. This does not authorize any transaction or spending."*
@@ -183,6 +183,7 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
 - Allowed targets:
   - An address in the **other** chain family, or
   - The **same** EVM address the user already has, on a supported EVM chain not yet registered (needed for `erc1271` / `erc6492` wallets, which are verified per chain).
+- Add chain account serializes per wallet (row lock on the investment wallet), so two sessions cannot link two addresses in one family.
 - Outcomes (evaluated inside Phase C's transaction; the `(chain, address)` unique constraint is the final safeguard and a violation maps to `409 ADDRESS_ALREADY_LINKED` for this purpose):
   - Address+chain already on this user → idempotent success (no new rows, no rotation).
   - Address owned by another user (any status) → `409 ADDRESS_ALREADY_LINKED` (no merge).
@@ -201,7 +202,7 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
   ```
   No row → `401 SESSION_EXPIRED`; user not `active` → `401 USER_NOT_ACTIVE`. Sessions are not cached, so logout and suspension take effect on the next request.
 - **Sliding renewal (concurrency-safe):** the token never changes on renewal. At most once per 5 minutes: `UPDATE … SET last_seen_at = now(), idle_expires_at = LEAST(now() + $idle, absolute_expires_at) WHERE id = $id AND last_seen_at < now() - interval '5 minutes'`. Concurrent requests are harmless (the conditional update runs at most once; values are monotonic).
-- **Rotation on security events:** after a successful add chain account, issue a new session (same client, fresh expiries), revoke the old one with `revoke_reason='rotated'` and `replaced_by_session_id`, return the new token (cookie or body). A request still carrying the old token receives `401 SESSION_EXPIRED`; clients handle this by the normal re-auth path. Future security events (wallet migration, privilege grants in Spec 2) reuse this mechanism.
+- **Rotation on security events:** after a successful add chain account, issue a new session (same client, fresh expiries), revoke the old one with `revoke_reason='rotated'` and `replaced_by_session_id` (rotation refuses an already-revoked session), return the new token (cookie or body). A request still carrying the old token receives `401 SESSION_EXPIRED`; clients handle this by the normal re-auth path. Future security events (wallet migration, privilege grants in Spec 2) reuse this mechanism.
 - **Revocation:** `POST /v1/auth/logout` (current), `POST /v1/auth/logout-all` (all), `DELETE /v1/me/sessions/:id` (one own session). User suspension (ops) sets `users.status='suspended'` and revokes all sessions with `revoke_reason='user_suspended'` in one transaction.
 - **Suspicious activity (release 1):** every session records `user_agent` and `ip_prefix`; the sessions list shows device, client, last seen and approximate network; users can revoke any session or all sessions; `session.created` audit events carry request context. Automated anomaly detection and alerts are deferred to a later spec.
 - Logout does not change the investment wallet, its addresses, or their relationship to the user.
@@ -214,7 +215,7 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
   - `Origin` header must be present and in `ALLOWED_ORIGINS`; missing or untrusted → `403 CSRF_REJECTED`.
   - Header `X-Requested-With: bytesac` must be present → otherwise `403 CSRF_REJECTED`.
 - The Next proxy forwards the browser's `Origin` unchanged.
-- Bearer-authenticated requests (mobile) are exempt; a request carrying both a cookie and a bearer token is rejected (`400 VALIDATION_FAILED`).
+- Mobile/native clients send header `X-Client: mobile` (the api-client's bearer transport sets it); Origin-less mobile sign-in is exempt from the Origin guard on that basis. Bearer-authenticated requests (mobile) are exempt; a request carrying both a cookie and a bearer token is rejected (`400 VALIDATION_FAILED`).
 
 ### 5.5 Contacts and OTP
 
@@ -304,9 +305,9 @@ All routes under `/v1`; all bodies/params/queries validated with Zod schemas fro
 
 **Request correlation:** every request gets an `X-Request-Id` (accepted from the Next proxy if well-formed, else generated), echoed in responses and written to logs and audit events.
 
-**Configuration** (documented in `apps/api/.env.example` without values): `DATABASE_URL` (runtime role `bytesac_api`), `MIGRATOR_DATABASE_URL` (`bytesac_migrator`, migrations only), `RETENTION_DATABASE_URL` (`bytesac_retention`, worker only), `REDIS_URL`, `SMS_ALLOWED_COUNTRIES`, `SESSION_TOKEN_PEPPER`, `OTP_HMAC_SECRET`, `ALCHEMY_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`, `PORT`. Client public config only: `NEXT_PUBLIC_REOWN_PROJECT_ID`, `API_ORIGIN` (Next server-side rewrite target), `EXPO_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_API_URL`.
+**Configuration** (documented in `apps/api/.env.example` without values): `DATABASE_URL` (runtime role `bytesac_api`), `MIGRATOR_DATABASE_URL` (schema-owner role, migrations only), `RETENTION_DATABASE_URL` (`bytesac_retention`, worker only), `REDIS_URL`, `SMS_ALLOWED_COUNTRIES`, `SESSION_TOKEN_PEPPER`, `OTP_HMAC_SECRET`, `ALCHEMY_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`, `PORT`. Client public config only: `NEXT_PUBLIC_REOWN_PROJECT_ID`, `API_ORIGIN` (Next server-side rewrite target), `EXPO_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_API_URL`.
 
-**Local development:** `docker-compose.yml` with PostgreSQL 17 and Redis. Deployed environments use Supabase PostgreSQL. Turbo tasks for `api`: `dev`, `build`, `test`, `lint`, `check-types`; scripts `db:generate`, `db:migrate`, `worker`, `ops:*`. The first migration creates schema `app`, the three roles and their grants; local docker-compose mirrors the same roles.
+**Local development:** `docker-compose.yml` with PostgreSQL 17 and Redis. Deployed environments use Supabase PostgreSQL. Turbo tasks for `api`: `dev`, `build`, `test`, `lint`, `check-types`; scripts `db:generate`, `db:migrate`, `worker`, `ops:*`. The first migration creates schema `app`, the runtime and retention roles and their grants; local docker-compose mirrors the same roles.
 
 ## 8. UI
 
@@ -356,9 +357,9 @@ All routes under `/v1`; all bodies/params/queries validated with Zod schemas fro
 
 - Controllers parse input and call services; services throw typed `DomainError(code)`; one Express error mapper produces the stable error shape and HTTP status. Unknown errors → `500 INTERNAL`; details logged server-side only.
 - Logging: pino with redaction. Never log session tokens, signatures, OTP codes, full email/phone, or API keys. Addresses logged shortened.
-- Signature verification infra failure (e.g. Alchemy timeout during an ERC-1271 check) → `503 VERIFIER_UNAVAILABLE`; the claim is released to `pending` (§5.1 Phase B) so the user can retry until expiry. A definitively invalid signature moves the challenge to `rejected`.
+- Signature verification infra failure (e.g. Alchemy timeout or RPC transport failure during an ERC-1271 check; fail-closed, never treated as an invalid signature) → `503 VERIFIER_UNAVAILABLE`; the claim is released to `pending` (§5.1 Phase B) so the user can retry until expiry. A definitively invalid signature moves the challenge to `rejected`.
 - Session rotation response lost in transit: the old token returns `401 SESSION_EXPIRED` and the client re-authenticates; no inconsistent state results.
-- OTP provider failure → `503 OTP_DELIVERY_FAILED`; does not count toward the user's send quota.
+- OTP provider failure → `503 OTP_DELIVERY_FAILED`; does not count toward the user's send quota. For Twilio Verify, codes 404, 20404 and 60202 count as a rejected code; every other failure is `OTP_DELIVERY_FAILED`.
 - Clients map each `ErrorCode` to fixed copy and a recovery action (retry, restart sign-in, re-authenticate).
 
 ## 10. Testing
@@ -402,7 +403,7 @@ Vitest throughout; Supertest for HTTP; integration tests use real PostgreSQL and
 
 - Reown AppKit React Native supports Expo (install via `npx expo install`, Expo SDK 53+ Babel setting documented), EVM and Solana with Phantom/Solflare connectors. The installation page states no minimum Expo/React Native version, so an explicit compatibility check on Expo SDK 57 / React Native 0.86 is still the first plan task. Fallback: keep the `WalletConnector` interface and use wallet-specific deep-link SDKs.
 - ERC-1271/6492 verification depends on Alchemy RPC availability per chain; outages degrade smart-wallet sign-in only (EOA verification is offline).
-- Whether Supabase permits `BYPASSRLS` on a custom role, or table policies scoped to `bytesac_api` are needed instead, must be confirmed in planning (§4.2).
+- Resolved: role-scoped RLS policies, no `BYPASSRLS` (ADR-005).
 - Audit-event retention period (7 years proposed) is OPEN pending compliance review.
 - Users whose only address is disabled cannot sign in until the wallet-migration feature exists; support must handle these cases manually.
 - Twilio Verify country coverage and pricing must be confirmed for target jurisdictions.
