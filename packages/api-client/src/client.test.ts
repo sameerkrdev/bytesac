@@ -38,6 +38,13 @@ describe("api client", () => {
     expect((err as ApiError).retryAfterSec).toBe(12);
   });
 
+  it("ignores a non-numeric (HTTP-date) retry-after", async () => {
+    const f = vi.fn(async () => jsonResponse(503, { error: { code: "RATE_LIMITED", message: "slow down" } }, { "retry-after": "Wed, 21 Oct 2026 07:28:00 GMT" }));
+    const api = createApiClient({ baseUrl: "", transport: { kind: "cookie" }, fetch: f });
+    const err = await api.me().catch((e: unknown) => e);
+    expect((err as ApiError).retryAfterSec).toBeUndefined();
+  });
+
   it("maps network failures to NETWORK_ERROR", async () => {
     const f = vi.fn(async () => { throw new TypeError("fetch failed"); });
     const api = createApiClient({ baseUrl: "", transport: { kind: "cookie" }, fetch: f });
