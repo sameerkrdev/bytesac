@@ -1,9 +1,9 @@
-import { pino, type Logger } from "pino";
+import { pino, type DestinationStream, type Logger } from "pino";
 
 export type { Logger };
 
-export function createLogger(level: string): Logger {
-  return pino({
+export function createLogger(level: string, destination?: DestinationStream): Logger {
+  const options = {
     level,
     redact: {
       paths: [
@@ -13,5 +13,6 @@ export function createLogger(level: string): Logger {
       ],
       censor: "[redacted]",
     },
-  });
+  };
+  return destination ? pino(options, destination) : pino(options);
 }

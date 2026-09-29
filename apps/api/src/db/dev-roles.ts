@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { loadDotEnvIfPresent } from "../config/env.js";
 
 export async function setDevRolePasswords(adminUrl: string): Promise<void> {
+  if (process.env.NODE_ENV === "production") throw new Error("dev-roles must never run in production");
   const sql = postgres(adminUrl, { max: 1, onnotice: () => undefined });
   try {
     await sql.unsafe("ALTER ROLE bytesac_api LOGIN PASSWORD 'bytesac_api_dev'");

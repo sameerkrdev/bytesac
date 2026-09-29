@@ -14,4 +14,3 @@ minimumReleaseAgeExclude:
   - '@turbo/windows-64@2.11.5'
   - '@turbo/windows-arm64@2.11.5'
   - turbo@2.11.5
-  - twilio@6.1.2

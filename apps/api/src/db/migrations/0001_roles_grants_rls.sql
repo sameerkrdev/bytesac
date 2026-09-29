@@ -12,6 +12,13 @@ DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'REVOKE ALL ON SCHEMA app FROM authenticated'; EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA app FROM authenticated'; END IF;
 END $$;
 --> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE ALL ON TABLES FROM PUBLIC;
+--> statement-breakpoint
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE ALL ON TABLES FROM anon'; END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA app REVOKE ALL ON TABLES FROM authenticated'; END IF;
+END $$;
+--> statement-breakpoint
 GRANT USAGE ON SCHEMA app TO bytesac_api, bytesac_retention;
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON

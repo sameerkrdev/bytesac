@@ -47,3 +47,28 @@ describe("errorHandler", () => {
     expect(res.body.error.code).toBe("VALIDATION_FAILED");
   });
 });
+
+describe("errorHandler logging", () => {
+  it("does not log SQL params or query from driver errors", async () => {
+    const lines: string[] = [];
+    const logger = createLogger("info", { write: (msg: string) => { lines.push(msg); } });
+    const cause = Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
+    const err = Object.assign(new Error('Failed query: insert into "contacts" values ($1) params: alice@example.com', { cause }), {
+      name: "DrizzleQueryError",
+      query: 'insert into "contacts" values ($1)',
+      params: ["alice@example.com"],
+    });
+    const app = express();
+    app.use(requestContext);
+    app.get("/x", () => { throw err; });
+    app.use(errorHandler(logger));
+    const res = await request(app).get("/x");
+    expect(res.status).toBe(500);
+    const out = lines.join("");
+    expect(out).not.toContain("alice@example.com");
+    expect(out).not.toContain("insert into");
+    expect(out).not.toContain("params");
+    expect(out).toContain("23505");
+    expect(out).toContain("DrizzleQueryError");
+  });
+});
