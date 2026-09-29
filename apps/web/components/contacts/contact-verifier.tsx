@@ -97,7 +97,9 @@ export function ContactVerifier({ type, existing, onVerified, client = api }: { 
         <Button className="min-h-11" disabled={value.trim().length < 3 || pending} onClick={() => void send()}>
           {pending && <Loader2 aria-hidden className="animate-spin" />}Send code
         </Button>
-      ) : null}
+      ) : (
+        <Button variant="ghost" className="min-h-11" onClick={() => { setContact(null); setResendAt(null); setValue(""); setCode(""); setError(null); }}>Change</Button>
+      )}
 
       {error && <p id={ids.error} role="alert" className="text-sm text-danger">{error}</p>}
     </div>

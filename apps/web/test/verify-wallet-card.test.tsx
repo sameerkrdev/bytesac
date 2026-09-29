@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { VerifyWalletCard } from "@/components/auth/verify-wallet-card";
@@ -47,5 +47,19 @@ describe("VerifyWalletCard", () => {
     render(<VerifyWalletCard account={account} network="supported" state={{ step: "error", code: "RATE_LIMITED", retryAfterSec: 30 }} {...handlers} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Too many requests");
     expect(screen.getByRole("alert")).toHaveTextContent("30 s");
+  });
+});
+
+describe("VerifyWalletCard rate-limit countdown", () => {
+  it("disables Try again until countdown ends", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<VerifyWalletCard account={account} network="supported" state={{ step: "error", code: "RATE_LIMITED", retryAfterSec: 2 }} {...handlers} />);
+      expect(screen.getByRole("button", { name: /try again in 2 s/i })).toBeDisabled();
+      await act(async () => { vi.advanceTimersByTime(2_000); });
+      expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -3,7 +3,7 @@
 import { describeError, type VerifyState } from "@repo/api-client";
 import { CHAINS } from "@repo/contracts";
 import { Check, Copy, Loader2, PenLine, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { shortAddress } from "@/lib/format";
@@ -34,6 +34,19 @@ function Step({ done, label, n }: { done: boolean; label: string; n: number }) {
 
 export function VerifyWalletCard(p: Props) {
   const [copied, setCopied] = useState(false);
+  const retryAfter = p.state.step === "error" ? (p.state.retryAfterSec ?? 0) : 0;
+  const [remaining, setRemaining] = useState(retryAfter);
+  useEffect(() => {
+    setRemaining(retryAfter);
+    if (retryAfter <= 0) return;
+    const t = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
+    return () => clearInterval(t);
+  }, [retryAfter, p.state]);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
   const busy = p.state.step === "signing" || p.state.step === "verifying";
   const err = p.state.step === "error" ? describeError(p.state.code) : null;
 
@@ -61,7 +74,9 @@ export function VerifyWalletCard(p: Props) {
               <dd className="flex items-center gap-2 font-mono text-ivory">
                 <span title={p.account.address}>{shortAddress(p.account.address)}</span>
                 <button type="button" aria-label="Copy address" className="grid size-11 place-items-center rounded-lg text-stone hover:text-ivory"
-                  onClick={async () => { await navigator.clipboard.writeText(p.account!.address); setCopied(true); }}>
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(p.account!.address); setCopied(true); } catch { /* clipboard unavailable */ }
+                  }}>
                   {copied ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />}
                 </button>
               </dd>
@@ -75,14 +90,14 @@ export function VerifyWalletCard(p: Props) {
                 <p className="font-medium text-ivory">{err.title}</p>
                 <p className="text-muted-foreground">
                   {err.message}
-                  {p.state.step === "error" && p.state.retryAfterSec ? ` Try again in ${p.state.retryAfterSec} s.` : ""}
+                  {remaining > 0 ? ` Try again in ${remaining} s.` : ""}
                 </p>
               </div>
             )}
             {err?.recovery === "restart" ? (
               <Button className="min-h-11 w-full" onClick={p.onRestart}>Start again</Button>
             ) : err && (err.recovery === "retry" || err.recovery === "wait") ? (
-              <Button className="min-h-11 w-full" onClick={p.onRetry}>Try again</Button>
+              <Button className="min-h-11 w-full" disabled={remaining > 0} onClick={p.onRetry}>{remaining > 0 ? `Try again in ${remaining} s` : "Try again"}</Button>
             ) : (
               <Button className="min-h-11 w-full" disabled={busy || p.state.step === "done"} onClick={p.onSign}>
                 {p.state.step === "signing" ? <><Loader2 aria-hidden className="animate-spin" />Waiting for wallet…</>

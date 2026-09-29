@@ -1,5 +1,5 @@
 import { ApiError } from "@repo/api-client";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ContactVerifier } from "@/components/contacts/contact-verifier";
@@ -50,5 +50,36 @@ describe("ContactVerifier", () => {
     await userEvent.type(await screen.findByLabelText("6-digit code"), "000000");
     await userEvent.click(screen.getByRole("button", { name: "Verify" }));
     expect(await screen.findByText("Incorrect code")).toBeInTheDocument();
+  });
+});
+
+describe("ContactVerifier change and cooldown", () => {
+  it("verified contact can be changed", async () => {
+    const verified = { ...contact, status: "verified" as const, verifiedAt: new Date().toISOString() };
+    render(<ContactVerifier type="email" existing={verified} client={client()} />);
+    expect(screen.queryByRole("button", { name: "Send code" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(screen.getByLabelText("Email address")).toHaveValue("");
+    await userEvent.type(screen.getByLabelText("Email address"), "new@b.co");
+    expect(screen.getByRole("button", { name: "Send code" })).toBeEnabled();
+  });
+
+  it("resend counts down, is disabled, then enables", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const c = client();
+      const soon = new Date(Date.now() + 3_000).toISOString();
+      c.addContact.mockResolvedValueOnce({ contact, verification: { expiresAt: soon, resendAvailableAt: soon } });
+      render(<ContactVerifier type="email" client={c} />);
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.type(screen.getByLabelText("Email address"), "a@b.co");
+      await user.click(screen.getByRole("button", { name: "Send code" }));
+      const btn = await screen.findByRole("button", { name: /resend in \d+ s/i });
+      expect(btn).toBeDisabled();
+      await act(async () => { vi.advanceTimersByTime(4_000); });
+      expect(screen.getByRole("button", { name: "Resend code" })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
