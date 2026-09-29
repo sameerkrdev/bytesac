@@ -5,7 +5,7 @@ const account = { chain: "solana" as const, address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZ
 const evm = { chain: "ethereum" as const, address: "0xAbCdEf0123456789aBcDeF0123456789abcdef01", walletName: "MetaMask" };
 const h = {
   onSign: jest.fn(), onRetry: jest.fn(), onRestart: jest.fn(), onDisconnect: jest.fn(),
-  onSwitchNetwork: jest.fn(), onChooseNetwork: jest.fn(), onReauthenticate: jest.fn(),
+  onSwitchNetwork: jest.fn(), onChooseNetwork: jest.fn(), onReauthenticate: jest.fn(), onCancel: jest.fn(), onConnect: jest.fn(),
 };
 
 beforeEach(() => jest.clearAllMocks());
@@ -92,5 +92,21 @@ describe("VerifyWalletCard (mobile)", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("shows Cancel while signing or verifying, not when idle", async () => {
+    const { rerender } = await render(<VerifyWalletCard account={account} network="supported" state={{ step: "signing" }} {...h} />);
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(h.onCancel).toHaveBeenCalled();
+    await rerender(<VerifyWalletCard account={account} network="supported" state={{ step: "verifying" }} {...h} />);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeOnTheScreen();
+    await rerender(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...h} />);
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+
+  it("offers Connect wallet when nothing is connected", async () => {
+    await render(<VerifyWalletCard account={null} network="none" state={{ step: "idle" }} {...h} />);
+    await fireEvent.press(screen.getByRole("button", { name: "Connect wallet" }));
+    expect(h.onConnect).toHaveBeenCalled();
   });
 });

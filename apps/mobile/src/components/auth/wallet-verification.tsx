@@ -12,7 +12,7 @@ export function WalletVerification({ purpose, linkedAddresses, onVerified }: {
 }) {
   const wallet = useWalletConnector();
   const { signOut } = useAuth();
-  const { state, run, reset } = useWalletVerification(purpose);
+  const { state, run, reset, cancel } = useWalletVerification(purpose);
   useEffect(() => {
     if (state.step === "done") onVerified(state.isNewUser);
   }, [state, onVerified]);
@@ -37,6 +37,8 @@ export function WalletVerification({ purpose, linkedAddresses, onVerified }: {
         reset();
         void wallet.chooseNetwork();
       }}
+      onCancel={cancel}
+      onConnect={() => void wallet.connect()}
       onReauthenticate={() => void signOut({ expired: true })}
     />
   );

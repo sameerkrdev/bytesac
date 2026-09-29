@@ -28,6 +28,9 @@ interface Props {
   onSwitchNetwork(): void;
   onChooseNetwork(): void;
   onReauthenticate(): void;
+  /** Abandon a pending sign/verify request (e.g. the wallet never answered). */
+  onCancel(): void;
+  onConnect(): void;
 }
 
 const ALREADY_LINKED_HINT = "This account is already linked. Choose another network or account in your wallet.";
@@ -38,7 +41,7 @@ function sameAddress(chain: string, a: string, b: string): boolean {
 
 function Step({ n, done, label }: { n: number; done: boolean; label: string }) {
   return (
-    <View className="flex-row items-center gap-2" accessibilityLabel={`${label}${done ? ", complete" : ""}`}>
+    <View accessible className="flex-row items-center gap-2" accessibilityLabel={`${label}${done ? ", complete" : ""}`}>
       <View className={`h-6 w-6 items-center justify-center rounded-full border ${done ? "border-sage bg-sage" : "border-border-dark"}`}>
         {done ? <Check size={14} color={palette.space} /> : <AppText variant="label" tone="stone">{String(n)}</AppText>}
       </View>
@@ -147,8 +150,11 @@ export function VerifyWalletCard(p: Props) {
             </View>
           )}
           {primary}
+          {busy ? <Button variant="secondary" onPress={p.onCancel}>Cancel</Button> : null}
           <Button variant="secondary" onPress={p.onChooseNetwork}>Choose network</Button>
         </>
+      ) : p.network === "none" ? (
+        <Button onPress={p.onConnect}>Connect wallet</Button>
       ) : null}
       <Button variant="ghost" onPress={p.onDisconnect}>Disconnect</Button>
     </Card>
