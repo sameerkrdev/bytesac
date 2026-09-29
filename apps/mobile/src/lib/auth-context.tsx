@@ -19,14 +19,9 @@ const DISCONNECT_TIMEOUT_MS = 3000;
 async function withTimeout(task: () => Promise<void>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
-      Promise.resolve().then(task).catch(() => undefined),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, ms);
-      }),
-    ]);
+    await Promise.race([Promise.resolve().then(task).catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); })]);
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 

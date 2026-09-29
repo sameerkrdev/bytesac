@@ -97,7 +97,5 @@ export function useWalletVerification(purpose: ChallengePurpose) {
     invalidate();
     dispatch({ type: "RESET" });
   }, [invalidate]);
-  /** Abandon a hung or unwanted request and return to idle. */
-  const cancel = reset;
-  return { state, run, reset, cancel };
+  return { state, run, reset };
 }
