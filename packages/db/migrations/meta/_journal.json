@@ -22,6 +22,20 @@
       "when": 1790702985301,
       "tag": "0002_retention_pg_cron",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790717752964,
+      "tag": "0003_manager_applications",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790717776453,
+      "tag": "0004_purge_applications",
+      "breakpoints": true
     }
   ]
 }

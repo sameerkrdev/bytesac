@@ -23,13 +23,13 @@ describe("retention (app.purge_expired, scheduled by pg_cron)", () => {
              (gen_random_uuid(), ${contact!.id}, 'r@example.com', 'email', 'pending', now() - interval '100 days', NULL, now() - interval '100 days')`;
 
     const [{ purge_expired: out } = { purge_expired: null }] = await adminSql<{ purge_expired: unknown }[]>`SELECT app.purge_expired()`;
-    expect(out).toEqual({ challenges: 1, sessions: 1, verifications: 2 });
+    expect(out).toEqual({ challenges: 1, sessions: 1, verifications: 2, email_codes: 0, applications: 0 });
 
     const left = await adminSql<{ nonce: string }[]>`SELECT nonce FROM app.auth_challenges`;
     expect(left.map((r) => r.nonce)).toContain("new1");
     expect(left).toHaveLength(2);
     const audit = await testDb.db.select().from(auditEvents);
-    expect(audit.find((a) => a.action === "retention.purged")).toMatchObject({ actorType: "system", metadata: { challenges: 1, sessions: 1, verifications: 2 } });
+    expect(audit.find((a) => a.action === "retention.purged")).toMatchObject({ actorType: "system", metadata: { challenges: 1, sessions: 1, verifications: 2, email_codes: 0, applications: 0 } });
     const vLeft = await adminSql<{ status: string }[]>`SELECT status FROM app.contact_verifications`;
     expect(vLeft.map((r) => r.status)).toEqual(["superseded"]);
     expect(audit.length).toBeGreaterThan(1);

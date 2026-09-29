@@ -18,6 +18,11 @@ export const limits = {
   otpIp: limiter("otp:ip", 10, 3600),
   otpGlobalEmail: limiter("otp:global:email", 1000, 60),
   otpGlobalSms: limiter("otp:global:sms", 200, 60),
+  appCreateIp: limiter("app:create:ip", 5, 3600),
+  appCreateEmail: limiter("app:create:email", 3, 86_400),
+  appResendEmail: limiter("app:resend:email", 5, 3600),
+  appTokenIp: limiter("app:token:ip", 30, 60),
+  opsUser: limiter("ops:user", 120, 60),
 };
 
 /** Takes one point for `key`; throws 429 RATE_LIMITED past the limit. Returns a function that gives the point back. */

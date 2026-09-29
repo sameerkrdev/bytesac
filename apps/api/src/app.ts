@@ -9,6 +9,7 @@ import { csrfGuard, noCors, rejectDualAuth } from "./middleware/security";
 import { authRouter } from "./routes/auth";
 import { contactsRouter } from "./routes/contacts";
 import { healthRouter } from "./routes/health";
+import { managerApplicationsRouter } from "./routes/manager-applications";
 import { meRouter } from "./routes/me";
 import { preferencesRouter } from "./routes/preferences";
 
@@ -26,6 +27,7 @@ app.use(noCors, rejectDualAuth, csrfGuard);
 
 app.use("/health", healthRouter);
 app.use("/v1/auth", authRouter);
+app.use("/v1/manager-applications", managerApplicationsRouter);
 app.use("/v1/me/contacts", contactsRouter);
 app.use("/v1/me/notification-preferences", preferencesRouter);
 app.use("/v1/me", meRouter);
