@@ -1,9 +1,8 @@
-import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount } from "@repo/api-client";
+import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount, assertSolanaSignature } from "@repo/app-core";
 import { useAccount, useAppKit, useProvider, useWalletInfo } from "@reown/appkit-react-native";
 import bs58 from "bs58";
 import { useCallback, useMemo } from "react";
 import { useSignMessage } from "wagmi";
-import { assertSolanaSignature } from "./solana-signature";
 
 export type { ConnectedAccount };
 

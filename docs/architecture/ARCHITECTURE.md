@@ -68,7 +68,7 @@ Investor Web / Mobile                     Manager Web
 
  Durable state: PostgreSQL (Supabase-hosted; backend-only access, schema app)
  Sessions: backend-managed (sessions table)
- Async/cache: Redis + BullMQ
+ Cache/rate limits: Redis; scheduled DB jobs: pg_cron (ADR-006)
  Files: Cloudflare R2
 ```
 
@@ -218,6 +218,8 @@ Names are indicative; align final names with existing migrations and implementat
 
 `audit_events` is append-only and carries no foreign keys, so audit history survives any change to referenced rows.
 
+Retention purges run inside Postgres: `app.purge_expired()` is scheduled daily by `pg_cron` and writes a `retention.purged` audit event (ADR-006).
+
 Use foreign keys, unique constraints, check constraints and indexes for invariants that can be enforced in the database. Store quantities and money using exact decimal/numeric representations or integer base units; do not use binary floating point for financial calculations.
 
 ## 8. Provider and stack baseline
@@ -227,14 +229,17 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | Web | Next.js (App Router) + React + TypeScript |
 | UI | shadcn/ui + Tailwind; Motion selectively |
 | Mobile | Expo SDK 57 + React Native 0.86; `expo-secure-store` for the session token; `jest-expo` for tests |
-| Monorepo | Turborepo + pnpm |
-| Backend | Node.js + Express + TypeScript |
+| Monorepo | Turborepo + pnpm. Internal packages export TypeScript source (`@repo/db`, `@repo/validator`, `@repo/logger`, `@repo/api-client`, `@repo/app-core`, `@repo/design-tokens`); no package build step |
+| Backend | Node.js + Express + TypeScript; flat `app.ts`/`server.ts`/`env.ts` with `middleware/`, `routes/`, `services/`, `providers/`; bundled with tsup |
 | Database | Supabase PostgreSQL |
-| ORM/migrations | Drizzle + Drizzle Kit |
-| Async/cache | Redis + BullMQ |
+| ORM/migrations | Drizzle + Drizzle Kit, in `@repo/db` |
+| Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; `pg_cron` for scheduled database jobs (retention). No queue until one is needed |
 | Wallet UX | Reown AppKit. Web: AppKit with Wagmi and Solana adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
 | Sessions | Backend-managed sessions table (not Supabase Auth) |
-| Validation | Zod (shared contracts package) |
+| Validation | Zod (shared `@repo/validator` package) |
+| Errors | `http-errors` with a stable `code`; one Express error handler |
+| Logging | winston via `@repo/logger` (secrets redacted), morgan request logs |
+| Environment | envalid, validated at startup |
 | Email OTP | Resend |
 | SMS OTP | Twilio Verify (`twilio` SDK pinned to 6.1.1 to satisfy the repo's minimum-release-age policy; no release-age exclusions) |
 | Tests | Vitest |
@@ -264,6 +269,7 @@ Current provider capabilities, supported chains, plan limits and commercial term
 - Maintain audit history for approvals, membership changes, basket versions and financial operations.
 - Client IP integrity: the web tier proxies `/api/*` to the API through a Next.js rewrite that neither sets nor sanitizes `X-Forwarded-For`. The edge/load balancer must overwrite (not append) `X-Forwarded-For` with the real client IP, and the API's `TRUST_PROXY` must trust only the Next server hop (private CIDR, or loopback when co-located). Otherwise per-IP rate limits and session `ip_prefix` are spoofable or global.
 - Mobile wallet connectors: Reown's Phantom and Solflare connectors persist their dapp keypair and session in AsyncStorage. This is not the Bytesac session token (which lives in the OS secure store), and every signature still requires explicit approval in the wallet app. Wallet-return deep links are consumed by the wallet SDK and must not drive app navigation.
+- Retention depends on the `pg_cron` extension: enable it on Supabase (Dashboard, Database, Extensions) and monitor `cron.job_run_details`.
 - Apply least privilege, input validation, rate limits, monitoring, backups and restore drills.
 - Obtain jurisdiction-specific legal/compliance review for investment, custody, RWA distribution and fee models.
 

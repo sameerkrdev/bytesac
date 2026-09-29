@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fonts, palette, radii, semantic, surfaces } from "./index.js";
+import { fonts, palette, radii, semantic, surfaces } from "./index";
 
 describe("design tokens match docs/BYTESAC_Design_System.md", () => {
   it("brand palette", () => {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Manrope } from "next/font/google";
+import { headers } from "next/headers";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -11,11 +12,12 @@ export const metadata: Metadata = {
   description: "Manager-led, multi-chain investment baskets.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const cookies = (await headers()).get("cookie");
   return (
     <html lang="en" className={`dark ${manrope.variable} ${inter.variable}`}>
       <body className="bg-background text-foreground font-sans antialiased">
-        <Providers>{children}</Providers>
+        <Providers cookies={cookies}>{children}</Providers>
       </body>
     </html>
   );

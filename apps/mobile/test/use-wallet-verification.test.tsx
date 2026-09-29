@@ -49,12 +49,12 @@ describe("useWalletVerification", () => {
     expect(result.current.state.step).toBe("idle");
   });
 
-  it("Sign works again after cancel of a hung request", async () => {
+  it("Sign works again after reset of a hung request", async () => {
     mockSignMessage.mockReturnValueOnce(new Promise(() => undefined));
     const { result } = await renderHook(() => useWalletVerification("sign_in"));
     await act(async () => { void result.current.run(account); });
     expect(result.current.state.step).toBe("signing");
-    await act(async () => { result.current.cancel(); });
+    await act(async () => { result.current.reset(); });
     expect(result.current.state.step).toBe("idle");
     mockSignMessage.mockResolvedValueOnce("sig");
     await act(async () => { await result.current.run(account); });

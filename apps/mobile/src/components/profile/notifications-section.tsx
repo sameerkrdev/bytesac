@@ -1,5 +1,6 @@
-import { ApiError, describeError } from "@repo/api-client";
-import type { NotificationPreferences } from "@repo/contracts";
+import { ApiError } from "@repo/api-client";
+import { describeError } from "@repo/app-core";
+import type { NotificationPreferences } from "@repo/validator";
 import { palette } from "@repo/design-tokens";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch, View } from "react-native";

@@ -3,7 +3,7 @@
 - **Status:** APPROVED
 - **Date:** 2026-09-29
 - **Owners:** Backend / Platform
-- **Related:** D-017, D-038, D-040; spec §4.2-4.3
+- **Related:** D-017, D-038, D-040; ADR-006; spec §4.2-4.3
 
 ## Context
 Supabase exposes the `public` schema through its Data API by default and supplies `anon` and `authenticated` roles. Our backend is the only intended database client, and the API process must run with the least privilege that still works. The original spec left open whether a custom role could hold `BYPASSRLS` on Supabase.
@@ -13,9 +13,9 @@ Supabase exposes the `public` schema through its Data API by default and supplie
 - Default privileges on schema `app` are revoked from PUBLIC, `anon` and `authenticated`; those roles have no grants.
 - Roles:
   - `bytesac_api`: runtime; `SELECT/INSERT/UPDATE` on `app` tables, no `DELETE`, no DDL; `audit_events` is append-only for this role.
-  - `bytesac_retention`: `DELETE` limited to the purge job's tables; used by the worker only.
+  - Retention has no role of its own: `app.purge_expired()` is `SECURITY DEFINER`, executable only by the schema owner, and scheduled by pg_cron (ADR-006).
   - Migrations run as the schema-owner role (Supabase `postgres`; a superuser locally), used only by `db:migrate`. There is no separate migrator role.
-- RLS is enabled on every `app` table with permissive policies scoped to `bytesac_api` and `bytesac_retention`. No role holds `BYPASSRLS`. RLS is defense-in-depth; authorization is enforced in the application layer, with every protected query scoped by the session's `userId`.
+- RLS is enabled on every `app` table with permissive policies scoped to `bytesac_api`. No role holds `BYPASSRLS`. RLS is defense-in-depth; authorization is enforced in the application layer, with every protected query scoped by the session's `userId`.
 - Local docker-compose mirrors the same roles.
 
 ## Alternatives considered
@@ -31,16 +31,16 @@ Supabase exposes the `public` schema through its Data API by default and supplie
 
 ### Negative / trade-offs
 - Policies must be maintained with each new table.
-- Retention deletes need a separate credential.
+- Retention depends on the `pg_cron` extension being enabled; without it the purge is not scheduled.
 
 ### Security, financial and operational impact
-- Three connection strings: runtime, migrations (schema owner), retention. Credentials are never committed.
+- Two connection strings: runtime and migrations (schema owner). Credentials are never committed.
 
 ## Migration / rollout
-Supabase operator steps: create the roles and set their passwords, keep `app` out of the exposed Data API schemas, confirm `anon`/`authenticated` have no privileges on `app`, and run `db:migrate` as `postgres`.
+Supabase operator steps: create the `bytesac_api` role and set its password, enable the `pg_cron` extension, keep `app` out of the exposed Data API schemas, confirm `anon`/`authenticated` have no privileges on `app`, and run `db:migrate` as `postgres`.
 
 ## Validation
-Tests confirm the runtime role cannot `DELETE` or run DDL, `anon`/`authenticated` cannot read `app` tables, cross-user access via the API returns 404, and the retention role can purge only eligible tables.
+Tests confirm the runtime role cannot `DELETE` or run DDL, `anon`/`authenticated` cannot read `app` tables, cross-user access via the API returns 404, and `app.purge_expired()` purges only eligible rows and cannot be executed by the runtime role.
 
 ## Open questions
 - Audit-event retention (7 years proposed) is OPEN pending compliance review (D-040).

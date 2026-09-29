@@ -5,8 +5,7 @@ import { useAppKit, useAppKitAccount, useAppKitNetwork, useAppKitProvider, useDi
 import { mainnet } from "@reown/appkit/networks";
 import { useCallback } from "react";
 import { useSignMessage } from "wagmi";
-import { normalizeSolanaSignature } from "@/lib/wallet/solana-signature";
-import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount } from "@repo/api-client";
+import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount, normalizeSolanaSignature } from "@repo/app-core";
 
 export type { ConnectedAccount };
 

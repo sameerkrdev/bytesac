@@ -1,5 +1,5 @@
-import { ApiError } from "@repo/api-client";
-import { focusManager, MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createAppQueryClient } from "@repo/app-core";
+import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
 import { api } from "./api";
@@ -14,31 +14,14 @@ interface AuthValue {
 }
 
 const Ctx = createContext<AuthValue | null>(null);
-const EXPIRED = new Set(["SESSION_EXPIRED", "USER_NOT_ACTIVE"]);
 const DISCONNECT_TIMEOUT_MS = 3000;
-
-export function createAppQueryClient(onExpired: () => void): QueryClient {
-  const handle = (e: unknown) => {
-    if (e instanceof ApiError && EXPIRED.has(e.code)) onExpired();
-  };
-  return new QueryClient({
-    queryCache: new QueryCache({ onError: handle }),
-    mutationCache: new MutationCache({ onError: handle }),
-    defaultOptions: { queries: { retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2, staleTime: 30_000 } },
-  });
-}
 
 async function withTimeout(task: () => Promise<void>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
-      Promise.resolve().then(task).catch(() => undefined),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, ms);
-      }),
-    ]);
+    await Promise.race([Promise.resolve().then(task).catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); })]);
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 

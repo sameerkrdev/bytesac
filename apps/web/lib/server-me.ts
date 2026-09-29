@@ -1,13 +1,13 @@
 import "server-only";
-import { meResponseSchema, type MeResponse } from "@repo/contracts";
+import { SESSION_COOKIE, meResponseSchema, type MeResponse } from "@repo/validator";
 import { cookies } from "next/headers";
 
 export async function getServerMe(): Promise<MeResponse | null> {
   const jar = await cookies();
-  const session = jar.get("bx_session");
+  const session = jar.get(SESSION_COOKIE);
   if (!session) return null;
   const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/me`, {
-    headers: { Cookie: `bx_session=${encodeURIComponent(session.value)}`, Accept: "application/json" },
+    headers: { Cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.value)}`, Accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(5000),
   });

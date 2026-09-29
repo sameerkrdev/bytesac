@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Text } from "react-native";
 import { api } from "@/lib/api";
 import { ApiError } from "@repo/api-client";
-import { AuthProvider, createAppQueryClient, useAuth } from "@/lib/auth-context";
+import { createAppQueryClient } from "@repo/app-core";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { tokenStore, __resetTokenCache } from "@/lib/token-store";
 
 function Probe() {

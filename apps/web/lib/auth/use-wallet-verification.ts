@@ -1,7 +1,8 @@
 "use client";
 
-import { ApiError, verifyReducer, WalletRejectedError } from "@repo/api-client";
-import type { ChallengePurpose } from "@repo/contracts";
+import { ApiError } from "@repo/api-client";
+import { verifyReducer, WalletRejectedError } from "@repo/app-core";
+import type { ChallengePurpose } from "@repo/validator";
 import { useCallback, useReducer, useRef } from "react";
 import { api } from "@/lib/api";
 import { useWalletConnector, type ConnectedAccount } from "@/lib/wallet/use-wallet-connector";

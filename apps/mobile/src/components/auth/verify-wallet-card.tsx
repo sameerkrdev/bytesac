@@ -1,5 +1,5 @@
-import { describeError, type ConnectedAccount, type VerifyState } from "@repo/api-client";
-import { CHAINS } from "@repo/contracts";
+import { describeError, type ConnectedAccount, type VerifyState, shortAddress } from "@repo/app-core";
+import { CHAINS } from "@repo/validator";
 import { palette } from "@repo/design-tokens";
 import * as Clipboard from "expo-clipboard";
 import { Check, Copy, PenLine, ShieldCheck } from "lucide-react-native";
@@ -8,7 +8,6 @@ import { Pressable, View } from "react-native";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { shortAddress } from "@/lib/format";
 
 export interface LinkedAddress {
   chain: string;

@@ -1,12 +1,12 @@
 import {
-  addContactResponseSchema, apiErrorBodySchema, challengeResponseSchema, contactViewSchema,
+  addContactResponseSchema, apiErrorBodySchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
   meResponseSchema, notificationPreferencesSchema, sessionsResponseSchema, verifyResponseSchema,
   type AddContactRequest, type AddContactResponse, type ChallengeRequest, type ChallengeResponse,
   type ContactView, type MeResponse, type NotificationPreferences, type SessionsResponse,
   type UpdateNotificationPreferences, type VerifyContactRequest, type VerifyRequest, type VerifyResponse,
-} from "@repo/contracts";
-import type { z } from "zod";
-import { ApiError } from "./api-error.js";
+  type z,
+} from "@repo/validator";
+import { ApiError } from "./api-error";
 
 export type Transport = { kind: "cookie" } | { kind: "bearer"; getToken: () => Promise<string | null> };
 export interface ApiClientOptions { baseUrl: string; transport: Transport; fetch?: typeof fetch }
@@ -17,11 +17,11 @@ export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 
   async function request<S extends z.ZodType = z.ZodVoid>(method: Method, path: string, schema: S | null, body?: unknown): Promise<z.infer<S>> {
-    const headers = new Headers({ Accept: "application/json", "X-Requested-With": "bytesac" });
+    const headers = new Headers({ Accept: "application/json", [CSRF_HEADER]: CSRF_HEADER_VALUE });
     if (body !== undefined) headers.set("Content-Type", "application/json");
     if (options.transport.kind === "bearer") {
       // Native clients identify themselves so the API's CSRF guard can exempt Origin-less mobile sign-in.
-      headers.set("X-Client", "mobile");
+      headers.set(CLIENT_HEADER, MOBILE_CLIENT);
       const token = await options.transport.getToken();
       if (token) headers.set("Authorization", `Bearer ${token}`);
     }

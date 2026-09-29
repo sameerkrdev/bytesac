@@ -1,66 +1,51 @@
-import type { EmailSender } from "../../src/adapters/email-sender.js";
-import type { EvmRpc } from "../../src/adapters/evm-rpc.js";
-import type { RateLimiter, RateLimitResult } from "../../src/adapters/rate-limiter.js";
-import type { SmsOtpProvider } from "../../src/adapters/sms-otp.js";
+import createHttpError from "http-errors";
 
-export class FakeEvmRpc implements EvmRpc {
+const deliveryFailure = (message: string) => createHttpError(503, message, { code: "OTP_DELIVERY_FAILED" });
+
+/** In-memory stand-ins for the provider modules (see test/setup.ts). Bound methods, so they can be passed as plain functions. */
+class FakeEvmRpc {
   behavior: "valid" | "invalid" | "unavailable" = "invalid";
   delayMs = 0;
   onCall: (() => Promise<void>) | null = null;
   calls: Array<{ chain: string; address: string }> = [];
-  async verifyContractSignature(input: Parameters<EvmRpc["verifyContractSignature"]>[0]): Promise<boolean> {
+  verifyContractSignature = async (input: { chain: string; address: string }): Promise<boolean> => {
     this.calls.push({ chain: input.chain, address: input.address });
     if (this.onCall) await this.onCall();
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
-    if (this.behavior === "unavailable") {
-      const { VerifierUnavailableError } = await import("../../src/adapters/evm-rpc.js");
-      throw new VerifierUnavailableError("rpc down");
-    }
+    if (this.behavior === "unavailable") throw createHttpError(503, "rpc down", { code: "VERIFIER_UNAVAILABLE" });
     return this.behavior === "valid";
-  }
+  };
 }
 
-export class FakeEmailSender implements EmailSender {
-  sent: Array<{ to: string; code: string }> = [];
+class FakeEmail {
+  sent: Array<{ to: string; code: string; verificationId: string }> = [];
   fail = false;
-  async sendOtp(input: { to: string; code: string }): Promise<void> {
-    if (this.fail) {
-      const { DeliveryError } = await import("../../src/adapters/email-sender.js");
-      throw new DeliveryError("resend down");
-    }
-    this.sent.push(input);
-  }
+  sendOtp = async (to: string, code: string, verificationId: string): Promise<void> => {
+    if (this.fail) throw deliveryFailure("resend down");
+    this.sent.push({ to, code, verificationId });
+  };
 }
 
-export class FakeSmsOtp implements SmsOtpProvider {
+class FakeSms {
   started: string[] = [];
   approveCode = "123456";
   fail = false;
-  async start(input: { to: string }): Promise<{ providerRef: string }> {
-    if (this.fail) {
-      const { DeliveryError } = await import("../../src/adapters/email-sender.js");
-      throw new DeliveryError("twilio down");
-    }
-    this.started.push(input.to);
-    return { providerRef: `VE${this.started.length}` };
-  }
   checkFail = false;
-  async check(input: { to: string; code: string }): Promise<"approved" | "rejected"> {
-    if (this.checkFail) {
-      const { DeliveryError } = await import("../../src/adapters/email-sender.js");
-      throw new DeliveryError("twilio check down");
-    }
-    return input.code === this.approveCode ? "approved" : "rejected";
-  }
+  start = async (to: string): Promise<string> => {
+    if (this.fail) throw deliveryFailure("twilio down");
+    this.started.push(to);
+    return `VE${this.started.length}`;
+  };
+  check = async (_to: string, code: string): Promise<boolean> => {
+    if (this.checkFail) throw deliveryFailure("twilio check down");
+    return code === this.approveCode;
+  };
 }
 
-/** Allows everything unless a key prefix is listed in `deny`. */
-export class FakeRateLimiter implements RateLimiter {
-  deny: string[] = [];
-  refunded: string[] = [];
-  async consume(key: string): Promise<RateLimitResult> {
-    const blocked = this.deny.some((p) => key.startsWith(p));
-    return { allowed: !blocked, retryAfterSec: blocked ? 30 : 0, bucketKey: `${key}:b` };
-  }
-  async refund(bucketKey: string): Promise<void> { this.refunded.push(bucketKey); }
+export const fakes = { evm: new FakeEvmRpc(), email: new FakeEmail(), sms: new FakeSms() };
+
+export function resetFakes(): void {
+  Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [] });
+  Object.assign(fakes.email, { sent: [], fail: false });
+  Object.assign(fakes.sms, { started: [], approveCode: "123456", fail: false, checkFail: false });
 }

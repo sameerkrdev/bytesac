@@ -1,10 +1,11 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { sessions, walletAddresses } from "../../src/db/schema/index.js";
-import { buildTestApp } from "../helpers/app.js";
-import { challengeFor, signIn, webHeaders } from "../helpers/auth.js";
-import { resetDb, testDb } from "../helpers/db.js";
-import { newEvmWallet, newSolanaWallet } from "../helpers/wallets.js";
+import { sessions, walletAddresses } from "@repo/db";
+import { app } from "../../src/app";
+import { fakes } from "../helpers/fakes";
+import { challengeFor, signIn, webHeaders } from "../helpers/auth";
+import { adminSql, resetDb, testDb } from "../helpers/db";
+import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";
 
 const db = testDb.db;
 beforeEach(resetDb);
@@ -17,7 +18,6 @@ async function addChain(app: Parameters<typeof challengeFor>[0], cookie: string,
 
 describe("add chain account", () => {
   it("adds Solana to an EVM user, rotates the session, old token rejected", async () => {
-    const { app } = buildTestApp();
     const s = await signIn(app, newEvmWallet(), "base");
     const res = await addChain(app, s.cookie!, newSolanaWallet(), "solana");
     expect(res.status).toBe(200);
@@ -31,7 +31,6 @@ describe("add chain account", () => {
   });
 
   it("same address already on this user → idempotent, no rotation", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const s = await signIn(app, w, "base");
     const res = await addChain(app, s.cookie!, w, "arbitrum");
@@ -41,7 +40,6 @@ describe("add chain account", () => {
   });
 
   it("address owned by another user → 409 ADDRESS_ALREADY_LINKED", async () => {
-    const { app } = buildTestApp();
     const sol = newSolanaWallet();
     await signIn(app, sol, "solana");
     const s = await signIn(app, newEvmWallet(), "base");
@@ -51,7 +49,6 @@ describe("add chain account", () => {
   });
 
   it("two users racing to link the same new address → exactly one wins", async () => {
-    const { app } = buildTestApp();
     const sol = newSolanaWallet();
     const a = await signIn(app, newEvmWallet(), "base");
     const b = await signIn(app, newEvmWallet(), "base");
@@ -61,15 +58,13 @@ describe("add chain account", () => {
   });
 
   it("different address in an already-linked family → 409 CHAIN_FAMILY_ALREADY_LINKED", async () => {
-    const { app } = buildTestApp();
     const s = await signIn(app, newEvmWallet(), "base");
     const res = await addChain(app, s.cookie!, newEvmWallet(), "base");
     expect(res.body.error.code).toBe("CHAIN_FAMILY_ALREADY_LINKED");
   });
 
   it("smart wallet can add the same address on another EVM chain", async () => {
-    const { app, fakes } = buildTestApp();
-    fakes.evmRpc.behavior = "valid";
+    fakes.evm.behavior = "valid";
     const sw = { address: "0x" + "ab".repeat(20), sign: () => "0x" + "11".repeat(100) };
     const s = await signIn(app, sw, "base");
     const res = await addChain(app, s.cookie!, sw, "arbitrum");
@@ -78,7 +73,6 @@ describe("add chain account", () => {
   });
 
   it("add_chain_account challenge without a session → 401; used from another session → rejected", async () => {
-    const { app } = buildTestApp();
     expect((await challengeFor(app, { purpose: "add_chain_account", chain: "solana", address: newSolanaWallet().address })).status).toBe(401);
     const a = await signIn(app, newEvmWallet(), "base");
     const b = await signIn(app, newEvmWallet(), "base");
@@ -87,5 +81,16 @@ describe("add chain account", () => {
     const res = await request(app).post("/v1/auth/verify").set(webHeaders(b.cookie)).send({ challengeId: ch.body.challengeId, signature: sol.sign(ch.body.message), client: "web" });
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe("SIGNATURE_INVALID");
+  });
+  it("a session revoked while the signature is being verified is not rotated and nothing is linked", async () => {
+    fakes.evm.behavior = "valid";
+    const sw = { address: "0x" + "ab".repeat(20), sign: () => "0x" + "11".repeat(100) };
+    const s = await signIn(app, sw, "base");
+    fakes.evm.onCall = async () => { await adminSql`UPDATE app.sessions SET revoked_at = now(), revoke_reason = 'logout'`; };
+    const res = await addChain(app, s.cookie!, sw, "arbitrum");
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe("SESSION_EXPIRED");
+    expect(await db.select().from(sessions)).toHaveLength(1);
+    expect((await db.select().from(walletAddresses)).map((a) => a.chain)).toEqual(["base"]);
   });
 });

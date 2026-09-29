@@ -1,5 +1,5 @@
-import { canAddChainAccount } from "@repo/api-client";
-import { CHAINS, type MeResponse } from "@repo/contracts";
+import { canAddChainAccount, shortAddress } from "@repo/app-core";
+import { CHAINS, type MeResponse } from "@repo/validator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { Modal, View } from "react-native";
@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Screen } from "@/components/ui/screen";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { shortAddress } from "@/lib/format";
 
 const METHOD = { eoa_ecdsa: "Key signature", erc1271: "Smart wallet", erc6492: "Smart wallet (not yet deployed)", ed25519: "Key signature" } as const;
 

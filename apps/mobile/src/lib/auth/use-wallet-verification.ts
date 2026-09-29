@@ -1,5 +1,6 @@
-import { ApiError, verifyReducer, WalletRejectedError, type ConnectedAccount } from "@repo/api-client";
-import type { ChallengePurpose } from "@repo/contracts";
+import { ApiError } from "@repo/api-client";
+import { verifyReducer, WalletRejectedError, type ConnectedAccount } from "@repo/app-core";
+import type { ChallengePurpose } from "@repo/validator";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { AppState } from "react-native";
 import { api } from "@/lib/api";
@@ -96,7 +97,5 @@ export function useWalletVerification(purpose: ChallengePurpose) {
     invalidate();
     dispatch({ type: "RESET" });
   }, [invalidate]);
-  /** Abandon a hung or unwanted request and return to idle. */
-  const cancel = reset;
-  return { state, run, reset, cancel };
+  return { state, run, reset };
 }

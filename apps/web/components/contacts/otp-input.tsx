@@ -1,5 +1,5 @@
 "use client";
-import { normalizeOtp } from "@repo/api-client";
+import { normalizeOtp } from "@repo/app-core";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 

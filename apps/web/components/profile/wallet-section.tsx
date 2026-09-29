@@ -1,7 +1,7 @@
 "use client";
 
-import { canAddChainAccount } from "@repo/api-client";
-import { CHAINS, type MeResponse } from "@repo/contracts";
+import { canAddChainAccount, shortAddress } from "@repo/app-core";
+import { CHAINS, type MeResponse } from "@repo/validator";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -9,7 +9,6 @@ import { WalletVerification } from "@/components/auth/wallet-verification";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { shortAddress } from "@/lib/format";
 
 const METHOD_LABEL = { eoa_ecdsa: "Key signature", erc1271: "Smart wallet", erc6492: "Smart wallet (not yet deployed)", ed25519: "Key signature" } as const;
 

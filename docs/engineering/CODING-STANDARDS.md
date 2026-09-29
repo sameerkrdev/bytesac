@@ -14,13 +14,19 @@ These standards are the default for implementation unless the repository's exist
 - Organize backend by domain/capability, not only by technical file type.
 - Keep HTTP controllers thin: parse/validate, call application services, map results.
 - Put business rules in domain/application layers, not controllers or React components.
-- Keep provider SDKs and chain-specific logic inside adapters.
+- Keep provider SDKs and chain-specific logic inside `apps/api/src/providers` (module-level instances configured from env) or chain-specific service modules.
+- API layout: `app.ts` exports the configured express `app`, `server.ts` only listens, `env.ts` validates env with envalid; code lives in `middleware/`, `routes/`, `services/`, `providers/`. No app factory or dependency-injection container; tests replace providers with `vi.mock`.
+- Shared infrastructure lives in `packages/` (`@repo/db`, `@repo/validator`, `@repo/logger`, `@repo/api-client`, `@repo/app-core`); apps contain only app code.
 - Avoid circular dependencies. Dependencies should point inward toward domain contracts.
 - Share API schemas/types intentionally; never import server-only packages into clients.
 
 ## API and validation
 - Validate request params, query strings, bodies and webhook payloads at boundaries.
-- Use Zod for all boundary validation; shared request/response schemas live in `packages/contracts`.
+- Use Zod for all boundary validation; shared request/response schemas live in `packages/validator`, which re-exports zod so every app uses one instance.
+- Throw `http-errors` with a stable `code` from `@repo/validator` (`createHttpError(409, "...", { code: "ADDRESS_ALREADY_LINKED" })`); the single error handler builds `{ error: { code, message, details? } }`.
+- Log through `@repo/logger` (winston); never log tokens, cookies, Authorization, signatures, OTP codes or full email/phone. Request logs use morgan at the `http` level.
+- Read environment variables only in `env.ts` files, validated with envalid; load local `.env` files with Node's `--env-file-if-exists`.
+- Internal packages export TypeScript source (`"exports": { ".": "./src/index.ts" }`), have no build step, and use extensionless relative imports.
 - Return stable error codes and safe user-facing messages; do not expose stack traces or secrets.
 - Use pagination for potentially large collections.
 - Make mutating operations idempotent where retries are possible.
@@ -28,7 +34,8 @@ These standards are the default for implementation unless the repository's exist
 - Document API changes and update client types.
 
 ## Database and financial correctness
-- Use Drizzle schema and reviewed migrations as the schema source of truth.
+- Use Drizzle schema and reviewed migrations (in `packages/db`) as the schema source of truth.
+- Scheduled database maintenance is a SQL function scheduled with `pg_cron` in a migration, guarded for environments without the extension.
 - Never edit production schema manually without a tracked migration.
 - Use transactions for multi-row invariants.
 - Use exact `numeric`/decimal or integer base units for money and token quantities; never JavaScript `number` for authoritative financial arithmetic.

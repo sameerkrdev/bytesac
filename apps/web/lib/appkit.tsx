@@ -5,7 +5,7 @@ import { SolanaAdapter } from "@reown/appkit-adapter-solana/react";
 import { arbitrum, base, bsc, mainnet, solana } from "@reown/appkit/networks";
 import { createAppKit } from "@reown/appkit/react";
 import type { ReactNode } from "react";
-import { WagmiProvider } from "wagmi";
+import { cookieStorage, cookieToInitialState, createStorage, WagmiProvider, type Config } from "wagmi";
 import { palette } from "@repo/design-tokens";
 
 const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
@@ -13,7 +13,7 @@ if (!projectId && typeof window !== "undefined") console.error("NEXT_PUBLIC_REOW
 
 export const evmNetworks = [mainnet, base, bsc, arbitrum] as const;
 
-export const wagmiAdapter = new WagmiAdapter({ networks: [...evmNetworks], projectId, ssr: true });
+export const wagmiAdapter = new WagmiAdapter({ networks: [...evmNetworks], projectId, ssr: true, storage: createStorage({ storage: cookieStorage }) });
 const solanaAdapter = new SolanaAdapter();
 
 createAppKit({
@@ -32,6 +32,8 @@ createAppKit({
   themeVariables: { "--w3m-accent": palette.sage, "--w3m-font-family": "Inter, sans-serif", "--w3m-border-radius-master": "4px" },
 });
 
-export function WalletProviders({ children }: { children: ReactNode }) {
-  return <WagmiProvider config={wagmiAdapter.wagmiConfig}>{children}</WagmiProvider>;
+/** `cookies` is the request Cookie header: wagmi state is restored from it so the first render matches the connected wallet. */
+export function WalletProviders({ children, cookies }: { children: ReactNode; cookies: string | null }) {
+  const initialState = cookieToInitialState(wagmiAdapter.wagmiConfig as Config, cookies);
+  return <WagmiProvider config={wagmiAdapter.wagmiConfig as Config} initialState={initialState}>{children}</WagmiProvider>;
 }
