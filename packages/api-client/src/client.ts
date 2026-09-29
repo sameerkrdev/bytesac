@@ -1,0 +1,72 @@
+import {
+  addContactResponseSchema, apiErrorBodySchema, challengeResponseSchema, contactViewSchema,
+  meResponseSchema, notificationPreferencesSchema, sessionsResponseSchema, verifyResponseSchema,
+  type AddContactRequest, type AddContactResponse, type ChallengeRequest, type ChallengeResponse,
+  type ContactView, type MeResponse, type NotificationPreferences, type SessionsResponse,
+  type UpdateNotificationPreferences, type VerifyContactRequest, type VerifyRequest, type VerifyResponse,
+} from "@repo/contracts";
+import type { z } from "zod";
+import { ApiError } from "./api-error.js";
+
+export type Transport = { kind: "cookie" } | { kind: "bearer"; getToken: () => Promise<string | null> };
+export interface ApiClientOptions { baseUrl: string; transport: Transport; fetch?: typeof fetch }
+
+type Method = "GET" | "POST" | "PATCH" | "DELETE";
+
+export function createApiClient(options: ApiClientOptions) {
+  const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+
+  async function request<S extends z.ZodType = z.ZodVoid>(method: Method, path: string, schema: S | null, body?: unknown): Promise<z.infer<S>> {
+    const headers = new Headers({ Accept: "application/json", "X-Requested-With": "bytesac" });
+    if (body !== undefined) headers.set("Content-Type", "application/json");
+    if (options.transport.kind === "bearer") {
+      // Native clients identify themselves so the API's CSRF guard can exempt Origin-less mobile sign-in.
+      headers.set("X-Client", "mobile");
+      const token = await options.transport.getToken();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+    }
+    let res: Response;
+    try {
+      res = await doFetch(`${options.baseUrl}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        credentials: options.transport.kind === "cookie" ? "same-origin" : "omit",
+      });
+    } catch {
+      throw new ApiError("NETWORK_ERROR", 0, "Network request failed");
+    }
+    if (!res.ok) {
+      const retry = res.headers.get("retry-after");
+      const parsed = apiErrorBodySchema.safeParse(await res.json().catch(() => null));
+      if (parsed.success) {
+        throw new ApiError(parsed.data.error.code, res.status, parsed.data.error.message, retry ? Number(retry) : undefined);
+      }
+      throw new ApiError("INTERNAL", res.status, `Unexpected ${res.status} response`);
+    }
+    if (schema === null) return undefined as z.infer<S>;
+    const parsed = schema.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) throw new ApiError("INTERNAL", res.status, "Malformed response");
+    return parsed.data;
+  }
+
+  return {
+    createChallenge: (b: ChallengeRequest): Promise<ChallengeResponse> => request("POST", "/v1/auth/challenge", challengeResponseSchema, b),
+    verify: (b: VerifyRequest): Promise<VerifyResponse> => request("POST", "/v1/auth/verify", verifyResponseSchema, b),
+    logout: (): Promise<void> => request<z.ZodVoid>("POST", "/v1/auth/logout", null),
+    logoutAll: (): Promise<void> => request<z.ZodVoid>("POST", "/v1/auth/logout-all", null),
+    me: (): Promise<MeResponse> => request("GET", "/v1/me", meResponseSchema),
+    sessions: (): Promise<SessionsResponse> => request("GET", "/v1/me/sessions", sessionsResponseSchema),
+    revokeSession: (id: string): Promise<void> => request<z.ZodVoid>("DELETE", `/v1/me/sessions/${encodeURIComponent(id)}`, null),
+    addContact: (b: AddContactRequest): Promise<AddContactResponse> => request("POST", "/v1/me/contacts", addContactResponseSchema, b),
+    verifyContact: (id: string, b: VerifyContactRequest): Promise<ContactView> =>
+      request("POST", `/v1/me/contacts/${encodeURIComponent(id)}/verify`, contactViewSchema, b),
+    resendContact: (id: string): Promise<AddContactResponse> =>
+      request("POST", `/v1/me/contacts/${encodeURIComponent(id)}/resend`, addContactResponseSchema),
+    getPreferences: (): Promise<NotificationPreferences> => request("GET", "/v1/me/notification-preferences", notificationPreferencesSchema),
+    updatePreferences: (b: UpdateNotificationPreferences): Promise<NotificationPreferences> =>
+      request("PATCH", "/v1/me/notification-preferences", notificationPreferencesSchema, b),
+  };
+}
+
+export type ApiClient = ReturnType<typeof createApiClient>;
