@@ -4,14 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+const disconnect = vi.fn(async () => undefined);
+vi.stubGlobal("location", { ...window.location, replace });
+vi.mock("@/lib/wallet/use-wallet-connector", () => ({ useWalletConnector: () => ({ disconnect }) }));
 vi.mock("@/lib/api", () => ({
   api: { sessions: vi.fn(async () => ({ sessions: [] })), revokeSession: vi.fn(), logoutAll: vi.fn(async () => undefined) },
 }));
 import { SessionsSection } from "@/components/profile/sessions-section";
 
 describe("SessionsSection", () => {
-  it("logout-all clears the query cache and navigates to sign-in", async () => {
+  it("logout-all clears the cache, disconnects the wallet and hard-navigates to sign-in", async () => {
     const qc = new QueryClient();
     const clear = vi.spyOn(qc, "clear");
     render(<QueryClientProvider client={qc}><SessionsSection /></QueryClientProvider>);
@@ -20,5 +22,6 @@ describe("SessionsSection", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Log out everywhere" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/sign-in"));
     expect(clear).toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalled();
   });
 });

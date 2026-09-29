@@ -1,19 +1,20 @@
 "use client";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
 
 const NAV = [{ href: "/home", label: "Home" }, { href: "/profile", label: "Profile" }];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const wallet = useWalletConnector();
   return (
     <div className="min-h-screen bg-space">
       <header className="border-b border-border-dark bg-slate/60">
@@ -29,7 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </li>
             ))}
           </ul>
-          <Button variant="ghost" className="ml-auto min-h-11" onClick={async () => { await api.logout().catch(() => undefined); queryClient.clear(); router.replace("/sign-in"); }}>
+          <Button variant="ghost" className="ml-auto min-h-11" onClick={async () => { await api.logout().catch(() => undefined); queryClient.clear(); await wallet.disconnect().catch(() => undefined); window.location.replace("/sign-in"); }}>
             Log out
           </Button>
         </nav>

@@ -2,13 +2,13 @@
 import { ApiError, describeError } from "@repo/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Monitor, Smartphone } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatRelative } from "@/lib/format";
+import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
 
 function errorText(e: unknown): string {
   return describeError(e instanceof ApiError ? e.code : "INTERNAL").title;
@@ -16,11 +16,11 @@ function errorText(e: unknown): string {
 
 export function SessionsSection() {
   const qc = useQueryClient();
-  const router = useRouter();
+  const wallet = useWalletConnector();
   const [confirm, setConfirm] = useState(false);
   const { data, isError } = useQuery({ queryKey: ["sessions"], queryFn: () => api.sessions() });
   const revoke = useMutation({ mutationFn: (id: string) => api.revokeSession(id), onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }) });
-  const all = useMutation({ mutationFn: () => api.logoutAll(), onSuccess: () => { qc.clear(); router.replace("/sign-in"); } });
+  const all = useMutation({ mutationFn: () => api.logoutAll(), onSuccess: async () => { qc.clear(); await wallet.disconnect().catch(() => undefined); window.location.replace("/sign-in"); } });
 
   return (
     <section aria-labelledby="sessions-title" className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
