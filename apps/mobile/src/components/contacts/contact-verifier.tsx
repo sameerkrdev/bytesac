@@ -33,31 +33,33 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
   // An unverified contact that exists server-side already has a pending code: go straight to code entry.
   const [resendAt, setResendAt] = useState<string | null>(() => (existing && existing.status !== "verified" ? new Date().toISOString() : null));
   const [error, setError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const left = useCountdown(resendAt);
   const verified = contact?.status === "verified";
   const awaitingCode = contact !== null && !verified && resendAt !== null;
 
-  async function guard(fn: () => Promise<void>) {
+  async function guard(fn: () => Promise<void>, setErr: (m: string | null) => void = setError) {
     setPending(true);
     setError(null);
+    setCodeError(null);
     try { await fn(); } catch (e) {
       if (e instanceof ApiError) {
-        if (e.code === "VALIDATION_FAILED") setError(e.message);
+        if (e.code === "VALIDATION_FAILED") setErr(e.message);
         else {
           const d = describeError(e.code);
-          setError(d.message ? `${d.title} ${d.message}` : d.title);
+          setErr(d.message ? `${d.title} ${d.message}` : d.title);
           if (e.code === "OTP_COOLDOWN" && e.retryAfterSec !== undefined) setResendAt(new Date(Date.now() + e.retryAfterSec * 1000).toISOString());
         }
       } else {
         const d = describeError("INTERNAL");
-        setError(d.message ? `${d.title} ${d.message}` : d.title);
+        setErr(d.message ? `${d.title} ${d.message}` : d.title);
       }
     } finally { setPending(false); }
   }
 
   const change = (clearValue: boolean) => {
-    setContact(null); setResendAt(null); setCode(""); setError(null);
+    setContact(null); setResendAt(null); setCode(""); setError(null); setCodeError(null);
     if (clearValue) setValue("");
   };
   const send = () => guard(async () => {
@@ -70,14 +72,14 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
     const out = await client.resendContact(contact.id);
     setResendAt(out.verification.resendAvailableAt);
     onChanged?.();
-  });
+  }, setCodeError);
   const verify = () => guard(async () => {
     if (!contact) return;
     const out = await client.verifyContact(contact.id, { code });
     setContact(out); setResendAt(null);
     onVerified?.(out);
     onChanged?.();
-  });
+  }, setCodeError);
 
   return (
     <View className="gap-3">
@@ -87,7 +89,7 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
         autoComplete={type === "email" ? "email" : "tel"} placeholder={type === "email" ? "you@example.com" : "+91 98765 43210"} error={error} />
       {awaitingCode ? (
         <>
-          <OtpField value={code} onChange={setCode} />
+          <OtpField value={code} onChange={setCode} error={codeError} />
           <Button onPress={() => void verify()} disabled={code.length !== 6} loading={pending}>Verify</Button>
           <Button variant="secondary" disabled={left > 0 || pending} onPress={() => void resend()}>
             {left > 0 ? `Resend in ${left} s` : "Resend code"}

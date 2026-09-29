@@ -9,7 +9,7 @@ interface AuthValue {
   status: Status;
   expired: boolean;
   acceptToken(token?: string): Promise<void>;
-  signOut(opts?: { expired?: boolean; remote?: boolean }): Promise<void>;
+  signOut(opts?: { expired?: boolean; remote?: boolean; disconnect?: boolean }): Promise<void>;
 }
 
 const Ctx = createContext<AuthValue | null>(null);
@@ -62,12 +62,14 @@ export function AuthProvider({ children, disconnectWallet }: { children: ReactNo
   const [qc] = useState(() => createAppQueryClient(() => setExpiredSignal((n) => n + 1)));
 
   const signOut = useCallback(
-    async (opts: { expired?: boolean; remote?: boolean } = {}) => {
+    async (opts: { expired?: boolean; remote?: boolean; disconnect?: boolean } = {}) => {
       if (signingOut.current) return;
       signingOut.current = true;
       try {
         if (opts.remote) {
           await api.logout().catch(() => undefined);
+        }
+        if (opts.remote || opts.disconnect) {
           const disconnect = disconnectRef.current;
           if (disconnect) await withTimeout(disconnect, DISCONNECT_TIMEOUT_MS);
         }

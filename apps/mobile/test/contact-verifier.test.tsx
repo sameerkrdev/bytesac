@@ -24,6 +24,18 @@ describe("ContactVerifier (mobile)", () => {
     expect(await screen.findByText("Verified")).toBeOnTheScreen();
     expect(onChanged).toHaveBeenCalled();
   });
+  it("wrong OTP shows the error under the code field, not the phone input", async () => {
+    const c = client();
+    c.verifyContact.mockRejectedValueOnce(new ApiError("OTP_INVALID", 400, "bad"));
+    await render(<ContactVerifier type="phone" client={c} />);
+    await fireEvent.changeText(screen.getByLabelText("Phone number"), "+14155552671");
+    await fireEvent.press(screen.getByRole("button", { name: "Send code" }));
+    await fireEvent.changeText(await screen.findByLabelText("6-digit code"), "111111");
+    await fireEvent.press(screen.getByRole("button", { name: "Verify" }));
+    expect(await screen.findByText(/Incorrect code/)).toBeOnTheScreen();
+    expect(screen.getByLabelText("6-digit code").props.accessibilityHint).toMatch(/Incorrect code/);
+    expect(screen.getByLabelText("Phone number").props.accessibilityHint).toBeUndefined();
+  });
   it("missing country code: server message inline, value kept", async () => {
     const c = client();
     c.addContact.mockRejectedValueOnce(new ApiError("VALIDATION_FAILED", 400, "Enter the phone number with its country code, e.g. +91 98765 43210"));

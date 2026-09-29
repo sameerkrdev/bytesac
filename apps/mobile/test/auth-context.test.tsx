@@ -90,6 +90,26 @@ describe("AuthProvider", () => {
   });
 });
 
+describe("signOut({ disconnect })", () => {
+  it("disconnects the wallet without calling the logout API", async () => {
+    const logout = jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    logout.mockClear();
+    await tokenStore.set("t");
+    const disconnectWallet = jest.fn(async () => undefined);
+    let ctx: ReturnType<typeof useAuth> | null = null;
+    function Grab() {
+      ctx = useAuth();
+      return null;
+    }
+    await render(<AuthProvider disconnectWallet={disconnectWallet}><Grab /><Probe /></AuthProvider>);
+    await waitFor(() => expect(screen.getByTestId("s")).toHaveTextContent("signedIn:false"));
+    await act(async () => { await ctx!.signOut({ remote: false, disconnect: true }); });
+    expect(disconnectWallet).toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
+    expect(screen.getByTestId("s")).toHaveTextContent("signedOut:false");
+  });
+});
+
 describe("createAppQueryClient", () => {
   it("signs out on SESSION_EXPIRED query errors only", async () => {
     const onExpired = jest.fn();

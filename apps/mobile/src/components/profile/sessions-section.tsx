@@ -21,7 +21,7 @@ export function SessionsSection() {
   const { data, isError } = useQuery({ queryKey: ["sessions"], queryFn: () => api.sessions() });
   const revoke = useMutation({ mutationFn: (id: string) => api.revokeSession(id), onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }) });
   // signOut() clears the query cache and the local session.
-  const all = useMutation({ mutationFn: () => api.logoutAll(), onSuccess: () => signOut() });
+  const all = useMutation({ mutationFn: () => api.logoutAll(), onSuccess: () => signOut({ remote: false, disconnect: true }) });
 
   const confirmAll = () => Alert.alert(
     "Log out of all devices?",
