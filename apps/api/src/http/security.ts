@@ -23,6 +23,12 @@ export function rejectDualAuth(req: Request, _res: Response, next: NextFunction)
   next();
 }
 
+/** Express routing is case-insensitive and non-strict, so match on a normalised path. */
+function normalizePath(path: string): string {
+  const lower = path.toLowerCase();
+  return lower.length > 1 ? lower.replace(/[/]+$/, "") : lower;
+}
+
 export function csrfGuard(allowedOrigins: string[]) {
   const allowed = new Set(allowedOrigins);
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -30,8 +36,9 @@ export function csrfGuard(allowedOrigins: string[]) {
     const cookies = req.cookies as Record<string, string | undefined> | undefined;
     const hasCookie = Boolean(cookies?.[SESSION_COOKIE]);
     const body = req.body as { client?: unknown } | undefined;
-    const webAuthEntry = AUTH_ENTRY.has(req.path) && body?.client === "web";
-    const challengeWithoutClient = req.path === "/v1/auth/challenge" && !/^Bearer\s+/i.test(req.header("authorization") ?? "") && req.header("x-client") !== "mobile";
+    const path = normalizePath(req.path);
+    const webAuthEntry = AUTH_ENTRY.has(path) && body?.client === "web";
+    const challengeWithoutClient = path === "/v1/auth/challenge" && !/^Bearer\s+/i.test(req.header("authorization") ?? "") && req.header("x-client") !== "mobile";
     if (!hasCookie && !webAuthEntry && !challengeWithoutClient) return next();
     const origin = req.header("origin");
     if (!origin || !allowed.has(origin) || req.header("x-requested-with") !== "bytesac") {

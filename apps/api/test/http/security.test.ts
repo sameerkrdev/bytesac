@@ -46,6 +46,12 @@ describe("security middleware", () => {
     const res = await request(app()).post("/v1/auth/verify").send({ client: "web" });
     expect(res.status).toBe(403);
   });
+  it("web sign-in with trailing slash or different case still requires Origin", async () => {
+    const strict = await request(app()).post("/v1/auth/verify/").send({ client: "web" });
+    expect(strict.status).toBe(403);
+    const cased = await request(app()).post("/v1/Auth/Verify").send({ client: "web" });
+    expect(cased.status).toBe(403);
+  });
   it("mobile sign-in without Origin is allowed", async () => {
     const res = await request(app()).post("/v1/auth/verify").send({ client: "mobile" });
     expect(res.status).toBe(200);

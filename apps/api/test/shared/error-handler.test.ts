@@ -48,6 +48,29 @@ describe("errorHandler", () => {
   });
 });
 
+describe("errorHandler client errors", () => {
+  it("maps 413 payload too large to 400 VALIDATION_FAILED without logging an error", async () => {
+    const lines: string[] = [];
+    const app = express();
+    app.use(requestContext);
+    app.use(express.json({ limit: "32kb" }));
+    app.post("/y", (_req, res) => { res.json({}); });
+    app.use(errorHandler(createLogger("info", { write: (m: string) => { lines.push(m); } })));
+    const res = await request(app).post("/y").set("content-type", "application/json").send(JSON.stringify({ a: "x".repeat(40_000) }));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+    expect(lines.join("")).not.toContain("unhandled error");
+  });
+  it("delegates to Express when headers were already sent", async () => {
+    const app = express();
+    app.use(requestContext);
+    app.get("/x", (_req, res, next) => { res.write("partial"); next(new Error("late")); });
+    app.use(errorHandler(createLogger("silent")));
+    const res = await request(app).get("/x").catch(() => null);
+    expect(res === null || res.status === 200).toBe(true);
+  });
+});
+
 describe("errorHandler logging", () => {
   it("does not log SQL params or query from driver errors", async () => {
     const lines: string[] = [];

@@ -7,6 +7,14 @@ function isBodyParseError(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as { type?: unknown }).type === "entity.parse.failed";
 }
 
+/** body-parser / http-errors client errors (413, 415, bad charset...) carry a 4xx status. */
+function isClientHttpError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { status?: unknown; statusCode?: unknown };
+  const s = typeof e.status === "number" ? e.status : e.statusCode;
+  return typeof s === "number" && s >= 400 && s <= 499;
+}
+
 /**
  * Drizzle/postgres errors embed SQL text and bound params (emails, phones, hashes).
  * Log only name, pg code and the underlying driver message; never `query` or `params`.
@@ -26,7 +34,8 @@ function sanitizeError(err: unknown): { errName: string; errCode?: string; errMe
 }
 
 export function errorHandler(logger: Logger): ErrorRequestHandler {
-  return (err, req, res, _next) => {
+  return (err, req, res, next) => {
+    if (res.headersSent) { next(err); return; }
     let body: ApiErrorBody;
     let status: number;
     if (err instanceof DomainError) {
@@ -37,6 +46,9 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     } else if (isBodyParseError(err)) {
       status = 400;
       body = { error: { code: "VALIDATION_FAILED", message: "Malformed JSON body" } };
+    } else if (isClientHttpError(err)) {
+      status = 400;
+      body = { error: { code: "VALIDATION_FAILED", message: "Invalid request body" } };
     } else {
       status = 500;
       body = { error: { code: "INTERNAL", message: "Something went wrong" } };
