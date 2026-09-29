@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadEnv } from "../../src/config/env.js";
+import { loadEnv, loadOpsEnv } from "../../src/config/env.js";
 
 const base = {
   NODE_ENV: "test", PORT: "4000", DATABASE_URL: "postgres://a@b/c", REDIS_URL: "redis://x:1/0",
@@ -16,6 +16,17 @@ describe("loadEnv", () => {
     expect(env.ALLOWED_ORIGINS).toEqual(["http://localhost:3000", "https://app.bytesac.com"]);
     expect(env.COOKIE_SECURE).toBe(true);
     expect(env.PORT).toBe(4000);
+  });
+  it("parses TRUST_PROXY: digits -> number, true/false -> boolean, else string", () => {
+    expect(loadEnv({ ...base, TRUST_PROXY: "1" }).TRUST_PROXY).toBe(1);
+    expect(loadEnv({ ...base, TRUST_PROXY: "true" }).TRUST_PROXY).toBe(true);
+    expect(loadEnv({ ...base, TRUST_PROXY: "false" }).TRUST_PROXY).toBe(false);
+    expect(loadEnv({ ...base, TRUST_PROXY: "loopback" }).TRUST_PROXY).toBe("loopback");
+    expect(loadEnv(base).TRUST_PROXY).toBe("loopback");
+  });
+  it("ops env needs only DATABASE_URL and LOG_LEVEL", () => {
+    expect(loadOpsEnv({ DATABASE_URL: "postgres://a@b/c" })).toEqual({ DATABASE_URL: "postgres://a@b/c", LOG_LEVEL: "info" });
+    expect(() => loadOpsEnv({})).toThrow(/DATABASE_URL/);
   });
   it("rejects short secrets and names the key", () => {
     expect(() => loadEnv({ ...base, SESSION_TOKEN_PEPPER: "short" })).toThrow(/SESSION_TOKEN_PEPPER/);

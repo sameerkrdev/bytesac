@@ -53,5 +53,6 @@ pnpm --filter api ops:user-suspend -- --user <user-uuid> --reason "compliance ho
 - No CORS: browsers are not a supported cross-origin client. Web uses same-site cookies; mobile uses bearer tokens.
 - Cookie-authenticated mutating requests require the CSRF client header (see `src/http/security.ts`).
 - Session cookie is HttpOnly and `Secure` in production (`COOKIE_SECURE`).
+- `TRUST_PROXY` controls how the client IP is derived (rate limits, audit). In production behind a load balancer or CDN, set the hop count (for example `TRUST_PROXY=1`); a wrong value lets clients spoof their IP. Digits are a hop count, `true`/`false` a boolean, anything else an IP/CIDR/keyword list.
 - Never log secrets, OTP codes, tokens, or full contact values.
 - Wallet sign-in is authentication only; it is not spending authorization.

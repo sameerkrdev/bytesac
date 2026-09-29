@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { chainSchema } from "@repo/contracts";
-import { loadDotEnvIfPresent, loadEnv } from "../config/env.js";
+import { loadDotEnvIfPresent, loadOpsEnv } from "../config/env.js";
 import { createDb } from "../db/client.js";
 import { disableAddress, reactivateAddress, suspendUser } from "./ops-service.js";
 
 loadDotEnvIfPresent();
-const env = loadEnv();
+const env = loadOpsEnv();
 const [command, ...rest] = process.argv.slice(2).filter((a) => a !== "--");
 const { values } = parseArgs({
   args: rest,
