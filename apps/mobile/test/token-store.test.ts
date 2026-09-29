@@ -26,4 +26,17 @@ describe("tokenStore", () => {
     jest.spyOn(console, "warn").mockImplementation(() => undefined);
     expect(await tokenStore.get()).toBeNull();
   });
+  it("an in-flight get() cannot resurrect a token cleared meanwhile", async () => {
+    await tokenStore.set("stale");
+    __resetTokenCache();
+    let release!: () => void;
+    (SecureStore.getItemAsync as jest.Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { release = () => resolve("stale"); }),
+    );
+    const pending = tokenStore.get();
+    await tokenStore.clear();
+    release();
+    expect(await pending).toBeNull();
+    expect(await tokenStore.get()).toBeNull();
+  });
 });

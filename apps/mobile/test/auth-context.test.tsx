@@ -100,3 +100,65 @@ describe("createAppQueryClient", () => {
     expect(onExpired).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("late expiry from a superseded session", () => {
+  const expiredBody = () =>
+    new Response(JSON.stringify({ error: { code: "SESSION_EXPIRED", message: "expired" } }), { status: 401, headers: { "content-type": "application/json" } });
+
+  it("does not sign out a session accepted while the old request was in flight", async () => {
+    await tokenStore.set("old");
+    let respond!: () => void;
+    let started!: () => void;
+    const fetchStarted = new Promise<void>((r) => { started = r; });
+    const spy = jest.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => { started(); respond = () => resolve(expiredBody()); }),
+    );
+    let ctx: ReturnType<typeof useAuth> | null = null;
+    let qc: ReturnType<typeof useQueryClient> | null = null;
+    function Grab() {
+      ctx = useAuth();
+      qc = useQueryClient();
+      return null;
+    }
+    await render(<AuthProvider><Grab /><Probe /></AuthProvider>);
+    await waitFor(() => expect(screen.getByTestId("s")).toHaveTextContent("signedIn:false"));
+    const failing = qc!.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), retry: false }).catch(() => undefined);
+    await fetchStarted;
+    await act(async () => { await ctx!.acceptToken("new"); });
+    await act(async () => { respond(); await failing; });
+    expect(screen.getByTestId("s")).toHaveTextContent("signedIn:false");
+    expect(await tokenStore.get()).toBe("new");
+    spy.mockRestore();
+  });
+
+  it("still signs out when the failing request used the current token", async () => {
+    await tokenStore.set("cur");
+    jest.spyOn(globalThis, "fetch").mockImplementation(async () => expiredBody());
+    let qc: ReturnType<typeof useQueryClient> | null = null;
+    function Grab() {
+      qc = useQueryClient();
+      return null;
+    }
+    await render(<AuthProvider><Grab /><Probe /></AuthProvider>);
+    await waitFor(() => expect(screen.getByTestId("s")).toHaveTextContent("signedIn:false"));
+    await act(async () => { await qc!.fetchQuery({ queryKey: ["me"], queryFn: () => api.me(), retry: false }).catch(() => undefined); });
+    await waitFor(() => expect(screen.getByTestId("s")).toHaveTextContent("signedOut:true"));
+  });
+});
+
+describe("signOut robustness", () => {
+  it("clears the token even if disconnectWallet throws synchronously", async () => {
+    jest.spyOn(api, "logout").mockResolvedValue(undefined);
+    await tokenStore.set("t");
+    let ctx: ReturnType<typeof useAuth> | null = null;
+    function Grab() {
+      ctx = useAuth();
+      return null;
+    }
+    await render(<AuthProvider disconnectWallet={() => { throw new Error("boom"); }}><Grab /><Probe /></AuthProvider>);
+    await waitFor(() => expect(screen.getByTestId("s")).toHaveTextContent("signedIn:false"));
+    await act(async () => { await ctx!.signOut({ remote: true }); });
+    expect(screen.getByTestId("s")).toHaveTextContent("signedOut:false");
+    expect(await tokenStore.get()).toBeNull();
+  });
+});

@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { useCallback } from "react";
 import { WalletVerification } from "@/components/auth/wallet-verification";
-import { WelcomeCard } from "@/components/auth/welcome-card";
+import { SessionExpiredBanner, WelcomeCard } from "@/components/auth/welcome-card";
 import { Screen } from "@/components/ui/screen";
 import { useAuth } from "@/lib/auth-context";
 import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
@@ -22,7 +22,12 @@ export default function SignInScreen() {
     <Screen scroll={wallet.network !== "none"}>
       {wallet.network === "none"
         ? <WelcomeCard expired={expired} onConnect={wallet.connect} />
-        : <WalletVerification purpose="sign_in" onVerified={onVerified} />}
+        : (
+          <>
+            {expired && <SessionExpiredBanner />}
+            <WalletVerification purpose="sign_in" onVerified={onVerified} />
+          </>
+        )}
     </Screen>
   );
 }
