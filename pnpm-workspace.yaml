@@ -19,3 +19,5 @@ minimumReleaseAgeExclude:
   - '@turbo/windows-64@2.11.5'
   - '@turbo/windows-arm64@2.11.5'
   - turbo@2.11.5
+overrides:
+  '@wagmi/connectors': 6.2.0

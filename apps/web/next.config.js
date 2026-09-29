@@ -2,6 +2,8 @@
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:4000";
 
 const nextConfig = {
+  // @coinbase/cdp-sdk (transitive of Reown) lazily imports optional @x402/* peers we never use.
+  serverExternalPackages: ["@coinbase/cdp-sdk"],
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${apiOrigin}/:path*` }];
   },
