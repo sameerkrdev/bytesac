@@ -1,6 +1,7 @@
 import cookieParser from "cookie-parser";
 import express from "express";
 import type { AppDeps } from "./deps.js";
+import { csrfGuard, noCors, rejectDualAuth } from "./http/security.js";
 import { errorHandler } from "./shared/error-handler.js";
 import { requestContext } from "./shared/request-context.js";
 
@@ -11,6 +12,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(requestContext);
   app.use(express.json({ limit: "32kb" }));
   app.use(cookieParser());
+  app.use(noCors, rejectDualAuth, csrfGuard(deps.env.ALLOWED_ORIGINS));
 
   app.get("/health", async (_req, res) => {
     const checks = await Promise.allSettled([deps.health.db(), deps.health.redis()]);
