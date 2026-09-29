@@ -189,3 +189,26 @@ describe("sign-in", () => {
     expect(res.headers["retry-after"]).toBe("30");
   });
 });
+
+describe("add_chain_account race", () => {
+  it("two sessions adding different Solana wallets concurrently → one 200, one 409", async () => {
+    const { app } = buildTestApp();
+    const evm = newEvmWallet();
+    const web = await signIn(app, evm, "base");
+    const mobile = await signIn(app, evm, "base", "mobile");
+    const hw = webHeaders(web.cookie);
+    const hm = { "X-Client": "mobile", Authorization: `Bearer ${mobile.token}` };
+    const run = async (headers: Record<string, string>, client: "web" | "mobile") => {
+      const sol = newSolanaWallet();
+      const ch = await challengeFor(app, { purpose: "add_chain_account", chain: "solana", address: sol.address }, headers);
+      expect(ch.status).toBe(200);
+      return request(app).post("/v1/auth/verify").set(headers).send({ challengeId: ch.body.challengeId, signature: await sol.sign(ch.body.message), client });
+    };
+    const [a, b] = await Promise.all([run(hw, "web"), run(hm, "mobile")]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    const loser = a.status === 409 ? a : b;
+    expect(loser.body.error.code).toBe("CHAIN_FAMILY_ALREADY_LINKED");
+    expect((await db.select().from(walletAddresses)).filter((r) => r.chain === "solana")).toHaveLength(1);
+  });
+});

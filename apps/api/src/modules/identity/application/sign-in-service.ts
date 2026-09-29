@@ -57,7 +57,14 @@ export async function verifyChallenge(deps: AppDeps, input: VerifyInput): Promis
       return await deps.db.transaction((tx) => finalize(deps, tx, ch, claimId, outcome.method, input));
     } catch (err) {
       if (ch.purpose === "sign_in" && isUniqueViolation(err, "wallet_addresses_chain_address_key")) {
-        return await deps.db.transaction((tx) => finalize(deps, tx, ch, claimId, outcome.method, input));
+        try {
+          return await deps.db.transaction((tx) => finalize(deps, tx, ch, claimId, outcome.method, input));
+        } catch (retryErr) {
+          if (isUniqueViolation(retryErr, "wallet_addresses_chain_address_key")) {
+            throw new DomainError("ADDRESS_ALREADY_LINKED", "This address is linked to another account");
+          }
+          throw retryErr;
+        }
       }
       if (ch.purpose === "add_chain_account" && isUniqueViolation(err, "wallet_addresses_chain_address_key")) {
         throw new DomainError("ADDRESS_ALREADY_LINKED", "This address is linked to another account");
@@ -66,11 +73,13 @@ export async function verifyChallenge(deps: AppDeps, input: VerifyInput): Promis
     }
   } catch (err) {
     if (err instanceof DomainError && TERMINAL.has(err.code)) {
-      await challenges.reject(deps.db, ch.id, claimId);
-      await writeAudit(deps.db, {
+      await deps.db.transaction(async (tx) => {
+      await challenges.reject(tx, ch.id, claimId);
+      await writeAudit(tx, {
         actorType: input.auth ? "user" : "system", actorUserId: input.auth?.userId ?? null, action: "challenge.rejected",
         entityType: "auth_challenge", entityId: ch.id, requestId: input.meta.requestId, challengeId: ch.id,
         sessionId: input.auth?.sessionId ?? null, metadata: { reason: err.code, chain: ch.chain, address: ch.address },
+      });
       });
     }
     throw err;
@@ -121,9 +130,10 @@ async function finalize(deps: AppDeps, tx: Tx, ch: ChallengeRow, claimId: string
   const auth = input.auth!;
   if (owner) {
     if (owner.userId !== auth.userId) throw new DomainError("ADDRESS_ALREADY_LINKED", "This address is linked to another account");
+    if (owner.status === "disabled") throw new DomainError("ADDRESS_DISABLED", "This wallet address has been disabled. Contact support.");
     return { userId: auth.userId, isNewUser: false, issued: null }; // idempotent: no rotation
   }
-  const wallet = await walletRepo.activeWalletForUser(tx, auth.userId);
+  const wallet = await walletRepo.lockActiveWalletForUser(tx, auth.userId);
   if (!wallet) throw new DomainError("USER_NOT_ACTIVE", "No active investment wallet");
   const existing = await walletRepo.addressesForWallet(tx, wallet.id);
   const family = familyOf(ch.chain);

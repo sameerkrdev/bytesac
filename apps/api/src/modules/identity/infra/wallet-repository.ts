@@ -32,6 +32,13 @@ export const walletRepo = {
     return row;
   },
 
+  /** Row-locks the active wallet to serialize concurrent address additions for one user. */
+  async lockActiveWalletForUser(tx: Tx, userId: string): Promise<{ id: string; walletProvider: string | null } | undefined> {
+    const [row] = await tx.select({ id: investmentWallets.id, walletProvider: investmentWallets.walletProvider }).from(investmentWallets)
+      .where(and(eq(investmentWallets.userId, userId), eq(investmentWallets.status, "active"))).for("update");
+    return row;
+  },
+
   async addressesForWallet(db: DbOrTx, walletId: string) {
     return db.select().from(walletAddresses).where(eq(walletAddresses.investmentWalletId, walletId)).orderBy(walletAddresses.createdAt);
   },
