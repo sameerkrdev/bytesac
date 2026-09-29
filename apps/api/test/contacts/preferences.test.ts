@@ -1,15 +1,14 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildTestApp } from "../helpers/app.js";
-import { signIn, webHeaders } from "../helpers/auth.js";
-import { resetDb } from "../helpers/db.js";
-import { newEvmWallet } from "../helpers/wallets.js";
+import { app } from "../../src/app";
+import { signIn, webHeaders } from "../helpers/auth";
+import { resetDb } from "../helpers/db";
+import { newEvmWallet } from "../helpers/wallets";
 
 beforeEach(resetDb);
 
 describe("notification preferences", () => {
   it("defaults, partial update, validation, CSRF", async () => {
-    const { app } = buildTestApp();
     const s = await signIn(app, newEvmWallet(), "base");
     const get = await request(app).get("/v1/me/notification-preferences").set("Cookie", s.cookie!);
     expect(get.body).toEqual({ rebalance: true, portfolioUpdates: true, managerUpdates: true, offers: false, productUpdates: false, marketing: false });

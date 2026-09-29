@@ -1,0 +1,196 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import createHttpError, { isHttpError } from "http-errors";
+import { and, eq, gt, lt, or, sql } from "drizzle-orm";
+import { authChallenges, db, investmentWallets, isUniqueViolation, sessions, type Tx } from "@repo/db";
+import {
+  chainsInFamily, familyOf,
+  type Chain, type ChallengePurpose, type ChallengeResponse, type ClientKind, type VerificationMethod,
+} from "@repo/validator";
+import { env } from "../env";
+import type { AuthContext } from "../middleware/auth";
+import { consume, limits } from "../middleware/rate-limit";
+import type { RequestMeta } from "../middleware/request-context";
+import { writeAudit } from "./audit";
+import { createSession, revokeSession, type IssuedSession } from "./sessions";
+import { buildSignInMessage } from "./sign-in-message";
+import { verifyEvmSignature, verifySolanaSignature } from "./signatures";
+import { addressesForWallet, canonicalizeAddress, createUserWithWallet, findAddressOwner, insertAddresses, type NewAddressRow } from "./wallets";
+
+type ChallengeRow = typeof authChallenges.$inferSelect;
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const CHALLENGE_LEASE = "30 seconds";
+/** Business rejections that make the challenge terminal (it is marked `rejected`). */
+const TERMINAL = new Set(["SIGNATURE_INVALID", "ADDRESS_DISABLED", "USER_NOT_ACTIVE", "ADDRESS_ALREADY_LINKED", "CHAIN_FAMILY_ALREADY_LINKED"]);
+
+const addressLinked = () => createHttpError(409, "This address is linked to another account", { code: "ADDRESS_ALREADY_LINKED" });
+const inProgress = () => createHttpError(409, "This sign-in request is already being verified.", { code: "CHALLENGE_IN_PROGRESS" });
+const addressDisabled = () => createHttpError(403, "This wallet address has been disabled. Contact support.", { code: "ADDRESS_DISABLED" });
+
+/** Database time: challenge lifetimes never depend on the API host's clock. */
+async function dbNow(): Promise<Date> {
+  const rows = await db.execute<{ now: string | Date }>(sql`select now() as now`);
+  const v = rows[0]!.now;
+  return v instanceof Date ? v : new Date(v);
+}
+
+export async function issueChallenge(i: { purpose: ChallengePurpose; chain: Chain; rawAddress: string; sessionId: string | null; meta: RequestMeta }): Promise<ChallengeResponse> {
+  const address = canonicalizeAddress(i.chain, i.rawAddress);
+  await consume(limits.challengeIp, i.meta.ip);
+  await consume(limits.challengeAddress, address);
+
+  const issuedAt = await dbNow();
+  const expiresAt = new Date(issuedAt.getTime() + CHALLENGE_TTL_MS);
+  const nonce = randomBytes(16).toString("hex");
+  const domain = env.AUTH_DOMAIN;
+  const uri = env.AUTH_URI;
+  const { message, chainId } = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt });
+
+  const [row] = await db.insert(authChallenges).values({
+    nonce, purpose: i.purpose, chainFamily: familyOf(i.chain), chain: i.chain, address, message, domain, uri, chainId,
+    issuedAt, expiresAt, sessionId: i.sessionId,
+  }).returning({ id: authChallenges.id });
+  return { challengeId: row!.id, message, expiresAt: expiresAt.toISOString() };
+}
+
+export interface VerifyInput {
+  challengeId: string;
+  signature: string;
+  walletProvider?: string;
+  client: ClientKind;
+  auth?: AuthContext;
+  meta: RequestMeta;
+}
+export interface VerifyResult { userId: string; isNewUser: boolean; issued: IssuedSession | null }
+
+/** Three phases: claim the challenge, verify the signature outside any transaction, then finalize atomically. */
+export async function verifyChallenge(input: VerifyInput): Promise<VerifyResult> {
+  // Phase A: claim
+  const claimId = randomUUID();
+  const [ch] = await db.update(authChallenges)
+    .set({ status: "processing", claimId, leaseExpiresAt: sql`now() + ${CHALLENGE_LEASE}::interval` })
+    .where(and(
+      eq(authChallenges.id, input.challengeId),
+      gt(authChallenges.expiresAt, sql`now()`),
+      or(eq(authChallenges.status, "pending"), and(eq(authChallenges.status, "processing"), lt(authChallenges.leaseExpiresAt, sql`now()`))),
+    ))
+    .returning();
+  if (!ch) {
+    const [row] = await db.select().from(authChallenges).where(eq(authChallenges.id, input.challengeId));
+    if (!row) throw createHttpError(404, "Sign-in request not found. Start again.", { code: "CHALLENGE_NOT_FOUND" });
+    if (row.status === "consumed" || row.status === "rejected") throw createHttpError(409, "This sign-in request was already used. Start again.", { code: "CHALLENGE_CONSUMED" });
+    if (row.expiresAt <= (await dbNow())) throw createHttpError(410, "This sign-in request expired. Start again.", { code: "CHALLENGE_EXPIRED" });
+    throw inProgress();
+  }
+
+  try {
+    if (ch.purpose === "add_chain_account" && (!input.auth || input.auth.sessionId !== ch.sessionId)) {
+      throw createHttpError(401, "This challenge belongs to another session", { code: "SIGNATURE_INVALID" });
+    }
+
+    // Phase B: verify outside any transaction
+    let outcome;
+    try {
+      const request = { chain: ch.chain, address: ch.address, message: ch.message, signature: input.signature };
+      outcome = familyOf(ch.chain) === "evm" ? await verifyEvmSignature(request) : verifySolanaSignature(request);
+    } catch (err) {
+      // The signature was not judged (e.g. RPC outage): release the claim so the same signature can be retried.
+      await db.update(authChallenges).set({ status: "pending", claimId: null, leaseExpiresAt: null })
+        .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing")));
+      throw err;
+    }
+    if (outcome.kind === "invalid") throw createHttpError(401, "Signature could not be verified", { code: "SIGNATURE_INVALID" });
+
+    // Phase C: finalize atomically; a sign-up race on the address unique index is retried once.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await db.transaction((tx) => finalize(tx, ch, claimId, outcome.method, input));
+      } catch (err) {
+        if (!isUniqueViolation(err, "wallet_addresses_chain_address_key")) throw err;
+        if (attempt === 2 || ch.purpose !== "sign_in") throw addressLinked();
+      }
+    }
+  } catch (err) {
+    if (isHttpError(err) && TERMINAL.has(err.code)) {
+      await db.transaction(async (tx) => {
+        await tx.update(authChallenges).set({ status: "rejected", resolvedAt: sql`now()`, leaseExpiresAt: null })
+          .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing")));
+        await writeAudit(tx, {
+          actorType: input.auth ? "user" : "system", actorUserId: input.auth?.userId ?? null, action: "challenge.rejected",
+          entityType: "auth_challenge", entityId: ch.id, requestId: input.meta.requestId, challengeId: ch.id,
+          sessionId: input.auth?.sessionId ?? null, metadata: { reason: err.code, chain: ch.chain, address: ch.address },
+        });
+      });
+    }
+    throw err;
+  }
+}
+
+async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: VerificationMethod, input: VerifyInput): Promise<VerifyResult> {
+  const consumed = await tx.update(authChallenges).set({ status: "consumed", resolvedAt: sql`now()`, leaseExpiresAt: null })
+    .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing")))
+    .returning({ id: authChallenges.id });
+  if (consumed.length !== 1) throw inProgress();
+
+  // Only an ECDSA-recovered EOA key proves control on every EVM chain; contract wallets are per chain.
+  const rows: NewAddressRow[] = (method === "eoa_ecdsa" ? chainsInFamily(familyOf(ch.chain)) : [ch.chain]).map((chain) => ({
+    chain, address: ch.address, method, verifiedOnChain: ch.chain, challengeId: ch.id,
+  }));
+  const owner = await findAddressOwner(tx, ch.chain, ch.address);
+  const audit = { requestId: input.meta.requestId, challengeId: ch.id };
+
+  if (ch.purpose === "sign_in") {
+    let userId: string;
+    let isNewUser = false;
+    if (owner) {
+      if (owner.status === "disabled") throw addressDisabled();
+      if (owner.userStatus !== "active") throw createHttpError(401, "This account is not active", { code: "USER_NOT_ACTIVE" });
+      userId = owner.userId;
+    } else {
+      userId = await createUserWithWallet(tx, { walletProvider: input.walletProvider, rows });
+      isNewUser = true;
+      await writeAudit(tx, {
+        ...audit, actorType: "user", actorUserId: userId, action: "user.signed_up", entityType: "user", entityId: userId,
+        metadata: { chain: ch.chain, address: ch.address, method, chains: rows.map((r) => r.chain) },
+      });
+    }
+    const issued = await createSession(tx, { userId, client: input.client, pepper: env.SESSION_TOKEN_PEPPER, meta: input.meta });
+    await writeAudit(tx, { ...audit, actorType: "user", actorUserId: userId, action: "session.created", entityType: "session", entityId: issued.id, sessionId: issued.id, metadata: { client: input.client } });
+    await writeAudit(tx, { ...audit, actorType: "user", actorUserId: userId, action: "user.signed_in", entityType: "user", entityId: userId, sessionId: issued.id, metadata: { chain: ch.chain, method } });
+    return { userId, isNewUser, issued };
+  }
+
+  // add_chain_account
+  const auth = input.auth!;
+  if (owner) {
+    if (owner.userId !== auth.userId) throw addressLinked();
+    if (owner.status === "disabled") throw addressDisabled();
+    return { userId: auth.userId, isNewUser: false, issued: null }; // idempotent: no rotation
+  }
+  // Row-lock the active wallet to serialize concurrent address additions for one user.
+  const [wallet] = await tx.select({ id: investmentWallets.id }).from(investmentWallets)
+    .where(and(eq(investmentWallets.userId, auth.userId), eq(investmentWallets.status, "active"))).for("update");
+  if (!wallet) throw createHttpError(401, "No active investment wallet", { code: "USER_NOT_ACTIVE" });
+  const existing = await addressesForWallet(tx, wallet.id);
+  const family = familyOf(ch.chain);
+  if (existing.some((a) => a.chainFamily === family && a.address !== ch.address)) {
+    throw createHttpError(409, "A different address in this chain family is already linked", { code: "CHAIN_FAMILY_ALREADY_LINKED" });
+  }
+  const have = new Set(existing.filter((a) => a.address === ch.address).map((a) => a.chain));
+  const toInsert = rows.filter((r) => !have.has(r.chain));
+  await insertAddresses(tx, wallet.id, toInsert);
+  await writeAudit(tx, {
+    ...audit, actorType: "user", actorUserId: auth.userId, action: "wallet.chain_account_added", entityType: "investment_wallet",
+    entityId: wallet.id, sessionId: auth.sessionId, metadata: { chain: ch.chain, address: ch.address, method, chains: toInsert.map((r) => r.chain) },
+  });
+
+  // Rotate the session. Revoke first: if it is already revoked (e.g. concurrent logout) refuse and roll everything back.
+  if (!(await revokeSession(tx, auth.sessionId, "rotated"))) throw createHttpError(401, "Please sign in again", { code: "SESSION_EXPIRED" });
+  const issued = await createSession(tx, { userId: auth.userId, client: auth.client, pepper: env.SESSION_TOKEN_PEPPER, meta: input.meta });
+  await tx.update(sessions).set({ replacedBySessionId: issued.id }).where(eq(sessions.id, auth.sessionId));
+  await writeAudit(tx, {
+    actorType: "user", actorUserId: auth.userId, action: "session.rotated", entityType: "session", entityId: issued.id,
+    requestId: input.meta.requestId, sessionId: issued.id, metadata: { previousSessionId: auth.sessionId },
+  });
+  return { userId: auth.userId, isNewUser: false, issued };
+}

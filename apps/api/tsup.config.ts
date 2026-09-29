@@ -7,4 +7,6 @@ export default defineConfig({
   clean: true,
   // Workspace packages export TypeScript source, so they are bundled into the output.
   noExternal: [/^@repo\//],
+  // Bundled CommonJS dependencies (winston) call require() at runtime.
+  banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
 });

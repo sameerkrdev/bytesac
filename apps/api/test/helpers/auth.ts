@@ -1,7 +1,8 @@
 import type { Chain } from "@repo/validator";
 import type { Express } from "express";
 import request, { type Response } from "supertest";
-import { ORIGIN } from "./app.js";
+
+export const ORIGIN = "http://localhost:3000";
 
 export interface TestWallet { address: string; sign(message: string): Promise<string> | string }
 

@@ -1,4 +1,4 @@
-import { ed25519 } from "@noble/curves/ed25519.js";
+import { generateKeyPairSync, sign } from "node:crypto";
 import bs58 from "bs58";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
@@ -10,10 +10,9 @@ export function newEvmWallet() {
 }
 
 export function newSolanaWallet() {
-  const secretKey = ed25519.utils.randomSecretKey();
-  const publicKey = ed25519.getPublicKey(secretKey);
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   return {
-    address: bs58.encode(publicKey),
-    sign: (message: string) => bs58.encode(ed25519.sign(new TextEncoder().encode(message), secretKey)),
+    address: bs58.encode(Buffer.from(publicKey.export({ format: "jwk" }).x!, "base64url")),
+    sign: (message: string) => bs58.encode(sign(null, Buffer.from(message), privateKey)),
   };
 }

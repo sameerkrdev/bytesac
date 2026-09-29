@@ -8,7 +8,6 @@ export async function setDevRolePasswords(adminUrl: string): Promise<void> {
   const sql = postgres(adminUrl, { max: 1, onnotice: () => undefined });
   try {
     await sql.unsafe("ALTER ROLE bytesac_api LOGIN PASSWORD 'bytesac_api_dev'");
-    await sql.unsafe("ALTER ROLE bytesac_retention LOGIN PASSWORD 'bytesac_retention_dev'");
   } finally {
     await sql.end({ timeout: 5 });
   }

@@ -2,17 +2,16 @@ import { eq } from "drizzle-orm";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents } from "@repo/db";
-import { buildTestApp } from "../helpers/app.js";
-import { challengeFor, signIn, webHeaders } from "../helpers/auth.js";
-import { resetDb, testDb } from "../helpers/db.js";
-import { newEvmWallet } from "../helpers/wallets.js";
+import { app } from "../../src/app";
+import { challengeFor, signIn, webHeaders } from "../helpers/auth";
+import { resetDb, testDb } from "../helpers/db";
+import { newEvmWallet } from "../helpers/wallets";
 
 const db = testDb.db;
 beforeEach(resetDb);
 
 describe("session revoke and sign-in client", () => {
   it("re-revoking an already revoked session is a no-op and writes no second audit row", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const a = await signIn(app, w, "base");
     const b = await signIn(app, w, "base");
@@ -26,7 +25,6 @@ describe("session revoke and sign-in client", () => {
   });
 
   it("sign_in with an existing web session issues a session for body.client and keeps the old one", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const web = await signIn(app, w, "base");
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address: w.address }, { ...webHeaders(web.cookie), "X-Client": "mobile" });

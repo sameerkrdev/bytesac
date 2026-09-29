@@ -1,32 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
+import { db } from "@repo/db";
 import { chainSchema } from "@repo/validator";
-import { loadDotEnvIfPresent, loadOpsEnv } from "../config/env.js";
-import { createDb } from "@repo/db";
-import { disableAddress, reactivateAddress, suspendUser } from "./ops-service.js";
+import { disableAddress, reactivateAddress, suspendUser } from "../services/ops";
 
-loadDotEnvIfPresent();
-const env = loadOpsEnv();
 const [command, ...rest] = process.argv.slice(2).filter((a) => a !== "--");
 const { values } = parseArgs({
   args: rest,
   options: { chain: { type: "string" }, address: { type: "string" }, reason: { type: "string" }, operator: { type: "string" }, user: { type: "string" } },
 });
 const requestId = `ops-${randomUUID()}`;
-const { db, close } = createDb(env.DATABASE_URL, { max: 1 });
 
 try {
   const operator = values.operator ?? "";
   if (command === "address-disable") {
-    console.log(await disableAddress(db, { chain: chainSchema.parse(values.chain), address: values.address ?? "", reason: values.reason ?? "", operator, requestId }));
+    console.log(await disableAddress({ chain: chainSchema.parse(values.chain), address: values.address ?? "", reason: values.reason ?? "", operator, requestId }));
   } else if (command === "address-reactivate") {
-    console.log({ reactivated: await reactivateAddress(db, { chain: chainSchema.parse(values.chain), address: values.address ?? "", operator, requestId }) });
+    console.log({ reactivated: await reactivateAddress({ chain: chainSchema.parse(values.chain), address: values.address ?? "", operator, requestId }) });
   } else if (command === "user-suspend") {
-    console.log({ revokedSessions: await suspendUser(db, { userId: values.user ?? "", reason: values.reason ?? "", operator, requestId }) });
+    console.log({ revokedSessions: await suspendUser({ userId: values.user ?? "", reason: values.reason ?? "", operator, requestId }) });
   } else {
     throw new Error(`Unknown command: ${command ?? "(none)"}`);
   }
   console.log(`requestId=${requestId}`);
 } finally {
-  await close();
+  await db.$client.end({ timeout: 5 });
 }

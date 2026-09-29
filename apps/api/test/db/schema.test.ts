@@ -1,9 +1,8 @@
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { beforeEach, describe, expect, it } from "vitest";
-import { investmentWallets, users, walletAddresses } from "@repo/db";
-import { isUniqueViolation } from "../../src/shared/pg-errors.js";
-import { adminSql, resetDb, testDb } from "../helpers/db.js";
+import { investmentWallets, isUniqueViolation, users, walletAddresses } from "@repo/db";
+import { adminSql, resetDb, testDb } from "../helpers/db";
 
 const db = testDb.db;
 beforeEach(resetDb);
@@ -23,11 +22,20 @@ describe("database access model", () => {
   });
 
   it("runtime role cannot delete or run DDL, and cannot modify audit rows", async () => {
-    const api = postgres(process.env.TEST_DATABASE_URL ?? "", { max: 1, onnotice: () => undefined });
+    const api = postgres(process.env.DATABASE_URL ?? "", { max: 1, onnotice: () => undefined });
     try {
       await expect(api`DELETE FROM app.users`).rejects.toThrow(/permission denied/);
       await expect(api`CREATE TABLE app.x (id int)`).rejects.toThrow(/permission denied/);
       await expect(api`UPDATE app.audit_events SET action = 'x'`).rejects.toThrow(/permission denied/);
+    } finally { await api.end(); }
+  });
+
+  it("retention runs inside Postgres: the worker policies are gone and the runtime role cannot run app.purge_expired()", async () => {
+    const [{ n } = { n: -1 }] = await adminSql<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_policies WHERE policyname LIKE 'retention%'`;
+    expect(n).toBe(0);
+    const api = postgres(process.env.DATABASE_URL ?? "", { max: 1, onnotice: () => undefined });
+    try {
+      await expect(api`SELECT app.purge_expired()`).rejects.toThrow(/permission denied/);
     } finally { await api.end(); }
   });
 

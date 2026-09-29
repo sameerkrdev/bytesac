@@ -6,7 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./migrate": "./src/migrate.ts",
-    "./dev-roles": "./src/dev-roles.ts"
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

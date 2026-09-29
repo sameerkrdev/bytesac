@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:17
+    build: ./docker/postgres
+    # pg_cron runs jobs only in cron.database_name; the retention job lives in the dev database.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=bytesac_dev"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

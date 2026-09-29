@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { maskContact, normalizeContact } from "../../src/modules/contacts/domain/contact-value.js";
-import { generateOtp, hashOtp, otpMatches } from "../../src/modules/contacts/domain/otp.js";
+import { maskContact, normalizeContact } from "../../src/services/contact-value";
+import { generateOtp, hashOtp, otpMatches } from "../../src/services/otp";
 
 const ALLOWED = ["IN", "US"];
 

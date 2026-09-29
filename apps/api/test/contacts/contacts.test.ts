@@ -1,20 +1,22 @@
+import { createHash } from "node:crypto";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents, contactVerifications, contacts } from "@repo/db";
-import { buildTestApp } from "../helpers/app.js";
-import { signIn, webHeaders } from "../helpers/auth.js";
-import { adminSql, resetDb, testDb } from "../helpers/db.js";
-import { newEvmWallet } from "../helpers/wallets.js";
+import { app } from "../../src/app";
+import { fakes } from "../helpers/fakes";
+import { limits } from "../../src/middleware/rate-limit";
+import { signIn, webHeaders } from "../helpers/auth";
+import { adminSql, resetDb, testDb } from "../helpers/db";
+import { newEvmWallet } from "../helpers/wallets";
 
 const db = testDb.db;
 beforeEach(resetDb);
 
 async function setup() {
-  const t = buildTestApp();
-  const s = await signIn(t.app, newEvmWallet(), "base");
+  const s = await signIn(app, newEvmWallet(), "base");
   const h = webHeaders(s.cookie);
-  return { ...t, s, h };
+  return { app, fakes, s, h };
 }
 
 describe("contacts", () => {
@@ -132,19 +134,19 @@ describe("contacts", () => {
     expect((await db.select().from(contacts)).filter((c) => c.status !== "replaced")).toHaveLength(1);
   });
 
-  it("limits: per-user, per-destination, per-IP, global; delivery failure refunds", async () => {
-    const { app, fakes, h } = await setup();
-    fakes.rateLimiter.deny = ["otp:dest:"];
+  it("limits: per-destination and channel-wide limits reject; a failed delivery gives the points back", async () => {
+    const { app, fakes, h, s } = await setup();
+    const destinationHash = createHash("sha256").update("a@b.co").digest("hex").slice(0, 32);
+    await limits.otpDestinationHour.block(destinationHash, 60);
     expect((await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: "a@b.co" })).status).toBe(429);
-    fakes.rateLimiter.deny = ["otp:global:sms"];
+    await limits.otpGlobalSms.block("sms", 60);
     const g = await request(app).post("/v1/me/contacts").set(h).send({ type: "phone", value: "+14155552671" });
     expect(g.status).toBe(503);
     expect(g.body.error.code).toBe("OTP_DELIVERY_FAILED");
-    fakes.rateLimiter.deny = [];
     fakes.email.fail = true;
     const f = await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: "c@d.co" });
     expect(f.body.error.code).toBe("OTP_DELIVERY_FAILED");
-    expect(fakes.rateLimiter.refunded.length).toBeGreaterThanOrEqual(3);
+    expect((await limits.otpUser.get(s.userId))?.consumedPoints ?? 0).toBe(0);
   });
 
   it("another user's contact → 404; cookie path requires CSRF headers", async () => {

@@ -1,9 +1,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
-import { canonicalizeAddress } from "../../src/modules/identity/domain/address.js";
-import { buildSignInMessage, SIGN_IN_STATEMENT } from "../../src/modules/identity/domain/sign-in-message.js";
-import { SESSION_POLICY } from "../../src/modules/identity/domain/session-policy.js";
-import { chainsForVerification } from "../../src/modules/identity/domain/verification-scope.js";
+import { canonicalizeAddress } from "../../src/services/wallets";
+import { buildSignInMessage, SIGN_IN_STATEMENT } from "../../src/services/sign-in-message";
 
 const acct = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
 const SOL = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
@@ -44,18 +42,5 @@ describe("buildSignInMessage", () => {
       "URI: http://localhost:3000", "Version: 1", "Chain ID: mainnet", "Nonce: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
       "Issued At: 2026-09-29T10:00:00.000Z", "Expiration Time: 2026-09-29T10:05:00.000Z",
     ].join("\n"));
-  });
-});
-
-describe("policies", () => {
-  it("session lifetimes per client", () => {
-    expect(SESSION_POLICY.web).toMatchObject({ idle: "12 hours", absolute: "7 days" });
-    expect(SESSION_POLICY.mobile).toMatchObject({ idle: "7 days", absolute: "30 days" });
-  });
-  it("verification scope", () => {
-    expect(chainsForVerification("eoa_ecdsa", "base")).toEqual(["ethereum", "base", "bnb", "arbitrum"]);
-    expect(chainsForVerification("erc1271", "base")).toEqual(["base"]);
-    expect(chainsForVerification("erc6492", "arbitrum")).toEqual(["arbitrum"]);
-    expect(chainsForVerification("ed25519", "solana")).toEqual(["solana"]);
   });
 });

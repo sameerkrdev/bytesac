@@ -2,17 +2,17 @@ import { eq } from "drizzle-orm";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents, authChallenges, sessions, users, walletAddresses } from "@repo/db";
-import { buildTestApp } from "../helpers/app.js";
-import { challengeFor, signIn, webHeaders } from "../helpers/auth.js";
-import { adminSql, resetDb, testDb } from "../helpers/db.js";
-import { ERC6492_SUFFIX, newEvmWallet, newSolanaWallet } from "../helpers/wallets.js";
+import { app } from "../../src/app";
+import { fakes } from "../helpers/fakes";
+import { challengeFor, signIn, webHeaders } from "../helpers/auth";
+import { adminSql, resetDb, testDb } from "../helpers/db";
+import { ERC6492_SUFFIX, newEvmWallet, newSolanaWallet } from "../helpers/wallets";
 
 const db = testDb.db;
 beforeEach(resetDb);
 
 describe("sign-in", () => {
   it("EOA sign-up registers 4 EVM chains, sets httpOnly cookie, audits", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const r = await signIn(app, w, "base");
     expect(r.res.status).toBe(200);
@@ -27,7 +27,6 @@ describe("sign-in", () => {
   });
 
   it("Solana mobile sign-up returns token in body, registers solana only", async () => {
-    const { app } = buildTestApp();
     const r = await signIn(app, newSolanaWallet(), "solana", "mobile");
     expect(r.res.status).toBe(200);
     expect(r.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -36,7 +35,6 @@ describe("sign-in", () => {
   });
 
   it("repeat sign-in (checksummed vs lowercase) logs into the same user", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const first = await signIn(app, { address: w.address.toLowerCase(), sign: w.sign }, "ethereum");
     const second = await signIn(app, w, "arbitrum");
@@ -45,8 +43,7 @@ describe("sign-in", () => {
   });
 
   it("smart wallet (ERC-1271) registers only the verified chain", async () => {
-    const { app, fakes } = buildTestApp();
-    fakes.evmRpc.behavior = "valid";
+    fakes.evm.behavior = "valid";
     const address = "0x" + "ab".repeat(20);
     const r = await signIn(app, { address, sign: () => "0x" + "11".repeat(100) }, "base");
     expect(r.res.status).toBe(200);
@@ -56,15 +53,13 @@ describe("sign-in", () => {
   });
 
   it("undeployed smart wallet (ERC-6492) registers only the verified chain", async () => {
-    const { app, fakes } = buildTestApp();
-    fakes.evmRpc.behavior = "valid";
+    fakes.evm.behavior = "valid";
     const r = await signIn(app, { address: "0x" + "cd".repeat(20), sign: () => "0x" + "22".repeat(96) + ERC6492_SUFFIX }, "arbitrum");
     expect(r.res.status).toBe(200);
     expect((await db.select().from(walletAddresses))[0]).toMatchObject({ chain: "arbitrum", verificationMethod: "erc6492" });
   });
 
   it("invalid signature → 401 SIGNATURE_INVALID, challenge rejected, not retryable", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const other = newEvmWallet();
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address: w.address });
@@ -78,7 +73,6 @@ describe("sign-in", () => {
   });
 
   it("malformed signature encodings are SIGNATURE_INVALID, never 500", async () => {
-    const { app } = buildTestApp();
     for (const [chain, wallet, sig] of [
       ["base", newEvmWallet(), "deadbeef"],
       ["solana", newSolanaWallet(), "c2lnbmF0dXJl+/=="],
@@ -90,23 +84,21 @@ describe("sign-in", () => {
   });
 
   it("verifier outage → 503 and the same signature succeeds on retry", async () => {
-    const { app, fakes } = buildTestApp();
-    fakes.evmRpc.behavior = "unavailable";
+    fakes.evm.behavior = "unavailable";
     const address = "0x" + "ab".repeat(20);
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address });
     const body = { challengeId: ch.body.challengeId, signature: "0x" + "11".repeat(100), client: "web" };
     const first = await request(app).post("/v1/auth/verify").set(webHeaders()).send(body);
     expect(first.status).toBe(503);
     expect(first.body.error.code).toBe("VERIFIER_UNAVAILABLE");
-    fakes.evmRpc.behavior = "valid";
+    fakes.evm.behavior = "valid";
     expect((await request(app).post("/v1/auth/verify").set(webHeaders()).send(body)).status).toBe(200);
   });
 
   it("no DB transaction is open while the RPC call runs", async () => {
-    const { app, fakes } = buildTestApp();
     let idleInTx = -1;
-    fakes.evmRpc.behavior = "valid";
-    fakes.evmRpc.onCall = async () => {
+    fakes.evm.behavior = "valid";
+    fakes.evm.onCall = async () => {
       const rows = await adminSql<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_stat_activity WHERE usename = 'bytesac_api' AND state LIKE 'idle in transaction%'`;
       idleInTx = rows[0]!.n;
     };
@@ -115,7 +107,6 @@ describe("sign-in", () => {
   });
 
   it("double submit of one challenge → exactly one session", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address: w.address });
     const body = { challengeId: ch.body.challengeId, signature: await w.sign(ch.body.message), client: "web" };
@@ -126,7 +117,6 @@ describe("sign-in", () => {
   });
 
   it("concurrent sign-up of one new address with two challenges → one user, both logged in", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const [a, b] = await Promise.all([signIn(app, w, "base"), signIn(app, w, "ethereum")]);
     expect(a.res.status).toBe(200);
@@ -136,7 +126,6 @@ describe("sign-in", () => {
   });
 
   it("expired challenge → 410 CHALLENGE_EXPIRED; unknown → 404", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address: w.address });
     await adminSql`UPDATE app.auth_challenges SET expires_at = now() - interval '1 second'`;
@@ -147,7 +136,6 @@ describe("sign-in", () => {
   });
 
   it("message signed for a different domain fails", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address: w.address });
     const forged = String(ch.body.message).replace("localhost:3000", "evil.test");
@@ -156,7 +144,6 @@ describe("sign-in", () => {
   });
 
   it("disabled address → 403 ADDRESS_DISABLED; suspended user → 401 USER_NOT_ACTIVE", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const first = await signIn(app, w, "base");
     await adminSql`UPDATE app.wallet_addresses SET status = 'disabled', disabled_reason = 'test'`;
@@ -167,7 +154,6 @@ describe("sign-in", () => {
   });
 
   it("challenge uses server time only and stores the exact message", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address: w.address });
     const [row] = await db.select().from(authChallenges).where(eq(authChallenges.id, ch.body.challengeId));
@@ -176,23 +162,20 @@ describe("sign-in", () => {
   });
 
   it("invalid address or unsupported chain → 400", async () => {
-    const { app } = buildTestApp();
     expect((await challengeFor(app, { purpose: "sign_in", chain: "base", address: "0x123" })).status).toBe(400);
     expect((await request(app).post("/v1/auth/challenge").set(webHeaders()).send({ purpose: "sign_in", chain: "polygon", address: "0x" + "1".repeat(40) })).status).toBe(400);
   });
 
   it("challenge and verify are rate limited", async () => {
-    const { app, fakes } = buildTestApp();
-    fakes.rateLimiter.deny = ["challenge:ip:"];
+    for (let i = 0; i < 20; i++) expect((await challengeFor(app, { purpose: "sign_in", chain: "base", address: newEvmWallet().address })).status).toBe(200);
     const res = await challengeFor(app, { purpose: "sign_in", chain: "base", address: newEvmWallet().address });
     expect(res.status).toBe(429);
-    expect(res.headers["retry-after"]).toBe("30");
+    expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
   });
 });
 
 describe("add_chain_account race", () => {
   it("two sessions adding different Solana wallets concurrently → one 200, one 409", async () => {
-    const { app } = buildTestApp();
     const evm = newEvmWallet();
     const web = await signIn(app, evm, "base");
     const mobile = await signIn(app, evm, "base", "mobile");

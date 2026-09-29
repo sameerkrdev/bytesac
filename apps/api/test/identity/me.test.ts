@@ -1,16 +1,15 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { meResponseSchema, sessionsResponseSchema } from "@repo/validator";
-import { buildTestApp } from "../helpers/app.js";
-import { signIn, webHeaders } from "../helpers/auth.js";
-import { resetDb } from "../helpers/db.js";
-import { newEvmWallet, newSolanaWallet } from "../helpers/wallets.js";
+import { app } from "../../src/app";
+import { signIn, webHeaders } from "../helpers/auth";
+import { resetDb } from "../helpers/db";
+import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";
 
 beforeEach(resetDb);
 
 describe("/v1/me", () => {
   it("returns the user, wallet addresses and contacts in contract shape", async () => {
-    const { app } = buildTestApp();
     const s = await signIn(app, newEvmWallet(), "base");
     const res = await request(app).get("/v1/me").set("Cookie", s.cookie!);
     expect(res.status).toBe(200);
@@ -21,7 +20,6 @@ describe("/v1/me", () => {
   });
 
   it("sessions list marks current; revoke own; other user's session → 404", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const web = await signIn(app, w, "base");
     const mob = await signIn(app, w, "base", "mobile");
@@ -37,7 +35,6 @@ describe("/v1/me", () => {
   });
 
   it("logout revokes current and clears cookie; logout-all revokes every session", async () => {
-    const { app } = buildTestApp();
     const w = newEvmWallet();
     const a = await signIn(app, w, "base");
     const out = await request(app).post("/v1/auth/logout").set(webHeaders(a.cookie));
@@ -51,7 +48,6 @@ describe("/v1/me", () => {
   });
 
   it("logout requires CSRF headers on the cookie path", async () => {
-    const { app } = buildTestApp();
     const a = await signIn(app, newEvmWallet(), "base");
     expect((await request(app).post("/v1/auth/logout").set("Cookie", a.cookie!)).status).toBe(403);
   });
