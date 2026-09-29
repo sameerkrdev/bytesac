@@ -15,3 +15,5 @@ jest.mock(
   },
   { virtual: true },
 );
+
+jest.mock("expo-clipboard", () => ({ setStringAsync: jest.fn() }));
