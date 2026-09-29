@@ -14,8 +14,8 @@ export function chainFromCaip(caipNetworkId: string | undefined): Chain | "unsup
 export function isUserRejection(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const e = err as { code?: unknown; name?: unknown; message?: unknown; cause?: unknown };
-  if (e.code === 4001 || e.name === "UserRejectedRequestError" || e.name === "WalletSignMessageError") return true;
-  if (typeof e.message === "string" && /reject|denied|cancel/i.test(e.message)) return true;
+  if (e.code === 4001 || e.name === "UserRejectedRequestError") return true;
+  if (typeof e.message === "string" && /user (rejected|denied|cancel)/i.test(e.message)) return true;
   return e.cause ? isUserRejection(e.cause) : false;
 }
 

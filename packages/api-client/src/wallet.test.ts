@@ -22,5 +22,7 @@ describe("isUserRejection", () => {
     expect(isUserRejection({ name: "UserRejectedRequestError" })).toBe(true);
     expect(isUserRejection(new Error("User rejected the request."))).toBe(true);
     expect(isUserRejection(new Error("timeout"))).toBe(false);
+    expect(isUserRejection(new Error("signing failed"))).toBe(false);
+    expect(isUserRejection({ name: "WalletSignMessageError" })).toBe(false);
   });
 });

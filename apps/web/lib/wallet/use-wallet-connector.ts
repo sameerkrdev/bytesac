@@ -3,9 +3,9 @@
 import type { Provider as SolanaProvider } from "@reown/appkit-adapter-solana/react";
 import { useAppKit, useAppKitAccount, useAppKitNetwork, useAppKitProvider, useDisconnect, useWalletInfo } from "@reown/appkit/react";
 import { mainnet } from "@reown/appkit/networks";
-import bs58 from "bs58";
 import { useCallback } from "react";
 import { useSignMessage } from "wagmi";
+import { normalizeSolanaSignature } from "@/lib/wallet/solana-signature";
 import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount } from "@repo/api-client";
 
 export type { ConnectedAccount };
@@ -29,8 +29,8 @@ export function useWalletConnector() {
     try {
       if (account.chain === "solana") {
         if (!solanaProvider) throw new Error("Solana provider unavailable");
-        const sig = await solanaProvider.signMessage(new TextEncoder().encode(message));
-        return bs58.encode(sig);
+        const result: unknown = await solanaProvider.signMessage(new TextEncoder().encode(message));
+        return normalizeSolanaSignature(result);
       }
       return await signMessageAsync({ message });
     } catch (err) {

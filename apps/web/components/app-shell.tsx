@@ -1,4 +1,5 @@
 "use client";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -12,6 +13,7 @@ const NAV = [{ href: "/home", label: "Home" }, { href: "/profile", label: "Profi
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   return (
     <div className="min-h-screen bg-space">
       <header className="border-b border-border-dark bg-slate/60">
@@ -27,7 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </li>
             ))}
           </ul>
-          <Button variant="ghost" className="ml-auto min-h-11" onClick={async () => { await api.logout().catch(() => undefined); router.replace("/sign-in"); }}>
+          <Button variant="ghost" className="ml-auto min-h-11" onClick={async () => { await api.logout().catch(() => undefined); queryClient.clear(); router.replace("/sign-in"); }}>
             Log out
           </Button>
         </nav>
