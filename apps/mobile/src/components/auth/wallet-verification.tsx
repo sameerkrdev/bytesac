@@ -1,4 +1,4 @@
-import type { ChallengePurpose } from "@repo/contracts";
+import type { ChallengePurpose } from "@repo/validator";
 import { useEffect } from "react";
 import { useWalletVerification } from "@/lib/auth/use-wallet-verification";
 import { useAuth } from "@/lib/auth-context";

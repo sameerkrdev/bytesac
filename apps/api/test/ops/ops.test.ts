@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { auditEvents, walletAddresses } from "../../src/db/schema/index.js";
+import { auditEvents, walletAddresses } from "@repo/db";
 import { disableAddress, reactivateAddress, suspendUser } from "../../src/ops/ops-service.js";
 import { buildTestApp } from "../helpers/app.js";
 import { signIn } from "../helpers/auth.js";

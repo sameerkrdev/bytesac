@@ -1,5 +1,6 @@
-import { ApiError, verifyReducer, WalletRejectedError, type ConnectedAccount } from "@repo/api-client";
-import type { ChallengePurpose } from "@repo/contracts";
+import { ApiError } from "@repo/api-client";
+import { verifyReducer, WalletRejectedError, type ConnectedAccount } from "@repo/app-core";
+import type { ChallengePurpose } from "@repo/validator";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { AppState } from "react-native";
 import { api } from "@/lib/api";

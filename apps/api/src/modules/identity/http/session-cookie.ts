@@ -1,4 +1,4 @@
-import type { ClientKind } from "@repo/contracts";
+import type { ClientKind } from "@repo/validator";
 import type { Response } from "express";
 import type { Env } from "../../../config/env.js";
 import { SESSION_COOKIE } from "../../../http/security.js";

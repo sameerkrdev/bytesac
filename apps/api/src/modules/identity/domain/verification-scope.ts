@@ -1,4 +1,4 @@
-import { chainsInFamily, familyOf, type Chain, type VerificationMethod } from "@repo/contracts";
+import { chainsInFamily, familyOf, type Chain, type VerificationMethod } from "@repo/validator";
 
 /** Only an ECDSA-recovered EOA key proves control on every EVM chain; contract wallets are per chain. */
 export function chainsForVerification(method: VerificationMethod, chain: Chain): Chain[] {

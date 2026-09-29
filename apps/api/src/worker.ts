@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Queue, Worker } from "bullmq";
 import { loadDotEnvIfPresent, loadEnv } from "./config/env.js";
 import { redisOptionsFromUrl } from "./config/redis-options.js";
-import { createDb } from "./db/client.js";
+import { createDb } from "@repo/db";
 import { runRetention } from "./jobs/retention.js";
 import { createLogger } from "./shared/logger.js";
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { ApiError, describeError } from "@repo/api-client";
-import type { NotificationPreferences } from "@repo/contracts";
+import { ApiError } from "@repo/api-client";
+import { describeError } from "@repo/app-core";
+import type { NotificationPreferences } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";

@@ -1,6 +1,7 @@
-import { ApiError, describeError, type ApiClient } from "@repo/api-client";
-import type { ContactType, ContactView } from "@repo/contracts";
-import { useEffect, useState } from "react";
+import { ApiError, type ApiClient } from "@repo/api-client";
+import { describeError, useCountdown } from "@repo/app-core";
+import type { ContactType, ContactView } from "@repo/validator";
+import { useState } from "react";
 import { View } from "react-native";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
@@ -11,18 +12,6 @@ import { OtpField } from "./otp-field";
 
 type Client = Pick<ApiClient, "addContact" | "verifyContact" | "resendContact">;
 const LABEL: Record<ContactType, string> = { email: "Email address", phone: "Phone number" };
-
-function useCountdown(untilIso: string | null): number {
-  const [left, setLeft] = useState(0);
-  useEffect(() => {
-    if (!untilIso) return;
-    const tick = () => setLeft(Math.max(0, Math.ceil((new Date(untilIso).getTime() - Date.now()) / 1000)));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [untilIso]);
-  return left;
-}
 
 export function ContactVerifier({ type, existing, onVerified, onChanged, client = api }: {
   type: ContactType; existing?: ContactView; onVerified?(c: ContactView): void; onChanged?(): void; client?: Client;

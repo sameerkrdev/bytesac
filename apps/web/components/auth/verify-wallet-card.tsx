@@ -1,12 +1,11 @@
 "use client";
 
-import { describeError, type VerifyState } from "@repo/api-client";
-import { CHAINS } from "@repo/contracts";
+import { describeError, type VerifyState, shortAddress } from "@repo/app-core";
+import { CHAINS } from "@repo/validator";
 import { Check, Copy, Loader2, PenLine, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { shortAddress } from "@/lib/format";
 import type { ConnectedAccount } from "@/lib/wallet/use-wallet-connector";
 
 interface Props {

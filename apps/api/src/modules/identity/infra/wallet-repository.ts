@@ -1,7 +1,7 @@
-import { familyOf, type Chain, type VerificationMethod } from "@repo/contracts";
+import { familyOf, type Chain, type VerificationMethod } from "@repo/validator";
 import { and, eq } from "drizzle-orm";
-import type { DbOrTx, Tx } from "../../../db/client.js";
-import { investmentWallets, notificationPreferences, users, walletAddresses } from "../../../db/schema/index.js";
+import type { DbOrTx, Tx } from "@repo/db";
+import { investmentWallets, notificationPreferences, users, walletAddresses } from "@repo/db";
 
 export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
 export interface AddressOwner { userId: string; userStatus: "pending" | "active" | "suspended"; walletId: string; status: "active" | "disabled" }

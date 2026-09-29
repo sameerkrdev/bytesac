@@ -1,5 +1,6 @@
 "use client";
-import { ApiError, describeError } from "@repo/api-client";
+import { ApiError } from "@repo/api-client";
+import { describeError, formatRelative } from "@repo/app-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Monitor, Smartphone } from "lucide-react";
 import { useState } from "react";
@@ -7,7 +8,6 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
-import { formatRelative } from "@/lib/format";
 import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
 
 function errorText(e: unknown): string {

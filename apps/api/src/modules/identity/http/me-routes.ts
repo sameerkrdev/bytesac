@@ -1,9 +1,9 @@
-import { familyOf, type MeResponse, type SessionsResponse } from "@repo/contracts";
+import { familyOf, type MeResponse, type SessionsResponse } from "@repo/validator";
 import { and, eq, ne } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import type { AppDeps } from "../../../deps.js";
-import { contacts, sessions, users } from "../../../db/schema/index.js";
+import { contacts, sessions, users } from "@repo/db";
 import { writeAudit } from "../../../shared/audit.js";
 import { DomainError } from "../../../shared/errors.js";
 import { toIso, toIsoOrNull } from "../../../shared/time.js";

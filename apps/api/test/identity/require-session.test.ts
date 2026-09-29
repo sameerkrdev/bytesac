@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { sessions } from "../../src/db/schema/index.js";
+import { sessions } from "@repo/db";
 import { rotateSession } from "../../src/modules/identity/application/session-service.js";
 import { optionalSession, requireSession } from "../../src/modules/identity/http/require-session.js";
 import { sessionRepo } from "../../src/modules/identity/infra/session-repository.js";

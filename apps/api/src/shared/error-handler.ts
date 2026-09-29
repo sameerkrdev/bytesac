@@ -1,4 +1,4 @@
-import { ERROR_HTTP_STATUS, type ApiErrorBody } from "@repo/contracts";
+import { ERROR_HTTP_STATUS, type ApiErrorBody } from "@repo/validator";
 import type { ErrorRequestHandler } from "express";
 import { DomainError } from "./errors.js";
 import type { Logger } from "./logger.js";

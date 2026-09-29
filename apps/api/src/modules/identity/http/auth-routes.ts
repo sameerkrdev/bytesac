@@ -1,4 +1,4 @@
-import { challengeRequestSchema, verifyRequestSchema, type VerifyResponse } from "@repo/contracts";
+import { challengeRequestSchema, verifyRequestSchema, type VerifyResponse } from "@repo/validator";
 import { Router } from "express";
 import { enforceRateLimit } from "../../../adapters/rate-limiter.js";
 import type { AppDeps } from "../../../deps.js";

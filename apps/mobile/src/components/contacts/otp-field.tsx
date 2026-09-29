@@ -1,4 +1,4 @@
-import { normalizeOtp } from "@repo/api-client";
+import { normalizeOtp } from "@repo/app-core";
 import { TextField } from "@/components/ui/text-field";
 
 export function OtpField({ value, onChange, error }: { value: string; onChange(v: string): void; error?: string | null }) {

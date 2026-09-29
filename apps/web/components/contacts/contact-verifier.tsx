@@ -1,9 +1,10 @@
 "use client";
 
-import { ApiError, describeError, type ApiClient } from "@repo/api-client";
-import type { ContactType, ContactView } from "@repo/contracts";
+import { ApiError, type ApiClient } from "@repo/api-client";
+import { describeError, useCountdown } from "@repo/app-core";
+import type { ContactType, ContactView } from "@repo/validator";
 import { Loader2 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,18 +15,6 @@ import { OtpInput } from "./otp-input";
 type Client = Pick<ApiClient, "addContact" | "verifyContact" | "resendContact">;
 const LABEL: Record<ContactType, string> = { email: "Email address", phone: "Phone number" };
 const PLACEHOLDER: Record<ContactType, string> = { email: "you@example.com", phone: "+91 98765 43210" };
-
-function useCountdown(untilIso: string | null): number {
-  const [left, setLeft] = useState(0);
-  useEffect(() => {
-    if (!untilIso) return;
-    const tick = () => setLeft(Math.max(0, Math.ceil((new Date(untilIso).getTime() - Date.now()) / 1000)));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [untilIso]);
-  return left;
-}
 
 export function ContactVerifier({ type, existing, onVerified, onChanged, client = api }: { type: ContactType; existing?: ContactView; onVerified?(c: ContactView): void; onChanged?(): void; client?: Client }) {
   const ids = { value: useId(), code: useId(), error: useId() };

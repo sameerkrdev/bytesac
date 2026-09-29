@@ -1,4 +1,4 @@
-import type { Chain } from "@repo/contracts";
+import type { Chain } from "@repo/validator";
 import type { Express } from "express";
 import request, { type Response } from "supertest";
 import { ORIGIN } from "./app.js";

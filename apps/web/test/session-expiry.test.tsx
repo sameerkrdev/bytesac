@@ -3,9 +3,7 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/appkit", () => ({ WalletProviders: ({ children }: { children: React.ReactNode }) => children }));
-
-import { createAppQueryClient } from "@/components/providers";
+import { createAppQueryClient } from "@repo/app-core";
 
 function Q({ id, fail }: { id: string; fail: boolean }) {
   useQuery({

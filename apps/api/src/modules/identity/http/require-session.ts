@@ -1,4 +1,4 @@
-import type { ClientKind } from "@repo/contracts";
+import type { ClientKind } from "@repo/validator";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { AppDeps } from "../../../deps.js";
 import { SESSION_COOKIE } from "../../../http/security.js";

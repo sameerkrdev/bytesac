@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { MeResponse } from "@repo/contracts";
+import type { MeResponse } from "@repo/validator";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/auth/wallet-verification", () => ({ WalletVerification: () => null }));
-import { canAddChainAccount } from "@repo/api-client";
+import { canAddChainAccount } from "@repo/app-core";
 import { WalletSection } from "@/components/profile/wallet-section";
 
 const evm = (chain: "ethereum" | "base" | "bnb" | "arbitrum", method: "eoa_ecdsa" | "erc1271" = "eoa_ecdsa") =>

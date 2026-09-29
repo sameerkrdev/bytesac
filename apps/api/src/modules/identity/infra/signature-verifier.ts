@@ -1,4 +1,4 @@
-import { familyOf, type Chain, type VerificationMethod } from "@repo/contracts";
+import { familyOf, type Chain, type VerificationMethod } from "@repo/validator";
 import type { EvmRpc } from "../../../adapters/evm-rpc.js";
 import { verifyEvmSignature } from "./evm-signature-verifier.js";
 import { verifySolanaSignature } from "./solana-signature-verifier.js";

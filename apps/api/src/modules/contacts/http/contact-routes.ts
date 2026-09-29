@@ -1,4 +1,4 @@
-import { addContactRequestSchema, verifyContactRequestSchema } from "@repo/contracts";
+import { addContactRequestSchema, verifyContactRequestSchema } from "@repo/validator";
 import { Router } from "express";
 import { z } from "zod";
 import type { AppDeps } from "../../../deps.js";

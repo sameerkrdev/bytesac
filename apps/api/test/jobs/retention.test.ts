@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../../src/db/schema/index.js";
+import * as schema from "@repo/db";
 import { runRetention } from "../../src/jobs/retention.js";
 import { buildTestApp } from "../helpers/app.js";
 import { signIn } from "../helpers/auth.js";

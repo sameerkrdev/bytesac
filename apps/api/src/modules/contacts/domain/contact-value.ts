@@ -1,4 +1,4 @@
-import type { ContactType } from "@repo/contracts";
+import type { ContactType } from "@repo/validator";
 import { parsePhoneNumberWithError } from "libphonenumber-js";
 import { z } from "zod";
 import { DomainError } from "../../../shared/errors.js";

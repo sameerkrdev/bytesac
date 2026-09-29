@@ -1,5 +1,5 @@
 "use client";
-import type { MeResponse } from "@repo/contracts";
+import type { MeResponse } from "@repo/validator";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { api } from "@/lib/api";

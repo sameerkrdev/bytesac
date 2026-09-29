@@ -1,7 +1,7 @@
-import type { Chain } from "@repo/contracts";
+import type { Chain } from "@repo/validator";
 import { and, eq, sql } from "drizzle-orm";
-import type { Db } from "../db/client.js";
-import { users, walletAddresses } from "../db/schema/index.js";
+import type { Db } from "@repo/db";
+import { users, walletAddresses } from "@repo/db";
 import { canonicalizeAddress } from "../modules/identity/domain/address.js";
 import { walletRepo } from "../modules/identity/infra/wallet-repository.js";
 import { sessionRepo } from "../modules/identity/infra/session-repository.js";

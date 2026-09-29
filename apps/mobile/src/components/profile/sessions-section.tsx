@@ -1,4 +1,5 @@
-import { ApiError, describeError } from "@repo/api-client";
+import { ApiError } from "@repo/api-client";
+import { describeError, formatRelative } from "@repo/app-core";
 import { palette } from "@repo/design-tokens";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Monitor, Smartphone } from "lucide-react-native";
@@ -9,7 +10,6 @@ import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatRelative } from "@/lib/format";
 
 function errorText(e: unknown): string {
   return describeError(e instanceof ApiError ? e.code : "INTERNAL").title;

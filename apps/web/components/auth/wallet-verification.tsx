@@ -1,5 +1,5 @@
 "use client";
-import type { ChallengePurpose } from "@repo/contracts";
+import type { ChallengePurpose } from "@repo/validator";
 import { useEffect, useRef } from "react";
 import { useWalletVerification } from "@/lib/auth/use-wallet-verification";
 import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";

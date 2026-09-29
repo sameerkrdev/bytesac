@@ -1,5 +1,5 @@
-import type { DbOrTx } from "../db/client.js";
-import { auditEvents } from "../db/schema/index.js";
+import type { DbOrTx } from "@repo/db";
+import { auditEvents } from "@repo/db";
 
 export type AuditAction =
   | "user.signed_up" | "user.signed_in" | "user.suspended" | "wallet.chain_account_added"

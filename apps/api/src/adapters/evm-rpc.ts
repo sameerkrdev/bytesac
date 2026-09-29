@@ -1,4 +1,4 @@
-import type { Chain } from "@repo/contracts";
+import type { Chain } from "@repo/validator";
 import { createPublicClient, http, RpcRequestError, type Transport } from "viem";
 export class VerifierUnavailableError extends Error {
   constructor(message: string, options?: { cause?: unknown }) { super(message, options); this.name = "VerifierUnavailableError"; }

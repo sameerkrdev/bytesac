@@ -1,8 +1,8 @@
-import { updateNotificationPreferencesSchema, type NotificationPreferences } from "@repo/contracts";
+import { updateNotificationPreferencesSchema, type NotificationPreferences } from "@repo/validator";
 import { eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import type { AppDeps } from "../../../deps.js";
-import { notificationPreferences } from "../../../db/schema/index.js";
+import { notificationPreferences } from "@repo/db";
 import { writeAudit } from "../../../shared/audit.js";
 import { DomainError } from "../../../shared/errors.js";
 import { parseOrThrow } from "../../../shared/validate.js";

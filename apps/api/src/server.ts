@@ -6,7 +6,7 @@ import { RedisRateLimiter } from "./adapters/rate-limiter.js";
 import { TwilioVerifySmsOtp } from "./adapters/sms-otp.js";
 import { createApp } from "./app.js";
 import { loadDotEnvIfPresent, loadEnv } from "./config/env.js";
-import { createDb } from "./db/client.js";
+import { createDb } from "@repo/db";
 import { createLogger } from "./shared/logger.js";
 
 loadDotEnvIfPresent();

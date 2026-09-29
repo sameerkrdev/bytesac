@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
-import { chainSchema } from "@repo/contracts";
+import { chainSchema } from "@repo/validator";
 import { loadDotEnvIfPresent, loadOpsEnv } from "../config/env.js";
-import { createDb } from "../db/client.js";
+import { createDb } from "@repo/db";
 import { disableAddress, reactivateAddress, suspendUser } from "./ops-service.js";
 
 loadDotEnvIfPresent();

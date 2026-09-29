@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { beforeEach, describe, expect, it } from "vitest";
-import { investmentWallets, users, walletAddresses } from "../../src/db/schema/index.js";
+import { investmentWallets, users, walletAddresses } from "@repo/db";
 import { isUniqueViolation } from "../../src/shared/pg-errors.js";
 import { adminSql, resetDb, testDb } from "../helpers/db.js";
 

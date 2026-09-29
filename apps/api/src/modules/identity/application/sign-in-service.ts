@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { familyOf, type ClientKind, type VerificationMethod } from "@repo/contracts";
+import { familyOf, type ClientKind, type VerificationMethod } from "@repo/validator";
 import { VerifierUnavailableError } from "../../../adapters/evm-rpc.js";
-import type { Tx } from "../../../db/client.js";
+import type { Tx } from "@repo/db";
 import type { AppDeps } from "../../../deps.js";
 import { writeAudit } from "../../../shared/audit.js";
 import { DomainError } from "../../../shared/errors.js";

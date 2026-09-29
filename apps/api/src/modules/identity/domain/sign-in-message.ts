@@ -1,4 +1,4 @@
-import { CHAINS, familyOf, type Chain } from "@repo/contracts";
+import { CHAINS, familyOf, type Chain } from "@repo/validator";
 import { getAddress } from "viem";
 import { createSiweMessage } from "viem/siwe";
 

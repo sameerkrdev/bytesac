@@ -1,4 +1,4 @@
-import { familyOf, type Chain } from "@repo/contracts";
+import { familyOf, type Chain } from "@repo/validator";
 import bs58 from "bs58";
 import { isAddress } from "viem";
 import { DomainError } from "../../../shared/errors.js";

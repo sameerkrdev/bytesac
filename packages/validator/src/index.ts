@@ -1,0 +1,13 @@
+/**
+ * Shared validation package: re-exports zod so every app resolves one instance,
+ * plus the API contract (chains, error codes, request/response schemas).
+ */
+export * from "zod";
+
+export * from "./chains";
+export * from "./errors";
+export * from "./auth";
+export * from "./contacts";
+export * from "./me";
+export * from "./preferences";
+export * from "./http";

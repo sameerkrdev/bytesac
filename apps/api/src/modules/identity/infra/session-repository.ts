@@ -1,8 +1,8 @@
 import { createHmac, randomBytes } from "node:crypto";
-import type { ClientKind } from "@repo/contracts";
+import type { ClientKind } from "@repo/validator";
 import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
-import type { DbOrTx } from "../../../db/client.js";
-import { sessions, users } from "../../../db/schema/index.js";
+import type { DbOrTx } from "@repo/db";
+import { sessions, users } from "@repo/db";
 import type { RequestMeta } from "../../../shared/request-context.js";
 import { RENEWAL_THROTTLE, SESSION_POLICY } from "../domain/session-policy.js";
 

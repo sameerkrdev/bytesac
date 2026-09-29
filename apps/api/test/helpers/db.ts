@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { createDb } from "../../src/db/client.js";
+import { createDb } from "@repo/db";
 
 try { process.loadEnvFile(".env"); } catch { /* CI */ }
 

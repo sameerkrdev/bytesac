@@ -1,4 +1,4 @@
-import type { ClientKind } from "@repo/contracts";
+import type { ClientKind } from "@repo/validator";
 
 const H = 3_600_000;
 export const SESSION_POLICY: Readonly<Record<ClientKind, { idle: string; absolute: string; idleMs: number; absoluteMs: number }>> = {

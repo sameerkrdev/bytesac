@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { familyOf, type Chain, type ChallengePurpose, type ChallengeResponse } from "@repo/contracts";
+import { familyOf, type Chain, type ChallengePurpose, type ChallengeResponse } from "@repo/validator";
 import { enforceRateLimit } from "../../../adapters/rate-limiter.js";
 import type { AppDeps } from "../../../deps.js";
 import type { RequestMeta } from "../../../shared/request-context.js";

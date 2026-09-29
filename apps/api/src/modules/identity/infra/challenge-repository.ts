@@ -1,6 +1,6 @@
 import { and, eq, gt, lt, or, sql } from "drizzle-orm";
-import type { DbOrTx, Tx } from "../../../db/client.js";
-import { authChallenges } from "../../../db/schema/index.js";
+import type { DbOrTx, Tx } from "@repo/db";
+import { authChallenges } from "@repo/db";
 import { CHALLENGE_LEASE } from "../domain/session-policy.js";
 
 export type ChallengeRow = typeof authChallenges.$inferSelect;

@@ -1,4 +1,4 @@
-import type { Chain } from "@repo/contracts";
+import type { Chain } from "@repo/validator";
 import { isErc6492Signature, isHex, recoverMessageAddress, size, type Hex } from "viem";
 import type { EvmRpc } from "../../../adapters/evm-rpc.js";
 import type { VerifyOutcome } from "./signature-verifier.js";

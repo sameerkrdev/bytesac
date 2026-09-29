@@ -1,5 +1,5 @@
 import "server-only";
-import { meResponseSchema, type MeResponse } from "@repo/contracts";
+import { meResponseSchema, type MeResponse } from "@repo/validator";
 import { cookies } from "next/headers";
 
 export async function getServerMe(): Promise<MeResponse | null> {

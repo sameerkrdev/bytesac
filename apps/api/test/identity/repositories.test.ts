@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { auditEvents, authChallenges, notificationPreferences, sessions } from "../../src/db/schema/index.js";
+import { auditEvents, authChallenges, notificationPreferences, sessions } from "@repo/db";
 import { challenges } from "../../src/modules/identity/infra/challenge-repository.js";
 import { hashToken, sessionRepo } from "../../src/modules/identity/infra/session-repository.js";
 import { walletRepo } from "../../src/modules/identity/infra/wallet-repository.js";

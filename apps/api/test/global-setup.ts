@@ -1,6 +1,6 @@
 import postgres from "postgres";
-import { runMigrations } from "../src/db/migrate.js";
-import { setDevRolePasswords } from "../src/db/dev-roles.js";
+import { runMigrations } from "@repo/db/migrate";
+import { setDevRolePasswords } from "@repo/db/dev-roles";
 
 export default async function setup(): Promise<void> {
   try { process.loadEnvFile(".env"); } catch { /* CI provides env */ }

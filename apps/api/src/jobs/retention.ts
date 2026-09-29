@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import type { Db } from "../db/client.js";
+import type { Db } from "@repo/db";
 import { writeAudit } from "../shared/audit.js";
 
 function count(r: unknown): number {

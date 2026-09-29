@@ -1,7 +1,7 @@
-import type { ContactType } from "@repo/contracts";
+import type { ContactType } from "@repo/validator";
 import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
-import type { DbOrTx, Tx } from "../../../db/client.js";
-import { contactVerifications, contacts } from "../../../db/schema/index.js";
+import type { DbOrTx, Tx } from "@repo/db";
+import { contactVerifications, contacts } from "@repo/db";
 import { DomainError } from "../../../shared/errors.js";
 import { OTP_MAX_ATTEMPTS, OTP_TTL } from "../domain/otp.js";
 

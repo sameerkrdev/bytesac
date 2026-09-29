@@ -1,7 +1,7 @@
-import type { ClientKind } from "@repo/contracts";
+import type { ClientKind } from "@repo/validator";
 import { eq } from "drizzle-orm";
-import type { Tx } from "../../../db/client.js";
-import { sessions } from "../../../db/schema/index.js";
+import type { Tx } from "@repo/db";
+import { sessions } from "@repo/db";
 import { DomainError } from "../../../shared/errors.js";
 import { writeAudit } from "../../../shared/audit.js";
 import type { RequestMeta } from "../../../shared/request-context.js";

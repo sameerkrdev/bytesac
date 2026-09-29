@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { meResponseSchema, sessionsResponseSchema } from "@repo/contracts";
+import { meResponseSchema, sessionsResponseSchema } from "@repo/validator";
 import { buildTestApp } from "../helpers/app.js";
 import { signIn, webHeaders } from "../helpers/auth.js";
 import { resetDb } from "../helpers/db.js";

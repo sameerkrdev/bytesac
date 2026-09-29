@@ -1,7 +1,7 @@
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { auditEvents, contactVerifications, contacts } from "../../src/db/schema/index.js";
+import { auditEvents, contactVerifications, contacts } from "@repo/db";
 import { buildTestApp } from "../helpers/app.js";
 import { signIn, webHeaders } from "../helpers/auth.js";
 import { adminSql, resetDb, testDb } from "../helpers/db.js";

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { AddContactResponse, ContactType, ContactView } from "@repo/contracts";
+import type { AddContactResponse, ContactType, ContactView } from "@repo/validator";
 import { DeliveryError } from "../../../adapters/email-sender.js";
 import { enforceRateLimit, type RateLimitResult } from "../../../adapters/rate-limiter.js";
 import type { AppDeps } from "../../../deps.js";
