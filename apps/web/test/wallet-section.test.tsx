@@ -4,7 +4,8 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/auth/wallet-verification", () => ({ WalletVerification: () => null }));
-import { canAddChainAccount, WalletSection } from "@/components/profile/wallet-section";
+import { canAddChainAccount } from "@repo/api-client";
+import { WalletSection } from "@/components/profile/wallet-section";
 
 const evm = (chain: "ethereum" | "base" | "bnb" | "arbitrum", method: "eoa_ecdsa" | "erc1271" = "eoa_ecdsa") =>
   ({ chain, chainFamily: "evm" as const, address: "0x1234567890abcdef1234567890abcdef12345678", status: "active" as const, verificationMethod: method, verifiedAt: "2026-09-29T00:00:00.000Z" });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chainFromCaip, isUserRejection } from "./wallet.js";
+import { canAddChainAccount, chainFromCaip, isUserRejection } from "./wallet.js";
 
 describe("chainFromCaip", () => {
   it("maps supported networks", () => {
@@ -25,4 +25,12 @@ describe("isUserRejection", () => {
     expect(isUserRejection(new Error("signing failed"))).toBe(false);
     expect(isUserRejection({ name: "WalletSignMessageError" })).toBe(false);
   });
+});
+
+const addr = (chain: string, family: "evm" | "solana", method: string) => ({ chain, chainFamily: family, address: "x", status: "active", verificationMethod: method, verifiedAt: "2026-09-29T00:00:00.000Z" });
+it("canAddChainAccount", () => {
+  const me = (a: unknown[]) => ({ user: {}, wallet: { addresses: a }, contacts: [] }) as never;
+  expect(canAddChainAccount(me([addr("base", "evm", "eoa_ecdsa"), addr("solana", "solana", "ed25519")]))).toBe(false);
+  expect(canAddChainAccount(me([addr("base", "evm", "erc1271"), addr("solana", "solana", "ed25519")]))).toBe(true);
+  expect(canAddChainAccount(me([addr("solana", "solana", "ed25519")]))).toBe(true);
 });

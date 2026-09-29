@@ -1,4 +1,4 @@
-import { chainFromEvmChainId, type Chain } from "@repo/contracts";
+import { chainFromEvmChainId, type Chain, type MeResponse } from "@repo/contracts";
 
 /** Solana mainnet-beta genesis hash used in CAIP-2 ids. */
 export const SOLANA_MAINNET_CAIP = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -25,3 +25,11 @@ export class WalletRejectedError extends Error {
 
 /** A connected wallet account on a supported chain (wallet-SDK independent). */
 export interface ConnectedAccount { chain: Chain; address: string; walletName: string | null }
+
+export function canAddChainAccount(me: MeResponse): boolean {
+  const a = me.wallet.addresses;
+  const hasSolana = a.some((x) => x.chainFamily === "solana");
+  const evm = a.filter((x) => x.chainFamily === "evm");
+  const evmComplete = evm.length > 0 && (evm.some((x) => x.verificationMethod === "eoa_ecdsa") || evm.length === 4);
+  return !(hasSolana && evmComplete);
+}

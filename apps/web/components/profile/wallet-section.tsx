@@ -1,5 +1,6 @@
 "use client";
 
+import { canAddChainAccount } from "@repo/api-client";
 import { CHAINS, type MeResponse } from "@repo/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -11,14 +12,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { shortAddress } from "@/lib/format";
 
 const METHOD_LABEL = { eoa_ecdsa: "Key signature", erc1271: "Smart wallet", erc6492: "Smart wallet (not yet deployed)", ed25519: "Key signature" } as const;
-
-export function canAddChainAccount(me: MeResponse): boolean {
-  const a = me.wallet.addresses;
-  const hasSolana = a.some((x) => x.chainFamily === "solana");
-  const evm = a.filter((x) => x.chainFamily === "evm");
-  const evmComplete = evm.length > 0 && (evm.some((x) => x.verificationMethod === "eoa_ecdsa") || evm.length === 4);
-  return !(hasSolana && evmComplete);
-}
 
 export function WalletSection({ me }: { me: MeResponse }) {
   const qc = useQueryClient();
