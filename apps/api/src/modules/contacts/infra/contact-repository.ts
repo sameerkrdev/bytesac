@@ -2,6 +2,7 @@ import type { ContactType } from "@repo/contracts";
 import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "../../../db/client.js";
 import { contactVerifications, contacts } from "../../../db/schema/index.js";
+import { DomainError } from "../../../shared/errors.js";
 import { OTP_MAX_ATTEMPTS, OTP_TTL } from "../domain/otp.js";
 
 export type ContactRow = typeof contacts.$inferSelect;
@@ -77,8 +78,13 @@ export const contactRepo = {
   },
 
   async markVerified(tx: Tx, verificationId: string, contactId: string): Promise<ContactRow> {
-    await tx.update(contactVerifications).set({ status: "verified", resolvedAt: sql`now()` }).where(eq(contactVerifications.id, verificationId));
-    const [row] = await tx.update(contacts).set({ status: "verified", verifiedAt: sql`now()` }).where(eq(contacts.id, contactId)).returning();
-    return row!;
+    const expired = () => new DomainError("OTP_EXPIRED", "This code has expired. Request a new one.");
+    const resolved = await tx.update(contactVerifications).set({ status: "verified", resolvedAt: sql`now()` })
+      .where(and(eq(contactVerifications.id, verificationId), eq(contactVerifications.status, "pending"))).returning({ id: contactVerifications.id });
+    if (resolved.length === 0) throw expired();
+    const [row] = await tx.update(contacts).set({ status: "verified", verifiedAt: sql`now()` })
+      .where(and(eq(contacts.id, contactId), eq(contacts.status, "unverified"))).returning();
+    if (!row) throw expired();
+    return row;
   },
 };

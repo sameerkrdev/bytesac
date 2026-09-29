@@ -121,9 +121,15 @@ export const contactService = {
       await contactRepo.markFailed(deps.db, pending.id);
       throw new DomainError("OTP_ATTEMPTS_EXCEEDED", "Too many attempts. Request a new code.");
     }
-    const ok = attempt.channel === "email"
-      ? otpMatches(deps.env.OTP_HMAC_SECRET, attempt.id, i.code, attempt.codeHash ?? "")
-      : (await deps.smsOtp.check({ to: attempt.destination, code: i.code })) === "approved";
+    let ok: boolean;
+    try {
+      ok = attempt.channel === "email"
+        ? otpMatches(deps.env.OTP_HMAC_SECRET, attempt.id, i.code, attempt.codeHash ?? "")
+        : (await deps.smsOtp.check({ to: attempt.destination, code: i.code })) === "approved";
+    } catch (err) {
+      if (err instanceof DeliveryError) throw new DomainError("OTP_DELIVERY_FAILED", "We couldn't check the code. Try again shortly.");
+      throw err;
+    }
     if (!ok) {
       if (attempt.attempts >= OTP_MAX_ATTEMPTS) await contactRepo.markFailed(deps.db, attempt.id);
       throw new DomainError("OTP_INVALID", "That code is incorrect");

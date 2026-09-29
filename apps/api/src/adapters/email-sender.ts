@@ -10,12 +10,17 @@ export class ResendEmailSender implements EmailSender {
   constructor(apiKey: string, private readonly from: string) { this.client = new Resend(apiKey); }
 
   async sendOtp(input: { to: string; code: string }): Promise<void> {
-    const { error } = await this.client.emails.send({
-      from: this.from,
-      to: input.to,
-      subject: "Your Bytesac verification code",
-      text: `Your Bytesac verification code is ${input.code}. It expires in 10 minutes. If you didn't request this, ignore this email.`,
-    });
+    let error: unknown;
+    try {
+      ({ error } = await this.client.emails.send({
+        from: this.from,
+        to: input.to,
+        subject: "Your Bytesac verification code",
+        text: `Your Bytesac verification code is ${input.code}. It expires in 10 minutes. If you didn't request this, ignore this email.`,
+      }));
+    } catch (err) {
+      throw new DeliveryError("Resend request failed", { cause: err });
+    }
     if (error) throw new DeliveryError("Resend rejected the email", { cause: error });
   }
 }

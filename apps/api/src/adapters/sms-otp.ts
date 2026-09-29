@@ -23,8 +23,10 @@ export class TwilioVerifySmsOtp implements SmsOtpProvider {
     try {
       const r = await this.client.verify.v2.services(this.serviceSid).verificationChecks.create({ to: input.to, code: input.code });
       return r.status === "approved" ? "approved" : "rejected";
-    } catch {
-      return "rejected";
+    } catch (err) {
+      const e = err as { status?: number; code?: number };
+      if (e?.status === 404 || e?.code === 20404) return "rejected";
+      throw new DeliveryError("Twilio Verify check failed", { cause: err });
     }
   }
 }

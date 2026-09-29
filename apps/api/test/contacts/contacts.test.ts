@@ -40,6 +40,17 @@ describe("contacts", () => {
     expect((await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: "123456" })).body.status).toBe("verified");
   });
 
+  it("phone: provider failure on check → 503 OTP_DELIVERY_FAILED, then retry succeeds", async () => {
+    const { app, fakes, h } = await setup();
+    const add = await request(app).post("/v1/me/contacts").set(h).send({ type: "phone", value: "+1 415 555 2671" });
+    fakes.sms.checkFail = true;
+    const res = await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: "123456" });
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("OTP_DELIVERY_FAILED");
+    fakes.sms.checkFail = false;
+    expect((await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: "123456" })).body.status).toBe("verified");
+  });
+
   it("phone without country code → 400 with clear message", async () => {
     const { app, h } = await setup();
     const res = await request(app).post("/v1/me/contacts").set(h).send({ type: "phone", value: "4155552671" });

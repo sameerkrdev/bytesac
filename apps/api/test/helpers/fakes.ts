@@ -44,7 +44,12 @@ export class FakeSmsOtp implements SmsOtpProvider {
     this.started.push(input.to);
     return { providerRef: `VE${this.started.length}` };
   }
+  checkFail = false;
   async check(input: { to: string; code: string }): Promise<"approved" | "rejected"> {
+    if (this.checkFail) {
+      const { DeliveryError } = await import("../../src/adapters/email-sender.js");
+      throw new DeliveryError("twilio check down");
+    }
     return input.code === this.approveCode ? "approved" : "rejected";
   }
 }
