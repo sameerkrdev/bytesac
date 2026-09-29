@@ -6,10 +6,10 @@ export interface SmsOtpProvider {
   check(input: { to: string; code: string }): Promise<"approved" | "rejected">;
 }
 
-/** 404/20404: not found or expired; 60202 / HTTP 429: Twilio max check attempts. All mean the code cannot be accepted. */
+/** 404/20404: not found or expired; 60202: Twilio max check attempts. 429/20429 is transient rate limiting, so it is not a rejection. All mean the code cannot be accepted. */
 export function classifyTwilioCheckError(err: unknown): "rejected" | "delivery" {
   const e = err as { status?: number; code?: number } | null | undefined;
-  if (e?.status === 404 || e?.status === 429 || e?.code === 20404 || e?.code === 60202) return "rejected";
+  if (e?.status === 404 || e?.code === 20404 || e?.code === 60202) return "rejected";
   return "delivery";
 }
 
