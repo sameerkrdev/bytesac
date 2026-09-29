@@ -53,8 +53,10 @@ export function meRouter(deps: AppDeps): Router {
     const { id } = parseOrThrow(z.object({ id: z.uuid() }), req.params);
     const [owned] = await deps.db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, id), eq(sessions.userId, req.auth!.userId)));
     if (!owned) throw new DomainError("NOT_FOUND", "Session not found");
-    await sessionRepo.revoke(deps.db, id, "user_revoked");
-    await writeAudit(deps.db, { actorType: "user", actorUserId: req.auth!.userId, action: "session.revoked", entityType: "session", entityId: id, requestId: req.ctx.requestId, sessionId: req.auth!.sessionId, metadata: { reason: "user_revoked" } });
+    await deps.db.transaction(async (tx) => {
+      const revoked = await sessionRepo.revoke(tx, id, "user_revoked");
+      if (revoked) await writeAudit(tx, { actorType: "user", actorUserId: req.auth!.userId, action: "session.revoked", entityType: "session", entityId: id, requestId: req.ctx.requestId, sessionId: req.auth!.sessionId, metadata: { reason: "user_revoked" } });
+    });
     res.status(204).end();
   });
 

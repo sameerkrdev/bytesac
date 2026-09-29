@@ -29,24 +29,30 @@ export function authRouter(deps: AppDeps): Router {
     await enforceRateLimit(deps.rateLimiter, `verify:ip:${req.ctx.ip}`, 30, 60);
     const result = await verifyChallenge(deps, {
       challengeId: body.challengeId, signature: body.signature, walletProvider: body.walletProvider,
-      client: req.auth?.client ?? body.client, auth: req.auth, meta: req.ctx,
+      client: body.client, auth: req.auth, meta: req.ctx,
     });
-    const out: VerifyResponse = { userId: result.userId, isNewUser: result.isNewUser, ...respondWithSession(res, deps.env, req.auth?.client ?? body.client, result.issued) };
+    // sign_in issues a session for body.client; add_chain_account rotates within the caller's own client.
+    const sessionClient = result.issued?.client ?? body.client;
+    const out: VerifyResponse = { userId: result.userId, isNewUser: result.isNewUser, ...respondWithSession(res, deps.env, sessionClient, result.issued) };
     res.json(out);
   });
 
   r.post("/logout", requireSession(deps), async (req, res) => {
     const auth = req.auth!;
-    await sessionRepo.revoke(deps.db, auth.sessionId, "logout");
-    await writeAudit(deps.db, { actorType: "user", actorUserId: auth.userId, action: "session.revoked", entityType: "session", entityId: auth.sessionId, requestId: req.ctx.requestId, sessionId: auth.sessionId, metadata: { reason: "logout" } });
+    await deps.db.transaction(async (tx) => {
+      const revoked = await sessionRepo.revoke(tx, auth.sessionId, "logout");
+      if (revoked) await writeAudit(tx, { actorType: "user", actorUserId: auth.userId, action: "session.revoked", entityType: "session", entityId: auth.sessionId, requestId: req.ctx.requestId, sessionId: auth.sessionId, metadata: { reason: "logout" } });
+    });
     if (auth.transport === "cookie") clearSessionCookie(res, deps.env);
     res.status(204).end();
   });
 
   r.post("/logout-all", requireSession(deps), async (req, res) => {
     const auth = req.auth!;
-    const n = await sessionRepo.revokeAllForUser(deps.db, auth.userId, "logout_all");
-    await writeAudit(deps.db, { actorType: "user", actorUserId: auth.userId, action: "session.revoked_all", entityType: "user", entityId: auth.userId, requestId: req.ctx.requestId, sessionId: auth.sessionId, metadata: { count: n } });
+    await deps.db.transaction(async (tx) => {
+      const n = await sessionRepo.revokeAllForUser(tx, auth.userId, "logout_all");
+      await writeAudit(tx, { actorType: "user", actorUserId: auth.userId, action: "session.revoked_all", entityType: "user", entityId: auth.userId, requestId: req.ctx.requestId, sessionId: auth.sessionId, metadata: { count: n } });
+    });
     if (auth.transport === "cookie") clearSessionCookie(res, deps.env);
     res.status(204).end();
   });
