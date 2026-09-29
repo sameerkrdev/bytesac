@@ -9,6 +9,10 @@ Copy `.env.example` to `.env`.
 - `EXPO_PUBLIC_API_URL`: Bytesac API base URL (Android emulator: `http://10.0.2.2:4000`).
 - `EXPO_PUBLIC_REOWN_PROJECT_ID`: Reown (WalletConnect) Cloud project ID.
 
+### Development build
+
+`EXPO_PUBLIC_*` values are inlined at build time, so they must exist when the development build is created (or when Metro bundles). Provide them either as EAS environment variables (`eas env:create`, environment `development`) for `eas build --profile development`, or in a local `.env` for `npx expo run:android|ios`. `eas.json` already sets `EXPO_PUBLIC_API_URL` for the Android emulator; JSON has no comments, so `EXPO_PUBLIC_REOWN_PROJECT_ID` is documented here only. Without it wallet connection will not work.
+
 ## Commands
 
 ```bash

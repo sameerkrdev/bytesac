@@ -31,7 +31,7 @@ export function NotificationsSection() {
             <AppText>{it.label}</AppText>
             <AppText variant="label" tone="stone">{it.hint}</AppText>
           </View>
-          <Switch accessibilityLabel={it.label} value={data[it.key]} disabled={m.isPending}
+          <Switch accessibilityLabel={it.label} accessibilityHint={it.hint} value={data[it.key]} disabled={m.isPending}
             trackColor={{ true: palette.sage, false: palette.slate }} thumbColor={palette.ivory}
             onValueChange={(v) => m.mutate({ [it.key]: v })} />
         </View>

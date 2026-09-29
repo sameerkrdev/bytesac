@@ -263,6 +263,7 @@ Current provider capabilities, supported chains, plan limits and commercial term
 - Reconcile after execution and periodically.
 - Maintain audit history for approvals, membership changes, basket versions and financial operations.
 - Client IP integrity: the web tier proxies `/api/*` to the API through a Next.js rewrite that neither sets nor sanitizes `X-Forwarded-For`. The edge/load balancer must overwrite (not append) `X-Forwarded-For` with the real client IP, and the API's `TRUST_PROXY` must trust only the Next server hop (private CIDR, or loopback when co-located). Otherwise per-IP rate limits and session `ip_prefix` are spoofable or global.
+- Mobile wallet connectors: Reown's Phantom and Solflare connectors persist their dapp keypair and session in AsyncStorage. This is not the Bytesac session token (which lives in the OS secure store), and every signature still requires explicit approval in the wallet app. Wallet-return deep links are consumed by the wallet SDK and must not drive app navigation.
 - Apply least privilege, input validation, rate limits, monitoring, backups and restore drills.
 - Obtain jurisdiction-specific legal/compliance review for investment, custody, RWA distribution and fee models.
 
