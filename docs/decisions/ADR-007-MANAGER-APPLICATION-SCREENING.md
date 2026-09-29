@@ -15,6 +15,7 @@ The supplied onboarding flow has the platform request and verify a wallet after 
 - **Applicant communication.** Contact happens outside the app. Ops records status, internal notes and an optional message. Applicants get Resend emails for the code, the status link, contacted, information required, approved and rejected (failures are logged, never roll back a status change). The status link is `/managers/status#<token>`: a 32-byte random token, only its HMAC stored, sent as an `X-Application-Token` header so it never appears in URLs sent to servers or in logs. One reply is allowed while `ADDITIONAL_INFORMATION_REQUIRED`.
 - **Abuse protection.** Mandatory email confirmation with a 6-digit code (10 min, 5 attempts, 60 s resend cooldown) before the application enters the queue; create 5/h per IP and 3/day per email, resend 5/h per email, status and reply 30/min per IP, ops 120/min per user. No captcha in release 1. If the code email fails on submit, the API responds 503 `OTP_DELIVERY_FAILED` with `details.applicationId` so the applicant can resend instead of being blocked by the open-application unique index.
 - **Retention.** `app.purge_expired()` also removes `EMAIL_PENDING` applications older than 24 h together with their codes and events, and application email codes resolved more than 90 days ago.
+- **No self-approval.** Reviewers cannot act on an application whose wallet they own (403 `FORBIDDEN`), and `grantIfProven` skips the grant when the signing-in user is the application's `decided_by_user_id`, writing an application note and a `permission.grant_skipped_self_approval` audit entry. That application stays unproven; another reviewer rejects it and the applicant re-applies.
 - **Statuses** are a single transition table (`APPLICATION_TRANSITIONS` in `@repo/validator`) shared by API and UI; an unrecognized move is `INVALID_TRANSITION` (409). One open application per email and per wallet family and address; rejected applications may re-apply.
 
 ## Alternatives considered
@@ -30,7 +31,9 @@ The supplied onboarding flow has the platform request and verify a wallet after 
 
 ### Negative / trade-offs
 - An applicant who signs in with a different wallet is not granted; ops must fix the address by rejecting and re-applying.
-- Status emails have no retry queue.
+- An approved-but-unproven application can be rejected (`SCREENING_APPROVED → SCREENING_REJECTED`) so a mistaken approval can be undone; once the wallet is proven it is final.
+- Ops may return `ADDITIONAL_INFORMATION_REQUIRED` to `SCREENING` without an applicant reply.
+- Status emails have no retry queue: a failed status email is logged and not retried by later status actions (the spec text assumed a retry).
 - Applicant rate-limit points are not refunded on duplicate or failed sends.
 
 ### Security, financial and operational impact
@@ -41,7 +44,7 @@ The supplied onboarding flow has the platform request and verify a wallet after 
 Migrations `0003_manager_applications` (five tables, enums, grants, RLS) and `0004_purge_applications`. Bootstrap the first admin with `pnpm --filter api ops:grant-role`. Mobile is unchanged.
 
 ## Validation
-API integration tests cover the public flow, rate limits, duplicates, ops role checks, last-admin guard, grant at approval and at sign-in (EOA, smart wallet, Solana), disabled address and suspended user, concurrent approve and sign-in, and the purge. Web tests cover the apply form, status page, ops transition form, access-lost state and role management.
+API integration tests cover the public flow, rate limits, duplicates, ops role checks, last-admin guard, grant at approval and at sign-in (EOA, smart wallet, Solana), disabled address and suspended user, approve and sign-in overlapping in both lock orders, self-approval, and the purge. Web tests cover the apply form, status page, ops transition form, access-lost state and role management.
 
 ## Open questions
 - Email copy and the Resend sender domain.
