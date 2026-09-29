@@ -8,7 +8,21 @@
     "scheme": "bytesac",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0B1117",
-    "ios": { "icon": "./assets/expo.icon", "bundleIdentifier": "com.bytesac.app" },
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.bytesac.app",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "metamask",
+          "trust",
+          "safe",
+          "rainbow",
+          "uniswap",
+          "phantom",
+          "solflare"
+        ]
+      }
+    },
     "android": {
       "package": "com.bytesac.app",
       "adaptiveIcon": {
@@ -19,12 +33,27 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": { "output": "static", "favicon": "./assets/images/favicon.png" },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
     "plugins": [
       "expo-router",
       "expo-font",
-      ["expo-splash-screen", { "backgroundColor": "#0B1117", "image": "./assets/images/logo.png", "imageWidth": 96 }]
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B1117",
+          "image": "./assets/images/logo.png",
+          "imageWidth": 96
+        }
+      ],
+      "expo-secure-store",
+      "./plugins/wallet-queries.js"
     ],
-    "experiments": { "typedRoutes": true, "reactCompiler": true }
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
   }
 }
