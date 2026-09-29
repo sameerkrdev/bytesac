@@ -64,6 +64,35 @@ describe("ContactVerifier change and cooldown", () => {
     expect(screen.getByRole("button", { name: "Send code" })).toBeEnabled();
   });
 
+  it("Change while awaiting a code drops the contact but keeps the typed value", async () => {
+    const verified = { ...contact, status: "verified" as const, verifiedAt: new Date().toISOString() };
+    const onChanged = vi.fn();
+    render(<ContactVerifier type="email" existing={verified} client={client()} onChanged={onChanged} />);
+    await userEvent.click(screen.getByRole("button", { name: "Change" }));
+    await userEvent.type(screen.getByLabelText("Email address"), "new@b.co");
+    await userEvent.click(screen.getByRole("button", { name: "Send code" }));
+    expect(await screen.findByRole("button", { name: "Change email" })).toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "Change email" }));
+    expect(screen.queryByText("Verified")).toBeNull();
+    expect(screen.getByLabelText("Email address")).toHaveValue("new@b.co");
+    expect(screen.getByRole("button", { name: "Send code" })).toBeEnabled();
+  });
+
+  it("OTP_COOLDOWN shows title and message and reuses the countdown", async () => {
+    const c = client();
+    const past = new Date(Date.now() - 1_000).toISOString();
+    c.addContact.mockResolvedValueOnce({ contact, verification: { expiresAt: later, resendAvailableAt: past } });
+    c.resendContact.mockRejectedValueOnce(new ApiError("OTP_COOLDOWN", 429, "wait", 45));
+    render(<ContactVerifier type="email" client={c} />);
+    await userEvent.type(screen.getByLabelText("Email address"), "a@b.co");
+    await userEvent.click(screen.getByRole("button", { name: "Send code" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Resend code" }));
+    expect(await screen.findByText("Please wait")).toBeInTheDocument();
+    expect(screen.getByText("You can request another code shortly.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /resend in (4[0-5]) s/i })).toBeDisabled();
+  });
+
   it("resend counts down, is disabled, then enables", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

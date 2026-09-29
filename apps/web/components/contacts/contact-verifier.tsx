@@ -27,13 +27,14 @@ function useCountdown(untilIso: string | null): number {
   return left;
 }
 
-export function ContactVerifier({ type, existing, onVerified, client = api }: { type: ContactType; existing?: ContactView; onVerified?(c: ContactView): void; client?: Client }) {
+export function ContactVerifier({ type, existing, onVerified, onChanged, client = api }: { type: ContactType; existing?: ContactView; onVerified?(c: ContactView): void; onChanged?(): void; client?: Client }) {
   const ids = { value: useId(), code: useId(), error: useId() };
   const [value, setValue] = useState(existing?.value ?? "");
   const [contact, setContact] = useState<ContactView | null>(existing ?? null);
   const [code, setCode] = useState("");
-  const [resendAt, setResendAt] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // An unverified contact that already exists server-side has a pending code: go straight to code entry (resend is allowed; the server enforces its cooldown).
+  const [resendAt, setResendAt] = useState<string | null>(() => (existing && existing.status !== "verified" ? new Date().toISOString() : null));
+  const [error, setError] = useState<{ title: string; message?: string } | null>(null);
   const [pending, setPending] = useState(false);
   const left = useCountdown(resendAt);
   const verified = contact?.status === "verified";
@@ -43,8 +44,17 @@ export function ContactVerifier({ type, existing, onVerified, client = api }: { 
     setPending(true);
     setError(null);
     try { await fn(); } catch (e) {
-      if (e instanceof ApiError) setError(e.code === "VALIDATION_FAILED" ? e.message : describeError(e.code).title);
-      else setError(describeError("INTERNAL").title);
+      if (e instanceof ApiError) {
+        if (e.code === "VALIDATION_FAILED") setError({ title: e.message });
+        else {
+          const d = describeError(e.code);
+          setError({ title: d.title, message: d.message });
+          if (e.code === "OTP_COOLDOWN" && e.retryAfterSec !== undefined) setResendAt(new Date(Date.now() + e.retryAfterSec * 1000).toISOString());
+        }
+      } else {
+        const d = describeError("INTERNAL");
+        setError({ title: d.title, message: d.message });
+      }
     } finally { setPending(false); }
   }
 
@@ -53,11 +63,13 @@ export function ContactVerifier({ type, existing, onVerified, client = api }: { 
     setContact(out.contact);
     setResendAt(out.verification.resendAvailableAt);
     setCode("");
+    onChanged?.();
   });
   const resend = () => guard(async () => {
     if (!contact) return;
     const out = await client.resendContact(contact.id);
     setResendAt(out.verification.resendAvailableAt);
+    onChanged?.();
   });
   const verify = () => guard(async () => {
     if (!contact) return;
@@ -90,7 +102,7 @@ export function ContactVerifier({ type, existing, onVerified, client = api }: { 
             <Button variant="secondary" className="min-h-11" disabled={left > 0 || pending} onClick={() => void resend()}>
               {left > 0 ? `Resend in ${left} s` : "Resend code"}
             </Button>
-            <Button variant="ghost" className="min-h-11" onClick={() => { setContact(existing ?? null); setResendAt(null); }}>Change {type}</Button>
+            <Button variant="ghost" className="min-h-11" onClick={() => { setContact(null); setResendAt(null); setCode(""); setError(null); }}>Change {type}</Button>
           </div>
         </>
       ) : !verified ? (
@@ -101,7 +113,12 @@ export function ContactVerifier({ type, existing, onVerified, client = api }: { 
         <Button variant="ghost" className="min-h-11" onClick={() => { setContact(null); setResendAt(null); setValue(""); setCode(""); setError(null); }}>Change</Button>
       )}
 
-      {error && <p id={ids.error} role="alert" className="text-sm text-danger">{error}</p>}
+      {error && (
+        <p id={ids.error} role="alert" className="text-sm text-danger">
+          <span className="font-medium">{error.title}</span>
+          {error.message && <> <span>{error.message}</span></>}
+        </p>
+      )}
     </div>
   );
 }

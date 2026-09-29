@@ -17,8 +17,8 @@ export default async function ContactOnboardingPage() {
           <p className="text-sm text-muted-foreground">We use these for important account and investment notices. Required later before investing.</p>
         </CardHeader>
         <CardContent className="space-y-8">
-          <ContactVerifier type="email" existing={email} />
-          <ContactVerifier type="phone" existing={phone} />
+          <ContactVerifier type="email" existing={email} key={`email:${email?.id}:${email?.status}`} />
+          <ContactVerifier type="phone" existing={phone} key={`phone:${phone?.id}:${phone?.status}`} />
           <Link href="/home" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-ivory hover:bg-space/60">
             Skip for now
           </Link>
