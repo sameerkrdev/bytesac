@@ -54,5 +54,6 @@ pnpm --filter api ops:user-suspend -- --user <user-uuid> --reason "compliance ho
 - Cookie-authenticated mutating requests require the CSRF client header (see `src/http/security.ts`).
 - Session cookie is HttpOnly and `Secure` in production (`COOKIE_SECURE`).
 - `TRUST_PROXY` controls how the client IP is derived (rate limits, audit). In production behind a load balancer or CDN, set the hop count (for example `TRUST_PROXY=1`); a wrong value lets clients spoof their IP. Digits are a hop count, `true`/`false` a boolean, anything else an IP/CIDR/keyword list.
+- **Deployment requirement (X-Forwarded-For):** the Next.js rewrite in `apps/web` neither sets nor sanitizes `X-Forwarded-For`. The edge/load balancer must **overwrite** `X-Forwarded-For` with the real client IP (never append to a client-supplied value), and `TRUST_PROXY` must trust only the Next server hop (its private CIDR, or loopback when co-located), not the whole chain. Otherwise per-IP rate limits and the session `ip_prefix` are spoofable, or collapse into one global bucket.
 - Never log secrets, OTP codes, tokens, or full contact values.
 - Wallet sign-in is authentication only; it is not spending authorization.
