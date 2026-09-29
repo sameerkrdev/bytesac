@@ -1,7 +1,7 @@
 # Spec 1 — Foundation + User Authentication (Design)
 
 - **Date:** 2026-09-29
-- **Status:** Approved in brainstorming; pending written-spec review
+- **Status:** Approved (written spec approved 2026-09-29)
 - **Series:** Spec 1 of 4 — (1) Foundation + user auth, (2) Manager application + screening, (3) Organization onboarding, (4) Members/roles (later)
 - **Build quality:** Production foundation (real providers, built to keep)
 
