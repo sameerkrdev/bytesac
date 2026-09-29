@@ -20,7 +20,7 @@ export function Button({ children, onPress, variant = "primary", loading = false
       disabled={off} onPress={onPress}
       className={`min-h-11 flex-row items-center justify-center gap-2 rounded-xl px-4 ${s.box} ${off ? "opacity-60" : ""} ${className}`}>
       {loading ? <ActivityIndicator color={s.text === "space" ? palette.space : palette.ivory} /> : icon ? <View>{icon}</View> : null}
-      <AppText variant="body" tone={s.text} className="font-sans-semibold">{children}</AppText>
+      <AppText variant="buttonLabel" tone={s.text}>{children}</AppText>
     </Pressable>
   );
 }

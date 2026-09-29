@@ -9,6 +9,7 @@ const VARIANTS = {
   bodyLarge: "font-sans text-base leading-[26px]",
   body: "font-sans text-sm leading-[22px]",
   label: "font-sans-medium text-xs leading-[18px]",
+  buttonLabel: "font-sans-semibold text-sm leading-5",
   micro: "font-sans text-[11px] leading-4",
 } as const;
 const TONES = { ivory: "text-ivory", stone: "text-stone", muted: "text-muted-foreground", mint: "text-mint", danger: "text-danger", space: "text-space" } as const;

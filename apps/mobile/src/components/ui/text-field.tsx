@@ -8,6 +8,7 @@ export function TextField({ label, error, helper, ...rest }: TextInputProps & { 
     <View className="gap-2">
       <AppText variant="label" nativeID={id}>{label}</AppText>
       <TextInput {...rest} accessibilityLabel={label} aria-labelledby={id} aria-invalid={Boolean(error)}
+        accessibilityHint={error ?? helper}
         placeholderTextColor={palette.stone}
         className={`min-h-11 rounded-xl border bg-space px-3 font-sans text-base text-ivory ${error ? "border-danger" : "border-border-dark"}`} />
       {error ? <AppText variant="label" tone="danger" accessibilityRole="alert">{error}</AppText>
