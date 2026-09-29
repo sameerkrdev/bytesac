@@ -1,9 +1,12 @@
-import { Text, View } from "react-native";
+import { Logo } from "@/components/brand/logo";
+import { AppText } from "@/components/ui/app-text";
+import { Screen } from "@/components/ui/screen";
 
-export default function HomeScreen() {
+export default function Index() {
   return (
-    <View className="flex-1 items-center justify-center bg-white">
-      <Text className="text-xl font-bold text-blue-500">Welcome to NativeWind!</Text>
-    </View>
+    <Screen>
+      <Logo />
+      <AppText variant="h1">Bytesac</AppText>
+    </Screen>
   );
 }
