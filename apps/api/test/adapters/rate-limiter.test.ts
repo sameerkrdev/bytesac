@@ -22,3 +22,13 @@ describe("RedisRateLimiter", () => {
     expect((await rl.consume("t:r", 1, 60)).allowed).toBe(true);
   });
 });
+
+describe("RedisRateLimiter refund after expiry", () => {
+  it("does not recreate a TTL-less key", async () => {
+    const rl = new RedisRateLimiter(redis);
+    const a = await rl.consume("t:x", 5, 60);
+    await redis.del(a.bucketKey); // simulate expiry
+    await rl.refund(a.bucketKey);
+    expect(await redis.exists(a.bucketKey)).toBe(0);
+  });
+});

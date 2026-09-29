@@ -14,13 +14,17 @@ export class RedisRateLimiter implements RateLimiter {
     const nowSec = Math.floor(Date.now() / 1000);
     const bucket = Math.floor(nowSec / windowSec);
     const bucketKey = `rl:${key}:${windowSec}:${bucket}`;
-    const [[, count]] = (await this.redis.multi().incr(bucketKey).expire(bucketKey, windowSec + 1).exec()) as [[null, number], [null, number]];
+    const res = await this.redis.multi().incr(bucketKey).expire(bucketKey, windowSec + 1).exec();
+    const first = res?.[0];
+    if (!first || first[0] || typeof first[1] !== "number") throw new Error("Rate limiter Redis transaction failed");
+    const count = first[1];
     const retryAfterSec = (bucket + 1) * windowSec - nowSec;
     return { allowed: count <= limit, retryAfterSec: count <= limit ? 0 : Math.max(1, retryAfterSec), bucketKey };
   }
 
   async refund(bucketKey: string): Promise<void> {
-    await this.redis.decr(bucketKey);
+    // Only decrement a live bucket: DECR on an expired key would recreate it without a TTL.
+    if ((await this.redis.exists(bucketKey)) === 1) await this.redis.decr(bucketKey);
   }
 }
 
