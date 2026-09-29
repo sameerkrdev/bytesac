@@ -401,7 +401,7 @@ Vitest throughout; Supertest for HTTP; integration tests use real PostgreSQL and
 
 ## 12. Risks and follow-ups
 
-- Reown AppKit React Native supports Expo (install via `npx expo install`, Expo SDK 53+ Babel setting documented), EVM and Solana with Phantom/Solflare connectors. The installation page states no minimum Expo/React Native version, so an explicit compatibility check on Expo SDK 57 / React Native 0.86 is still the first plan task. Fallback: keep the `WalletConnector` interface and use wallet-specific deep-link SDKs.
+- Reown AppKit React Native on Expo 57 / RN 0.86: observed status: the mobile app (AppKit RN 2.0.6, wagmi adapter, Solana adapter with Phantom/Solflare) bundles and type-checks (`expo export --platform android` succeeds; jest-expo tests pass). On-device wallet connect and sign are unverified, pending the user's device checklist. Fallback if the device check fails: keep the `WalletConnector` interface and use wallet-specific deep-link SDKs.
 - ERC-1271/6492 verification depends on Alchemy RPC availability per chain; outages degrade smart-wallet sign-in only (EOA verification is offline).
 - Resolved: role-scoped RLS policies, no `BYPASSRLS` (ADR-005).
 - Audit-event retention period (7 years proposed) is OPEN pending compliance review.

@@ -45,6 +45,7 @@
 | D-038 | Database access model | Backend-only DB access; schema `app` not exposed via Supabase Data API; roles `bytesac_api` (DML, no DELETE), `bytesac_retention`, migrations by schema owner (Supabase `postgres`; local superuser); RLS enabled with role-scoped permissive policies (no `BYPASSRLS`); default privileges revoked from PUBLIC/anon/authenticated. | APPROVED; ADR-005 |
 | D-039 | Wallet unlink & recovery (release 1) | No user-initiated unlink; ops-only audited disable/reactivate; recovery via future wallet migration. | APPROVED |
 | D-040 | Data retention | Challenges 7 days after expiry (except those referenced as address evidence); sessions and contact verifications 90 days; audit events 7 years proposed. | APPROVED except audit period: OPEN pending compliance |
+| D-041 | Mobile wallet stack | Reown AppKit React Native 2.0.6 with wagmi adapter (wagmi 2.19.5, `@wagmi/connectors` 6.2.0 pinned via root override) for EVM; Solana adapter with Phantom/Solflare; session token in `expo-secure-store`; `jest-expo` tests. Bundles and type-checks on Expo 57 / RN 0.86 (`expo export` OK). | APPLIED; on-device wallet connect/sign compatibility PENDING user verification |
 
 ## How to update
 When a decision is explicitly locked, update the status and add an ADR for consequential architecture decisions. Retain superseded decisions for traceability.

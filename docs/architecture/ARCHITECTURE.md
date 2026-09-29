@@ -226,13 +226,13 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 |---|---|
 | Web | Next.js (App Router) + React + TypeScript |
 | UI | shadcn/ui + Tailwind; Motion selectively |
-| Mobile | Expo + React Native |
+| Mobile | Expo SDK 57 + React Native 0.86; `expo-secure-store` for the session token; `jest-expo` for tests |
 | Monorepo | Turborepo + pnpm |
 | Backend | Node.js + Express + TypeScript |
 | Database | Supabase PostgreSQL |
 | ORM/migrations | Drizzle + Drizzle Kit |
 | Async/cache | Redis + BullMQ |
-| Wallet UX | Reown AppKit |
+| Wallet UX | Reown AppKit. Web: AppKit with Wagmi and Solana adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
 | Sessions | Backend-managed sessions table (not Supabase Auth) |
 | Validation | Zod (shared contracts package) |
 | Email OTP | Resend |
