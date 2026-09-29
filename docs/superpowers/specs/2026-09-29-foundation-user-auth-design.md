@@ -10,7 +10,7 @@
 Deliver a production-grade foundation for Bytesac and a working wallet-based sign-in on web and mobile:
 
 - A new backend (`apps/api`) with database, sessions, contacts and audit.
-- Shared contracts and a typed API client used by both clients.
+- Shared validation contracts, a typed API client and shared client logic used by both clients.
 - The BYTESAC design system wired into web (`apps/web`) and mobile (`apps/mobile`).
 - Minimal, fully functional UI: sign in, verify wallet, add contact (skippable), home placeholder, profile/settings.
 
@@ -38,9 +38,9 @@ Deliver a production-grade foundation for Bytesac and a working wallet-based sig
 | CSRF / CORS | API sends **no CORS headers** (web is same-origin via Next proxy; mobile is native), so browsers cannot call the API cross-origin. Cookie-authenticated mutations and `/auth/verify` (login CSRF) require an allowlisted `Origin` (missing Origin rejected) and `X-Requested-With: bytesac`. |
 | Wallet unlink & recovery (release 1) | **No user-initiated unlink.** Every user keeps ≥1 verified address. Compromised/inaccessible wallet → platform ops disables the address (`disabled`) and revokes sessions via an audited ops command; recovery/replacement is the future wallet-migration feature. Reactivation only by ops, audited. |
 | Database authorization | Backend is the only DB client. Tables in a dedicated `app` schema not exposed through Supabase Data API; `anon`/`authenticated` have no grants; RLS enabled with role-scoped policies as defense-in-depth against accidental exposure. API connects as least-privilege role `bytesac_api` (DML on `app` only); migrations run as the schema-owner role. Authorization is enforced in the application layer; every protected query is scoped by the session's `userId`. |
-| Data retention | Expired/consumed/rejected challenges purged after 7 days (except those referenced as address evidence); revoked/expired sessions and contact verifications after 90 days; audit events retained 7 years (OPEN: confirm with compliance per jurisdiction). Purge by a scheduled BullMQ job. |
-| OTP providers | Email: Resend, backend-generated OTP (HMAC-hashed). Phone: Twilio Verify. Both behind adapters. |
-| Code structure | Express API + `packages/contracts` (Zod) + `packages/api-client` + Next rewrite proxy (Approach 1). |
+| Data retention | Expired/consumed/rejected challenges purged after 7 days (except those referenced as address evidence); revoked/expired sessions and contact verifications after 90 days; audit events retained 7 years (OPEN: confirm with compliance per jurisdiction). Purged daily by a pg_cron job (ADR-006). |
+| OTP providers | Email: Resend, backend-generated OTP (HMAC-hashed). Phone: Twilio Verify. Both behind provider modules. |
+| Code structure | Express API + `packages/validator` (Zod) + `packages/api-client` + `packages/app-core` + Next rewrite proxy (Approach 1). |
 | Schema library | Zod. |
 | Test runner | Vitest (+ Supertest for HTTP; `jest-expo` for mobile smoke tests). |
 
@@ -104,22 +104,22 @@ Conventions: UUIDv7 primary keys; `timestamptz`; status columns are Postgres enu
 
 - The backend is the only database client. Supabase Auth, its JWT claims and the Supabase Data API are not used.
 - All tables live in schema `app`, which is not in Supabase's exposed Data API schemas; `anon` and `authenticated` roles have no privileges on it.
-- RLS is enabled on every `app` table with permissive policies scoped to `bytesac_api` and `bytesac_retention` only, as defense-in-depth: if the schema were ever exposed, Supabase client roles still read nothing. Default privileges on schema `app` are revoked from PUBLIC, `anon` and `authenticated`. RLS is not the primary authorization mechanism.
-- Roles: `bytesac_api` (runtime; `SELECT/INSERT/UPDATE` on `app` tables, no `DELETE`, no DDL; access via role-scoped RLS policies (no `BYPASSRLS`)); the schema-owner role (Supabase `postgres`; local superuser) used only by `db:migrate`; `bytesac_retention` (DELETE limited to the purge job's tables).
+- RLS is enabled on every `app` table with permissive policies scoped to `bytesac_api` only, as defense-in-depth: if the schema were ever exposed, Supabase client roles still read nothing. Default privileges on schema `app` are revoked from PUBLIC, `anon` and `authenticated`. RLS is not the primary authorization mechanism.
+- Roles: `bytesac_api` (runtime; `SELECT/INSERT/UPDATE` on `app` tables, no `DELETE`, no DDL; access via role-scoped RLS policies (no `BYPASSRLS`)); the schema-owner role (Supabase `postgres`; local superuser) used only by `db:migrate`; retention has no role of its own (see 4.3).
 - Application-layer authorization: every protected query filters by `req.auth.userId` from the session; repository methods take `userId` as a required argument for user-owned data. Negative tests cover cross-user access.
 
 ### 4.3 Data retention
 
 | Data | Retention | Mechanism |
 |---|---|---|
-| `auth_challenges` (consumed, rejected, or expired) | 7 days after `expires_at`, except challenges referenced by `wallet_addresses.verification_challenge_id` (address evidence) | Purge job |
-| `sessions` (revoked or expired) | 90 days after revocation/expiry | Purge job |
-| `contact_verifications` (resolved) | 90 days after `resolved_at` | Purge job |
+| `auth_challenges` (consumed, rejected, or expired) | 7 days after `expires_at`, except challenges referenced by `wallet_addresses.verification_challenge_id` (address evidence) | pg_cron purge |
+| `sessions` (revoked or expired) | 90 days after revocation/expiry | pg_cron purge |
+| `contact_verifications` (resolved) | 90 days after `resolved_at` | pg_cron purge |
 | `contacts` (`replaced`) | Retained while the user exists | — |
 | `wallet_addresses`, `investment_wallets`, `users` | Retained (identity and audit history) | — |
-| `audit_events` | 7 years — **OPEN**, confirm with compliance per jurisdiction | Purge job once confirmed |
+| `audit_events` | 7 years — **OPEN**, confirm with compliance per jurisdiction | pg_cron purge once confirmed |
 
-Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api/src/worker.ts`) under `bytesac_retention`; each run writes a `system` audit summary (counts only).
+Purge runs daily at 03:00 UTC as the `pg_cron` job `bytesac-retention`, which calls `app.purge_expired()` (`SECURITY DEFINER`, defined in migration `0002`, execute revoked from PUBLIC); each run writes a `system` audit summary (counts only). The schedule is created only when the `pg_cron` extension exists (Supabase: enable it in Dashboard, Database, Extensions); ADR-006.
 
 ### 4.4 Notes
 
@@ -155,7 +155,7 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
    **Phase B — verify signature (no transaction):**
    - EVM, in order:
      1. ECDSA recover over the EIP-191 message hash. Recovered address = challenge address → method `eoa_ecdsa`. This also covers EIP-7702-delegated EOAs, whose key still controls the address on every EVM chain.
-     2. Otherwise, via the `EvmRpc` adapter (Alchemy) on the **challenge's chain**: if code is deployed → ERC-1271 `isValidSignature` → method `erc1271`; if not deployed and the signature is ERC-6492-wrapped → ERC-6492 validation → method `erc6492`.
+     2. Otherwise, via the EVM RPC provider (`providers/evm-rpc.ts`, Alchemy) on the **challenge's chain**: if code is deployed → ERC-1271 `isValidSignature` → method `erc1271`; if not deployed and the signature is ERC-6492-wrapped → ERC-6492 validation → method `erc6492`.
      3. Otherwise → invalid.
    - Solana: ed25519 verify (`@noble/curves`) with the base58-decoded public key → method `ed25519`.
    - Outcomes:
@@ -220,13 +220,13 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
 ### 5.5 Contacts and OTP
 
 - `POST /v1/me/contacts { type, value }` (one transaction): validate/normalize; mark any existing non-`replaced` contact of that type `replaced` and supersede its pending verifications; create an `unverified` contact; create a `pending` verification with `destination = value`; then send OTP.
-  - Email: generate 6-digit code (CSPRNG), store HMAC hash bound to the verification id, send via Resend (`EmailSender` adapter).
-  - Phone: start Twilio Verify (`SmsOtpProvider` adapter), store `provider_ref`.
+  - Email: generate 6-digit code (CSPRNG), store HMAC hash bound to the verification id, send via Resend (`providers/resend.ts`, with an idempotency key `contact-otp/<verification id>`).
+  - Phone: start Twilio Verify (`providers/twilio.ts`), store `provider_ref`.
 - `POST /v1/me/contacts/:id/verify { code }`: contact must belong to the caller (`404` otherwise), be the current non-`replaced` contact of its type, and be `unverified`; the latest `pending` verification for that contact must match `destination`, be unexpired and under the attempt limit. Increment `attempts` atomically before checking. Email compares HMAC in constant time; phone calls Twilio Verify check with the stored `destination`. Success → verification `verified`, contact `verified`, audit `contact.verified`. An OTP issued for a replaced contact or superseded verification can never verify the new contact.
 - `POST /v1/me/contacts/:id/resend`: 60 s cooldown; supersedes the previous pending verification and creates a new one.
 - Contact step is skippable; available later in Settings.
 
-### 5.6 Rate limits and abuse protection (Redis, `RateLimiter` adapter)
+### 5.6 Rate limits and abuse protection (Redis, `rate-limiter-flexible`)
 
 | Scope | Limit (initial values, configurable) |
 |---|---|
@@ -240,7 +240,7 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
 | OTP verify attempts | 5 per verification |
 
 - SMS additionally relies on Twilio Verify Fraud Guard and an allowlist of permitted destination countries (`SMS_ALLOWED_COUNTRIES`).
-- Exceeded → `429 RATE_LIMITED` with `Retry-After`.
+- Exceeded → `429 RATE_LIMITED` with `Retry-After`. Windows are fixed windows that start at the first request for a key.
 
 ### 5.7 Wallet unlinking and recovery (release 1)
 
@@ -253,33 +253,32 @@ Purge runs daily as a BullMQ repeatable job in the API worker process (`apps/api
 ## 6. Code structure
 
 ```
-apps/api/                     Express 5 + TypeScript (new)
-  src/app.ts, src/server.ts   app factory (testable) + HTTP listener
-  src/worker.ts               BullMQ worker process (retention purge job)
-  src/ops/                    audited ops commands (address-disable, address-reactivate, user-suspend)
-  src/config/env.ts           Zod-validated env; fail fast at boot
-  src/db/schema/*.ts          Drizzle tables (identity.ts, contacts.ts, audit.ts)
-  src/db/migrations/          drizzle-kit generated, reviewed, committed
-  src/modules/identity/
-    domain/                   message builders, address canonicalization, session expiry rules
-    application/              SignInService, AddChainAccountService, SessionService
-    infra/                    Drizzle repositories, signature verifiers
-    http/                     routes/controllers (thin), requireSession, CSRF guard
-  src/modules/contacts/       contacts, OTP, notification preferences (same layering)
-  src/adapters/               EvmRpc (Alchemy), SolanaSignatureVerifier, EmailSender (Resend),
-                              SmsOtpProvider (Twilio Verify), RateLimiter (Redis)
-  src/shared/                 DomainError, error mapper, audit writer, request-id middleware,
-                              pino logger (redacted)
-packages/contracts/           Zod schemas, inferred types, ErrorCode union (no server deps)
+apps/api/                     Express 5 + TypeScript
+  src/app.ts, src/server.ts   configured express `app` (no factory) + HTTP listener
+  src/env.ts                  envalid; fail fast at boot
+  src/middleware/             error-handler, validate (zod), auth (requireSession/optionalSession),
+                              security (no-CORS, CSRF, dual-auth), rate-limit, request-context
+  src/routes/                 auth, me, contacts, preferences, health
+  src/services/               sign-in (challenge + 3-phase verify), sessions, contacts, ops,
+                              wallets, signatures, audit, OTP and contact-value helpers
+  src/providers/              twilio, resend, evm-rpc (module-level, configured from env)
+  src/ops/cli.ts              audited ops commands (address-disable, address-reactivate, user-suspend)
+packages/db/                  @repo/db: Drizzle schema, postgres.js client, migrations (incl. pg_cron
+                              retention), drizzle.config.ts, dev-roles and test-reset helpers
+packages/logger/              @repo/logger: winston with redaction
+packages/validator/           @repo/validator: re-exports zod; schemas, inferred types, ErrorCode union,
+                              wire-level names (no server deps)
 packages/api-client/          typed fetch client; transport: cookie (web) | bearer (mobile)
+packages/app-core/            client logic shared by web and mobile (error copy, verify reducer, Solana
+                              signature helpers, formatters, query client, useCountdown)
 packages/design-tokens/       BYTESAC colors, semantic colors, radii, font names (TS consts)
 ```
 
-Dependency direction: `http → application → domain`; `infra`/`adapters` implement interfaces defined in `application`/`domain`. Provider SDKs are imported only inside `src/adapters`.
+Internal packages export TypeScript source and have no build step. Provider SDKs are imported only inside `src/providers`; services and routes call the provider functions, and tests replace them with `vi.mock` fakes.
 
 ## 7. API surface
 
-All routes under `/v1`; all bodies/params/queries validated with Zod schemas from `packages/contracts`.
+All routes under `/v1`; all bodies/params/queries validated with Zod schemas from `packages/validator`.
 
 | Method & path | Auth | Purpose |
 |---|---|---|
@@ -305,9 +304,9 @@ All routes under `/v1`; all bodies/params/queries validated with Zod schemas fro
 
 **Request correlation:** every request gets an `X-Request-Id` (accepted from the Next proxy if well-formed, else generated), echoed in responses and written to logs and audit events.
 
-**Configuration** (documented in `apps/api/.env.example` without values): `DATABASE_URL` (runtime role `bytesac_api`), `MIGRATOR_DATABASE_URL` (schema-owner role, migrations only), `RETENTION_DATABASE_URL` (`bytesac_retention`, worker only), `REDIS_URL`, `SMS_ALLOWED_COUNTRIES`, `SESSION_TOKEN_PEPPER`, `OTP_HMAC_SECRET`, `ALCHEMY_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`, `PORT`. Client public config only: `NEXT_PUBLIC_REOWN_PROJECT_ID`, `API_ORIGIN` (Next server-side rewrite target), `EXPO_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_API_URL`.
+**Configuration** (documented in `apps/api/.env.example` without values): `DATABASE_URL` (runtime role `bytesac_api`), `REDIS_URL`, `LOG_LEVEL`, `SMS_ALLOWED_COUNTRIES`, `SESSION_TOKEN_PEPPER`, `OTP_HMAC_SECRET`, `ALCHEMY_API_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`, `PORT`. `MIGRATOR_DATABASE_URL` (schema-owner role, migrations only) is read from `packages/db/.env`. Client public config only: `NEXT_PUBLIC_REOWN_PROJECT_ID`, `API_ORIGIN` (Next server-side rewrite target), `EXPO_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_API_URL`.
 
-**Local development:** `docker-compose.yml` with PostgreSQL 17 and Redis. Deployed environments use Supabase PostgreSQL. Turbo tasks for `api`: `dev`, `build`, `test`, `lint`, `check-types`; scripts `db:generate`, `db:migrate`, `worker`, `ops:*`. The first migration creates schema `app`, the runtime and retention roles and their grants; local docker-compose mirrors the same roles.
+**Local development:** `docker-compose.yml` with PostgreSQL 17 and Redis. Deployed environments use Supabase PostgreSQL. Turbo tasks for `api`: `dev`, `build` (tsup), `test`, `lint`, `check-types`; scripts `ops:*`; `db:generate`, `db:migrate` and `db:dev-roles` live in `@repo/db`. The first migrations create schema `app`, the runtime role and its grants, and the retention function and schedule; local docker-compose runs Postgres with pg_cron.
 
 ## 8. UI
 
@@ -341,7 +340,7 @@ All routes under `/v1`; all bodies/params/queries validated with Zod schemas fro
   - **Mobile** (per [Reown AppKit React Native installation](https://docs.reown.com/appkit/react-native/core/installation)):
     - Core: `npx expo install @reown/appkit-react-native @react-native-async-storage/async-storage react-native-get-random-values react-native-svg @react-native-community/netinfo @walletconnect/react-native-compat react-native-safe-area-context expo-application`.
     - EVM: `@reown/appkit-wagmi-react-native` + `wagmi` + `viem@2.x` + `@tanstack/react-query` (Wagmi chosen for parity with web and the API's use of viem).
-    - Solana: `@reown/appkit-solana-react-native` + `text-encoding` polyfill; `SolanaAdapter`; `extraConnectors: [new PhantomConnector({ cluster: 'mainnet-beta' }), new SolflareConnector({ cluster: 'mainnet-beta' })]`; network `solana` from `@reown/appkit-react-native`.
+    - Solana: `@reown/appkit-solana-react-native` (Hermes provides TextEncoder/TextDecoder, no polyfill); `SolanaAdapter`; `extraConnectors: [new PhantomConnector({ cluster: 'mainnet-beta' }), new SolflareConnector({ cluster: 'mainnet-beta' })]`; network `solana` from `@reown/appkit-react-native`.
     - `import '@walletconnect/react-native-compat'` first in the AppKit config module; `createAppKit({ projectId, networks: [mainnet, base, bsc, arbitrum, solana], adapters, metadata: { …, redirect: { native: 'bytesac://' } }, storage })` with an AsyncStorage-backed `Storage` implementation (AppKit connection state only; the session token stays in `expo-secure-store`).
     - `<SafeAreaProvider><AppKitProvider instance={appKit}>…<AppKit /></AppKitProvider></SafeAreaProvider>` in the root layout.
     - `babel.config.js` with `babel-preset-expo` `{ unstable_transformImportMeta: true }` (required for valtio on Expo SDK 53+).
@@ -355,16 +354,16 @@ All routes under `/v1`; all bodies/params/queries validated with Zod schemas fro
 
 ## 9. Error handling
 
-- Controllers parse input and call services; services throw typed `DomainError(code)`; one Express error mapper produces the stable error shape and HTTP status. Unknown errors → `500 INTERNAL`; details logged server-side only.
-- Logging: pino with redaction. Never log session tokens, signatures, OTP codes, full email/phone, or API keys. Addresses logged shortened.
+- Routes validate input with the `validate` middleware and call services; services throw `http-errors` carrying a stable `code`; one Express error handler produces the stable error shape and HTTP status (zod errors and malformed or oversized bodies become `VALIDATION_FAILED`). Unknown errors → `500 INTERNAL`; details logged server-side only.
+- Logging: winston via `@repo/logger` with redaction (morgan request logs at the `http` level). Never log session tokens, signatures, OTP codes, full email/phone, or API keys. Addresses logged shortened.
 - Signature verification infra failure (e.g. Alchemy timeout or RPC transport failure during an ERC-1271 check; fail-closed, never treated as an invalid signature) → `503 VERIFIER_UNAVAILABLE`; the claim is released to `pending` (§5.1 Phase B) so the user can retry until expiry. A definitively invalid signature moves the challenge to `rejected`.
 - Session rotation response lost in transit: the old token returns `401 SESSION_EXPIRED` and the client re-authenticates; no inconsistent state results.
-- OTP provider failure → `503 OTP_DELIVERY_FAILED`; does not count toward the user's send quota. For Twilio Verify, codes 404, 20404 and 60202 count as a rejected code; every other failure is `OTP_DELIVERY_FAILED`.
+- OTP provider failure → `503 OTP_DELIVERY_FAILED`; does not count toward the user's send quota. For Twilio Verify, on check the codes 404, 20404 (not found or expired) and 60202 (max check attempts) count as a rejected code; 429/20429 on send or check is `429 RATE_LIMITED` with `Retry-After`; 60203 (max send attempts) on send is `429 OTP_COOLDOWN`; every other failure is `OTP_DELIVERY_FAILED`.
 - Clients map each `ErrorCode` to fixed copy and a recovery action (retry, restart sign-in, re-authenticate).
 
 ## 10. Testing
 
-Vitest throughout; Supertest for HTTP; integration tests use real PostgreSQL and Redis (docker-compose) with fake provider adapters. Test signatures come from throwaway keys (viem `privateKeyToAccount`, generated ed25519 keypairs); never production wallets.
+Vitest throughout; Supertest for HTTP; integration tests use real PostgreSQL and Redis (docker-compose) with fake providers (`vi.mock`). Test signatures come from throwaway keys (viem `privateKeyToAccount`, generated ed25519 keypairs); never production wallets.
 
 - **Unit (domain):** SIWE/SIWS message build; address canonicalization; session idle/absolute expiry for web and mobile; contact state transitions; invalid transitions rejected.
 - **Integration:**
