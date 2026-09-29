@@ -1,3 +1,4 @@
+/* global process */
 /** @type {import('next').NextConfig} */
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:4000";
 
