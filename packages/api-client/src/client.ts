@@ -44,7 +44,7 @@ export function createApiClient(options: ApiClientOptions) {
       const parsed = apiErrorBodySchema.safeParse(await res.json().catch(() => null));
       if (parsed.success) {
         const n = Number(retry);
-        throw new ApiError(parsed.data.error.code, res.status, parsed.data.error.message, retry !== null && Number.isFinite(n) ? n : undefined);
+        throw new ApiError(parsed.data.error.code, res.status, parsed.data.error.message, retry !== null && Number.isFinite(n) ? n : undefined, parsed.data.error.details);
       }
       throw new ApiError("INTERNAL", res.status, `Unexpected ${res.status} response`);
     }
