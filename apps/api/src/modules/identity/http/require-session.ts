@@ -41,7 +41,12 @@ export function requireSession(deps: AppDeps): RequestHandler {
 export function optionalSession(deps: AppDeps): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction) => {
     if (readSessionToken(req)) {
-      try { req.auth = await resolve(deps, req); } catch { req.auth = undefined; }
+      try {
+        req.auth = await resolve(deps, req);
+      } catch (e) {
+        if (!(e instanceof DomainError)) throw e;
+        req.auth = undefined;
+      }
     }
     next();
   };
