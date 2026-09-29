@@ -18,6 +18,9 @@ interface Props {
   onRestart(): void;
   onDisconnect(): void;
   onSwitchNetwork(): void;
+  onChooseNetwork?(): void;
+  linkedAddresses?: ReadonlyArray<{ chain: string; address: string }>;
+  expired?: boolean;
 }
 
 function Step({ done, label, n }: { done: boolean; label: string; n: number }) {
@@ -49,6 +52,7 @@ export function VerifyWalletCard(p: Props) {
   }, [copied]);
   const busy = p.state.step === "signing" || p.state.step === "verifying";
   const err = p.state.step === "error" ? describeError(p.state.code) : null;
+  const alreadyLinked = Boolean(p.account && p.linkedAddresses?.some((a) => a.chain === p.account!.chain && a.address.toLowerCase() === p.account!.address.toLowerCase()));
 
   return (
     <Card className="w-full max-w-md rounded-2xl border-border-dark bg-slate">
@@ -60,6 +64,9 @@ export function VerifyWalletCard(p: Props) {
         <CardTitle className="font-display text-2xl font-semibold text-ivory">Verify your wallet</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        {p.expired && (
+          <p role="status" className="rounded-xl border border-info/40 bg-space/60 p-3 text-sm text-ivory">Your session expired. Sign in with your wallet again.</p>
+        )}
         {p.network === "unsupported" ? (
           <div role="alert" className="space-y-3 rounded-xl border border-warning/40 p-4 text-sm text-ivory">
             <p>Your wallet is on a network Bytesac doesn't support yet. Switch to a supported network: Ethereum, Base, BNB Chain, Arbitrum or Solana.</p>
@@ -98,12 +105,20 @@ export function VerifyWalletCard(p: Props) {
               <Button className="min-h-11 w-full" onClick={p.onRestart}>Start again</Button>
             ) : err && (err.recovery === "retry" || err.recovery === "wait") ? (
               <Button className="min-h-11 w-full" disabled={remaining > 0} onClick={p.onRetry}>{remaining > 0 ? `Try again in ${remaining} s` : "Try again"}</Button>
-            ) : (
-              <Button className="min-h-11 w-full" disabled={busy || p.state.step === "done"} onClick={p.onSign}>
+            ) : err?.recovery === "reauthenticate" ? (
+              <Button className="min-h-11 w-full" onClick={() => window.location.replace("/sign-in?reason=expired")}>Sign in again</Button>
+            ) : err?.recovery === "fix-input" ? null : (
+              <Button className="min-h-11 w-full" disabled={busy || p.state.step === "done" || alreadyLinked} onClick={p.onSign}>
                 {p.state.step === "signing" ? <><Loader2 aria-hidden className="animate-spin" />Waiting for wallet…</>
                   : p.state.step === "verifying" ? <><Loader2 aria-hidden className="animate-spin" />Verifying…</>
                   : <><PenLine aria-hidden />Sign message</>}
               </Button>
+            )}
+            {alreadyLinked && !err && (
+              <p className="text-sm text-muted-foreground">This account is already linked. Choose another network or account in your wallet.</p>
+            )}
+            {p.onChooseNetwork && (
+              <Button variant="secondary" className="min-h-11 w-full" onClick={p.onChooseNetwork}>Choose network</Button>
             )}
           </>
         ) : null}

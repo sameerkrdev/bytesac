@@ -32,7 +32,7 @@ export function useWalletConnector() {
         const result: unknown = await solanaProvider.signMessage(new TextEncoder().encode(message));
         return normalizeSolanaSignature(result);
       }
-      return await signMessageAsync({ message });
+      return await signMessageAsync({ account: account.address as `0x${string}`, message });
     } catch (err) {
       if (isUserRejection(err)) throw new WalletRejectedError();
       throw err;
@@ -43,6 +43,7 @@ export function useWalletConnector() {
     account,
     network,
     connect: async () => { await open({ view: "Connect" }); },
+    chooseNetwork: async () => { await open({ view: "Networks" }); },
     disconnect: async () => { await disconnect(); },
     switchToSupported: async () => { await switchNetwork(mainnet); },
     signMessage,

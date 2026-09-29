@@ -50,6 +50,41 @@ describe("VerifyWalletCard", () => {
   });
 });
 
+describe("VerifyWalletCard add-chain", () => {
+  it("disables Sign with a hint when the connected account is already linked, and offers Choose network", async () => {
+    const onChooseNetwork = vi.fn();
+    render(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...handlers} onChooseNetwork={onChooseNetwork}
+      linkedAddresses={[{ chain: "base", address: account.address }]} />);
+    expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
+    expect(screen.getByText("This account is already linked. Choose another network or account in your wallet.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Choose network" }));
+    expect(onChooseNetwork).toHaveBeenCalled();
+  });
+  it("keeps Sign enabled on a different chain of the same address", () => {
+    render(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...handlers}
+      linkedAddresses={[{ chain: "ethereum", address: account.address }]} />);
+    expect(screen.getByRole("button", { name: "Sign message" })).toBeEnabled();
+  });
+  it("fix-input error offers Choose network and Disconnect, not Sign message", () => {
+    render(<VerifyWalletCard account={account} network="supported" state={{ step: "error", code: "CHAIN_FAMILY_ALREADY_LINKED" }} {...handlers} onChooseNetwork={noop} />);
+    expect(screen.queryByRole("button", { name: "Sign message" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Choose network" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeInTheDocument();
+  });
+  it("reauthenticate error offers Sign in again with a hard navigation", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    try {
+      render(<VerifyWalletCard account={account} network="supported" state={{ step: "error", code: "SESSION_EXPIRED" }} {...handlers} />);
+      expect(screen.queryByRole("button", { name: "Sign message" })).toBeNull();
+      await userEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+      expect(replace).toHaveBeenCalledWith("/sign-in?reason=expired");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("VerifyWalletCard rate-limit countdown", () => {
   it("disables Try again until countdown ends", async () => {
     vi.useFakeTimers();

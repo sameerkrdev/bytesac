@@ -51,7 +51,7 @@ export function WalletSection({ me }: { me: MeResponse }) {
             <DialogTitle className="font-display text-ivory">Add chain account</DialogTitle>
             <DialogDescription>Connect the other network in your wallet, then sign to prove you control it.</DialogDescription>
           </DialogHeader>
-          {open && <WalletVerification purpose="add_chain_account" onVerified={onVerified} />}
+          {open && <WalletVerification purpose="add_chain_account" linkedAddresses={me.wallet.addresses} onVerified={onVerified} />}
         </DialogContent>
       </Dialog>
     </section>
