@@ -20,3 +20,12 @@ describe("NotificationsSection", () => {
     await waitFor(() => expect(api.updatePreferences).toHaveBeenCalledWith({ marketing: true }));
   });
 });
+
+describe("NotificationsSection failure", () => {
+  it("shows an alert when the PATCH fails", async () => {
+    vi.mocked(api.updatePreferences).mockRejectedValueOnce(new Error("boom"));
+    render(<QueryClientProvider client={new QueryClient()}><NotificationsSection /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole("switch", { name: "Marketing" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});

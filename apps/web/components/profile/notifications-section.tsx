@@ -1,5 +1,6 @@
 "use client";
 
+import { ApiError, describeError } from "@repo/api-client";
 import type { NotificationPreferences } from "@repo/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,7 @@ export function NotificationsSection() {
           ))}
         </ul>
       )}
+      {m.isError && <p role="alert" className="text-sm text-danger">{describeError(m.error instanceof ApiError ? m.error.code : "INTERNAL").title}</p>}
       <p className="text-xs text-stone">Security and account notices are always sent.</p>
     </section>
   );

@@ -1,4 +1,5 @@
 "use client";
+import { ApiError, describeError } from "@repo/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Monitor, Smartphone } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -9,13 +10,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { api } from "@/lib/api";
 import { formatRelative } from "@/lib/format";
 
+function errorText(e: unknown): string {
+  return describeError(e instanceof ApiError ? e.code : "INTERNAL").title;
+}
+
 export function SessionsSection() {
   const qc = useQueryClient();
   const router = useRouter();
   const [confirm, setConfirm] = useState(false);
-  const { data } = useQuery({ queryKey: ["sessions"], queryFn: () => api.sessions() });
+  const { data, isError } = useQuery({ queryKey: ["sessions"], queryFn: () => api.sessions() });
   const revoke = useMutation({ mutationFn: (id: string) => api.revokeSession(id), onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }) });
-  const all = useMutation({ mutationFn: () => api.logoutAll(), onSuccess: () => router.replace("/sign-in") });
+  const all = useMutation({ mutationFn: () => api.logoutAll(), onSuccess: () => { qc.clear(); router.replace("/sign-in"); } });
 
   return (
     <section aria-labelledby="sessions-title" className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
@@ -23,6 +28,10 @@ export function SessionsSection() {
         <h2 id="sessions-title" className="font-display text-xl font-semibold text-ivory">Sessions</h2>
         <Button variant="destructive" className="min-h-11" onClick={() => setConfirm(true)}>Log out all devices</Button>
       </div>
+      {isError && <p role="alert" className="text-sm text-danger">Couldn't load sessions. Refresh to try again.</p>}
+      {revoke.isError && <p role="alert" className="text-sm text-danger">{errorText(revoke.error)}</p>}
+      {all.isError && <p role="alert" className="text-sm text-danger">{errorText(all.error)}</p>}
+      {data && data.sessions.length === 0 && <p className="text-sm text-stone">No active sessions.</p>}
       <ul className="divide-y divide-border-dark">
         {data?.sessions.map((s) => {
           const Icon = s.client === "mobile" ? Smartphone : Monitor;
