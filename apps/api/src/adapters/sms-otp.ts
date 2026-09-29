@@ -6,6 +6,13 @@ export interface SmsOtpProvider {
   check(input: { to: string; code: string }): Promise<"approved" | "rejected">;
 }
 
+/** 404/20404: not found or expired; 60202 / HTTP 429: Twilio max check attempts. All mean the code cannot be accepted. */
+export function classifyTwilioCheckError(err: unknown): "rejected" | "delivery" {
+  const e = err as { status?: number; code?: number } | null | undefined;
+  if (e?.status === 404 || e?.status === 429 || e?.code === 20404 || e?.code === 60202) return "rejected";
+  return "delivery";
+}
+
 export class TwilioVerifySmsOtp implements SmsOtpProvider {
   private readonly client: ReturnType<typeof twilio>;
   constructor(accountSid: string, authToken: string, private readonly serviceSid: string) { this.client = twilio(accountSid, authToken); }
@@ -24,8 +31,7 @@ export class TwilioVerifySmsOtp implements SmsOtpProvider {
       const r = await this.client.verify.v2.services(this.serviceSid).verificationChecks.create({ to: input.to, code: input.code });
       return r.status === "approved" ? "approved" : "rejected";
     } catch (err) {
-      const e = err as { status?: number; code?: number };
-      if (e?.status === 404 || e?.code === 20404) return "rejected";
+      if (classifyTwilioCheckError(err) === "rejected") return "rejected";
       throw new DeliveryError("Twilio Verify check failed", { cause: err });
     }
   }
