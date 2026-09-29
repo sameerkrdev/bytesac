@@ -3,6 +3,7 @@ import express from "express";
 import type { AppDeps } from "./deps.js";
 import { authRouter } from "./modules/identity/http/auth-routes.js";
 import { contactsRouter } from "./modules/contacts/http/contact-routes.js";
+import { preferencesRouter } from "./modules/contacts/http/preferences-routes.js";
 import { meRouter } from "./modules/identity/http/me-routes.js";
 import { csrfGuard, noCors, rejectDualAuth } from "./http/security.js";
 import { errorHandler } from "./shared/error-handler.js";
@@ -26,6 +27,7 @@ export function createApp(deps: AppDeps): express.Express {
 
   app.use("/v1/auth", authRouter(deps));
   app.use("/v1/me/contacts", contactsRouter(deps));
+  app.use("/v1/me/notification-preferences", preferencesRouter(deps));
   app.use("/v1/me", meRouter(deps));
 
   app.use((_req, res) => { res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } }); });
