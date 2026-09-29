@@ -19,6 +19,7 @@ This directory is the project’s durable engineering context. Read the relevant
 5. `engineering/AGENT-GUARDRAILS.md`
 6. `engineering/CONTEXT-MANAGEMENT.md`
 7. `BYTESAC_Design_System.md`
+8. `superpowers/specs/` and `superpowers/plans/` — approved feature specs and implementation plans.
 
 ## Document roles
 

@@ -1,5 +1,33 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css";
-
 @import "nativewind/theme";
+
+@theme {
+  --color-space: #0B1117;
+  --color-slate: #1F2937;
+  --color-stone: #6B7280;
+  --color-sage: #10B981;
+  --color-mint: #6EE7B7;
+  --color-sand: #EEDCC8;
+  --color-ivory: #FAFAF8;
+  --color-card: #111B24;
+  --color-muted-foreground: #A1AAB5;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #F87171;
+  --color-info: #60A5FA;
+  --color-border-dark: #26323D;
+
+  --font-display: "Manrope_700Bold";
+  --font-display-semibold: "Manrope_600SemiBold";
+  --font-sans: "Inter_400Regular";
+  --font-sans-medium: "Inter_500Medium";
+  --font-sans-semibold: "Inter_600SemiBold";
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+}

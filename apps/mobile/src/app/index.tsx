@@ -1,9 +1,8 @@
-import { Text, View } from "react-native";
+import { Redirect } from "expo-router";
+import { useAuth } from "@/lib/auth-context";
 
-export default function HomeScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-white">
-      <Text className="text-xl font-bold text-blue-500">Welcome to NativeWind!</Text>
-    </View>
-  );
+export default function Index() {
+  const { status } = useAuth();
+  if (status === "loading") return null;
+  return <Redirect href={status === "signedIn" ? "/(app)/home" : "/(auth)/sign-in"} />;
 }

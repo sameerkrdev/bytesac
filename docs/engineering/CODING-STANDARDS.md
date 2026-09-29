@@ -20,7 +20,7 @@ These standards are the default for implementation unless the repository's exist
 
 ## API and validation
 - Validate request params, query strings, bodies and webhook payloads at boundaries.
-- Use a schema library consistently (select and document one, e.g. Zod, before implementation).
+- Use Zod for all boundary validation; shared request/response schemas live in `packages/contracts`.
 - Return stable error codes and safe user-facing messages; do not expose stack traces or secrets.
 - Use pagination for potentially large collections.
 - Make mutating operations idempotent where retries are possible.
@@ -74,6 +74,7 @@ These standards are the default for implementation unless the repository's exist
 - Keep platform-specific behavior behind shared abstractions where appropriate; do not force false cross-platform uniformity.
 
 ## Testing
+- Test runner: Vitest (mobile smoke tests: jest-expo).
 - Unit-test domain calculations, state transitions and policy decisions.
 - Integration-test database transactions, idempotency, adapters and webhook processing.
 - Test first investment, rebalance, skip/catch-up, drift, fix, external trades, shared-asset shortages and partial execution.
