@@ -1,17 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { ContactVerifier } from "@/components/contacts/contact-verifier";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Screen } from "@/components/ui/screen";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export default function ContactScreen() {
+  const { status } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.me() });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["me"] });
+  if (status === "loading") return null;
+  if (status === "signedOut") return <Redirect href="/(auth)/sign-in" />;
   const email = me?.contacts.find((c) => c.type === "email");
   const phone = me?.contacts.find((c) => c.type === "phone");
   return (

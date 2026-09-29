@@ -1,6 +1,7 @@
 import { ApiError } from "@repo/api-client";
-import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AppState } from "react-native";
 import { api } from "./api";
 import { tokenStore } from "./token-store";
 
@@ -60,6 +61,12 @@ export function AuthProvider({ children, disconnectWallet }: { children: ReactNo
 
   const [expiredSignal, setExpiredSignal] = useState(0);
   const [qc] = useState(() => createAppQueryClient(() => setExpiredSignal((n) => n + 1)));
+
+  useEffect(() => {
+    // Resuming the app revalidates active queries (React Query has no window focus event on native).
+    const sub = AppState.addEventListener("change", (s) => focusManager.setFocused(s === "active"));
+    return () => sub.remove();
+  }, []);
 
   const signOut = useCallback(
     async (opts: { expired?: boolean; remote?: boolean; disconnect?: boolean } = {}) => {
