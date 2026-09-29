@@ -5,6 +5,7 @@ import { enforceRateLimit, type RateLimitResult } from "../../../adapters/rate-l
 import type { AppDeps } from "../../../deps.js";
 import { writeAudit } from "../../../shared/audit.js";
 import { DomainError } from "../../../shared/errors.js";
+import { isUniqueViolation } from "../../../shared/pg-errors.js";
 import type { RequestMeta } from "../../../shared/request-context.js";
 import { toIso, toIsoOrNull } from "../../../shared/time.js";
 import { maskContact, normalizeContact } from "../domain/contact-value.js";
@@ -44,24 +45,45 @@ async function consumeSendLimits(deps: AppDeps, userId: string, destination: str
   }
 }
 
+function cooldownError(retryAfterSec: number): DomainError {
+  return new DomainError("OTP_COOLDOWN", "Please wait before requesting another code", { retryAfterSec });
+}
+
+function mapSendRace(err: unknown): unknown {
+  if (isUniqueViolation(err, "contact_verifications_one_pending") || isUniqueViolation(err, "contacts_one_current_per_type")) {
+    return cooldownError(OTP_RESEND_COOLDOWN_SEC);
+  }
+  return err;
+}
+
 async function send(deps: AppDeps, contact: ContactRow, ctx: Ctx): Promise<VerificationRow> {
   const channel = channelOf(contact.type);
   const limits = await consumeSendLimits(deps, ctx.userId, contact.value, channel, ctx.meta.ip);
   const id = randomUUID();
   const code = channel === "email" ? generateOtp() : null;
-  const verification = await deps.db.transaction(async (tx) => {
-    await contactRepo.supersedePending(tx, contact.id);
-    return contactRepo.createVerification(tx, { id, contactId: contact.id, destination: contact.value, channel, codeHash: code ? hashOtp(deps.env.OTP_HMAC_SECRET, id, code) : null });
-  });
+  let verification: VerificationRow | undefined;
   try {
+    verification = await deps.db.transaction(async (tx) => {
+      // Serialise concurrent sends on the contact row and re-check the cooldown with DB time.
+      const locked = await contactRepo.lockCurrent(tx, contact.id);
+      if (!locked || locked.status !== "unverified") throw new DomainError("NOT_FOUND", "Contact not found");
+      const last = await contactRepo.latestPending(tx, contact.id);
+      if (last) {
+        const since = await contactRepo.secondsSinceCreated(tx, last.id);
+        if (since < OTP_RESEND_COOLDOWN_SEC) throw cooldownError(OTP_RESEND_COOLDOWN_SEC - since);
+      }
+      await contactRepo.supersedePending(tx, contact.id);
+      return contactRepo.createVerification(tx, { id, contactId: contact.id, destination: contact.value, channel, codeHash: code ? hashOtp(deps.env.OTP_HMAC_SECRET, id, code) : null });
+    });
     if (channel === "email") {
       await deps.emailSender.sendOtp({ to: contact.value, code: code! });
     } else {
       const { providerRef } = await deps.smsOtp.start({ to: contact.value });
       await contactRepo.setProviderRef(deps.db, verification.id, providerRef);
     }
-  } catch (err) {
-    await contactRepo.markFailed(deps.db, verification.id);
+  } catch (rawErr) {
+    const err = mapSendRace(rawErr);
+    if (verification) await contactRepo.markFailed(deps.db, verification.id);
     await Promise.all(limits.map((l) => deps.rateLimiter.refund(l.bucketKey)));
     if (err instanceof DeliveryError) throw new DomainError("OTP_DELIVERY_FAILED", "We couldn't send the code. Try again shortly.");
     throw err;
@@ -85,7 +107,7 @@ export const contactService = {
       if (out.replaced) await writeAudit(tx, { ...base, action: "contact.replaced", entityId: out.replaced.id, metadata: { type: i.type, value: maskContact(i.type, out.replaced.value) } });
       await writeAudit(tx, { ...base, action: "contact.added", entityId: out.contact.id, metadata: { type: i.type, value: maskContact(i.type, value) } });
       return out;
-    });
+    }).catch((err: unknown) => { throw mapSendRace(err); });
     const v = await send(deps, contact, i);
     return response(contact, v);
   },
@@ -96,9 +118,7 @@ export const contactService = {
     const last = await contactRepo.latestPending(deps.db, contact.id);
     if (last) {
       const since = await contactRepo.secondsSinceCreated(deps.db, last.id);
-      if (since < OTP_RESEND_COOLDOWN_SEC) {
-        throw new DomainError("OTP_COOLDOWN", "Please wait before requesting another code", { retryAfterSec: OTP_RESEND_COOLDOWN_SEC - since });
-      }
+      if (since < OTP_RESEND_COOLDOWN_SEC) throw cooldownError(OTP_RESEND_COOLDOWN_SEC - since);
     }
     const v = await send(deps, contact, i);
     return response(contact, v);
@@ -127,7 +147,10 @@ export const contactService = {
         ? otpMatches(deps.env.OTP_HMAC_SECRET, attempt.id, i.code, attempt.codeHash ?? "")
         : (await deps.smsOtp.check({ to: attempt.destination, code: i.code })) === "approved";
     } catch (err) {
-      if (err instanceof DeliveryError) throw new DomainError("OTP_DELIVERY_FAILED", "We couldn't check the code. Try again shortly.");
+      if (err instanceof DeliveryError) {
+        await contactRepo.giveBackAttempt(deps.db, attempt.id);
+        throw new DomainError("OTP_DELIVERY_FAILED", "We couldn't check the code. Try again shortly.");
+      }
       throw err;
     }
     if (!ok) {

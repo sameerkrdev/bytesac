@@ -47,6 +47,8 @@ describe("contacts", () => {
     const res = await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: "123456" });
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe("OTP_DELIVERY_FAILED");
+    const [after] = await db.select().from(contactVerifications);
+    expect(after!.attempts).toBe(0);
     fakes.sms.checkFail = false;
     expect((await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: "123456" })).body.status).toBe("verified");
   });
@@ -106,6 +108,28 @@ describe("contacts", () => {
       expect((await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: firstCode })).body.error.code).toBe("OTP_INVALID");
     }
     expect((await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: secondCode })).status).toBe(200);
+  });
+
+  it("concurrent resends: one 200, one 429, never 500", async () => {
+    const { app, h } = await setup();
+    const add = await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: "a@b.co" });
+    await adminSql`UPDATE app.contact_verifications SET created_at = now() - interval '61 seconds'`;
+    const url = `/v1/me/contacts/${add.body.contact.id}/resend`;
+    const [r1, r2] = await Promise.all([request(app).post(url).set(h), request(app).post(url).set(h)]);
+    expect([r1.status, r2.status].sort()).toEqual([200, 429]);
+    const lost = r1.status === 429 ? r1 : r2;
+    expect(lost.body.error.code).toBe("OTP_COOLDOWN");
+    expect(Number(lost.headers["retry-after"])).toBeGreaterThan(0);
+    expect((await db.select().from(contactVerifications)).filter((v) => v.status === "pending")).toHaveLength(1);
+  });
+
+  it("concurrent adds of the same type never 500 and leave one current contact", async () => {
+    const { app, h } = await setup();
+    const add = (v: string) => request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: v });
+    const res = await Promise.all([add("a@b.co"), add("c@d.co"), add("e@f.co")]);
+    for (const r of res) expect([201, 404, 429]).toContain(r.status);
+    expect(res.some((r) => r.status === 201)).toBe(true);
+    expect((await db.select().from(contacts)).filter((c) => c.status !== "replaced")).toHaveLength(1);
   });
 
   it("limits: per-user, per-destination, per-IP, global; delivery failure refunds", async () => {

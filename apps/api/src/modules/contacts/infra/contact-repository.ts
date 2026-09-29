@@ -20,6 +20,7 @@ export const contactRepo = {
   },
 
   async replace(tx: Tx, userId: string, type: ContactType, value: string): Promise<{ contact: ContactRow; replaced: ContactRow | undefined }> {
+    await tx.execute(sql`SELECT id FROM app.users WHERE id = ${userId} FOR UPDATE`);
     const replaced = await contactRepo.current(tx, userId, type);
     if (replaced) {
       await tx.update(contacts).set({ status: "replaced" }).where(eq(contacts.id, replaced.id));
@@ -27,6 +28,13 @@ export const contactRepo = {
     }
     const [contact] = await tx.insert(contacts).values({ userId, type, value }).returning();
     return { contact: contact!, replaced };
+  },
+
+  /** Row-lock a contact and return it (undefined when replaced or missing) to serialise sends. */
+  async lockCurrent(tx: Tx, contactId: string): Promise<ContactRow | undefined> {
+    await tx.execute(sql`SELECT id FROM app.contacts WHERE id = ${contactId} FOR UPDATE`);
+    const [row] = await tx.select().from(contacts).where(and(eq(contacts.id, contactId), ne(contacts.status, "replaced")));
+    return row;
   },
 
   async supersedePending(tx: DbOrTx, contactId: string): Promise<void> {
@@ -65,6 +73,12 @@ export const contactRepo = {
       .where(and(eq(contactVerifications.id, id), eq(contactVerifications.status, "pending"), lt(contactVerifications.attempts, OTP_MAX_ATTEMPTS), gt(contactVerifications.expiresAt, sql`now()`)))
       .returning();
     return row;
+  },
+
+  /** Return an attempt consumed by a provider outage (never below zero). */
+  async giveBackAttempt(db: DbOrTx, id: string): Promise<void> {
+    await db.update(contactVerifications).set({ attempts: sql`${contactVerifications.attempts} - 1` })
+      .where(and(eq(contactVerifications.id, id), gt(contactVerifications.attempts, 0)));
   },
 
   async isExpired(db: DbOrTx, id: string): Promise<boolean> {
