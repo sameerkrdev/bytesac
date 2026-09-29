@@ -238,7 +238,18 @@ All routes under `/v1`; all bodies/params/queries validated with Zod schemas fro
 
 - Web: App Router groups `(public)` and `(app)`; `next.config.js` rewrites `/api/:path*` to `API_ORIGIN`; `(app)` layout calls `GET /v1/me` via the proxy; `401` → `/sign-in?reason=expired`. UI guards are UX only; the API enforces authorization.
 - Mobile: expo-router groups `(auth)` and `(app)`; auth context loads the token from SecureStore on boot; `401` clears the token and routes to `(auth)`.
-- Wallet layer: web uses Reown AppKit with Wagmi (EVM) and Solana adapters; mobile uses Reown AppKit React Native with EVM and Solana. Each app wraps the SDK behind a `WalletConnector` interface (`connect`, `disconnect`, `getAccount`, `signMessage`); screens never import the SDK directly. Exact package versions and Expo SDK 57 compatibility must be verified against current Reown documentation during planning.
+- Wallet layer: each app wraps the SDK behind a `WalletConnector` interface (`connect`, `disconnect`, `getAccount`, `signMessage`); screens never import the SDK directly.
+  - **Web:** Reown AppKit with the Wagmi adapter (EVM) and the Solana adapter.
+  - **Mobile** (per [Reown AppKit React Native installation](https://docs.reown.com/appkit/react-native/core/installation)):
+    - Core: `npx expo install @reown/appkit-react-native @react-native-async-storage/async-storage react-native-get-random-values react-native-svg @react-native-community/netinfo @walletconnect/react-native-compat react-native-safe-area-context expo-application`.
+    - EVM: `@reown/appkit-wagmi-react-native` + `wagmi` + `viem@2.x` + `@tanstack/react-query` (Wagmi chosen for parity with web and the API's use of viem).
+    - Solana: `@reown/appkit-solana-react-native` + `text-encoding` polyfill; `SolanaAdapter`; `extraConnectors: [new PhantomConnector({ cluster: 'mainnet-beta' }), new SolflareConnector({ cluster: 'mainnet-beta' })]`; network `solana` from `@reown/appkit-react-native`.
+    - `import '@walletconnect/react-native-compat'` first in the AppKit config module; `createAppKit({ projectId, networks: [mainnet, base, bsc, arbitrum, solana], adapters, metadata: { …, redirect: { native: 'bytesac://' } }, storage })` with an AsyncStorage-backed `Storage` implementation (AppKit connection state only; the session token stays in `expo-secure-store`).
+    - `<SafeAreaProvider><AppKitProvider instance={appKit}>…<AppKit /></AppKitProvider></SafeAreaProvider>` in the root layout.
+    - `babel.config.js` with `babel-preset-expo` `{ unstable_transformImportMeta: true }` (required for valtio on Expo SDK 53+).
+    - Wallet detection: iOS `LSApplicationQueriesSchemes` (`metamask`, `trust`, `safe`, `rainbow`, `uniswap`, `phantom`, `solflare`) in `app.json`; Android `<queries>` via a local config plugin (`queries.js`).
+    - App scheme `bytesac` for wallet redirect deep links. Use an Expo development build (not Expo Go) as the standard dev target so deep links and native modules behave as in production.
+  - The Solana message-signing call on mobile (provider API) is not documented on the installation page; confirm it in the Reown hooks/Solana docs during planning.
 
 ### 8.4 Accessibility
 
@@ -285,7 +296,7 @@ Vitest throughout; Supertest for HTTP; integration tests use real PostgreSQL and
 
 ## 12. Risks and follow-ups
 
-- Reown AppKit React Native compatibility with Expo SDK 57 / React Native 0.86 is unverified; confirm during planning. Fallback: keep the `WalletConnector` interface and use wallet-specific deep-link SDKs.
+- Reown AppKit React Native supports Expo (install via `npx expo install`, Expo SDK 53+ Babel setting documented), EVM and Solana with Phantom/Solflare connectors. The installation page states no minimum Expo/React Native version, so an explicit compatibility check on Expo SDK 57 / React Native 0.86 is still the first plan task. Fallback: keep the `WalletConnector` interface and use wallet-specific deep-link SDKs.
 - EIP-1271/6492 verification depends on Alchemy RPC availability per chain; outages degrade smart-wallet sign-in only.
 - Twilio Verify country coverage and pricing must be confirmed for target jurisdictions.
 - Session cookie relies on the Next proxy being same-origin; deployment must preserve this topology.
