@@ -20,8 +20,10 @@ app.disable("x-powered-by");
 app.set("trust proxy", env.TRUST_PROXY);
 app.use(requestContext);
 // No :remote-addr or :remote-user: access logs carry the request id, never a full client IP.
+// Path only: the query string carries ops search terms (PII).
+morgan.token("path", (req) => (req as Request).originalUrl.split("?")[0]);
 morgan.token("id", (req) => (req as Request).ctx.requestId);
-app.use(morgan(':method :url :status :response-time ms :res[content-length] ":user-agent" :id', { stream: { write: (message) => { logger.http(message.trim()); } } }));
+app.use(morgan(':method :path :status :response-time ms :res[content-length] ":user-agent" :id', { stream: { write: (message) => { logger.http(message.trim()); } } }));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 app.use(noCors, rejectDualAuth, csrfGuard);

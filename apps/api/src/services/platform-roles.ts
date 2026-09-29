@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, isNull, ne, sql } from "drizzle-orm";
 import { db, platformRoles, users, type DbOrTx } from "@repo/db";
 import type { PlatformRole, PlatformRoleView } from "@repo/validator";
 import { writeAudit } from "./audit";
@@ -11,7 +11,7 @@ const auditActor = (a: RoleActor) => ("userId" in a
   ? { actorType: "user" as const, actorUserId: a.userId, requestId: a.requestId }
   : { actorType: "ops" as const, actorOpsId: a.operator, requestId: a.requestId });
 
-export const roleView = (r: typeof platformRoles.$inferSelect): PlatformRoleView => ({
+const roleView = (r: typeof platformRoles.$inferSelect): PlatformRoleView => ({
   id: r.id, userId: r.userId, role: r.role, grantedByUserId: r.grantedByUserId, grantedAt: r.grantedAt.toISOString(),
 });
 
@@ -49,7 +49,10 @@ export async function revokeRole(actor: RoleActor, roleRowId: string): Promise<v
       const admins = await tx.select({ id: platformRoles.id }).from(platformRoles)
         .where(and(eq(platformRoles.role, "ops_admin"), isNull(platformRoles.revokedAt))).orderBy(platformRoles.id).for("update");
       if (!admins.some((a) => a.id === row.id)) throw createHttpError("Role not found", { code: "NOT_FOUND" });
-      if (admins.length <= 1) throw createHttpError("At least one ops admin must remain.", { code: "INVALID_TRANSITION" });
+      // Suspended admins cannot use the role, so another active admin must remain.
+      const [others] = await tx.select({ n: count() }).from(platformRoles).innerJoin(users, eq(users.id, platformRoles.userId))
+        .where(and(eq(platformRoles.role, "ops_admin"), isNull(platformRoles.revokedAt), ne(platformRoles.id, row.id), eq(users.status, "active")));
+      if (others!.n === 0) throw createHttpError("At least one ops admin must remain.", { code: "INVALID_TRANSITION" });
     }
     const revoked = await tx.update(platformRoles).set({ revokedAt: sql`now()`, revokedByUserId: "userId" in actor ? actor.userId : null })
       .where(and(eq(platformRoles.id, row.id), isNull(platformRoles.revokedAt))).returning({ id: platformRoles.id });

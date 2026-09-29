@@ -22,7 +22,7 @@ describe("manager application schemas", () => {
   });
   it("transition table has no self-loops and empty terminal states", () => {
     for (const s of APPLICATION_STATUSES) expect(APPLICATION_TRANSITIONS[s]).not.toContain(s);
-    expect(APPLICATION_TRANSITIONS.SCREENING_APPROVED).toEqual([]);
+    expect(APPLICATION_TRANSITIONS.SCREENING_APPROVED).toEqual(["SCREENING_REJECTED"]);
     expect(APPLICATION_TRANSITIONS.SCREENING_REJECTED).toEqual([]);
   });
 });

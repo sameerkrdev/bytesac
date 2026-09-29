@@ -12,11 +12,12 @@ export const APPLICATION_TRANSITIONS: Readonly<Record<ApplicationStatus, readonl
   SCREENING: ["CONTACTED", "ADDITIONAL_INFORMATION_REQUIRED", "SCREENING_APPROVED", "SCREENING_REJECTED"],
   CONTACTED: ["SCREENING", "ADDITIONAL_INFORMATION_REQUIRED", "SCREENING_APPROVED", "SCREENING_REJECTED"],
   ADDITIONAL_INFORMATION_REQUIRED: ["SCREENING", "SCREENING_REJECTED"],
-  SCREENING_APPROVED: [],
+  // An approval whose applicant never proved the wallet (including a self-approval) can still be rejected by another reviewer; the API refuses it once proven.
+  SCREENING_APPROVED: ["SCREENING_REJECTED"],
   SCREENING_REJECTED: [],
 };
 
-const freeText = z.string().trim().min(20).max(4000);
+const freeText = z.string().trim().min(20, "Please write at least 20 characters").max(4000, "Please keep this under 4000 characters");
 
 export const createApplicationRequestSchema = z.strictObject({
   applicantType: z.enum(["individual", "firm"]),
@@ -26,7 +27,7 @@ export const createApplicationRequestSchema = z.strictObject({
   /** International format, starts with "+". */
   phone: z.string().trim().regex(/^\+/).max(32).optional(),
   country: z.string().regex(/^[A-Z]{2}$/),
-  website: z.url({ protocol: /^https$/ }).optional(),
+  website: z.url({ protocol: /^https$/ }).max(2048).optional(),
   professionalBackground: freeText,
   investmentExperience: freeText,
   reason: freeText,
@@ -67,7 +68,7 @@ export const transitionApplicationRequestSchema = z.strictObject({
   to: applicationStatusSchema,
   internalNote: z.string().trim().min(1).max(4000).optional(),
   messageToApplicant: z.string().trim().min(1).max(4000).optional(),
-});
+}).refine((v) => v.to !== "ADDITIONAL_INFORMATION_REQUIRED" || v.messageToApplicant, { path: ["messageToApplicant"], message: "A message to the applicant is required" });
 export type TransitionApplicationRequest = z.infer<typeof transitionApplicationRequestSchema>;
 
 export const applicationNoteRequestSchema = z.strictObject({ internalNote: z.string().trim().min(1).max(4000) });

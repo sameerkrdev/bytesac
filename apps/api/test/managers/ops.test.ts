@@ -155,6 +155,14 @@ describe("roles", () => {
     expect((await request(app).delete(`/v1/ops/roles/${mine!.id}`).set(second.h)).status).toBe(204);
   });
 
+  it("a suspended admin does not count as a remaining admin", async () => {
+    const a = await opsUser(app, "ops_admin");
+    const b = await opsUser(app, "ops_admin");
+    await adminSql`UPDATE app.users SET status = 'suspended' WHERE id = ${b.userId}`;
+    const [mine] = await db.select().from(platformRoles).where(eq(platformRoles.userId, a.userId));
+    expect((await request(app).delete(`/v1/ops/roles/${mine!.id}`).set(a.h)).status).toBe(409);
+  });
+
   it("racing revokes of the two remaining admins leave one", async () => {
     const a = await opsUser(app, "ops_admin");
     const b = await opsUser(app, "ops_admin");
@@ -175,5 +183,40 @@ describe("roles", () => {
     expect(audit).toMatchObject({ actorType: "ops", actorOpsId: "sameer", entityId: s.userId });
     const me = await request(app).get("/v1/me").set(webHeaders(s.cookie));
     expect(me.body).toMatchObject({ platformRoles: ["ops_admin"], permissions: [] });
+  });
+});
+
+describe("review rules", () => {
+  it("moving to ADDITIONAL_INFORMATION_REQUIRED without a message is a 400", async () => {
+    const r = await opsUser(app, "ops_reviewer");
+    const id = await seedApplication({ status: "SCREENING" });
+    const res = await transition(r.h, id, { to: "ADDITIONAL_INFORMATION_REQUIRED" });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("VALIDATION_FAILED");
+    expect((await transition(r.h, id, { to: "ADDITIONAL_INFORMATION_REQUIRED", messageToApplicant: "Please send proof" })).status).toBe(200);
+  });
+
+  it("a reviewer cannot act on an application whose wallet they own", async () => {
+    const w = newEvmWallet();
+    const s = await signIn(app, w, "base");
+    await grantRole({ operator: "test", requestId: "r" }, s.userId, "ops_reviewer");
+    const id = await seedApplication({ status: "SCREENING", walletAddress: w.address.toLowerCase() });
+    for (const to of ["SCREENING_APPROVED", "SCREENING_REJECTED", "CONTACTED"]) {
+      const res = await transition(webHeaders(s.cookie), id, { to });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe("FORBIDDEN");
+    }
+    expect((await db.select().from(managerApplications).where(eq(managerApplications.id, id)))[0]!.status).toBe("SCREENING");
+  });
+
+  it("an approved application can be rejected only while its wallet is unproven", async () => {
+    const r = await opsUser(app, "ops_reviewer");
+    const unproven = await seedApplication({ status: "SCREENING_APPROVED" });
+    expect((await transition(r.h, unproven, { to: "SCREENING_REJECTED" })).status).toBe(200);
+    const proven = await seedApplication({ status: "SCREENING_APPROVED" });
+    await adminSql`UPDATE app.manager_applications SET wallet_proven_at = now() WHERE id = ${proven}`;
+    const res = await transition(r.h, proven, { to: "SCREENING_REJECTED" });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
   });
 });

@@ -76,7 +76,8 @@ export async function resendApplicationCode(_meta: RequestMeta, applicationId: s
   if (!app || app.status !== "EMAIL_PENDING") throw notFound();
   await consume(limits.appResendEmail, emailKey(app.email));
   const created = await db.transaction(async (tx) => {
-    await tx.select({ id: managerApplications.id }).from(managerApplications).where(eq(managerApplications.id, applicationId)).for("update");
+    const [locked] = await tx.select({ status: managerApplications.status }).from(managerApplications).where(eq(managerApplications.id, applicationId)).for("update");
+    if (locked?.status !== "EMAIL_PENDING") throw notFound();
     // Cooldown against DB time, re-checked under the row lock so concurrent resends cannot both pass.
     const [last] = await tx.select({ since: sql<number>`extract(epoch from now() - ${applicationEmailCodes.createdAt})::int` }).from(applicationEmailCodes)
       .where(eq(applicationEmailCodes.applicationId, applicationId)).orderBy(desc(applicationEmailCodes.createdAt)).limit(1);
@@ -188,6 +189,16 @@ export async function grantIfProven(tx: Tx, i: { userId: string; chain: Chain; a
   if (!app || app.status !== "SCREENING_APPROVED" || app.walletProvenAt) return;
   // Smart-contract wallets are proven per chain; an ECDSA/ed25519 key proves every chain of its family.
   if ((i.method === "erc1271" || i.method === "erc6492") && app.walletChain !== i.chain) return;
+  if (app.decidedByUserId === i.userId) {
+    // No self-approval: it stays unproven until another reviewer rejects it and the applicant re-applies.
+    await tx.insert(applicationEvents).values({
+      applicationId: app.id, actorType: "system", kind: "note", internalNote: "Permission not granted: the applicant approved their own application.", requestId: i.requestId,
+    });
+    await writeAudit(tx, {
+      actorType: "system", action: "permission.grant_skipped_self_approval", entityType: "user", entityId: i.userId, requestId: i.requestId, metadata: { applicationId: app.id },
+    });
+    return;
+  }
   await tx.insert(userPermissions).values({ userId: i.userId, permission: "create_manager_organization", sourceApplicationId: app.id }).onConflictDoNothing();
   await tx.update(managerApplications).set({ userId: i.userId, walletProvenAt: sql`now()`, updatedAt: sql`now()` }).where(eq(managerApplications.id, app.id));
   await tx.insert(applicationEvents).values({ applicationId: app.id, actorType: "system", kind: "permission_granted", requestId: i.requestId });
@@ -249,7 +260,9 @@ export async function transitionApplication(ctx: OpsCtx, id: string, i: Transiti
   const { app, eventId } = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(managerApplications).where(eq(managerApplications.id, id)).for("update");
     if (!locked) throw notFound();
-    if (!APPLICATION_TRANSITIONS[locked.status].includes(i.to)) {
+    const owner = await findAddressOwner(tx, locked.walletChain, locked.walletAddress);
+    if (owner?.userId === ctx.userId) throw createHttpError("You can't review your own application.", { code: "FORBIDDEN" });
+    if (!APPLICATION_TRANSITIONS[locked.status].includes(i.to) || (locked.status === "SCREENING_APPROVED" && locked.walletProvenAt)) {
       throw createHttpError(`An application in ${locked.status} cannot move to ${i.to}.`, { code: "INVALID_TRANSITION" });
     }
     const decided = i.to === "SCREENING_APPROVED" || i.to === "SCREENING_REJECTED";
@@ -266,7 +279,6 @@ export async function transitionApplication(ctx: OpsCtx, id: string, i: Transiti
     });
     if (i.to === "SCREENING_APPROVED") {
       // The applicant may already own the wallet: grant now instead of waiting for their next sign-in.
-      const owner = await findAddressOwner(tx, locked.walletChain, locked.walletAddress);
       if (owner && owner.status === "active" && owner.userStatus === "active") {
         await grantIfProven(tx, { userId: owner.userId, chain: locked.walletChain, address: locked.walletAddress, method: owner.verificationMethod, requestId: ctx.meta.requestId });
       }

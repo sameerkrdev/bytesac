@@ -3,10 +3,12 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applicationEvents, auditEvents, managerApplications, userPermissions, users } from "@repo/db";
 import { app } from "../../src/app";
+import { createUserWithWallet } from "../../src/services/wallets";
+import { grantIfProven } from "../../src/services/applications";
 import { disableAddress, suspendUser } from "../../src/services/ops";
 import { challengeFor, signIn, webHeaders } from "../helpers/auth";
 import { fakes } from "../helpers/fakes";
-import { resetDb, testDb } from "../helpers/db";
+import { adminSql, resetDb, testDb } from "../helpers/db";
 import { ERC6492_SUFFIX, newEvmWallet, newSolanaWallet } from "../helpers/wallets";
 import { opsUser, seedApplication } from "./helpers";
 
@@ -117,18 +119,84 @@ describe("grant at sign-in after approval", () => {
     expect((await appRow(id)).walletProvenAt).toBeNull();
   });
 
-  it("concurrent approval and first sign-in yield exactly one permission row", async () => {
+  it("self-approval never grants: it stays unproven, is noted and audited, and another reviewer can reject it", async () => {
     const reviewer = await opsUser(app, "ops_reviewer");
-    for (let i = 0; i < 6; i++) {
-      const w = newEvmWallet();
-      const id = await seedApplication({ status: "SCREENING", walletAddress: w.address.toLowerCase() });
-      const [approved, signed] = await Promise.all([
-        request(app).post(`/v1/ops/applications/${id}/transition`).set(reviewer.h).send({ to: "SCREENING_APPROVED" }),
-        signIn(app, w, "base"),
-      ]);
-      expect(approved.status).toBe(200);
-      expect(await permissionsOf(signed.userId)).toHaveLength(1);
-      expect((await appRow(id)).userId).toBe(signed.userId);
-    }
+    const other = await opsUser(app, "ops_reviewer");
+    const w = newSolanaWallet();
+    const id = await seedApplication({ status: "SCREENING", walletChain: "solana", walletAddress: w.address });
+    await approve(reviewer, id);
+    // The reviewer links the wallet only after approving, so the hook (not the approval check) sees the self-approval.
+    const ch = await challengeFor(app, { purpose: "add_chain_account", chain: "solana", address: w.address }, reviewer.h);
+    const added = await request(app).post("/v1/auth/verify").set(reviewer.h).send({ challengeId: ch.body.challengeId, signature: await w.sign(ch.body.message), client: "web" });
+    expect(added.status).toBe(200);
+    expect(await permissionsOf(reviewer.userId)).toHaveLength(0);
+    expect((await appRow(id)).walletProvenAt).toBeNull();
+    expect((await db.select().from(auditEvents)).some((a) => a.action === "permission.grant_skipped_self_approval")).toBe(true);
+    expect((await db.select().from(applicationEvents).where(eq(applicationEvents.applicationId, id))).some((e) => e.internalNote?.includes("own application"))).toBe(true);
+    const rejected = await request(app).post(`/v1/ops/applications/${id}/transition`).set(other.h).send({ to: "SCREENING_REJECTED" });
+    expect(rejected.status).toBe(200);
+    expect((await appRow(id)).status).toBe("SCREENING_REJECTED");
+  });
+});
+
+/** Resolves once some backend is blocked on a lock, so the overlap below is certain rather than timing-dependent. */
+async function untilBlockedOnLock(): Promise<void> {
+  for (let n = 0; n < 200; n++) {
+    const rows = await adminSql`SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+    if (rows.length > 0) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error("no transaction is waiting on a lock");
+}
+
+describe("approval and sign-in overlapping in time", () => {
+  it("sign-in holds the application lock, approval waits, then grants once", async () => {
+    const reviewer = await opsUser(app, "ops_reviewer");
+    const w = newEvmWallet();
+    const address = w.address.toLowerCase();
+    const id = await seedApplication({ status: "SCREENING", walletAddress: address });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let holding!: (userId: string) => void;
+    const held = new Promise<string>((r) => { holding = r; });
+    // The sign-in transaction: user and address exist but are uncommitted, and it holds the application lock.
+    const signInTx = db.transaction(async (tx) => {
+      const userId = await createUserWithWallet(tx, { rows: [{ chain: "base", address, method: "eoa_ecdsa", verifiedOnChain: "base", challengeId: undefined as unknown as string }] });
+      await grantIfProven(tx, { userId, chain: "base", address, method: "eoa_ecdsa", requestId: "r" });
+      holding(userId);
+      await gate;
+    });
+    const userId = await held;
+    const approved = request(app).post(`/v1/ops/applications/${id}/transition`).set(reviewer.h).send({ to: "SCREENING_APPROVED" }).then((r) => r);
+    await untilBlockedOnLock();
+    release();
+    await signInTx;
+    expect((await approved).status).toBe(200);
+    expect(await permissionsOf(userId)).toHaveLength(1);
+    expect((await appRow(id)).userId).toBe(userId);
+    expect((await appRow(id)).walletProvenAt).toBeTruthy();
+  });
+
+  it("approval holds the application lock, sign-in waits, then grants once", async () => {
+    const w = newEvmWallet();
+    const id = await seedApplication({ status: "SCREENING", walletAddress: w.address.toLowerCase() });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let holding!: () => void;
+    const held = new Promise<void>((r) => { holding = r; });
+    const approveTx = adminSql.begin(async (q) => {
+      await q`SELECT 1 FROM app.manager_applications WHERE id = ${id} FOR UPDATE`;
+      holding();
+      await gate;
+      await q`UPDATE app.manager_applications SET status = 'SCREENING_APPROVED', decided_at = now() WHERE id = ${id}`;
+    });
+    await held;
+    const signed = signIn(app, w, "base");
+    await untilBlockedOnLock();
+    release();
+    await approveTx;
+    const s = await signed;
+    expect(await permissionsOf(s.userId)).toHaveLength(1);
+    expect((await appRow(id)).walletProvenAt).toBeTruthy();
   });
 });
