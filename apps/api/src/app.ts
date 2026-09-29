@@ -1,5 +1,5 @@
 import cookieParser from "cookie-parser";
-import express from "express";
+import express, { type Request } from "express";
 import morgan from "morgan";
 import { logger } from "@repo/logger";
 import { env } from "./env";
@@ -17,7 +17,9 @@ export const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", env.TRUST_PROXY);
 app.use(requestContext);
-app.use(morgan("combined", { stream: { write: (message) => { logger.http(message.trim()); } } }));
+// No :remote-addr or :remote-user: access logs carry the request id, never a full client IP.
+morgan.token("id", (req) => (req as Request).ctx.requestId);
+app.use(morgan(':method :url :status :response-time ms :res[content-length] ":user-agent" :id', { stream: { write: (message) => { logger.http(message.trim()); } } }));
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 app.use(noCors, rejectDualAuth, csrfGuard);

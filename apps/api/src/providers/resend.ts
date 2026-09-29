@@ -15,5 +15,5 @@ export async function sendOtpEmail(to: string, code: string, verificationId: str
     subject: "Your Bytesac verification code",
     text: `Your Bytesac verification code is ${code}. It expires in 10 minutes. If you didn't request this, ignore this email.`,
   }, { idempotencyKey: `contact-otp/${verificationId}` });
-  if (error) throw createHttpError(503, "We couldn't send the code. Try again shortly.", { code: "OTP_DELIVERY_FAILED", cause: error });
+  if (error) throw createHttpError("We couldn't send the code. Try again shortly.", { code: "OTP_DELIVERY_FAILED", cause: error });
 }

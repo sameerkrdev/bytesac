@@ -33,7 +33,7 @@ describe("EVM verification", () => {
   it("RPC outage propagates as 503 VERIFIER_UNAVAILABLE", async () => {
     fakes.evm.behavior = "unavailable";
     await expect(verifyEvmSignature({ chain: "base", address: "0x" + "ab".repeat(20), message: MSG, signature: "0x" + "11".repeat(100) }))
-      .rejects.toMatchObject({ status: 503, code: "VERIFIER_UNAVAILABLE" });
+      .rejects.toMatchObject({ code: "VERIFIER_UNAVAILABLE" });
   });
   it("non-hex / missing 0x signatures are invalid, not errors", async () => {
     const address = "0x" + "ab".repeat(20);

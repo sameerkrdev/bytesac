@@ -2,7 +2,7 @@ import createHttpError from "http-errors";
 import { parsePhoneNumberWithError } from "libphonenumber-js";
 import { z, type ContactType } from "@repo/validator";
 
-const invalid = (message: string) => createHttpError(400, message, { code: "VALIDATION_FAILED" });
+const invalid = (message: string) => createHttpError(message, { code: "VALIDATION_FAILED" });
 
 export function normalizeContact(type: ContactType, raw: string, allowedCountries: string[]): string {
   const value = raw.trim();

@@ -26,10 +26,11 @@ export async function consume(rateLimiter: RateLimiterRedis, key: string): Promi
     await rateLimiter.consume(key);
   } catch (err) {
     if (!(err instanceof RateLimiterRes)) throw err;
-    throw createHttpError(429, "Too many requests. Try again later.", {
+    throw createHttpError("Too many requests. Try again later.", {
       code: "RATE_LIMITED",
       headers: { "retry-after": String(Math.max(1, Math.ceil(err.msBeforeNext / 1000))) },
     });
   }
-  return () => rateLimiter.reward(key);
+  // Skip when the window already expired: reward() would recreate the key at -1 and grant a bonus point.
+  return async () => { if (await rateLimiter.get(key)) await rateLimiter.reward(key); };
 }

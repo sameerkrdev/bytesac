@@ -18,7 +18,7 @@ meRouter.get("/", async (req, res) => {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   const [wallet] = await db.select({ id: investmentWallets.id, walletProvider: investmentWallets.walletProvider }).from(investmentWallets)
     .where(and(eq(investmentWallets.userId, userId), eq(investmentWallets.status, "active")));
-  if (!user || !wallet) throw createHttpError(401, "This account is not active", { code: "USER_NOT_ACTIVE" });
+  if (!user || !wallet) throw createHttpError("This account is not active", { code: "USER_NOT_ACTIVE" });
   const addresses = await addressesForWallet(db, wallet.id);
   const current = await db.select().from(contacts).where(and(eq(contacts.userId, userId), ne(contacts.status, "replaced")));
   const body: MeResponse = {
@@ -50,7 +50,7 @@ meRouter.get("/sessions", async (req, res) => {
 meRouter.delete("/sessions/:id", validate({ params: z.object({ id: z.uuid() }) }), async (req, res) => {
   const id = (req.params.id as string);
   const [owned] = await db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, id), eq(sessions.userId, req.auth!.userId)));
-  if (!owned) throw createHttpError(404, "Session not found", { code: "NOT_FOUND" });
+  if (!owned) throw createHttpError("Session not found", { code: "NOT_FOUND" });
   await db.transaction(async (tx) => {
     if (await revokeSession(tx, id, "user_revoked")) {
       await writeAudit(tx, { actorType: "user", actorUserId: req.auth!.userId, action: "session.revoked", entityType: "session", entityId: id, requestId: req.ctx.requestId, sessionId: req.auth!.sessionId, metadata: { reason: "user_revoked" } });

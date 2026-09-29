@@ -11,7 +11,7 @@ const pick = (r: typeof notificationPreferences.$inferSelect): NotificationPrefe
   rebalance: r.rebalance, portfolioUpdates: r.portfolioUpdates, managerUpdates: r.managerUpdates,
   offers: r.offers, productUpdates: r.productUpdates, marketing: r.marketing,
 });
-const notFound = () => createHttpError(404, "Preferences not found", { code: "NOT_FOUND" });
+const notFound = () => createHttpError("Preferences not found", { code: "NOT_FOUND" });
 
 export const preferencesRouter = Router();
 preferencesRouter.use(requireSession);

@@ -23,11 +23,11 @@ function readSessionToken(req: Request): { token: string; transport: "cookie" | 
 
 async function resolve(req: Request): Promise<AuthContext> {
   const t = readSessionToken(req);
-  const expired = () => createHttpError(401, "Please sign in again", { code: "SESSION_EXPIRED" });
+  const expired = () => createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
   if (!t) throw expired();
   const found = await findActiveSession(db, t.token, env.SESSION_TOKEN_PEPPER);
   if (!found) throw expired();
-  if (found.userStatus !== "active") throw createHttpError(401, "This account is not active", { code: "USER_NOT_ACTIVE" });
+  if (found.userStatus !== "active") throw createHttpError("This account is not active", { code: "USER_NOT_ACTIVE" });
   await touchSession(db, found.session.id, found.session.client);
   return { userId: found.session.userId, sessionId: found.session.id, client: found.session.client, transport: t.transport };
 }

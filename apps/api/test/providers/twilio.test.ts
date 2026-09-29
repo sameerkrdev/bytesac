@@ -22,11 +22,11 @@ describe("checkSmsVerification", () => {
   });
   it.each([[{ status: 429, code: 20429 }], [{ status: 429 }]])("%j -> 429 RATE_LIMITED with Retry-After", async (err) => {
     sdk.check.mockRejectedValueOnce(err);
-    await expect(checkSmsVerification("+14155552671", "123456")).rejects.toMatchObject({ status: 429, code: "RATE_LIMITED", headers: { "retry-after": "60" } });
+    await expect(checkSmsVerification("+14155552671", "123456")).rejects.toMatchObject({ code: "RATE_LIMITED", headers: { "retry-after": "60" } });
   });
   it.each([[{ status: 500 }], [{ status: 401, code: 20003 }], [new Error("ECONNRESET")], [null]])("%j -> 503 OTP_DELIVERY_FAILED", async (err) => {
     sdk.check.mockRejectedValueOnce(err);
-    await expect(checkSmsVerification("+14155552671", "123456")).rejects.toMatchObject({ status: 503, code: "OTP_DELIVERY_FAILED" });
+    await expect(checkSmsVerification("+14155552671", "123456")).rejects.toMatchObject({ code: "OTP_DELIVERY_FAILED" });
   });
 });
 
@@ -38,15 +38,15 @@ describe("startSmsVerification", () => {
   });
   it("60203 max send attempts -> 429 OTP_COOLDOWN with a Retry-After", async () => {
     sdk.create.mockRejectedValueOnce({ status: 429, code: 60203 });
-    await expect(startSmsVerification("+14155552671")).rejects.toMatchObject({ status: 429, code: "OTP_COOLDOWN", headers: { "retry-after": "600" } });
+    await expect(startSmsVerification("+14155552671")).rejects.toMatchObject({ code: "OTP_COOLDOWN", headers: { "retry-after": "600" } });
   });
   it("20429 too many requests -> 429 RATE_LIMITED", async () => {
     sdk.create.mockRejectedValueOnce({ status: 429, code: 20429 });
-    await expect(startSmsVerification("+14155552671")).rejects.toMatchObject({ status: 429, code: "RATE_LIMITED" });
+    await expect(startSmsVerification("+14155552671")).rejects.toMatchObject({ code: "RATE_LIMITED" });
   });
   it("other failures -> 503 OTP_DELIVERY_FAILED, never retried", async () => {
     sdk.create.mockRejectedValueOnce(new Error("boom"));
-    await expect(startSmsVerification("+14155552671")).rejects.toMatchObject({ status: 503, code: "OTP_DELIVERY_FAILED" });
+    await expect(startSmsVerification("+14155552671")).rejects.toMatchObject({ code: "OTP_DELIVERY_FAILED" });
     expect(sdk.create).toHaveBeenCalledTimes(1);
   });
 });

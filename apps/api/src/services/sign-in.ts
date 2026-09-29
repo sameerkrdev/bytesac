@@ -23,9 +23,9 @@ const CHALLENGE_LEASE = "30 seconds";
 /** Business rejections that make the challenge terminal (it is marked `rejected`). */
 const TERMINAL = new Set(["SIGNATURE_INVALID", "ADDRESS_DISABLED", "USER_NOT_ACTIVE", "ADDRESS_ALREADY_LINKED", "CHAIN_FAMILY_ALREADY_LINKED"]);
 
-const addressLinked = () => createHttpError(409, "This address is linked to another account", { code: "ADDRESS_ALREADY_LINKED" });
-const inProgress = () => createHttpError(409, "This sign-in request is already being verified.", { code: "CHALLENGE_IN_PROGRESS" });
-const addressDisabled = () => createHttpError(403, "This wallet address has been disabled. Contact support.", { code: "ADDRESS_DISABLED" });
+const addressLinked = () => createHttpError("This address is linked to another account", { code: "ADDRESS_ALREADY_LINKED" });
+const inProgress = () => createHttpError("This sign-in request is already being verified.", { code: "CHALLENGE_IN_PROGRESS" });
+const addressDisabled = () => createHttpError("This wallet address has been disabled. Contact support.", { code: "ADDRESS_DISABLED" });
 
 /** Database time: challenge lifetimes never depend on the API host's clock. */
 async function dbNow(): Promise<Date> {
@@ -77,15 +77,15 @@ export async function verifyChallenge(input: VerifyInput): Promise<VerifyResult>
     .returning();
   if (!ch) {
     const [row] = await db.select().from(authChallenges).where(eq(authChallenges.id, input.challengeId));
-    if (!row) throw createHttpError(404, "Sign-in request not found. Start again.", { code: "CHALLENGE_NOT_FOUND" });
-    if (row.status === "consumed" || row.status === "rejected") throw createHttpError(409, "This sign-in request was already used. Start again.", { code: "CHALLENGE_CONSUMED" });
-    if (row.expiresAt <= (await dbNow())) throw createHttpError(410, "This sign-in request expired. Start again.", { code: "CHALLENGE_EXPIRED" });
+    if (!row) throw createHttpError("Sign-in request not found. Start again.", { code: "CHALLENGE_NOT_FOUND" });
+    if (row.status === "consumed" || row.status === "rejected") throw createHttpError("This sign-in request was already used. Start again.", { code: "CHALLENGE_CONSUMED" });
+    if (row.expiresAt <= (await dbNow())) throw createHttpError("This sign-in request expired. Start again.", { code: "CHALLENGE_EXPIRED" });
     throw inProgress();
   }
 
   try {
     if (ch.purpose === "add_chain_account" && (!input.auth || input.auth.sessionId !== ch.sessionId)) {
-      throw createHttpError(401, "This challenge belongs to another session", { code: "SIGNATURE_INVALID" });
+      throw createHttpError("This challenge belongs to another session", { code: "SIGNATURE_INVALID" });
     }
 
     // Phase B: verify outside any transaction
@@ -99,7 +99,7 @@ export async function verifyChallenge(input: VerifyInput): Promise<VerifyResult>
         .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing")));
       throw err;
     }
-    if (outcome.kind === "invalid") throw createHttpError(401, "Signature could not be verified", { code: "SIGNATURE_INVALID" });
+    if (outcome.kind === "invalid") throw createHttpError("Signature could not be verified", { code: "SIGNATURE_INVALID" });
 
     // Phase C: finalize atomically; a sign-up race on the address unique index is retried once.
     for (let attempt = 1; ; attempt++) {
@@ -144,7 +144,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
     let isNewUser = false;
     if (owner) {
       if (owner.status === "disabled") throw addressDisabled();
-      if (owner.userStatus !== "active") throw createHttpError(401, "This account is not active", { code: "USER_NOT_ACTIVE" });
+      if (owner.userStatus !== "active") throw createHttpError("This account is not active", { code: "USER_NOT_ACTIVE" });
       userId = owner.userId;
     } else {
       userId = await createUserWithWallet(tx, { walletProvider: input.walletProvider, rows });
@@ -170,11 +170,11 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   // Row-lock the active wallet to serialize concurrent address additions for one user.
   const [wallet] = await tx.select({ id: investmentWallets.id }).from(investmentWallets)
     .where(and(eq(investmentWallets.userId, auth.userId), eq(investmentWallets.status, "active"))).for("update");
-  if (!wallet) throw createHttpError(401, "No active investment wallet", { code: "USER_NOT_ACTIVE" });
+  if (!wallet) throw createHttpError("No active investment wallet", { code: "USER_NOT_ACTIVE" });
   const existing = await addressesForWallet(tx, wallet.id);
   const family = familyOf(ch.chain);
   if (existing.some((a) => a.chainFamily === family && a.address !== ch.address)) {
-    throw createHttpError(409, "A different address in this chain family is already linked", { code: "CHAIN_FAMILY_ALREADY_LINKED" });
+    throw createHttpError("A different address in this chain family is already linked", { code: "CHAIN_FAMILY_ALREADY_LINKED" });
   }
   const have = new Set(existing.filter((a) => a.address === ch.address).map((a) => a.chain));
   const toInsert = rows.filter((r) => !have.has(r.chain));
@@ -185,7 +185,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   });
 
   // Rotate the session. Revoke first: if it is already revoked (e.g. concurrent logout) refuse and roll everything back.
-  if (!(await revokeSession(tx, auth.sessionId, "rotated"))) throw createHttpError(401, "Please sign in again", { code: "SESSION_EXPIRED" });
+  if (!(await revokeSession(tx, auth.sessionId, "rotated"))) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
   const issued = await createSession(tx, { userId: auth.userId, client: auth.client, pepper: env.SESSION_TOKEN_PEPPER, meta: input.meta });
   await tx.update(sessions).set({ replacedBySessionId: issued.id }).where(eq(sessions.id, auth.sessionId));
   await writeAudit(tx, {

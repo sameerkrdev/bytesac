@@ -20,7 +20,7 @@ export const authRouter = Router();
 
 authRouter.post("/challenge", optionalSession, validate({ body: challengeRequestSchema }), async (req, res) => {
   const body = req.body as ChallengeRequest;
-  if (body.purpose === "add_chain_account" && !req.auth) throw createHttpError(401, "Please sign in again", { code: "SESSION_EXPIRED" });
+  if (body.purpose === "add_chain_account" && !req.auth) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
   res.json(await issueChallenge({
     purpose: body.purpose, chain: body.chain, rawAddress: body.address,
     sessionId: body.purpose === "add_chain_account" ? req.auth!.sessionId : null, meta: req.ctx,

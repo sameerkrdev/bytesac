@@ -17,7 +17,7 @@ const verifyWith = (request: (a: { method: string }) => Promise<unknown>) => {
   return verifyContractSignature(input);
 };
 const rpcError = (code: number, message: string) => new RpcRequestError({ body: {}, error: { code, message }, url: "http://x" });
-const unavailable = { status: 503, code: "VERIFIER_UNAVAILABLE" };
+const unavailable = { code: "VERIFIER_UNAVAILABLE" };
 
 describe("verifyContractSignature classification", () => {
   it("network throw -> 503 VERIFIER_UNAVAILABLE", async () => {

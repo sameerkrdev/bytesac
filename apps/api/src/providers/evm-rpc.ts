@@ -23,7 +23,7 @@ function isDefinitiveRevert(err: unknown): boolean {
 export async function verifyContractSignature(i: { chain: Chain; address: `0x${string}`; message: string; signature: `0x${string}` }): Promise<boolean> {
   const host = ALCHEMY_HOST[i.chain];
   if (!host) throw new Error("not an EVM chain");
-  const unavailable = (cause: unknown) => createHttpError(503, "Wallet verification is temporarily unavailable. Please try again.", { code: "VERIFIER_UNAVAILABLE", cause });
+  const unavailable = (cause: unknown) => createHttpError("Wallet verification is temporarily unavailable. Please try again.", { code: "VERIFIER_UNAVAILABLE", cause });
   // viem's verifyMessage converts *any* eth_call failure (including transport errors) into "invalid".
   // So we observe transport-level failures ourselves: a failure that is not a definitive revert => unavailable.
   let transportFailure: unknown;

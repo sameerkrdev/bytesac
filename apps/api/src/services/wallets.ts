@@ -7,7 +7,7 @@ import { isAddress } from "viem";
 
 export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
 
-const invalid = (message: string) => createHttpError(400, message, { code: "VALIDATION_FAILED" });
+const invalid = (message: string) => createHttpError(message, { code: "VALIDATION_FAILED" });
 
 export function canonicalizeAddress(chain: Chain, raw: string): string {
   const value = raw.trim();

@@ -9,7 +9,7 @@ const allowedOrigins = new Set(env.ALLOWED_ORIGINS);
 
 /** The API is never called cross-origin by browsers: no CORS headers, preflight refused. */
 export function noCors(req: Request, _res: Response, next: NextFunction): void {
-  if (req.method === "OPTIONS") throw createHttpError(403, "Cross-origin requests are not allowed", { code: "CSRF_REJECTED" });
+  if (req.method === "OPTIONS") throw createHttpError("Cross-origin requests are not allowed", { code: "CSRF_REJECTED" });
   next();
 }
 
@@ -17,7 +17,7 @@ export function rejectDualAuth(req: Request, _res: Response, next: NextFunction)
   const hasBearer = /^Bearer\s+/i.test(req.header("authorization") ?? "");
   const cookies = req.cookies as Record<string, string | undefined> | undefined;
   if (hasBearer && cookies?.[SESSION_COOKIE]) {
-    throw createHttpError(400, "Use either a session cookie or a bearer token, not both", { code: "VALIDATION_FAILED" });
+    throw createHttpError("Use either a session cookie or a bearer token, not both", { code: "VALIDATION_FAILED" });
   }
   next();
 }
@@ -39,7 +39,7 @@ export function csrfGuard(req: Request, _res: Response, next: NextFunction): voi
   if (!hasCookie && !webAuthEntry && !challengeWithoutClient) return next();
   const origin = req.header("origin");
   if (!origin || !allowedOrigins.has(origin) || req.header(CSRF_HEADER) !== CSRF_HEADER_VALUE) {
-    throw createHttpError(403, "Request rejected by CSRF protection", { code: "CSRF_REJECTED" });
+    throw createHttpError("Request rejected by CSRF protection", { code: "CSRF_REJECTED" });
   }
   next();
 }

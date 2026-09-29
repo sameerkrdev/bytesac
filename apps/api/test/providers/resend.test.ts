@@ -18,6 +18,6 @@ describe("sendOtpEmail", () => {
   });
   it("a reported error -> 503 OTP_DELIVERY_FAILED", async () => {
     sdk.send.mockResolvedValueOnce({ data: null, error: { name: "application_error", message: "down", statusCode: null } });
-    await expect(sendOtpEmail("a@b.co", "123456", "v-2")).rejects.toMatchObject({ status: 503, code: "OTP_DELIVERY_FAILED" });
+    await expect(sendOtpEmail("a@b.co", "123456", "v-2")).rejects.toMatchObject({ code: "OTP_DELIVERY_FAILED" });
   });
 });

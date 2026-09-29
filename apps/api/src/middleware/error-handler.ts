@@ -1,10 +1,10 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
 import createHttpError, { isHttpError } from "http-errors";
 import { logger } from "@repo/logger";
-import { errorCodeSchema, ZodError, type ApiErrorBody } from "@repo/validator";
+import { ERROR_HTTP_STATUS, errorCodeSchema, ZodError, type ApiErrorBody } from "@repo/validator";
 
 export const notFoundHandler: RequestHandler = (_req, _res, next) => {
-  next(createHttpError(404, "Not found", { code: "NOT_FOUND" }));
+  next(createHttpError("Not found", { code: "NOT_FOUND" }));
 };
 
 /**
@@ -25,7 +25,7 @@ function sanitizeError(err: unknown): { errName: string; errCode?: string; errMe
   };
 }
 
-/** Responds `{ error: { code, message, details? } }`. Errors thrown by the API are http-errors carrying a `code` from @repo/validator. */
+/** Responds `{ error: { code, message, details? } }`. Errors thrown by the API are http-errors carrying a `code` from @repo/validator; the HTTP status comes from ERROR_HTTP_STATUS, so call sites pass no status. */
 export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   if (res.headersSent) { next(err); return; }
   let status = 500;
@@ -36,7 +36,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
     status = 400;
     error = { code: "VALIDATION_FAILED", message: "Request validation failed", details: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })) };
   } else if (isHttpError(err) && code?.success) {
-    status = err.status;
+    status = ERROR_HTTP_STATUS[code.data];
     error = { code: code.data, message: err.message, ...(err.details === undefined ? {} : { details: err.details }) };
     if (err.headers) res.set(err.headers);
     if (status >= 500) logger.warn("api error", { requestId: req.ctx?.requestId, errorCode: code.data });

@@ -8,7 +8,7 @@ describe("consume", () => {
     const results: unknown[] = [];
     for (let i = 0; i < 31; i++) results.push(await consume(limits.verifyIp, "t:k").catch((e: unknown) => e)); // limit is 30 per 60 s
     expect(results.slice(0, 30).every((r) => typeof r === "function")).toBe(true);
-    expect(results[30]).toMatchObject({ status: 429, code: "RATE_LIMITED" });
+    expect(results[30]).toMatchObject({ code: "RATE_LIMITED" });
     const retryAfter = Number((results[30] as { headers: Record<string, string> }).headers["retry-after"]);
     expect(retryAfter).toBeGreaterThan(0);
     expect(retryAfter).toBeLessThanOrEqual(60);
@@ -18,5 +18,13 @@ describe("consume", () => {
     expect((await limits.otpUser.get("u1"))?.consumedPoints).toBe(1);
     await refund();
     expect((await limits.otpUser.get("u1"))?.consumedPoints).toBe(0);
+  });
+  it("a refund after the window expired does not recreate the key", async () => {
+    const refund = await consume(limits.otpUser, "u2");
+    await redis.del("otp:user:u2"); // the window ended
+    await refund();
+    expect(await limits.otpUser.get("u2")).toBeNull();
+    await consume(limits.otpUser, "u2");
+    expect((await limits.otpUser.get("u2"))?.consumedPoints).toBe(1);
   });
 });

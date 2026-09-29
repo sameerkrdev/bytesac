@@ -22,10 +22,10 @@ export function contactView(c: ContactRow): ContactView {
 }
 
 const cooldownError = (retryAfterSec: number) =>
-  createHttpError(429, "Please wait before requesting another code", { code: "OTP_COOLDOWN", headers: { "retry-after": String(retryAfterSec) } });
-const contactNotFound = () => createHttpError(404, "Contact not found", { code: "NOT_FOUND" });
-const otpExpired = () => createHttpError(410, "This code has expired. Request a new one.", { code: "OTP_EXPIRED" });
-const attemptsExceeded = () => createHttpError(429, "Too many attempts. Request a new code.", { code: "OTP_ATTEMPTS_EXCEEDED" });
+  createHttpError("Please wait before requesting another code", { code: "OTP_COOLDOWN", headers: { "retry-after": String(retryAfterSec) } });
+const contactNotFound = () => createHttpError("Contact not found", { code: "NOT_FOUND" });
+const otpExpired = () => createHttpError("This code has expired. Request a new one.", { code: "OTP_EXPIRED" });
+const attemptsExceeded = () => createHttpError("Too many attempts. Request a new code.", { code: "OTP_ATTEMPTS_EXCEEDED" });
 
 /** Takes every send limit (per user, destination, IP and channel-wide); on any failure gives back the points already taken. */
 async function takeSendLimits(userId: string, destination: string, channel: "email" | "sms", ip: string): Promise<Array<() => Promise<unknown>>> {
@@ -37,9 +37,9 @@ async function takeSendLimits(userId: string, destination: string, channel: "ema
     refunds.push(await consume(limits.otpDestinationDay, dest));
     refunds.push(await consume(limits.otpIp, ip));
     refunds.push(await consume(channel === "email" ? limits.otpGlobalEmail : limits.otpGlobalSms, channel).catch((err: unknown) => {
-      if (!isHttpError(err) || err.status !== 429) throw err;
+      if (!isHttpError(err) || err.code !== "RATE_LIMITED") throw err;
       logger.error("OTP global circuit breaker tripped", { channel });
-      throw createHttpError(503, "Verification codes are temporarily unavailable. Try again later.", { code: "OTP_DELIVERY_FAILED" });
+      throw createHttpError("Verification codes are temporarily unavailable. Try again later.", { code: "OTP_DELIVERY_FAILED" });
     }));
     return refunds;
   } catch (err) {
@@ -63,13 +63,6 @@ async function supersedePending(tx: DbOrTx, contactId: string): Promise<void> {
 async function markFailed(id: string): Promise<void> {
   await db.update(contactVerifications).set({ status: "failed", resolvedAt: sql`now()` })
     .where(and(eq(contactVerifications.id, id), eq(contactVerifications.status, "pending")));
-}
-
-async function latestPending(contactId: string): Promise<VerificationRow | undefined> {
-  const [row] = await db.select().from(contactVerifications)
-    .where(and(eq(contactVerifications.contactId, contactId), eq(contactVerifications.status, "pending")))
-    .orderBy(desc(contactVerifications.createdAt)).limit(1);
-  return row;
 }
 
 async function ownedContact(userId: string, contactId: string): Promise<ContactRow | undefined> {
@@ -143,6 +136,11 @@ export async function addContact(ctx: Ctx, i: { type: ContactType; rawValue: str
 export async function resendContact(ctx: Ctx, contactId: string): Promise<AddContactResponse> {
   const contact = await ownedContact(ctx.userId, contactId);
   if (!contact || contact.status !== "unverified") throw contactNotFound();
+  // Check the cooldown before send() takes any rate-limit points, so an exhausted user resending early still sees OTP_COOLDOWN.
+  const [last] = await db.select({ since: sql<number>`extract(epoch from now() - ${contactVerifications.createdAt})::int` }).from(contactVerifications)
+    .where(and(eq(contactVerifications.contactId, contact.id), eq(contactVerifications.status, "pending")))
+    .orderBy(desc(contactVerifications.createdAt)).limit(1);
+  if (last && last.since < OTP_RESEND_COOLDOWN_SEC) throw cooldownError(OTP_RESEND_COOLDOWN_SEC - last.since);
   return response(contact, await send(contact, ctx));
 }
 
@@ -150,7 +148,9 @@ export async function verifyContact(ctx: Ctx, i: { contactId: string; code: stri
   const contact = await ownedContact(ctx.userId, i.contactId);
   if (!contact) throw contactNotFound();
   if (contact.status === "verified") return contactView(contact);
-  const pending = await latestPending(contact.id);
+  const [pending] = await db.select().from(contactVerifications)
+    .where(and(eq(contactVerifications.contactId, contact.id), eq(contactVerifications.status, "pending")))
+    .orderBy(desc(contactVerifications.createdAt)).limit(1);
   if (!pending) {
     const [latest] = await db.select().from(contactVerifications).where(eq(contactVerifications.contactId, contact.id)).orderBy(desc(contactVerifications.createdAt)).limit(1);
     if (latest?.status === "failed" && latest.attempts >= OTP_MAX_ATTEMPTS) throw attemptsExceeded();
@@ -180,7 +180,7 @@ export async function verifyContact(ctx: Ctx, i: { contactId: string; code: stri
   }
   if (!ok) {
     if (attempt.attempts >= OTP_MAX_ATTEMPTS) await markFailed(attempt.id);
-    throw createHttpError(400, "That code is incorrect", { code: "OTP_INVALID" });
+    throw createHttpError("That code is incorrect", { code: "OTP_INVALID" });
   }
   const verified = await db.transaction(async (tx) => {
     const resolved = await tx.update(contactVerifications).set({ status: "verified", resolvedAt: sql`now()` })

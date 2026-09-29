@@ -112,6 +112,17 @@ describe("contacts", () => {
     expect((await request(app).post(`/v1/me/contacts/${add.body.contact.id}/verify`).set(h).send({ code: secondCode })).status).toBe(200);
   });
 
+  it("resend during the cooldown answers OTP_COOLDOWN even when the user's send limit is exhausted, and takes no points", async () => {
+    const { app, h, s } = await setup();
+    const add = await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: "a@b.co" });
+    await limits.otpUser.block(s.userId, 3600);
+    const before = (await limits.otpUser.get(s.userId))?.consumedPoints;
+    const early = await request(app).post(`/v1/me/contacts/${add.body.contact.id}/resend`).set(h);
+    expect(early.status).toBe(429);
+    expect(early.body.error.code).toBe("OTP_COOLDOWN");
+    expect((await limits.otpUser.get(s.userId))?.consumedPoints).toBe(before);
+  });
+
   it("concurrent resends: one 200, one 429, never 500", async () => {
     const { app, h } = await setup();
     const add = await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: "a@b.co" });
