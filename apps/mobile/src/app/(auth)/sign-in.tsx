@@ -12,9 +12,7 @@ export default function SignInScreen() {
   const wallet = useWalletConnector();
   const onVerified = useCallback(
     (isNewUser: boolean) => {
-      // The contact step arrives in a later task; until then everyone lands on Home.
-      void isNewUser;
-      router.replace("/(app)/home");
+      router.replace(isNewUser ? "/(auth)/contact" : "/(app)/home");
     },
     [router],
   );
