@@ -27,7 +27,7 @@ export function canonicalizeAddress(chain: Chain, raw: string): string {
 
 export async function findAddressOwner(db: DbOrTx, chain: Chain, address: string) {
   const [row] = await db
-    .select({ userId: users.id, userStatus: users.status, walletId: investmentWallets.id, status: walletAddresses.status })
+    .select({ userId: users.id, userStatus: users.status, walletId: investmentWallets.id, status: walletAddresses.status, verificationMethod: walletAddresses.verificationMethod })
     .from(walletAddresses)
     .innerJoin(investmentWallets, eq(investmentWallets.id, walletAddresses.investmentWalletId))
     .innerJoin(users, eq(users.id, investmentWallets.userId))

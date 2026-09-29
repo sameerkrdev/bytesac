@@ -24,6 +24,10 @@ export const meResponseSchema = z.object({
     addresses: z.array(walletAddressViewSchema),
   }),
   contacts: z.array(contactViewSchema),
+  /** Granted product permissions, e.g. create_manager_organization. */
+  permissions: z.array(z.string()),
+  /** Active platform roles (ops_reviewer, ops_admin). */
+  platformRoles: z.array(z.string()),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 

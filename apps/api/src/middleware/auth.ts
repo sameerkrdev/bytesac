@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { db } from "@repo/db";
 import { SESSION_COOKIE, type ClientKind } from "@repo/validator";
 import { env } from "../env";
+import { activeRoles } from "../services/platform-roles";
 import { findActiveSession, touchSession } from "../services/sessions";
 
 export interface AuthContext { userId: string; sessionId: string; client: ClientKind; transport: "cookie" | "bearer" }
@@ -48,3 +49,10 @@ export async function optionalSession(req: Request, _res: Response, next: NextFu
   }
   next();
 }
+
+/** Use after requireSession. Roles are read from the database on every request so a revocation applies immediately; ops_admin also satisfies ops_reviewer. */
+export const requireRole = (role: "ops_reviewer" | "ops_admin") => async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+  const held = await activeRoles(db, req.auth!.userId);
+  if (!held.includes("ops_admin") && !held.includes(role)) throw createHttpError("You don't have access to this area.", { code: "FORBIDDEN" });
+  next();
+};

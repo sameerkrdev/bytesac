@@ -13,6 +13,8 @@ const me = (addresses: MeResponse["wallet"]["addresses"]): MeResponse => ({
   user: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
   wallet: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e50", walletProvider: "MetaMask", addresses },
   contacts: [],
+  permissions: [],
+  platformRoles: [],
 });
 
 describe("WalletSection", () => {

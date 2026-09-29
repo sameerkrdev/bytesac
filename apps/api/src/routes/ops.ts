@@ -1,0 +1,51 @@
+import { Router, type Request } from "express";
+import {
+  applicationNoteRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, transitionApplicationRequestSchema, z,
+  type ApplicationNoteRequest, type GrantRoleRequest, type PlatformRolesResponse, type TransitionApplicationRequest,
+} from "@repo/validator";
+import { requireRole, requireSession } from "../middleware/auth";
+import { consume, limits } from "../middleware/rate-limit";
+import { validate } from "../middleware/validate";
+import { addApplicationNote, getApplicationDetail, listApplications, transitionApplication } from "../services/applications";
+import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
+
+const idParam = z.object({ id: z.uuid() });
+const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
+const actor = (req: Request) => ({ userId: req.auth!.userId, requestId: req.ctx.requestId });
+
+export const opsRouter = Router();
+opsRouter.use(requireSession, async (req, _res, next) => {
+  await consume(limits.opsUser, req.auth!.userId);
+  next();
+});
+
+opsRouter.get("/applications", requireRole("ops_reviewer"), async (req, res) => {
+  res.json(await listApplications(listApplicationsQuerySchema.parse(req.query)));
+});
+
+opsRouter.get("/applications/:id", requireRole("ops_reviewer"), validate({ params: idParam }), async (req, res) => {
+  res.json(await getApplicationDetail(req.params.id as string));
+});
+
+opsRouter.post("/applications/:id/transition", requireRole("ops_reviewer"), validate({ params: idParam, body: transitionApplicationRequestSchema }), async (req, res) => {
+  res.json(await transitionApplication(ctx(req), req.params.id as string, req.body as TransitionApplicationRequest));
+});
+
+opsRouter.post("/applications/:id/notes", requireRole("ops_reviewer"), validate({ params: idParam, body: applicationNoteRequestSchema }), async (req, res) => {
+  res.status(201).json(await addApplicationNote(ctx(req), req.params.id as string, (req.body as ApplicationNoteRequest).internalNote));
+});
+
+opsRouter.get("/roles", requireRole("ops_admin"), async (_req, res) => {
+  const body: PlatformRolesResponse = { roles: await listRoles() };
+  res.json(body);
+});
+
+opsRouter.post("/roles", requireRole("ops_admin"), validate({ body: grantRoleRequestSchema }), async (req, res) => {
+  const { userId, role } = req.body as GrantRoleRequest;
+  res.status(201).json(await grantRole(actor(req), userId, role));
+});
+
+opsRouter.delete("/roles/:id", requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
+  await revokeRole(actor(req), req.params.id as string);
+  res.status(204).end();
+});

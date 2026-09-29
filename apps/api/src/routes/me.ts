@@ -1,12 +1,13 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { Router } from "express";
-import { contacts, db, investmentWallets, sessions, users } from "@repo/db";
+import { contacts, db, investmentWallets, sessions, userPermissions, users } from "@repo/db";
 import { familyOf, z, type MeResponse, type SessionsResponse } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { writeAudit } from "../services/audit";
 import { contactView } from "../services/contacts";
+import { activeRoles } from "../services/platform-roles";
 import { listActiveSessions, revokeSession } from "../services/sessions";
 import { addressesForWallet } from "../services/wallets";
 
@@ -32,6 +33,8 @@ meRouter.get("/", async (req, res) => {
       })),
     },
     contacts: current.map(contactView),
+    permissions: (await db.select({ permission: userPermissions.permission }).from(userPermissions).where(and(eq(userPermissions.userId, userId), isNull(userPermissions.revokedAt)))).map((p) => p.permission),
+    platformRoles: await activeRoles(db, userId),
   };
   res.json(body);
 });

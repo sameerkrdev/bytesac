@@ -59,3 +59,86 @@ export type ApplicationStatusResponse = z.infer<typeof applicationStatusResponse
 
 export const applicationReplySchema = z.strictObject({ message: z.string().trim().min(1).max(4000) });
 export type ApplicationReplyRequest = z.infer<typeof applicationReplySchema>;
+
+export const platformRoleSchema = z.enum(["ops_reviewer", "ops_admin"]);
+export type PlatformRole = z.infer<typeof platformRoleSchema>;
+
+export const transitionApplicationRequestSchema = z.strictObject({
+  to: applicationStatusSchema,
+  internalNote: z.string().trim().min(1).max(4000).optional(),
+  messageToApplicant: z.string().trim().min(1).max(4000).optional(),
+});
+export type TransitionApplicationRequest = z.infer<typeof transitionApplicationRequestSchema>;
+
+export const applicationNoteRequestSchema = z.strictObject({ internalNote: z.string().trim().min(1).max(4000) });
+export type ApplicationNoteRequest = z.infer<typeof applicationNoteRequestSchema>;
+
+export const listApplicationsQuerySchema = z.object({
+  status: applicationStatusSchema.optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  cursor: z.string().max(200).optional(),
+});
+export type ListApplicationsQuery = z.infer<typeof listApplicationsQuerySchema>;
+
+export const applicationSummarySchema = z.object({
+  id: z.uuid(),
+  status: applicationStatusSchema,
+  applicantType: z.enum(["individual", "firm"]),
+  fullName: z.string(),
+  firmName: z.string().nullable(),
+  email: z.string(),
+  country: z.string(),
+  walletChain: chainSchema,
+  walletAddress: z.string(),
+  walletProvenAt: z.iso.datetime({ offset: true }).nullable(),
+  submittedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type ApplicationSummary = z.infer<typeof applicationSummarySchema>;
+
+export const listApplicationsResponseSchema = z.object({ items: z.array(applicationSummarySchema), nextCursor: z.string().nullable() });
+export type ListApplicationsResponse = z.infer<typeof listApplicationsResponseSchema>;
+
+export const applicationEventViewSchema = z.object({
+  id: z.uuid(),
+  actorType: z.enum(["applicant", "ops", "system"]),
+  actorUserId: z.uuid().nullable(),
+  kind: z.enum(["status_changed", "note", "applicant_reply", "permission_granted"]),
+  fromStatus: applicationStatusSchema.nullable(),
+  toStatus: applicationStatusSchema.nullable(),
+  internalNote: z.string().nullable(),
+  messageToApplicant: z.string().nullable(),
+  applicantMessage: z.string().nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type ApplicationEventView = z.infer<typeof applicationEventViewSchema>;
+
+export const applicationDetailSchema = applicationSummarySchema.extend({
+  phone: z.string().nullable(),
+  website: z.string().nullable(),
+  professionalBackground: z.string(),
+  investmentExperience: z.string(),
+  qualifications: z.string().nullable(),
+  reason: z.string(),
+  intendedBaskets: z.string(),
+  emailConfirmedAt: z.iso.datetime({ offset: true }).nullable(),
+  decidedAt: z.iso.datetime({ offset: true }).nullable(),
+  decidedByUserId: z.uuid().nullable(),
+  userId: z.uuid().nullable(),
+  events: z.array(applicationEventViewSchema),
+});
+export type ApplicationDetail = z.infer<typeof applicationDetailSchema>;
+
+export const grantRoleRequestSchema = z.strictObject({ userId: z.uuid(), role: platformRoleSchema });
+export type GrantRoleRequest = z.infer<typeof grantRoleRequestSchema>;
+
+export const platformRoleViewSchema = z.object({
+  id: z.uuid(),
+  userId: z.uuid(),
+  role: platformRoleSchema,
+  grantedByUserId: z.uuid().nullable(),
+  grantedAt: z.iso.datetime({ offset: true }),
+});
+export type PlatformRoleView = z.infer<typeof platformRoleViewSchema>;
+
+export const platformRolesResponseSchema = z.object({ roles: z.array(platformRoleViewSchema) });
+export type PlatformRolesResponse = z.infer<typeof platformRolesResponseSchema>;

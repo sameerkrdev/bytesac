@@ -10,6 +10,7 @@ import { env } from "../env";
 import type { AuthContext } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import type { RequestMeta } from "../middleware/request-context";
+import { grantIfProven } from "./applications";
 import { writeAudit } from "./audit";
 import { createSession, revokeSession, type IssuedSession } from "./sessions";
 import { buildSignInMessage } from "./sign-in-message";
@@ -154,6 +155,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
         metadata: { chain: ch.chain, address: ch.address, method, chains: rows.map((r) => r.chain) },
       });
     }
+    await grantIfProven(tx, { userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
     const issued = await createSession(tx, { userId, client: input.client, pepper: env.SESSION_TOKEN_PEPPER, meta: input.meta });
     await writeAudit(tx, { ...audit, actorType: "user", actorUserId: userId, action: "session.created", entityType: "session", entityId: issued.id, sessionId: issued.id, metadata: { client: input.client } });
     await writeAudit(tx, { ...audit, actorType: "user", actorUserId: userId, action: "user.signed_in", entityType: "user", entityId: userId, sessionId: issued.id, metadata: { chain: ch.chain, method } });
@@ -179,6 +181,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   const have = new Set(existing.filter((a) => a.address === ch.address).map((a) => a.chain));
   const toInsert = rows.filter((r) => !have.has(r.chain));
   await insertAddresses(tx, wallet.id, toInsert);
+  await grantIfProven(tx, { userId: auth.userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
   await writeAudit(tx, {
     ...audit, actorType: "user", actorUserId: auth.userId, action: "wallet.chain_account_added", entityType: "investment_wallet",
     entityId: wallet.id, sessionId: auth.sessionId, metadata: { chain: ch.chain, address: ch.address, method, chains: toInsert.map((r) => r.chain) },
