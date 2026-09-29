@@ -60,7 +60,7 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
       if (e instanceof ApiError && e.code === "OTP_COOLDOWN" && e.retryAfterSec !== undefined) setResendAt(new Date(Date.now() + e.retryAfterSec * 1000).toISOString());
       // The application exists but its code email failed: continue at the code step, where Resend is available.
       const created = e instanceof ApiError && e.code === "OTP_DELIVERY_FAILED" ? (e.details as { applicationId?: string } | undefined)?.applicationId : undefined;
-      if (created && !applicationId) { setApplicationId(created); setResendAt(new Date().toISOString()); }
+      if (created && !applicationId) { setApplicationId(created); setResendAt(new Date(Date.now() + 60_000).toISOString()); }
     } finally { setPending(false); }
   }
 

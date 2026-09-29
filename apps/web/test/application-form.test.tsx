@@ -74,13 +74,14 @@ describe("ApplicationForm", () => {
     expect(screen.getByLabelText("6-digit code")).toBeInTheDocument();
   });
 
-  it("code email failure on create continues at the code step with resend enabled", async () => {
+  it("code email failure on create continues at the code step with the resend cooldown running", async () => {
     const c = client();
     c.createApplication.mockRejectedValueOnce(new ApiError("OTP_DELIVERY_FAILED", 503, "x", undefined, { applicationId: APP_ID }));
     render(<ApplicationForm client={c} />);
     await fill();
     await userEvent.click(screen.getByRole("button", { name: "Submit application" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Resend code" }));
-    expect(c.resendApplicationCode).toHaveBeenCalledWith(APP_ID);
+    // The failed code row counts toward the server's 60 s cooldown, so Resend is not offered immediately.
+    expect(await screen.findByRole("button", { name: /Resend in [0-9]+ s/ })).toBeDisabled();
+    expect(c.resendApplicationCode).not.toHaveBeenCalled();
   });
 });

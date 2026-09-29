@@ -10,12 +10,12 @@ import { RolesManager } from "@/components/ops/roles-manager";
 const UID = "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f";
 const RID = "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61";
 const role = { id: RID, userId: UID, role: "ops_admin" as const, grantedByUserId: null, grantedAt: "2026-09-29T00:00:00.000Z" };
-const me = (platformRoles: string[]): MeResponse => ({
+const me = (platformRoles: MeResponse["platformRoles"]): MeResponse => ({
   user: { id: UID, status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
   wallet: { id: UID, walletProvider: null, addresses: [] }, contacts: [], permissions: [], platformRoles,
 });
 
-function setup(platformRoles = ["ops_admin"]) {
+function setup(platformRoles: MeResponse["platformRoles"] = ["ops_admin"]) {
   const client = {
     opsListRoles: vi.fn(async () => ({ roles: [role] })),
     opsGrantRole: vi.fn(async () => role),
