@@ -42,28 +42,28 @@ importers:
         specifier: 0.45.3
         version: 0.45.3(postgres@3.4.9)
       envalid:
-        specifier: ^8.2.0
+        specifier: 8.2.0
         version: 8.2.0
       express:
         specifier: 5.2.1
         version: 5.2.1(supports-color@8.1.1)
       http-errors:
-        specifier: ^2.0.1
+        specifier: 2.0.1
         version: 2.0.1
       ioredis:
         specifier: 6.0.0
         version: 6.0.0(supports-color@8.1.1)
       ipaddr.js:
-        specifier: ^2.5.0
+        specifier: 2.5.0
         version: 2.5.0
       libphonenumber-js:
         specifier: 1.13.14
         version: 1.13.14
       morgan:
-        specifier: ^1.12.1
+        specifier: 1.12.1
         version: 1.12.1(supports-color@8.1.1)
       rate-limiter-flexible:
-        specifier: ^11.2.1
+        specifier: 11.2.1
         version: 11.2.1
       resend:
         specifier: 6.30.0
@@ -88,10 +88,10 @@ importers:
         specifier: 5.0.6
         version: 5.0.6
       '@types/http-errors':
-        specifier: ^2.0.5
+        specifier: 2.0.5
         version: 2.0.5
       '@types/morgan':
-        specifier: ^1.9.10
+        specifier: 1.9.10
         version: 1.9.10
       '@types/node':
         specifier: 26.4.1
@@ -109,7 +109,7 @@ importers:
         specifier: 7.3.0
         version: 7.3.0(supports-color@8.1.1)
       tsup:
-        specifier: ^8.5.1
+        specifier: 8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(supports-color@8.1.1)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)
       tsx:
         specifier: 4.23.15
@@ -473,7 +473,7 @@ importers:
         specifier: 0.45.3
         version: 0.45.3(postgres@3.4.9)
       envalid:
-        specifier: ^8.2.0
+        specifier: 8.2.0
         version: 8.2.0
       postgres:
         specifier: 3.4.9
@@ -557,6 +557,9 @@ importers:
 
   packages/logger:
     dependencies:
+      envalid:
+        specifier: 8.2.0
+        version: 8.2.0
       winston:
         specifier: 3.19.0
         version: 3.19.0

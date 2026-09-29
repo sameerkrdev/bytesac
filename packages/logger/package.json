@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "envalid": "8.2.0",
     "winston": "3.19.0"
   },
   "devDependencies": {

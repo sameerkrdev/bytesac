@@ -50,10 +50,12 @@ DROP POLICY IF EXISTS retention_audit ON app.audit_events;
 --> statement-breakpoint
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bytesac_retention') THEN
-    DROP OWNED BY bytesac_retention;
+    -- Explicit REVOKEs of what 0001 granted: DROP OWNED needs privileges Supabase's non-superuser postgres lacks.
+    REVOKE ALL ON app.auth_challenges, app.sessions, app.contact_verifications, app.wallet_addresses, app.audit_events FROM bytesac_retention;
+    REVOKE USAGE ON SCHEMA app FROM bytesac_retention;
     BEGIN
       DROP ROLE bytesac_retention;
-    EXCEPTION WHEN dependent_objects_still_exist THEN
+    EXCEPTION WHEN dependent_objects_still_exist OR insufficient_privilege THEN
       NULL;
     END;
   END IF;
