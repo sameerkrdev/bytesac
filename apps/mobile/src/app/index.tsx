@@ -1,12 +1,8 @@
-import { Logo } from "@/components/brand/logo";
-import { AppText } from "@/components/ui/app-text";
-import { Screen } from "@/components/ui/screen";
+import { Redirect } from "expo-router";
+import { useAuth } from "@/lib/auth-context";
 
 export default function Index() {
-  return (
-    <Screen>
-      <Logo />
-      <AppText variant="h1">Bytesac</AppText>
-    </Screen>
-  );
+  const { status } = useAuth();
+  if (status === "loading") return null;
+  return <Redirect href={status === "signedIn" ? "/(app)/home" : "/(auth)/sign-in"} />;
 }
