@@ -85,9 +85,9 @@ Investor Web / Mobile                     Manager Web
 
 ### Manager application and organization
 - Anyone may apply to become a manager, but application does not grant publication privileges.
-- Platform team contacts and screens applicants, performs verification, then requests wallet information.
-- Verify wallet control through a challenge/signature; a typed address is not proof of ownership.
-- If needed, create or associate a user and grant narrowly scoped organization-creation permission.
+- Applications are email-confirmed before they enter the ops queue; the platform team screens them in the web ops area (`/ops`), gated by `platform_roles` (`ops_reviewer`, `ops_admin`), with every action audited (ADR-007).
+- The applicant supplies a chain and typed wallet address at application time; it is an identifier only. Wallet control is proven by the normal sign-in signature flow, and a typed address never creates or links a user.
+- The narrowly scoped `create_manager_organization` permission is granted when the application is `SCREENING_APPROVED` and the exact address is proven: immediately at approval if a proven user owns it, otherwise inside the sign-in/add-chain transaction (race-safe: the open application is locked by wallet family and address).
 - User creates an organization; organization is submitted for platform review.
 - Organization approval, membership verification and basket approval are separate gates.
 - Organization is the durable owner/manager context for baskets. Member removal revokes access but preserves history.
@@ -163,11 +163,11 @@ Use CoinMarketCap as the selected primary crypto market-data provider, subject t
 9. UI reports pending, partial, completed or failed status accurately.
 
 ### Manager application and organization onboarding
-1. Applicant submits the Become a Fund Manager form.
-2. Platform team contacts the applicant and performs initial/basic verification.
-3. Platform requests a wallet address and verifies control.
-4. Existing user is associated, or a user is created through the approved onboarding flow.
-5. Grant narrowly scoped organization-creation permission.
+1. Applicant submits the Become a Fund Manager form (with chain and typed wallet address) and confirms their email with a code; they receive a private status link.
+2. Platform reviewers screen the application in `/ops`, contacting the applicant outside the app and recording status, internal notes and messages.
+3. On approval, the applicant signs in with the exact submitted wallet, which proves control.
+4. Narrowly scoped organization-creation permission is granted at that sign-in (or immediately at approval if a proven user already owns the address).
+5. The permission is the only outcome of Spec 2; no pending user is ever created.
 6. User signs in and creates an individual or firm organization.
 7. Organization submits required information and payout wallet.
 8. Platform verifies the organization and relevant members.
@@ -206,7 +206,7 @@ Do not force an asset onto the user's default chain. Do not assume a bridge exis
 Names are indicative; align final names with existing migrations and implementation conventions.
 
 - `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
-- `manager_applications`, `verification_cases`, `verification_evidence`
+- `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
 - `organizations`, `organization_versions`, `organization_memberships`, `organization_permissions`, `organization_payout_wallets`
 - `instruments`, `deployments`, `providers`, `execution_routes`, `price_references`, `eligibility_policies`
 - `baskets`, `basket_versions`, `basket_version_assets`, `basket_assignments`, `basket_reviews`
@@ -218,7 +218,7 @@ Names are indicative; align final names with existing migrations and implementat
 
 `audit_events` is append-only and carries no foreign keys, so audit history survives any change to referenced rows.
 
-Retention purges run inside Postgres: `app.purge_expired()` is scheduled daily by `pg_cron` and writes a `retention.purged` audit event (ADR-006).
+Unconfirmed (`EMAIL_PENDING`) applications older than 24 h and application email codes resolved more than 90 days ago are purged by the same job. Retention purges run inside Postgres: `app.purge_expired()` is scheduled daily by `pg_cron` and writes a `retention.purged` audit event (ADR-006).
 
 Use foreign keys, unique constraints, check constraints and indexes for invariants that can be enforced in the database. Store quantities and money using exact decimal/numeric representations or integer base units; do not use binary floating point for financial calculations.
 
