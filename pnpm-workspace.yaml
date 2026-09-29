@@ -3,6 +3,8 @@ packages:
   - "packages/*"
 allowBuilds:
   '@tailwindcss/oxide': true
+  esbuild: true
+  msgpackr-extract: false
   unrs-resolver: true
 minimumReleaseAgeExclude:
   - '@turbo/darwin-64@2.11.5'
@@ -12,3 +14,4 @@ minimumReleaseAgeExclude:
   - '@turbo/windows-64@2.11.5'
   - '@turbo/windows-arm64@2.11.5'
   - turbo@2.11.5
+  - twilio@6.1.2
