@@ -7,6 +7,7 @@ import { WagmiProvider } from "wagmi";
 import { appKitStorage } from "./appkit-storage";
 
 const projectId = process.env.EXPO_PUBLIC_REOWN_PROJECT_ID ?? "";
+if (__DEV__ && !projectId) console.warn("EXPO_PUBLIC_REOWN_PROJECT_ID is empty; wallet connections will not work.");
 const evm = [mainnet, base, bsc, arbitrum] as const;
 
 export const wagmiAdapter = new WagmiAdapter({ projectId, networks: [...evm] });

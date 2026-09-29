@@ -1,7 +1,7 @@
 import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount } from "@repo/api-client";
 import { useAccount, useAppKit, useProvider, useWalletInfo } from "@reown/appkit-react-native";
 import bs58 from "bs58";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useSignMessage } from "wagmi";
 import { assertSolanaSignature } from "./solana-signature";
 
@@ -17,8 +17,12 @@ export function useWalletConnector() {
   const caip = isConnected && namespace && chainId !== undefined ? (chainId.includes(":") ? chainId : `${namespace}:${chainId}`) : undefined;
   const mapped = chainFromCaip(caip);
   const network: "supported" | "unsupported" | "none" = !isConnected || mapped === null ? "none" : mapped === "unsupported" ? "unsupported" : "supported";
-  const account: ConnectedAccount | null =
-    isConnected && address && mapped && mapped !== "unsupported" ? { chain: mapped, address, walletName: walletInfo?.name ?? null } : null;
+  const chain = isConnected && address && mapped && mapped !== "unsupported" ? mapped : null;
+  const walletName = walletInfo?.name ?? null;
+  const account: ConnectedAccount | null = useMemo(
+    () => (chain && address ? { chain, address, walletName } : null),
+    [chain, address, walletName],
+  );
 
   const signMessage = useCallback(async (message: string): Promise<string> => {
     if (!account) throw new Error("No supported wallet account connected");
