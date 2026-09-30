@@ -11,6 +11,7 @@ const me = {
   contacts: [],
   permissions: [],
   platformRoles: [],
+  organizations: [],
 };
 
 describe("WalletSection (mobile)", () => {

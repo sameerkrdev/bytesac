@@ -1,14 +1,16 @@
 import { Router, type Request } from "express";
 import {
-  createOrganizationRequestSchema, presignDocumentRequestSchema, updateDraftRequestSchema, z,
-  type CreateOrganizationRequest, type PresignDocumentRequest, type UpdateDraftRequest,
+  createOrganizationRequestSchema, enterPayoutWalletRequestSchema, presignDocumentRequestSchema, updateDraftRequestSchema, verifyPayoutWalletRequestSchema, z,
+  type CreateOrganizationRequest, type EnterPayoutWalletRequest, type PresignDocumentRequest, type UpdateDraftRequest, type VerifyPayoutWalletRequest,
 } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import {
-  confirmDocument, createOrganization, getOrganizationForOwner, listMyOrganizations, presignDocument, unlinkDocument, updateDraft,
+  confirmDocument, createChangeRequest, createOrganization, getOrganizationForOwner, listMyOrganizations, presignDocument, submitChangeRequest, submitOrganization,
+  unlinkDocument, updateDraft,
 } from "../services/organizations";
+import { enterPayoutWallet, issuePayoutChallenge, verifyPayoutWallet } from "../services/payout-wallets";
 
 const idParam = z.object({ id: z.uuid() });
 const docParams = z.object({ id: z.uuid(), docId: z.uuid() });
@@ -46,4 +48,28 @@ organizationsRouter.post("/:id/documents/:docId/confirm", validate({ params: doc
 
 organizationsRouter.delete("/:id/draft/documents/:docId", validate({ params: docParams }), async (req, res) => {
   res.json(await unlinkDocument(ctx(req), req.params.id as string, req.params.docId as string));
+});
+
+organizationsRouter.post("/:id/payout-wallet", validate({ params: idParam, body: enterPayoutWalletRequestSchema }), async (req, res) => {
+  res.status(201).json(await enterPayoutWallet(ctx(req), req.params.id as string, (req.body as EnterPayoutWalletRequest).address));
+});
+
+organizationsRouter.post("/:id/payout-wallet/challenge", validate({ params: idParam }), async (req, res) => {
+  res.json(await issuePayoutChallenge(ctx(req), req.params.id as string));
+});
+
+organizationsRouter.post("/:id/payout-wallet/verify", validate({ params: idParam, body: verifyPayoutWalletRequestSchema }), async (req, res) => {
+  res.json(await verifyPayoutWallet(ctx(req), req.params.id as string, req.body as VerifyPayoutWalletRequest));
+});
+
+organizationsRouter.post("/:id/submit", validate({ params: idParam }), async (req, res) => {
+  res.json(await submitOrganization(ctx(req), req.params.id as string));
+});
+
+organizationsRouter.post("/:id/change-request", validate({ params: idParam }), async (req, res) => {
+  res.status(201).json(await createChangeRequest(ctx(req), req.params.id as string));
+});
+
+organizationsRouter.post("/:id/change-request/submit", validate({ params: idParam }), async (req, res) => {
+  res.json(await submitChangeRequest(ctx(req), req.params.id as string));
 });

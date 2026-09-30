@@ -8,7 +8,7 @@ import { MeProvider } from "@/components/me-context";
 const me = (permissions: MeResponse["permissions"]): MeResponse => ({
   user: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
   wallet: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e50", walletProvider: null, addresses: [] },
-  contacts: [], permissions, platformRoles: [],
+  contacts: [], permissions, platformRoles: [], organizations: [],
 });
 const home = (m: MeResponse) => render(<QueryClientProvider client={new QueryClient()}><MeProvider initial={m}><HomePage /></MeProvider></QueryClientProvider>);
 

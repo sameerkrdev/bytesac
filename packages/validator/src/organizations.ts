@@ -278,3 +278,58 @@ export const publicOrganizationSchema = z.object({
   profile: z.record(z.string(), z.unknown()),
 });
 export type PublicOrganization = z.infer<typeof publicOrganizationSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Ops review
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const organizationReviewSummarySchema = z.object({
+  id: z.uuid(),
+  type: organizationTypeSchema,
+  status: organizationStatusSchema,
+  jurisdiction: z.string(),
+  /** From the latest version. */
+  displayName: z.string().nullable(),
+  legalName: z.string().nullable(),
+  submittedAt: isoTime.nullable(),
+  updatedAt: isoTime,
+});
+export type OrganizationReviewSummary = z.infer<typeof organizationReviewSummarySchema>;
+
+export const listOrganizationsResponseSchema = z.object({ items: z.array(organizationReviewSummarySchema), nextCursor: z.string().nullable() });
+export type ListOrganizationsResponse = z.infer<typeof listOrganizationsResponseSchema>;
+
+export const organizationEventViewSchema = z.object({
+  id: z.uuid(),
+  actorType: z.enum(["owner", "ops", "system"]),
+  actorUserId: z.uuid().nullable(),
+  kind: z.enum(["status_changed", "note", "version_submitted", "version_decided", "document_uploaded", "payout_wallet_changed"]),
+  fromStatus: organizationStatusSchema.nullable(),
+  toStatus: organizationStatusSchema.nullable(),
+  versionId: z.uuid().nullable(),
+  payoutWalletId: z.uuid().nullable(),
+  internalNote: z.string().nullable(),
+  messageToOwner: z.string().nullable(),
+  createdAt: isoTime,
+});
+export type OrganizationEventView = z.infer<typeof organizationEventViewSchema>;
+
+/** Ops view: everything, including private details, internal notes and wallet history. Documents are metadata; downloads go through the ops download route. */
+export const organizationReviewDetailSchema = z.object({
+  id: z.uuid(),
+  type: organizationTypeSchema,
+  status: organizationStatusSchema,
+  jurisdiction: z.string(),
+  currentVersionId: z.uuid().nullable(),
+  submittedAt: isoTime.nullable(),
+  verifiedAt: isoTime.nullable(),
+  decidedByUserId: z.uuid().nullable(),
+  createdAt: isoTime,
+  owner: z.object({ userId: z.uuid().nullable(), addresses: z.array(z.object({ chain: chainSchema, address: z.string() })) }),
+  versions: z.array(versionViewSchema),
+  documents: z.array(documentViewSchema.extend({ versionIds: z.array(z.uuid()) })),
+  payoutWallets: z.array(payoutWalletViewSchema.extend({ requestedByUserId: z.uuid(), decidedByUserId: z.uuid().nullable() })),
+  events: z.array(organizationEventViewSchema),
+  template: z.object({ requiredFields: z.array(z.string()), requiredDocuments: z.array(z.string()) }),
+});
+export type OrganizationReviewDetail = z.infer<typeof organizationReviewDetailSchema>;

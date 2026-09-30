@@ -1,10 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import createHttpError, { isHttpError } from "http-errors";
-import { and, eq, gt, lt, or, sql } from "drizzle-orm";
-import { authChallenges, db, investmentWallets, isUniqueViolation, sessions, type Tx } from "@repo/db";
+import { and, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
+import { authChallenges, challengePurpose, db, investmentWallets, isUniqueViolation, sessions, type Tx } from "@repo/db";
 import {
   chainsInFamily, familyOf,
-  type Chain, type ChallengePurpose, type ChallengeResponse, type ClientKind, type VerificationMethod,
+  type Chain, type ChallengeResponse, type ClientKind, type VerificationMethod,
 } from "@repo/validator";
 import { env } from "../env";
 import type { AuthContext } from "../middleware/auth";
@@ -17,7 +17,8 @@ import { buildSignInMessage } from "./sign-in-message";
 import { verifyEvmSignature, verifySolanaSignature } from "./signatures";
 import { addressesForWallet, canonicalizeAddress, createUserWithWallet, findAddressOwner, insertAddresses, type NewAddressRow } from "./wallets";
 
-type ChallengeRow = typeof authChallenges.$inferSelect;
+export type ChallengeRow = typeof authChallenges.$inferSelect;
+type DbPurpose = (typeof challengePurpose.enumValues)[number];
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const CHALLENGE_LEASE = "30 seconds";
@@ -35,7 +36,8 @@ async function dbNow(): Promise<Date> {
   return v instanceof Date ? v : new Date(v);
 }
 
-export async function issueChallenge(i: { purpose: ChallengePurpose; chain: Chain; rawAddress: string; sessionId: string | null; meta: RequestMeta }): Promise<ChallengeResponse> {
+/** `statement` and `organizationId` are for payout-wallet proofs: the signed text names the organization and the row is bound to it. */
+export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; statement?: string; meta: RequestMeta }): Promise<ChallengeResponse> {
   const address = canonicalizeAddress(i.chain, i.rawAddress);
   await consume(limits.challengeIp, i.meta.ip);
   await consume(limits.challengeAddress, address);
@@ -45,13 +47,48 @@ export async function issueChallenge(i: { purpose: ChallengePurpose; chain: Chai
   const nonce = randomBytes(16).toString("hex");
   const domain = env.AUTH_DOMAIN;
   const uri = env.AUTH_URI;
-  const { message, chainId } = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt });
+  const { message, chainId } = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt, statement: i.statement });
 
   const [row] = await db.insert(authChallenges).values({
     nonce, purpose: i.purpose, chainFamily: familyOf(i.chain), chain: i.chain, address, message, domain, uri, chainId,
-    issuedAt, expiresAt, sessionId: i.sessionId,
+    issuedAt, expiresAt, sessionId: i.sessionId, organizationId: i.organizationId,
   }).returning({ id: authChallenges.id });
   return { challengeId: row!.id, message, expiresAt: expiresAt.toISOString() };
+}
+
+/** Phase A: atomically claims a pending (or lease-expired) challenge of one of `purposes`. A challenge of another purpose is reported as not found and left untouched. */
+export async function claimChallenge(challengeId: string, purposes: readonly DbPurpose[]): Promise<{ ch: ChallengeRow; claimId: string }> {
+  const claimId = randomUUID();
+  const [ch] = await db.update(authChallenges)
+    .set({ status: "processing", claimId, leaseExpiresAt: sql`now() + ${CHALLENGE_LEASE}::interval` })
+    .where(and(
+      eq(authChallenges.id, challengeId),
+      inArray(authChallenges.purpose, purposes),
+      gt(authChallenges.expiresAt, sql`now()`),
+      or(eq(authChallenges.status, "pending"), and(eq(authChallenges.status, "processing"), lt(authChallenges.leaseExpiresAt, sql`now()`))),
+    ))
+    .returning();
+  if (!ch) {
+    const [row] = await db.select().from(authChallenges).where(eq(authChallenges.id, challengeId));
+    if (!row || !purposes.includes(row.purpose)) throw createHttpError("Sign-in request not found. Start again.", { code: "CHALLENGE_NOT_FOUND" });
+    if (row.status === "consumed" || row.status === "rejected") throw createHttpError("This sign-in request was already used. Start again.", { code: "CHALLENGE_CONSUMED" });
+    if (row.expiresAt <= (await dbNow())) throw createHttpError("This sign-in request expired. Start again.", { code: "CHALLENGE_EXPIRED" });
+    throw inProgress();
+  }
+  return { ch, claimId };
+}
+
+/** Marks a claimed challenge terminally rejected and audits it. */
+export async function rejectChallenge(ch: ChallengeRow, claimId: string, reason: string, i: { auth?: { userId: string; sessionId: string }; meta: RequestMeta }): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.update(authChallenges).set({ status: "rejected", resolvedAt: sql`now()`, leaseExpiresAt: null })
+      .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing")));
+    await writeAudit(tx, {
+      actorType: i.auth ? "user" : "system", actorUserId: i.auth?.userId ?? null, action: "challenge.rejected",
+      entityType: "auth_challenge", entityId: ch.id, requestId: i.meta.requestId, challengeId: ch.id,
+      sessionId: i.auth?.sessionId ?? null, metadata: { reason, chain: ch.chain, address: ch.address },
+    });
+  });
 }
 
 export interface VerifyInput {
@@ -66,23 +103,7 @@ export interface VerifyResult { userId: string; isNewUser: boolean; issued: Issu
 
 /** Three phases: claim the challenge, verify the signature outside any transaction, then finalize atomically. */
 export async function verifyChallenge(input: VerifyInput): Promise<VerifyResult> {
-  // Phase A: claim
-  const claimId = randomUUID();
-  const [ch] = await db.update(authChallenges)
-    .set({ status: "processing", claimId, leaseExpiresAt: sql`now() + ${CHALLENGE_LEASE}::interval` })
-    .where(and(
-      eq(authChallenges.id, input.challengeId),
-      gt(authChallenges.expiresAt, sql`now()`),
-      or(eq(authChallenges.status, "pending"), and(eq(authChallenges.status, "processing"), lt(authChallenges.leaseExpiresAt, sql`now()`))),
-    ))
-    .returning();
-  if (!ch) {
-    const [row] = await db.select().from(authChallenges).where(eq(authChallenges.id, input.challengeId));
-    if (!row) throw createHttpError("Sign-in request not found. Start again.", { code: "CHALLENGE_NOT_FOUND" });
-    if (row.status === "consumed" || row.status === "rejected") throw createHttpError("This sign-in request was already used. Start again.", { code: "CHALLENGE_CONSUMED" });
-    if (row.expiresAt <= (await dbNow())) throw createHttpError("This sign-in request expired. Start again.", { code: "CHALLENGE_EXPIRED" });
-    throw inProgress();
-  }
+  const { ch, claimId } = await claimChallenge(input.challengeId, ["sign_in", "add_chain_account"]);
 
   try {
     if (ch.purpose === "add_chain_account" && (!input.auth || input.auth.sessionId !== ch.sessionId)) {
@@ -112,17 +133,7 @@ export async function verifyChallenge(input: VerifyInput): Promise<VerifyResult>
       }
     }
   } catch (err) {
-    if (isHttpError(err) && TERMINAL.has(err.code)) {
-      await db.transaction(async (tx) => {
-        await tx.update(authChallenges).set({ status: "rejected", resolvedAt: sql`now()`, leaseExpiresAt: null })
-          .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing")));
-        await writeAudit(tx, {
-          actorType: input.auth ? "user" : "system", actorUserId: input.auth?.userId ?? null, action: "challenge.rejected",
-          entityType: "auth_challenge", entityId: ch.id, requestId: input.meta.requestId, challengeId: ch.id,
-          sessionId: input.auth?.sessionId ?? null, metadata: { reason: err.code, chain: ch.chain, address: ch.address },
-        });
-      });
-    }
+    if (isHttpError(err) && TERMINAL.has(err.code)) await rejectChallenge(ch, claimId, err.code, input);
     throw err;
   }
 }

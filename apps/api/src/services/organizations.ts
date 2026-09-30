@@ -2,20 +2,22 @@ import { randomUUID } from "node:crypto";
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import createHttpError from "http-errors";
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { logger } from "@repo/logger";
 import {
-  db, isUniqueViolation, organizationDocuments, organizationEvents, organizationMemberships, organizationPayoutWallets, organizationVersionDocuments,
+  contacts, db, isUniqueViolation, organizationDocuments, organizationEvents, organizationMemberships, organizationPayoutWallets, organizationVersionDocuments,
   organizationVersions, organizations, userPermissions, verificationRequirementTemplates, type DbOrTx,
 } from "@repo/db";
 import {
   DOCUMENT_TYPE_KEYS, ORGANIZATION_FIELDS,
   type CreateOrganizationRequest, type DocumentContentType, type DocumentView, type ListMyOrganizationsResponse, type MissingRequirements,
   type OrganizationDetail, type OrganizationFieldKey, type OrganizationType, type PresignDocumentRequest, type PresignDocumentResponse,
-  type UpdateDraftRequest, type VersionView,
+  type PublicOrganization, type UpdateDraftRequest, type VersionView,
 } from "@repo/validator";
 import { consume, limits } from "../middleware/rate-limit";
 import type { RequestMeta } from "../middleware/request-context";
 import { R2_BUCKET, r2 } from "../providers/r2";
+import { sendOrganizationEmail, type OrganizationEmailData, type OrganizationEmailKind } from "../providers/resend";
 import { writeAudit } from "./audit";
 
 export interface OwnerCtx { userId: string; sessionId: string; meta: RequestMeta }
@@ -244,4 +246,93 @@ export async function unlinkDocument(ctx: OwnerCtx, id: string, docId: string): 
     });
   });
   return getOrganizationForOwner(ctx, id);
+}
+
+/** Emails the owner's verified email contact; with none the notice is skipped (logged). Never throws for delivery problems. */
+export async function notifyOwner(orgId: string, kind: OrganizationEmailKind, data: OrganizationEmailData, idempotencyKey: string): Promise<void> {
+  const [owner] = await db.select({ email: contacts.value }).from(organizationMemberships)
+    .innerJoin(contacts, eq(contacts.userId, organizationMemberships.userId))
+    .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.role, "OWNER"), eq(organizationMemberships.status, "active"), eq(contacts.type, "email"), eq(contacts.status, "verified")));
+  if (!owner) {
+    logger.info("organization email skipped: owner has no verified email", { kind });
+    return;
+  }
+  await sendOrganizationEmail(kind, owner.email, data, idempotencyKey);
+}
+
+const incomplete = (missing: MissingRequirements) => createHttpError(422, "Complete the missing items before submitting.", { code: "REQUIREMENTS_INCOMPLETE", details: { missing } });
+
+/** DRAFT -> SUBMITTED or CHANGES_REQUIRED -> RESUBMITTED. Needs every template field and document and a verified payout wallet. */
+export async function submitOrganization(ctx: OwnerCtx, id: string): Promise<OrganizationDetail> {
+  await db.transaction(async (tx) => {
+    const org = await requireOwner(tx, ctx.userId, id, true);
+    const to = org.status === "DRAFT" ? "SUBMITTED" : org.status === "CHANGES_REQUIRED" ? "RESUBMITTED" : null;
+    if (!to) throw createHttpError(`An organization in ${org.status} cannot be submitted.`, { code: "INVALID_TRANSITION" });
+    const version = await editableVersion(tx, id);
+    const missing = await missingRequirements(tx, org, version);
+    if (missing.fields.length > 0 || missing.documents.length > 0 || missing.payoutWallet) throw incomplete(missing);
+    await tx.update(organizations).set({ status: to, submittedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizations.id, id));
+    await tx.update(organizationVersions).set({ status: "in_review", submittedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationVersions.id, version.id));
+    await tx.insert(organizationEvents).values({ organizationId: id, actorType: "owner", actorUserId: ctx.userId, kind: "status_changed", fromStatus: org.status, toStatus: to, versionId: version.id, requestId: ctx.meta.requestId });
+    await writeAudit(tx, {
+      actorType: "user", actorUserId: ctx.userId, action: "organization.status_changed", entityType: "organization", entityId: id,
+      requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { from: org.status, to },
+    });
+  });
+  return getOrganizationForOwner(ctx, id);
+}
+
+/** Opens a new draft version (a copy of the approved one) on a verified organization. */
+export async function createChangeRequest(ctx: OwnerCtx, id: string): Promise<OrganizationDetail> {
+  await db.transaction(async (tx) => {
+    const org = await requireOwner(tx, ctx.userId, id, true);
+    if (org.status !== "VERIFIED" || !org.currentVersionId) throw createHttpError("Only a verified organization can request changes.", { code: "INVALID_TRANSITION" });
+    const [open] = await tx.select({ id: organizationVersions.id }).from(organizationVersions).where(and(eq(organizationVersions.organizationId, id), inArray(organizationVersions.status, OPEN)));
+    if (open) throw createHttpError("A change request is already open.", { code: "INVALID_TRANSITION" });
+    const [current] = await tx.select().from(organizationVersions).where(eq(organizationVersions.id, org.currentVersionId));
+    const [latest] = await tx.select({ n: max(organizationVersions.versionNumber) }).from(organizationVersions).where(eq(organizationVersions.organizationId, id));
+    const [draft] = await tx.insert(organizationVersions).values({
+      organizationId: id, versionNumber: latest!.n! + 1, publicProfile: current!.publicProfile, privateDetails: current!.privateDetails, createdByUserId: ctx.userId,
+    }).returning({ id: organizationVersions.id, versionNumber: organizationVersions.versionNumber });
+    const links = await tx.select({ documentId: organizationVersionDocuments.documentId }).from(organizationVersionDocuments)
+      .where(and(eq(organizationVersionDocuments.versionId, current!.id), isNull(organizationVersionDocuments.removedAt)));
+    if (links.length > 0) await tx.insert(organizationVersionDocuments).values(links.map((l) => ({ versionId: draft!.id, documentId: l.documentId })));
+    await writeAudit(tx, {
+      actorType: "user", actorUserId: ctx.userId, action: "organization_version.created", entityType: "organization", entityId: id,
+      requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { versionId: draft!.id, versionNumber: draft!.versionNumber },
+    });
+  }).catch((err: unknown) => {
+    if (isUniqueViolation(err, "organization_versions_one_open")) throw createHttpError("A change request is already open.", { code: "INVALID_TRANSITION" });
+    throw err;
+  });
+  return getOrganizationForOwner(ctx, id);
+}
+
+/** Sends the open change-request version (draft or changes_required) to review. The payout wallet is not part of it. */
+export async function submitChangeRequest(ctx: OwnerCtx, id: string): Promise<OrganizationDetail> {
+  await db.transaction(async (tx) => {
+    const org = await requireOwner(tx, ctx.userId, id, true);
+    if (org.status !== "VERIFIED") throw createHttpError("Only a verified organization has change requests.", { code: "INVALID_TRANSITION" });
+    const version = await editableVersion(tx, id);
+    const missing = await missingRequirements(tx, org, version);
+    if (missing.fields.length > 0 || missing.documents.length > 0) throw incomplete({ ...missing, payoutWallet: false });
+    await tx.update(organizationVersions).set({ status: "in_review", submittedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationVersions.id, version.id));
+    await tx.insert(organizationEvents).values({ organizationId: id, actorType: "owner", actorUserId: ctx.userId, kind: "version_submitted", versionId: version.id, requestId: ctx.meta.requestId });
+    await writeAudit(tx, {
+      actorType: "user", actorUserId: ctx.userId, action: "organization_version.submitted", entityType: "organization", entityId: id,
+      requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { versionId: version.id, versionNumber: version.versionNumber },
+    });
+  });
+  return getOrganizationForOwner(ctx, id);
+}
+
+/** Public view: only a VERIFIED organization, and only the catalog fields marked public from its current approved version. */
+export async function getPublicOrganization(id: string): Promise<PublicOrganization> {
+  const [row] = await db.select({ org: organizations, version: organizationVersions }).from(organizations)
+    .innerJoin(organizationVersions, eq(organizationVersions.id, organizations.currentVersionId))
+    .where(and(eq(organizations.id, id), eq(organizations.status, "VERIFIED")));
+  if (!row?.org.verifiedAt) throw notFound();
+  const profile = Object.fromEntries(Object.entries(row.version.publicProfile)
+    .filter(([key]) => Object.hasOwn(ORGANIZATION_FIELDS, key) && ORGANIZATION_FIELDS[key as OrganizationFieldKey].visibility === "public"));
+  return { id: row.org.id, type: row.org.type, jurisdiction: row.org.jurisdiction, verifiedAt: row.org.verifiedAt.toISOString(), profile };
 }

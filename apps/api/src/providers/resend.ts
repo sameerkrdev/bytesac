@@ -40,3 +40,23 @@ export async function sendApplicationEmail(kind: ApplicationEmailKind, to: strin
   if (kind === "code") throw createHttpError("We couldn't send the code. Try again shortly.", { code: "OTP_DELIVERY_FAILED", cause: error });
   logger.warn("application email failed", { kind, errorName: error.name });
 }
+
+export type OrganizationEmailKind = "changes_required" | "verified" | "rejected" | "change_request_decided" | "payout_replacement_requested" | "payout_replacement_decided";
+export interface OrganizationEmailData { message?: string | null; decision?: "approved" | "changes_required" | "rejected" }
+
+const decisionText = (d?: string) => (d === "approved" ? "approved" : d === "rejected" ? "not approved" : "returned to you for changes");
+
+const ORGANIZATION_EMAILS: Record<OrganizationEmailKind, (d: OrganizationEmailData) => { subject: string; text: string }> = {
+  changes_required: (d) => ({ subject: "Bytesac organization: changes required", text: `Your organization needs changes before it can be verified. Sign in to Bytesac to review them and resubmit.${withMessage(d.message)}` }),
+  verified: () => ({ subject: "Bytesac organization verified", text: "Your organization is verified and its public profile is live." }),
+  rejected: (d) => ({ subject: "Bytesac organization decision", text: `We are unable to verify your organization at this time.${withMessage(d.message)}` }),
+  change_request_decided: (d) => ({ subject: "Bytesac profile change decision", text: `Your profile change request was ${decisionText(d.decision)}.${withMessage(d.message)}` }),
+  payout_replacement_requested: () => ({ subject: "Bytesac payout wallet change received", text: "Your new payout wallet was proven and is awaiting review. Your current payout wallet stays active until the change is approved." }),
+  payout_replacement_decided: (d) => ({ subject: "Bytesac payout wallet change decision", text: `Your payout wallet change was ${decisionText(d.decision)}.` }),
+};
+
+/** Sends an organization email. Failures only log: a state change never rolls back for an undelivered notice. */
+export async function sendOrganizationEmail(kind: OrganizationEmailKind, to: string, data: OrganizationEmailData, idempotencyKey: string): Promise<void> {
+  const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...ORGANIZATION_EMAILS[kind](data) }, { idempotencyKey });
+  if (error) logger.warn("organization email failed", { kind, errorName: error.name });
+}

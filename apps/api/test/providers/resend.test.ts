@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sdk = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("resend", () => ({ Resend: class { emails = { send: sdk.send }; } }));
 
-const { sendOtpEmail, sendApplicationEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
+const { sendOtpEmail, sendApplicationEmail, sendOrganizationEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
 
 beforeEach(() => sdk.send.mockReset());
 
@@ -38,5 +38,20 @@ describe("sendApplicationEmail", () => {
   it("status email failure is logged, not thrown", async () => {
     sdk.send.mockResolvedValueOnce({ data: null, error });
     await expect(sendApplicationEmail("rejected", "a@b.co", {}, "application-status/e-2")).resolves.toBeUndefined();
+  });
+});
+
+describe("sendOrganizationEmail", () => {
+  it("sends with the caller's idempotency key and includes the message", async () => {
+    sdk.send.mockResolvedValueOnce({ data: { id: "e1" }, error: null });
+    await sendOrganizationEmail("changes_required", "a@b.co", { message: "Fix the address" }, "organization-status/e-1");
+    const [payload, options] = sdk.send.mock.calls[0]!;
+    expect(payload).toMatchObject({ to: "a@b.co", subject: "Bytesac organization: changes required" });
+    expect(payload.text).toContain("Fix the address");
+    expect(options).toEqual({ idempotencyKey: "organization-status/e-1" });
+  });
+  it("a delivery failure is logged, not thrown", async () => {
+    sdk.send.mockResolvedValueOnce({ data: null, error: { name: "application_error", message: "down", statusCode: null } });
+    await expect(sendOrganizationEmail("verified", "a@b.co", {}, "organization-status/e-2")).resolves.toBeUndefined();
   });
 });

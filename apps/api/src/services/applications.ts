@@ -166,7 +166,7 @@ export async function replyToApplication(meta: RequestMeta, token: string, messa
 // Ops screening and wallet-proof permission grant
 // ---------------------------------------------------------------------------------------------------------------------
 
-interface OpsCtx { userId: string; meta: RequestMeta }
+export interface OpsCtx { userId: string; meta: RequestMeta }
 type ApplicationRow = typeof managerApplications.$inferSelect;
 type EventRow = typeof applicationEvents.$inferSelect;
 
@@ -232,7 +232,7 @@ export async function getApplicationDetail(id: string): Promise<ApplicationDetai
 }
 
 // The cursor carries the timestamp as Postgres text, so microsecond precision survives the round trip.
-const cursorSchema = z.tuple([z.string().regex(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(\.\d{1,6})?[+-]\d\d(:\d\d)?$/), z.uuid()]);
+export const cursorSchema = z.tuple([z.string().regex(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(\.\d{1,6})?[+-]\d\d(:\d\d)?$/), z.uuid()]);
 
 export async function listApplications(q: ListApplicationsQuery): Promise<ListApplicationsResponse> {
   const conditions = [ne(managerApplications.status, "EMAIL_PENDING")];

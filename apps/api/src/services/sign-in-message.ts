@@ -12,16 +12,19 @@ export interface SignInMessageInput {
   nonce: string;
   issuedAt: Date;
   expiresAt: Date;
+  /** Text the user signs; defaults to the sign-in statement. */
+  statement?: string;
 }
 
 export function buildSignInMessage(i: SignInMessageInput): { message: string; chainId: string } {
+  const statement = i.statement ?? SIGN_IN_STATEMENT;
   const info = CHAINS[i.chain];
   if (familyOf(i.chain) === "evm") {
     const chainId = info.evmChainId as number;
     const message = createSiweMessage({
       domain: i.domain,
       address: getAddress(i.address),
-      statement: SIGN_IN_STATEMENT,
+      statement,
       uri: i.uri,
       version: "1",
       chainId,
@@ -36,7 +39,7 @@ export function buildSignInMessage(i: SignInMessageInput): { message: string; ch
     `${i.domain} wants you to sign in with your Solana account:`,
     i.address,
     "",
-    SIGN_IN_STATEMENT,
+    statement,
     "",
     `URI: ${i.uri}`,
     "Version: 1",
