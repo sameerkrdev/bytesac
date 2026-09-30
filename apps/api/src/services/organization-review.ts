@@ -1,7 +1,7 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import createHttpError from "http-errors";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import {
   db, investmentWallets, organizationDocuments, organizationEvents, organizationMemberships, organizationPayoutWallets, organizationVersionDocuments,
   organizationVersions, organizations, walletAddresses, type DbOrTx, type Tx,
@@ -55,6 +55,13 @@ export async function getOrganizationForReview(id: string): Promise<Organization
     .innerJoin(investmentWallets, eq(investmentWallets.id, walletAddresses.investmentWalletId))
     .where(and(eq(investmentWallets.userId, owner.userId!), eq(investmentWallets.status, "active"))).orderBy(walletAddresses.createdAt) : [];
   const template = await resolveTemplate(db, org.type, org.jurisdiction);
+  const members = await db.select({
+    id: organizationMemberships.id, role: organizationMemberships.role, status: organizationMemberships.status, publicDisplayName: organizationMemberships.publicDisplayName,
+    // Same rule as transferOwnership (hasApprovedVerification); drizzle leaves a column of a single-table select unqualified, so the outer column is written out.
+    verificationApproved: sql<boolean>`exists (select 1 from app.member_verifications mv join app.organization_memberships om on om.id = mv.membership_id where om.organization_id = ${id} and om.user_id = "app"."organization_memberships"."user_id" and mv.status = 'approved')`,
+  }).from(organizationMemberships)
+    .where(and(eq(organizationMemberships.organizationId, id), notInArray(organizationMemberships.status, ["REJECTED", "REVOKED"])))
+    .orderBy(organizationMemberships.joinedAt, organizationMemberships.id);
   return {
     id: org.id, type: org.type, status: org.status, jurisdiction: org.jurisdiction, currentVersionId: org.currentVersionId, submittedAt: iso(org.submittedAt),
     verifiedAt: iso(org.verifiedAt), decidedByUserId: org.decidedByUserId, createdAt: org.createdAt.toISOString(),
@@ -73,6 +80,7 @@ export async function getOrganizationForReview(id: string): Promise<Organization
       payoutWalletId: e.payoutWalletId, decision: e.decision, internalNote: e.internalNote, messageToOwner: e.messageToOwner, createdAt: e.createdAt.toISOString(),
     })),
     template: { requiredFields: template.requiredFields, requiredDocuments: template.requiredDocuments },
+    members,
   };
 }
 

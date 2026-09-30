@@ -184,7 +184,7 @@ export async function listMembersForReview(q: ListMemberReviewQuery): Promise<Li
   const last = page.at(-1);
   return {
     items: page.map((r) => ({
-      id: r.m.id, organization: { id: r.m.organizationId, displayName: r.name }, role: r.m.role, requestedRole: r.m.requestedRole, status: r.m.status,
+      id: r.m.id, organization: { id: r.m.organizationId, displayName: r.name }, publicDisplayName: r.m.publicDisplayName, role: r.m.role, requestedRole: r.m.requestedRole, status: r.m.status,
       verificationStatus: r.verificationStatus, submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null, updatedAt: r.m.updatedAt.toISOString(),
     })),
     nextCursor: rows.length > PAGE_SIZE && last ? Buffer.from(`${last.cursorTs}|${last.m.id}`).toString("base64url") : null,

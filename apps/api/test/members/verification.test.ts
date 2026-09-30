@@ -120,7 +120,7 @@ describe("ops review of a new member", () => {
     expect((await request(app).get(`/v1/organizations/${owner.id}`).set(m.h)).status).toBe(403);
 
     const queue = await request(app).get("/v1/ops/members").set(reviewer.h);
-    expect(queue.body.items).toEqual([expect.objectContaining({ id: m.mid, status: "UNDER_REVIEW", verificationStatus: "in_review", role: "MANAGER", requestedRole: null })]);
+    expect(queue.body.items).toEqual([expect.objectContaining({ id: m.mid, status: "UNDER_REVIEW", verificationStatus: "in_review", role: "MANAGER", requestedRole: null, publicDisplayName: null })]);
     const detail = (await request(app).get(`/v1/ops/members/${m.mid}`).set(reviewer.h)).body;
     expect(detail.verification.details).toMatchObject(MEMBER_DETAILS);
     expect(detail.verification.documents).toHaveLength(2);

@@ -140,6 +140,7 @@ export type ListMemberReviewQuery = z.input<typeof listMemberReviewQuerySchema>;
 export const memberReviewSummarySchema = z.object({
   id: z.uuid(),
   organization: organizationRef,
+  publicDisplayName: z.string().nullable(),
   role: membershipRoleSchema,
   requestedRole: membershipRoleSchema.nullable(),
   status: membershipStatusSchema,

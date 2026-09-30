@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { OpsError } from "./ops-error";
 import { OrganizationChangeRequest } from "./organization-change-request";
 import { OrganizationPayoutChange } from "./organization-payout-change";
+import { TransferOwnership } from "./transfer-ownership";
 
 type Client = Pick<ApiClient, "opsGetOrganization" | "opsTransitionOrganization" | "opsDecideOrganizationVersion" | "opsDecidePayoutWallet" | "opsAddOrganizationNote">;
 
@@ -120,6 +121,8 @@ export function OrganizationReviewView({ id, client = api }: { id: string; clien
           {o.owner.addresses.map((a) => <li key={`${a.chain}:${a.address}`} className="break-all font-mono text-xs text-stone">{CHAINS[a.chain].label} · {a.address}</li>)}
         </ul>
       </section>
+
+      <TransferOwnership org={o} />
 
       <Fields title="Public profile" version={shown} visibility="public" />
       <Fields title="Private details" version={shown} visibility="private" />

@@ -361,5 +361,7 @@ export const organizationReviewDetailSchema = z.object({
   payoutWallets: z.array(payoutWalletViewSchema.extend({ requestedByUserId: z.uuid(), decidedByUserId: z.uuid().nullable() })),
   events: z.array(organizationEventViewSchema),
   template: z.object({ requiredFields: z.array(z.string()), requiredDocuments: z.array(z.string()) }),
+  /** Open memberships, for picking an ownership-transfer target (an ACTIVE member with an approved verification). `status` is a membership status. */
+  members: z.array(z.object({ id: z.uuid(), role: membershipRoleSchema, status: z.string(), publicDisplayName: z.string().nullable(), verificationApproved: z.boolean() })),
 });
 export type OrganizationReviewDetail = z.infer<typeof organizationReviewDetailSchema>;
