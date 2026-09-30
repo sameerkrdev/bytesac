@@ -6,7 +6,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 
 ## 0. Paste-ready starter prompt (for a fresh Claude Code session)
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–5 are merged to `main` (Spec 4 `33c2ab3` members/roles — ADR-009; Spec 5 `8c02722` asset registry — ADR-010, ADR-002). The next phase is basket creation & review (§6, roadmap item 2).
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–6 are merged to `main` (Spec 4 `33c2ab3` members/roles — ADR-009; Spec 5 `8c02722` asset registry — ADR-010, ADR-002; Spec 6 `e0ed413` baskets — ADR-011). The next phase is public discovery & research (§6, roadmap item 3).
 >
 > **1. Load context (mandatory, in order):** `docs/superpowers/HANDOFF.md` (follow it exactly — §3 rules, §4 working method), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ relevant ADRs), `docs/engineering/CODING-STANDARDS.md`, the domain doc and `docs/source/*` file for the phase. Check memory files for user preferences.
 >
@@ -14,7 +14,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 >
 > **3. Roadmap** (HANDOFF §6 "Later phases"), one phase at a time:
 > 1. ✅ **Asset registry** (`docs/source/Assets-Registry.txt`, `docs/domains/ASSET-REGISTRY.md`): instrument/deployment/route model, platform approval + lifecycle, eligibility policy, CoinMarketCap pricing adapter (D-015, ADR-002).
-> 2. **Basket creation & review** (`Basket-Creation.txt`): org-owned versioned baskets, wizard, validation, platform review, publication, pause/retire, **plus the deferred Spec 4 items**: basket manager assignments + history, basket state when a manager leaves, investor notifications (onboarding source §31–§38).
+> 2. ✅ **Basket creation & review** (`Basket-Creation.txt`): org-owned versioned baskets, wizard, validation, platform review, publication, pause/retire, **plus the deferred Spec 4 items**: basket manager assignments + history, basket state when a manager leaves, investor notifications (onboarding source §31–§38).
 > 3. **Public discovery & research** (`User-Detailed-Features.txt` §2–§5).
 > 4. **Custody/execution decision (blocking)**: resolve D-022/D-023/D-024 with an ADR before any money movement.
 > 5. **First investment**, then **rebalance/skip/drift/fix**, **subscriptions & fees/payouts**, **future plans** — only after explicit approval; introduce a job queue only when an execution spec needs it.
@@ -38,7 +38,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Spec 3 — organization onboarding | ✅ merged to `main` (`d409758`): org drafts + templates, R2 presigned documents, payout wallet proof + replacement review, ops review, public profile (ADR-008). Pre-release: real-R2 and AppKit Solana signing manual checks. |
 | Spec 4 — members/roles | ✅ merged to `main` (`33c2ab3`): permission matrix, wallet invitations linked by wallet proof, member verification + ops review, withdraw/remove/leave, ops-only ownership transfer, org switcher (`?org=`), opt-in public team (ADR-009, D-048..D-052). |
 | Spec 5 — asset registry | ✅ merged to `main` (`8c02722`): ops `/ops/assets` (draft, on-chain deployment verification, review, lifecycle, routes, rules, price references, NAV), CoinMarketCap prices, session read API `/v1/assets` (ADR-010, ADR-002, D-053..D-056). |
-| Spec 6 — baskets | Implemented on branch `feat/spec6-basket-creation`, pending review and merge (ADR-011, D-007/D-008/D-028 rewritten, D-057..D-061): versioned baskets, ops review, publish after approval, assignments with flags, disclosure templates, public `/baskets`. |
+| Spec 6 — baskets | ✅ merged to `main` (`e0ed413`) (ADR-011, D-007/D-008/D-028 rewritten, D-057..D-061): versioned baskets, ops review, publish after approval, assignments with flags, disclosure templates, public `/baskets`. |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
 ### Monorepo layout (after restructure)
@@ -93,9 +93,11 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - **Gate commands:** `pnpm db:up` (Docker Postgres 17 + Redis 7), `pnpm turbo run lint check-types test build`, mobile: `pnpm --filter mobile test`, `pnpm --filter mobile check-types`, `cd apps/mobile && npx expo lint && npx expo export --platform android --output-dir <tmp>`.
 - **Record rulings:** when you decide something on the user's behalf, log it and list every ruling (with "cost if wrong") in the final report.
 
-## 5. Spec 6 — implemented, pending review; Spec 5 and 4 leftovers
+## 5. Spec 6 — merged; leftovers (Specs 4–6)
 
-- Spec `docs/superpowers/specs/2026-10-01-baskets-design.md`, plan `docs/superpowers/plans/2026-10-01-spec6-baskets.md`, ADR-011, D-007/D-008/D-028 rewritten, D-057..D-061. Branch `feat/spec6-basket-creation` (API, web, tests, docs); migration `0008_baskets.sql` (run `pnpm --filter @repo/db db:migrate`; it also seeds 7 placeholder disclosure templates). Next: one Opus whole-branch review, one fix wave, then the user's merge decision.
+- Spec 6 review leftovers (not blocking): version diff omits lead changes; `VERSION_CONFLICT` compares ms-precision timestamps; publish has no slug-collision retry; some manager emails (`notifyReassignmentRequired` callers) not wired; preview/diff routes missing from the role test table; no org-suspended publish test; drafts do not preview would-be disclosures. A current lead may hand over the lead on an unpublished basket (published: ops approval).
+- Env: `mobile#check-types` fails on `main` (TS2322 in `apps/mobile/src/lib/appkit.tsx`, duplicate wagmi/viem peer variants in node_modules) — fix separately (pnpm dedupe/override), not caused by Specs 5–6.
+- Spec `docs/superpowers/specs/2026-10-01-baskets-design.md`, plan `docs/superpowers/plans/2026-10-01-spec6-baskets.md`, ADR-011, D-007/D-008/D-028 rewritten, D-057..D-061. Merged as `e0ed413`; migration `0008_baskets.sql` (run `pnpm --filter @repo/db db:migrate`; it also seeds 7 placeholder disclosure templates). Next: one Opus whole-branch review, one fix wave, then the user's merge decision.
 - Behavior to know: basket and version are separate state machines; approval leaves the version `approved` and the manager publishes; publish refuses if the content hash differs from the approved one; only `ops_admin` approves versions and leads, lifts platform pauses, decides retirements and edits templates; a pending lead coexists with the active lead until ops approve (two partial unique indexes), shown as "Awaiting platform approval"; version asset rows and disclosure pins are revisioned, never deleted (the runtime role has no DELETE, D-038); the public organization profile `baskets` field defaults to `[]`; `@repo/app-core/basket-status` is a subpath export because server pages cannot import the barrel.
 - Open (spec §14): final disclosure wording and fee-cap confirmation (compliance); fee base, collection, refunds and recipient split; investor notifications and followers; performance and commentary; review SLA; search and discovery; legal classification of baskets.
 - Spec 6 leftovers (not blocking): `updatedAt` optimistic check compares millisecond ISO strings (two saves within one millisecond could slip through); a slug collision during publish (about 1 in 36^6) aborts with a 500; `listOrgBaskets` is unpaginated; the public list pages with a next-cursor link rather than accumulating; the wizard's live validation assumes a verified organization and cannot preview would-be platform notices before submit (no session read API for templates); ops queue `review`/`escalated` split is a ruling.
