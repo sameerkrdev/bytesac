@@ -2,16 +2,18 @@ import bs58 from "bs58";
 import createHttpError from "http-errors";
 import { and, eq } from "drizzle-orm";
 import { investmentWallets, notificationPreferences, users, walletAddresses, type DbOrTx, type Tx } from "@repo/db";
-import { familyOf, type Chain, type VerificationMethod } from "@repo/validator";
+import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type VerificationMethod } from "@repo/validator";
 import { isAddress } from "viem";
 
 export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
 
 const invalid = (message: string) => createHttpError(message, { code: "VALIDATION_FAILED" });
 
-export function canonicalizeAddress(chain: Chain, raw: string): string {
+export function canonicalizeAddress(chain: AssetChain, raw: string): string {
   const value = raw.trim();
-  if (familyOf(chain) === "evm") {
+  const family = ASSET_CHAINS[chain].family;
+  if (family === "bitcoin") throw invalid("Bitcoin deployments are native only.");
+  if (family === "evm") {
     if (!/^0x[0-9a-fA-F]{40}$/.test(value) || !isAddress(value, { strict: true })) throw invalid("Invalid EVM address");
     return value.toLowerCase();
   }

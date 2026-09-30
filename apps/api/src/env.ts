@@ -57,4 +57,6 @@ export const env = cleanEnv(process.env, {
   R2_ACCESS_KEY_ID: nonEmpty(),
   R2_SECRET_ACCESS_KEY: nonEmpty(),
   R2_BUCKET: nonEmpty(),
+  /** Empty disables market prices (they report "unavailable"). */
+  COINMARKETCAP_API_KEY: str({ default: "" }),
 });

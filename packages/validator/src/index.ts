@@ -6,6 +6,7 @@ export * from "zod";
 
 export * from "./chains";
 export * from "./errors";
+export * from "./assets";
 export * from "./auth";
 export * from "./contacts";
 export * from "./managers";

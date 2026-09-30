@@ -103,7 +103,7 @@ Represent:
 - **Price reference:** source, type, currency, freshness and confidence.
 - **Eligibility policy:** applicable user/jurisdiction/route/action rules and effective period.
 
-Managers select only platform-approved instruments. Arbitrary token addresses must not become investable merely by being entered in a basket. The initial scope is crypto, crypto tokens and approved RWAs on supported routes. Future asset categories remain disabled until explicitly approved.
+Implemented in Spec 5 (ADR-010): ops draft, verify, review and activate instruments; signed-in users read `ACTIVE` ones through `/v1/assets`. Managers select only platform-approved instruments. Arbitrary token addresses must not become investable merely by being entered in a basket. The initial scope is crypto, crypto tokens and approved RWAs on supported routes. Future asset categories remain disabled until explicitly approved.
 
 ### Basket and versioning
 - A basket is a versioned investment strategy owned by an approved organization.
@@ -149,7 +149,7 @@ A user-level operation may contain multiple steps and transactions across chains
 - External wallet activity is observation, not proof of user intent to change basket attribution.
 
 ### Pricing and valuation
-Use CoinMarketCap as the selected primary crypto market-data provider, subject to plan coverage and terms. Normalize prices behind a `PricingService`. Keep market price, indicative price, issuer NAV and executable quote distinct. Enforce freshness and fallback policies. RWA prices and terms may require issuer-specific sources.
+Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind `getPrices`, batched, cached in Redis for 60 s and flagged stale after 5 minutes; a missing key or provider failure yields `unavailable`, never an error. Issuer NAV is entered by ops with history and returned as its own entry. There is no price history yet. Keep market price, indicative price, issuer NAV and executable quote distinct. Source priority, provider fallback and valuation freshness policy are still open (D-027). RWA prices and terms may require issuer-specific sources.
 
 ## 5. End-to-end user flows
 
@@ -210,7 +210,7 @@ Names are indicative; align final names with existing migrations and implementat
 - `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
 - `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
 - `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `member_verification_documents`, `membership_events`, `organization_payout_wallets`, `organization_events`
-- `instruments`, `deployments`, `providers`, `execution_routes`, `price_references`, `eligibility_policies`
+- `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010)
 - `baskets`, `basket_versions`, `basket_version_assets`, `basket_assignments`, `basket_reviews`
 - `user_portfolios`, `wallet_asset_balances`, `basket_positions`, `unassigned_positions`
 - `investment_operations`, `operation_steps`, `blockchain_transactions`, `provider_requests`
