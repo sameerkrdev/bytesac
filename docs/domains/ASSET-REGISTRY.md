@@ -26,3 +26,16 @@ Use explicit lifecycle states for assets, deployments and routes. Do not expose 
 
 ## Provider boundary
 Providers are capability adapters, not universal guarantees. Keep chain/provider-specific behavior out of basket and portfolio semantics. Verify coverage and commercial/legal terms for each asset and route.
+
+## Implemented behavior (Spec 5, ADR-010)
+Nothing in the registry executes, signs, broadcasts or moves assets: routes and eligibility rules are records, and every RPC call is read-only.
+
+- **Who:** ops only. `ops_reviewer` drafts, edits and submits; `ops_admin` decides and runs lifecycle actions; the admin who submitted cannot decide. Managers cannot propose assets.
+- **Records:** instrument, deployment, execution route, eligibility rule, price reference (plus shared issuers and providers), on the asset chains `solana`, `ethereum`, `base`, `bnb`, `arbitrum`, `polygon`, `bitcoin` (independent of the auth chains; recording a chain does not make it executable).
+- **Verification:** ERC-20 metadata on Ethereum, Base, BNB Chain and Arbitrum and Solana mint decimals are read from the chain; native assets and Polygon or Bitcoin deployments are manual and need a source URL. A decimals mismatch or a non-token blocks submit and approval; an unavailable verifier stores nothing.
+- **Uniqueness:** one live deployment per chain and address across the registry (409 `DEPLOYMENT_EXISTS`); retire the old one to register it again.
+- **Lifecycle:** instrument `DRAFT → UNDER_REVIEW → APPROVED` (or `CHANGES_REQUIRED`) `→ ACTIVE ⇄ PAUSED → DEPRECATED → RETIRED`; deployments and routes `DRAFT → APPROVED → ACTIVE ⇄ PAUSED → RETIRED`, with per-item admin approval after launch. Identity fields lock once approved; nothing can be edited while `UNDER_REVIEW` or `RETIRED`; retiring an instrument retires its deployments and routes. Events and audit rows are written for every change; nothing is deleted.
+- **Requirements before submit:** a deployment, matching or sourced deployments, a market price reference (crypto and stablecoins), issuer, route and eligibility rule (tokenized assets).
+- **Users:** signed-in users read only `ACTIVE` instruments and items with public fields and prices. Rules, review messages, internal notes and observed metadata are never exposed.
+- **Prices:** CoinMarketCap market price (stale after 5 min, "unavailable" on failure) and ops-entered NAV, always separate (ADR-002).
+- **Not built:** the eligibility engine, execution and quotes, manager proposals, price history, Polygon and Bitcoin on-chain verification.
