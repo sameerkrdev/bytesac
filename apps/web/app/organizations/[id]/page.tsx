@@ -41,6 +41,19 @@ export default async function PublicOrganizationPage({ params }: { params: Promi
           </dl>
         </CardContent>
       </Card>
+      {([["Current team", org.team.current], ["Former members", org.team.former]] as const).map(([title, members]) => members.length > 0 && (
+        <section key={title} aria-label={title} className="space-y-3">
+          <h2 className="font-display text-xl font-semibold text-ivory">{title}</h2>
+          <ul className="space-y-2">
+            {members.map((m, i) => (
+              <li key={i} className="text-sm text-ivory">
+                <span className="font-medium">{m.displayName}</span>
+                <span className="text-stone"> · {m.title ? `${m.title}, ` : ""}{m.role[0] + m.role.slice(1).toLowerCase()}{"to" in m && ` · ${new Date(m.from).toLocaleDateString()} to ${new Date(m.to).toLocaleDateString()}`}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </main>
   );
 }

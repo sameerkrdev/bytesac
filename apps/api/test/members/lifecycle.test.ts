@@ -240,6 +240,8 @@ describe("role changes, removal and leaving", () => {
     expect((await request(app).patch(`/v1/memberships/${owner.mid}/profile`).set(owner.h).send({ publicDisplayName: "A" })).status).toBe(400);
     const other = await user(app, false);
     expect((await request(app).patch(`/v1/memberships/${owner.mid}/profile`).set(other.h).send({ publicTitle: "Hacked" })).status).toBe(404);
+    expect((await request(app).get(`/v1/memberships/${owner.mid}`).set(owner.h)).body).toMatchObject({ id: owner.mid, role: "OWNER", status: "ACTIVE", publicDisplayName: "Ada L.", publicTitle: null });
+    expect((await request(app).get(`/v1/memberships/${owner.mid}`).set(other.h)).status).toBe(404);
     const gone = await addMember(app, owner.id, "VIEWER", "REVOKED");
     expect((await request(app).patch(`/v1/memberships/${gone.mid}/profile`).set(gone.h).send({ publicTitle: "x" })).status).toBe(409);
   });

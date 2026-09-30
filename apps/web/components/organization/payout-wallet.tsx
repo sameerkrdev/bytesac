@@ -26,7 +26,7 @@ export function PayoutWallet({ org, onChange, client = api }: { org: Organizatio
   const active = org.payoutWallets.find((w) => w.status === "VERIFIED");
   const pending = org.payoutWallets.find((w) => w.status === "UNVERIFIED" || w.status === "VERIFYING" || w.status === "REPLACEMENT_PENDING");
   // Wallet changes are refused by the API while the organization is under review.
-  const canEdit = org.status === "DRAFT" || org.status === "CHANGES_REQUIRED" || org.status === "VERIFIED";
+  const canEdit = org.myPermissions.includes("payout.manage") && (org.status === "DRAFT" || org.status === "CHANGES_REQUIRED" || org.status === "VERIFIED");
   const toSign = canEdit && pending && pending.status !== "REPLACEMENT_PENDING" ? pending : undefined;
   const otherNetwork = wallet.account !== null && wallet.account.chain !== "solana";
   const showEntry = canEdit && pending?.status !== "REPLACEMENT_PENDING" && (!active || changing);

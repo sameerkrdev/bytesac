@@ -1,17 +1,20 @@
 "use client";
 
-import { ORGANIZATION_STATUS_LABEL } from "@repo/app-core";
+import { MEMBERSHIP_ROLE_LABEL, MEMBERSHIP_STATUS_LABEL, ORGANIZATION_STATUS_LABEL } from "@repo/app-core";
+import { useQuery } from "@tanstack/react-query";
 import { Compass } from "lucide-react";
 import Link from "next/link";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { api } from "@/lib/api";
 
 export default function HomePage() {
   const { data: me } = useMe();
   const approved = me?.permissions.includes("create_manager_organization");
   const orgs = me?.organizations ?? [];
   const org = orgs.find((o) => o.status !== "REJECTED") ?? orgs[0];
+  const invitations = useQuery({ queryKey: ["invitations"], queryFn: () => api.myInvitations(), retry: false }).data?.invitations ?? [];
   return (
     <section aria-labelledby="home-title" className="space-y-6">
       <h1 id="home-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Home</h1>
@@ -21,10 +24,16 @@ export default function HomePage() {
           <p className="text-base text-ivory">You&apos;re signed in. Basket discovery arrives soon.</p>
         </CardContent>
       </Card>
+      {invitations.map((i) => (
+        <Link key={i.membershipId} href={`/invitations/${i.membershipId}`} className="block min-h-11 rounded-2xl border border-mint/40 bg-slate p-6 hover:border-mint">
+          <span className="block font-display text-xl font-semibold text-ivory">Invitation from {i.organization.displayName ?? "an organization"}</span>
+          <span className="mt-2 block text-sm text-stone">Join as {MEMBERSHIP_ROLE_LABEL[i.role]}</span>
+        </Link>
+      ))}
       {org ? (
         <Link href="/organization" className="block min-h-11 rounded-2xl border border-border-dark bg-slate p-6 hover:border-mint">
           <span className="block font-display text-xl font-semibold text-ivory">Your organization</span>
-          <span className="mt-2 block"><StatusBadge {...ORGANIZATION_STATUS_LABEL[org.status]} /></span>
+          <span className="mt-2 block"><StatusBadge {...(org.membershipStatus === "ACTIVE" ? ORGANIZATION_STATUS_LABEL[org.status] : MEMBERSHIP_STATUS_LABEL[org.membershipStatus])} /></span>
         </Link>
       ) : approved ? (
         <Card className="rounded-2xl border-border-dark bg-slate">

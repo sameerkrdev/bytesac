@@ -9,7 +9,10 @@ import { validate } from "../middleware/validate";
 import {
   confirmMemberDocument, getMemberVerification, presignMemberDocument, submitMemberVerification, unlinkMemberDocument, updateMemberVerification,
 } from "../services/member-verifications";
-import { acceptInvitation, declineInvitation, leaveOrganization, updateMembershipProfile } from "../services/members";
+import { acceptInvitation, declineInvitation, leaveOrganization, myMembershipView, updateMembershipProfile } from "../services/members";
+import { db, organizationMemberships } from "@repo/db";
+import { and, eq } from "drizzle-orm";
+import createHttpError from "http-errors";
 
 const midParam = z.object({ mid: z.uuid() });
 const docParams = z.object({ mid: z.uuid(), docId: z.uuid() });
@@ -20,6 +23,12 @@ export const membershipsRouter = Router();
 membershipsRouter.use(requireSession, async (req, _res, next) => {
   if (req.method !== "GET") await consume(limits.ownerMutationUser, req.auth!.userId);
   next();
+});
+
+membershipsRouter.get("/:mid", validate({ params: midParam }), async (req, res) => {
+  const [m] = await db.select().from(organizationMemberships).where(and(eq(organizationMemberships.id, req.params.mid as string), eq(organizationMemberships.userId, req.auth!.userId)));
+  if (!m) throw createHttpError(404, "Membership not found", { code: "NOT_FOUND" });
+  res.json(myMembershipView(m));
 });
 
 membershipsRouter.post("/:mid/accept", validate({ params: midParam }), async (req, res) => {

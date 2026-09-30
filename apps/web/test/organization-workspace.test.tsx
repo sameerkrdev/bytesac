@@ -6,18 +6,18 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MeProvider } from "@/components/me-context";
 import { SubmitChecklist } from "@/components/organization/submit-checklist";
-import { orgDetail, ORG_ID, version } from "./org-fixtures";
+import { asRole, orgDetail, ORG_ID, version, wallet } from "./org-fixtures";
 
 const getOrganization = vi.fn();
-vi.mock("@/lib/api", () => ({ api: { getOrganization: (id: string) => getOrganization(id) } }));
+vi.mock("@/lib/api", () => ({ api: { getOrganization: (id: string) => getOrganization(id), listOrganizationMembers: vi.fn().mockResolvedValue({ members: [] }) } }));
 vi.mock("@/lib/wallet/use-wallet-connector", () => ({ useWalletConnector: () => ({ account: null, signMessage: vi.fn(), connect: vi.fn() }) }));
 import OrganizationPage from "@/app/(app)/organization/page";
 
-const me = (status: MeResponse["organizations"][number]["status"] | null): MeResponse => ({
+const me = (status: MeResponse["organizations"][number]["status"] | null, role: MeResponse["organizations"][number]["role"] = "OWNER", membershipStatus: MeResponse["organizations"][number]["membershipStatus"] = "ACTIVE"): MeResponse => ({
   user: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
   wallet: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e50", walletProvider: null, addresses: [] },
   contacts: [], permissions: ["create_manager_organization"], platformRoles: [],
-  organizations: status ? [{ id: ORG_ID, role: "OWNER", status, membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus: "ACTIVE" }] : [],
+  organizations: status ? [{ id: ORG_ID, role, status, membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus }] : [],
 });
 const page = (m: MeResponse) => render(<QueryClientProvider client={new QueryClient()}><MeProvider initial={m}><OrganizationPage /></MeProvider></QueryClientProvider>);
 
@@ -53,6 +53,33 @@ describe("Organization workspace", () => {
     expect(await screen.findByRole("link", { name: "View public profile" })).toHaveAttribute("href", `/organizations/${ORG_ID}`);
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
     expect(screen.getByLabelText("Display name")).toBeDisabled();
+  });
+});
+
+describe("Organization workspace by role", () => {
+  it("VIEWER gets a read-only workspace: disabled fields, no save/submit/wallet actions, no member controls", async () => {
+    getOrganization.mockResolvedValue(asRole("VIEWER", { status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved", publicProfile: { displayName: "Ada" } }), payoutWallets: [wallet({ status: "VERIFIED" })] }));
+    page(me("VERIFIED", "VIEWER"));
+    expect(await screen.findByText("You have read-only access to this organization.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Display name")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change payout wallet" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /submit|save draft/i })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Invite a member" })).toBeNull();
+    expect(screen.queryByText("To transfer ownership, contact support.")).toBeNull();
+  });
+
+  it("OWNER sees the members section and the transfer note", async () => {
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(me("VERIFIED"));
+    expect(await screen.findByText("To transfer ownership, contact support.")).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Invite a member" })).toBeInTheDocument();
+  });
+
+  it("a member who is not active yet is sent to the membership page instead of the organization", async () => {
+    page(me("VERIFIED", "ADMIN", "PENDING_DOCUMENTS"));
+    expect(await screen.findByRole("link", { name: "Open your membership" })).toHaveAttribute("href", "/organization/membership/0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70");
+    expect(getOrganization).not.toHaveBeenCalled();
   });
 });
 

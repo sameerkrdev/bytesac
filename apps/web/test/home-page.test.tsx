@@ -1,7 +1,10 @@
 import type { MeResponse } from "@repo/validator";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const myInvitations = vi.fn().mockResolvedValue({ invitations: [] });
+vi.mock("@/lib/api", () => ({ api: { myInvitations: () => myInvitations() } }));
 import HomePage from "@/app/(app)/home/page";
 import { MeProvider } from "@/components/me-context";
 
@@ -22,6 +25,13 @@ describe("Home manager card", () => {
     home(me(["create_manager_organization"], [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", role: "OWNER", status: "UNDER_REVIEW", membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus: "ACTIVE" }]));
     expect(screen.getByText("Under review")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Your organization/ })).toHaveAttribute("href", "/organization");
+  });
+  it("shows a card per pending invitation linking to it", async () => {
+    myInvitations.mockResolvedValueOnce({ invitations: [{ membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", organization: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: "Ada Capital" }, role: "MANAGER", expiresAt: "2026-10-14T00:00:00.000Z" }] });
+    home(me([]));
+    const card = await screen.findByRole("link", { name: /Invitation from Ada Capital/ });
+    expect(card).toHaveAttribute("href", "/invitations/0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70");
+    expect(card).toHaveTextContent("Join as Manager");
   });
   it("otherwise offers the apply link", () => {
     home(me([]));

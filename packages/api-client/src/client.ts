@@ -136,6 +136,7 @@ export function createApiClient(options: ApiClientOptions) {
     acceptInvitation: (mid: string): Promise<MyMembership> => request("POST", `/v1/memberships/${encodeURIComponent(mid)}/accept`, myMembershipSchema),
     declineInvitation: (mid: string): Promise<MyMembership> => request("POST", `/v1/memberships/${encodeURIComponent(mid)}/decline`, myMembershipSchema),
     leaveOrganization: (mid: string): Promise<MyMembership> => request("POST", `/v1/memberships/${encodeURIComponent(mid)}/leave`, myMembershipSchema),
+    getMembership: (mid: string): Promise<MyMembership> => request("GET", `/v1/memberships/${encodeURIComponent(mid)}`, myMembershipSchema),
     updateMembershipProfile: (mid: string, b: MembershipProfileRequest): Promise<MyMembership> =>
       request("PATCH", `/v1/memberships/${encodeURIComponent(mid)}/profile`, myMembershipSchema, b),
 
