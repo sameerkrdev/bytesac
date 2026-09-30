@@ -192,3 +192,36 @@ describe("decision", () => {
     expect((await request(app).get(`/v1/ops/baskets/${b.id}`).set(ctx.owner.h)).status).toBe(403);
   });
 });
+
+describe("review rounds", () => {
+  const queues = async (q: string) => (await request(app).get(`/v1/ops/baskets?queue=${q}`).set(reviewer.h)).body.items.map((i: { id: string }) => i.id);
+
+  it("an earlier round's review does not block withdrawing the resubmission", async () => {
+    const b = await ready();
+    await submitBasket(ctx.owner.h, b.id);
+    await decideBasket(reviewer.h, b.id, b.vid, decision("changes_required", { messageToManager: "Fix" }));
+    await saveOpen(ctx.owner.h, b.id, { thesis: "Better thesis" });
+    await submitBasket(ctx.owner.h, b.id);
+    expect((await post(ctx.owner.h, `/v1/baskets/${b.id}/withdraw`)).status).toBe(200);
+  });
+
+  it("an escalation of an earlier round does not keep the resubmission in the escalated queue", async () => {
+    const b = await ready();
+    await submitBasket(ctx.owner.h, b.id);
+    await decideBasket(reviewer.h, b.id, b.vid, decision("escalated", { internalNote: "Admin please" }));
+    await post(ctx.owner.h, `/v1/baskets/${b.id}/withdraw`);
+    await submitBasket(ctx.owner.h, b.id);
+    expect(await queues("review")).toContain(b.id);
+    expect(await queues("escalated")).not.toContain(b.id);
+  });
+
+  it("a retired basket is read-only for decisions and withdrawal and leaves the queues", async () => {
+    const b = await ready();
+    await submitBasket(ctx.owner.h, b.id);
+    expect(await queues("review")).toContain(b.id);
+    await adminSql`UPDATE app.baskets SET status = 'RETIRED' WHERE id = ${b.id}`;
+    expect(await queues("review")).not.toContain(b.id);
+    expect((await decideBasket(admin.h, b.id, b.vid, decision("approved"))).status).toBe(409);
+    expect((await post(ctx.owner.h, `/v1/baskets/${b.id}/withdraw`)).status).toBe(409);
+  });
+});

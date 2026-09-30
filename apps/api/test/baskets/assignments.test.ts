@@ -87,7 +87,7 @@ describe("update and end", () => {
     expect(ok.status).toBe(200);
     expect((await assignmentsOf(b.id)).find((r) => r.id === coId)!.permissions).toEqual(["edit", "submit", "publish"]);
     const refused = await request(app).patch(`/v1/baskets/${b.id}/assignments/${leadId}`).set(lead.h).send({ permissions: ["edit"] });
-    expect(refused.status).toBe(409);
+    expect(refused.status).toBe(403);
     expect((await request(app).patch(`/v1/baskets/${b.id}/assignments/${coId}`).set(m.h).send({ permissions: ["edit"] })).status).toBe(403);
   });
 
@@ -111,13 +111,13 @@ describe("update and end", () => {
   it("ending the last lead of a live basket requires reassignment; before publication it does not", async () => {
     const draft = await fresh();
     const leadId = (await assignmentsOf(draft.id))[0]!.id;
-    expect((await post(lead.h, `/v1/baskets/${draft.id}/assignments/${leadId}/end`, { reason: "leaving" })).status).toBe(200);
+    expect((await post(ctx.owner.h, `/v1/baskets/${draft.id}/assignments/${leadId}/end`, { reason: "leaving" })).status).toBe(200);
     expect((await basketRow(draft.id)).status).toBe("DRAFT");
 
     const live = await fresh();
     await forceStatus(live.id, "published");
     const liveLead = (await assignmentsOf(live.id))[0]!.id;
-    expect((await post(lead.h, `/v1/baskets/${live.id}/assignments/${liveLead}/end`, { reason: "leaving" })).status).toBe(200);
+    expect((await post(ctx.owner.h, `/v1/baskets/${live.id}/assignments/${liveLead}/end`, { reason: "leaving" })).status).toBe(200);
     expect(await basketRow(live.id)).toMatchObject({ status: "REASSIGNMENT_REQUIRED", previous_status: "ACTIVE" });
     expect(await eventKinds(live.id)).toContain("reassignment_required");
     // The basket still has its OWNER, who can read it and start the replacement.
@@ -192,5 +192,52 @@ describe("grants", () => {
     }
     const rows = await adminSql`SELECT key FROM app.disclosure_templates WHERE status = 'active' ORDER BY key`;
     expect(rows.map((r) => r.key)).toEqual(["fees_and_costs", "no_guarantee", "platform_fee", "rwa_issuer_transfer_redemption", "self_custody_wallet", "stablecoin_depeg", "user_consent_rebalance"]);
+  });
+});
+
+describe("assignment lockdown (ADR-011)", () => {
+  /** A basket led by `lead` with a co-manager holding `assign` (`co`) and a plain co-manager (`plain`). */
+  async function setup() {
+    const b = await fresh();
+    const [co, plain] = [await manager(), await manager()];
+    await assign(lead.h, b.id, { membershipId: co.mid, role: "co_manager", permissions: ["edit", "assign"] });
+    await assign(lead.h, b.id, { membershipId: plain.mid, role: "co_manager" });
+    const rows = await assignmentsOf(b.id);
+    const idOf = (u: string) => rows.find((r) => r.user_id === u)!.id;
+    return { b, co, plain, leadAid: idOf(lead.userId), coAid: idOf(co.userId), plainAid: idOf(plain.userId), next: await manager() };
+  }
+  type S = Awaited<ReturnType<typeof setup>>;
+  const patch = (h: Record<string, string>, s: S, aid: string) => request(app).patch(`/v1/baskets/${s.b.id}/assignments/${aid}`).set(h).send({ permissions: ["edit", "submit", "publish"] });
+  const end = (h: Record<string, string>, s: S, aid: string) => post(h, `/v1/baskets/${s.b.id}/assignments/${aid}/end`, { reason: "done" });
+  const addLead = (h: Record<string, string>, s: S) => assign(h, s.b.id, { membershipId: s.next.mid, role: "lead" });
+
+  const table: [string, (s: S) => Promise<{ status: number }>, number][] = [
+    ["co-manager with assign adds a lead", (s) => addLead(s.co.h, s), 403],
+    ["co-manager with assign ends the lead", (s) => end(s.co.h, s, s.leadAid), 403],
+    ["co-manager with assign edits their own flags", (s) => patch(s.co.h, s, s.coAid), 403],
+    ["co-manager with assign edits another co-manager", (s) => patch(s.co.h, s, s.plainAid), 200],
+    ["co-manager with assign adds a co-manager", (s) => assign(s.co.h, s.b.id, { membershipId: s.next.mid, role: "co_manager" }), 201],
+    ["co-manager with assign ends another co-manager", (s) => end(s.co.h, s, s.plainAid), 200],
+    ["co-manager leaves on their own", (s) => end(s.plain.h, s, s.plainAid), 200],
+    ["co-manager without assign ends another co-manager", (s) => end(s.plain.h, s, s.coAid), 403],
+    ["lead ends their own lead role", (s) => end(lead.h, s, s.leadAid), 403],
+    ["lead edits their own flags", (s) => patch(lead.h, s, s.leadAid), 403],
+    ["lead adds a new lead", (s) => addLead(lead.h, s), 201],
+    ["lead ends a co-manager", (s) => end(lead.h, s, s.coAid), 200],
+    ["OWNER replaces the lead", (s) => addLead(ctx.owner.h, s), 201],
+    ["ADMIN replaces the lead", (s) => addLead(ctx.members.ADMIN.h, s), 201],
+    ["ADMIN ends the lead", (s) => end(ctx.members.ADMIN.h, s, s.leadAid), 200],
+    ["MANAGER without an assignment adds a lead", (s) => addLead(s.next.h, s), 403],
+  ];
+  it.each(table)("%s -> %i", async (_name, run, status) => {
+    const s = await setup();
+    expect((await run(s)).status).toBe(status);
+  });
+
+  it("the OWNER who leads cannot end their own lead role", async () => {
+    const b = await createBasket(ctx.owner.h, ctx.owner.id);
+    const [mine] = await assignmentsOf(b.id);
+    expect((await post(ctx.owner.h, `/v1/baskets/${b.id}/assignments/${mine!.id}/end`, { reason: "x" })).status).toBe(403);
+    expect((await assignmentsOf(b.id))[0]!.status).toBe("ACTIVE");
   });
 });

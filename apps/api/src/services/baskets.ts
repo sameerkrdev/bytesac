@@ -24,7 +24,7 @@ type AssignmentRow = typeof basketAssignments.$inferSelect;
 /** A version with one of these statuses is the basket's single open version. */
 export const OPEN_VERSION_STATUSES = ["draft", "in_review", "changes_required", "approved"] as const;
 const EDITABLE: readonly string[] = ["draft", "changes_required"];
-const READ_ONLY: readonly BasketStatus[] = ["RETIRED", "REJECTED"];
+export const READ_ONLY: readonly BasketStatus[] = ["RETIRED", "REJECTED"];
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 const invalid = (message: string) => createHttpError(message, { code: "INVALID_TRANSITION" });
 const forbidden = () => createHttpError("You don't have access to this basket.", { code: "FORBIDDEN" });
@@ -206,7 +206,7 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
   const { basket, membership } = await requireBasketAction(db, ctx.userId, bid, "read");
   const open = await openVersionOf(db, bid);
   const [published] = basket.currentVersionId ? await db.select().from(basketVersions).where(eq(basketVersions.id, basket.currentVersionId)) : [];
-  const [mine] = await db.select({ permissions: basketAssignments.permissions }).from(basketAssignments)
+  const [mine] = await db.select({ permissions: basketAssignments.permissions, role: basketAssignments.role }).from(basketAssignments)
     .where(and(eq(basketAssignments.basketId, bid), eq(basketAssignments.membershipId, membership.id), eq(basketAssignments.status, "ACTIVE")));
   const isAdmin = membership.role === "OWNER" || membership.role === "ADMIN";
   const reviews = await db.select({
@@ -218,6 +218,7 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
     id: basket.id, organizationId: basket.organizationId, slug: basket.slug, status: basket.status, previousStatus: basket.previousStatus, pauseKind: basket.pauseKind, pauseReason: basket.pauseReason,
     createdAt: basket.createdAt.toISOString(), updatedAt: basket.updatedAt.toISOString(),
     myPermissions: isAdmin ? [...ASSIGNMENT_FLAGS] : ROLE_PERMISSIONS[membership.role].includes("baskets.manage") ? (mine?.permissions ?? []) as AssignmentFlag[] : [],
+    canControlLead: isAdmin || mine?.role === "lead",
     openVersion: open ? await versionView(db, open) : null,
     publishedVersion: publishedView,
     assignments: await assignmentViews(db, bid, ctx.userId),
@@ -318,7 +319,7 @@ export async function getVersionDiff(ctx: OwnerCtx, bid: string, vid: string): P
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** A published ACTIVE or PAUSED basket that lost its last ACTIVE lead needs a new one. Returns whether it moved to REASSIGNMENT_REQUIRED. The caller holds the basket lock. */
-async function requireReassignmentIfLeaderless(tx: Tx, basketId: string, actorUserId: string | null, requestId: string): Promise<boolean> {
+export async function requireReassignmentIfLeaderless(tx: Tx, basketId: string, actorUserId: string | null, requestId: string): Promise<boolean> {
   const [b] = await tx.select().from(baskets).where(eq(baskets.id, basketId));
   const [lead] = await tx.select({ id: basketAssignments.id }).from(basketAssignments)
     .where(and(eq(basketAssignments.basketId, basketId), eq(basketAssignments.role, "lead"), eq(basketAssignments.status, "ACTIVE")));
@@ -328,10 +329,19 @@ async function requireReassignmentIfLeaderless(tx: Tx, basketId: string, actorUs
   return true;
 }
 
+/** Adding, replacing or ending a lead is for OWNER/ADMIN or the current ACTIVE lead only (ADR-011). */
+async function requireLeadAuthority(tx: Tx, bid: string, membership: MembershipRow): Promise<void> {
+  if (membership.role === "OWNER" || membership.role === "ADMIN") return;
+  const [lead] = await tx.select({ id: basketAssignments.id }).from(basketAssignments)
+    .where(and(eq(basketAssignments.basketId, bid), eq(basketAssignments.role, "lead"), eq(basketAssignments.status, "ACTIVE"), eq(basketAssignments.membershipId, membership.id)));
+  if (!lead) throw forbidden();
+}
+
 export async function addAssignment(ctx: OwnerCtx, bid: string, body: CreateAssignmentRequest): Promise<BasketDetail> {
   await db.transaction(async (tx) => {
-    const { basket } = await requireBasketAction(tx, ctx.userId, bid, "assign", true);
+    const { basket, membership } = await requireBasketAction(tx, ctx.userId, bid, "assign", true);
     if (READ_ONLY.includes(basket.status)) throw invalid("This basket is read-only.");
+    if (body.role === "lead") await requireLeadAuthority(tx, bid, membership);
     const [target] = await tx.select().from(organizationMemberships).where(and(eq(organizationMemberships.id, body.membershipId), eq(organizationMemberships.organizationId, basket.organizationId)));
     if (!target) throw notFound("Membership");
     if (target.status !== "ACTIVE" || !target.userId || !ROLE_PERMISSIONS[target.role].includes("baskets.manage")) throw invalid("This member can't manage baskets.");
@@ -371,8 +381,10 @@ const openAssignment = async (tx: Tx, bid: string, aid: string): Promise<Assignm
 
 export async function updateAssignment(ctx: OwnerCtx, bid: string, aid: string, body: UpdateAssignmentRequest): Promise<BasketDetail> {
   await db.transaction(async (tx) => {
-    await requireBasketAction(tx, ctx.userId, bid, "assign", true);
+    const { basket } = await requireBasketAction(tx, ctx.userId, bid, "assign", true);
+    if (READ_ONLY.includes(basket.status)) throw invalid("This basket is read-only.");
     const a = await openAssignment(tx, bid, aid);
+    if (a.userId === ctx.userId) throw forbidden();
     if (a.role === "lead") throw invalid("A lead's permissions can't be changed.");
     await tx.update(basketAssignments).set({ permissions: body.permissions, updatedAt: sql`now()` }).where(eq(basketAssignments.id, a.id));
     await tx.insert(basketEvents).values({ basketId: bid, assignmentId: a.id, kind: "assignment_changed", actorType: "member", actorUserId: ctx.userId, requestId: ctx.meta.requestId });
@@ -381,12 +393,17 @@ export async function updateAssignment(ctx: OwnerCtx, bid: string, aid: string, 
   return getBasketForMember(ctx, bid);
 }
 
-/** `assign` holders end any assignment; anyone may end their own. Ending the last ACTIVE lead of a live basket moves it to REASSIGNMENT_REQUIRED. */
+/** `assign` holders end co-manager assignments and anyone may leave their own co-manager one; a lead is ended only by OWNER/ADMIN or the current lead, never by themselves. Ending the last ACTIVE lead of a live basket moves it to REASSIGNMENT_REQUIRED. */
 export async function endAssignment(ctx: OwnerCtx, bid: string, aid: string, body: EndAssignmentRequest): Promise<BasketDetail> {
   await db.transaction(async (tx) => {
-    await requireBasketAction(tx, ctx.userId, bid, "read", true);
+    const { basket, membership } = await requireBasketAction(tx, ctx.userId, bid, "read", true);
+    if (READ_ONLY.includes(basket.status)) throw invalid("This basket is read-only.");
     const a = await openAssignment(tx, bid, aid);
-    if (a.userId !== ctx.userId) await requireBasketAction(tx, ctx.userId, bid, "assign");
+    if (a.role === "lead") {
+      if (a.userId === ctx.userId) throw forbidden();
+      await requireBasketAction(tx, ctx.userId, bid, "assign");
+      await requireLeadAuthority(tx, bid, membership);
+    } else if (a.userId !== ctx.userId) await requireBasketAction(tx, ctx.userId, bid, "assign");
     await tx.update(basketAssignments).set({ status: "ENDED", endedAt: sql`now()`, endReason: body.reason, updatedAt: sql`now()` }).where(eq(basketAssignments.id, a.id));
     await tx.insert(basketEvents).values({ basketId: bid, assignmentId: a.id, kind: "assignment_ended", actorType: "member", actorUserId: ctx.userId, reason: body.reason, requestId: ctx.meta.requestId });
     await requireReassignmentIfLeaderless(tx, bid, ctx.userId, ctx.meta.requestId);

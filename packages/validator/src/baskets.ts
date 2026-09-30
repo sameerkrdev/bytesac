@@ -177,7 +177,7 @@ export const feeWithinCap = (amountUsdc: string, minimumUsdc: string): boolean =
 /** The largest allowed fixed fee for a minimum investment: 1% of it, rounded down to a whole micro-USDC (for display). */
 export const maxFixedFeeUsdc = (minimumUsdc: string): string => {
   const cap = micro(minimumUsdc) / 100n;
-  return `${cap / 1_000_000n}.${String(cap % 1_000_000n).padStart(6, "0")}`.replace(/.?0+$/, "");
+  return `${cap / 1_000_000n}.${String(cap % 1_000_000n).padStart(6, "0")}`.replace(/\.?0+$/, "");
 };
 
 export function validateBasketVersion(i: BasketValidationInput): { issues: BasketIssue[]; warnings: BasketIssue[] } {
@@ -325,6 +325,8 @@ export const basketDetailSchema = z.object({
   pauseReason: z.string().nullable(), createdAt: iso, updatedAt: iso,
   /** The flags the caller holds on this basket (all five for OWNER/ADMIN, none for a read-only member). */
   myPermissions: z.array(assignmentFlagSchema),
+  /** True for OWNER/ADMIN and the current ACTIVE lead: the only ones who may add, replace or end a lead (ADR-011). */
+  canControlLead: z.boolean(),
   openVersion: basketVersionViewSchema.nullable(),
   publishedVersion: basketVersionViewSchema.nullable(),
   assignments: z.array(basketAssignmentViewSchema),
@@ -378,7 +380,7 @@ export const opsBasketSummarySchema = z.object({
 export const opsBasketListResponseSchema = z.object({ items: z.array(opsBasketSummarySchema), nextCursor: z.string().nullable() });
 export type OpsBasketListResponse = z.infer<typeof opsBasketListResponseSchema>;
 
-export const opsBasketDetailSchema = basketDetailSchema.omit({ myPermissions: true, reviews: true }).extend({
+export const opsBasketDetailSchema = basketDetailSchema.omit({ myPermissions: true, canControlLead: true, reviews: true }).extend({
   organization: z.object({ id: z.string(), displayName: z.string().nullable(), status: z.string() }),
   versions: z.array(basketVersionSummarySchema),
   /** Every review with the internal note, for ops only. */

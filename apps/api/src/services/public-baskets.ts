@@ -73,6 +73,7 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
     },
     allocation: assets.map(({ instrumentStatus: _status, ...a }) => ({ ...a, prices: prices.filter((p) => p.instrumentId === a.instrumentId) })),
     disclosures: (await currentDisclosures(db, v!)).map((d) => ({ title: d.title, body: d.body })),
+  // ponytail: one diff query set per published version on every page view; cache or precompute at publish if histories grow.
     versionHistory: await Promise.all(history.map(async (h) => ({ versionNumber: h.versionNumber, publishedAt: h.publishedAt!.toISOString(), rationale: h.rationale, diff: await versionDiff(db, h) }))),
     managers: managers.map((m) => ({ displayName: m.name ?? "Team member", role: m.role, from: m.from!.toISOString(), to: m.to?.toISOString() ?? null })),
   };

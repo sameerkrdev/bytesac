@@ -42,7 +42,7 @@ export function AssignmentsPanel({ detail, onChange, client = api }: { detail: B
               <span className="text-xs text-stone">{ROLE[a.role]}</span>
               <StatusBadge {...ASSIGNMENT_STATUS_LABEL[a.status]} />
             </div>
-            {a.role === "co_manager" && canAssign ? (
+            {a.role === "co_manager" && canAssign && !a.isSelf ? (
               <div className="flex flex-wrap gap-4">
                 {ASSIGNMENT_FLAGS.map((f) => (
                   <label key={f} className="flex min-h-11 items-center gap-2 text-sm text-ivory">
@@ -53,7 +53,7 @@ export function AssignmentsPanel({ detail, onChange, client = api }: { detail: B
                 ))}
               </div>
             ) : <p className="text-xs text-stone">{a.permissions.map((f) => ASSIGNMENT_FLAG_LABEL[f]).join(", ")}</p>}
-            {(canAssign || a.isSelf) && (
+            {(a.role === "lead" ? detail.canControlLead && !a.isSelf : canAssign || a.isSelf) && (
               <ConfirmReason label="End assignment" reasonLabel="Reason" destructive pending={act.isPending}
                 description="This manager loses access to this basket. The history is kept. A basket without a lead needs a new lead approved by Bytesac."
                 onConfirm={(reason) => act.mutate(() => client.endBasketAssignment(detail.id, a.id, { reason }))} />
@@ -82,7 +82,7 @@ export function AssignmentsPanel({ detail, onChange, client = api }: { detail: B
             <Label htmlFor="assign-role" className="text-xs font-medium text-ivory">Role</Label>
             <Select id="assign-role" value={role} onChange={(e) => setRole(e.target.value as "lead" | "co_manager")}>
               <option value="co_manager">Co-manager</option>
-              <option value="lead">Lead</option>
+              {detail.canControlLead && <option value="lead">Lead</option>}
             </Select>
           </div>
           <div className="flex flex-wrap gap-4" role="group" aria-label="Access">

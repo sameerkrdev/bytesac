@@ -234,3 +234,22 @@ describe("lead change and reassignment", () => {
     expect((await post(insider.h, `/v1/ops/baskets/${bk.id}/assignments/${pending.id}/decision`, { decision: "approved" })).status).toBe(403);
   });
 });
+
+describe("review fixes", () => {
+  it("declining a retirement for a basket that lost its lead requires reassignment", async () => {
+    const bk = await live();
+    await post(lead.h, `/v1/baskets/${bk.id}/retirement-request`, { reason: "Winding down" });
+    await adminSql`UPDATE app.basket_assignments SET status = 'ENDED', ended_at = now() WHERE basket_id = ${bk.id} AND role = 'lead'`;
+    const res = await post(admin.h, `/v1/ops/baskets/${bk.id}/retirement/decision`, { decision: "rejected", reason: "Not yet" });
+    expect(res.status).toBe(200);
+    expect(await basketRow(bk.id)).toMatchObject({ status: "REASSIGNMENT_REQUIRED", previous_status: "ACTIVE" });
+  });
+
+  it("a retired basket refuses assignment edits and ends, and retiring clears the pause fields", async () => {
+    const bk = await paused();
+    await post(admin.h, `/v1/ops/baskets/${bk.id}/retire`, { reason: "Policy" });
+    expect(await basketRow(bk.id)).toMatchObject({ status: "RETIRED", pause_kind: null, pause_reason: null, previous_status: null });
+    const [, coAssignment] = await assignmentsOf(bk.id);
+    expect((await post(ctx.owner.h, `/v1/baskets/${bk.id}/assignments/${coAssignment!.id}/end`, { reason: "x" })).status).toBe(409);
+  });
+});

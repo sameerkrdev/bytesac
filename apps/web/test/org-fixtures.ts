@@ -61,7 +61,7 @@ export const basketAssignment = (over: Partial<BasketAssignmentView> = {}): Bask
 });
 
 export const basketDetail = (over: Partial<BasketDetail> = {}): BasketDetail => ({
-  id: BID, organizationId: ORG_ID, slug: "core-crypto", status: "DRAFT", previousStatus: null, pauseKind: null, pauseReason: null, createdAt: T, updatedAt: T, myPermissions: ALL_FLAGS,
+  id: BID, organizationId: ORG_ID, slug: "core-crypto", status: "DRAFT", previousStatus: null, pauseKind: null, pauseReason: null, createdAt: T, updatedAt: T, myPermissions: ALL_FLAGS, canControlLead: true,
   openVersion: basketVersion(), publishedVersion: null, assignments: [basketAssignment()], reviews: [], events: [], validation: null, hasAssetWarning: false, ...over,
 });
 

@@ -80,7 +80,7 @@ describe("fixed fee cap (exact micro-USDC)", () => {
     expect(feeWithinCap("12.345679", "1234.567891")).toBe(false);
     expect(feeWithinCap("1", "100")).toBe(true);
     expect(feeWithinCap("1.000001", "100")).toBe(false);
-    expect([maxFixedFeeUsdc("100"), maxFixedFeeUsdc("1234.567891"), maxFixedFeeUsdc("1000")]).toEqual(["1", "12.345678", "10"]);
+    expect([maxFixedFeeUsdc("100"), maxFixedFeeUsdc("1234.567891"), maxFixedFeeUsdc("1000"), maxFixedFeeUsdc("1050"), maxFixedFeeUsdc("1005"), maxFixedFeeUsdc("50")]).toEqual(["1", "12.345678", "10", "10.5", "10.05", "0.5"]);
   });
   it("accepts percent 100 bps and rejects 101 at the schema", () => {
     expect(feeSchema.safeParse({ type: "percent", bps: 100 }).success).toBe(true);

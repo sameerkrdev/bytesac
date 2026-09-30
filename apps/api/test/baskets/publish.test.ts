@@ -67,7 +67,7 @@ describe("publish", () => {
 
   it("refuses when the allocation changed after approval", async () => {
     const r = await approvedBasket(ctx.owner, ctx.owner.id, admin, a, b);
-    await adminSql`UPDATE app.basket_version_assets SET target_weight_bps = target_weight_bps + 1 WHERE version_id = ${r.vid} AND target_weight_bps = 6000`;
+    await adminSql`UPDATE app.basket_version_assets SET rationale = 'edited after approval' WHERE version_id = ${r.vid} AND target_weight_bps = 6000`;
     expect((await publishBasket(ctx.owner.h, r.id)).status).toBe(409);
   });
 
@@ -144,5 +144,27 @@ describe("next versions", () => {
     await publishBasket(ctx.owner.h, r.id);
     expect((await basketRow(r.id)).slug).toBe(slug);
     expect(await adminSql`SELECT 1 FROM app.basket_slug_aliases WHERE basket_id = ${r.id}`).toHaveLength(0);
+  });
+});
+
+describe("publish re-validates", () => {
+  it("refuses with 422 when the lead left after approval", async () => {
+    const r = await approvedBasket(ctx.owner, ctx.owner.id, admin, a, b);
+    await adminSql`UPDATE app.basket_assignments SET status = 'ENDED', ended_at = now() WHERE basket_id = ${r.id} AND role = 'lead'`;
+    const res = await publishBasket(ctx.owner.h, r.id);
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatchObject({ code: "BASKET_VALIDATION_FAILED" });
+    expect((await versionRow(r.vid)).status).toBe("approved");
+    expect((await basketRow(r.id)).status).toBe("DRAFT");
+  });
+
+  it("refuses with 422 when an asset was paused after approval", async () => {
+    const paused = await activeInstrument(ctx.owner.userId);
+    const r = await approvedBasket(ctx.owner, ctx.owner.id, admin, paused, b);
+    await adminSql`UPDATE app.instruments SET status = 'PAUSED' WHERE id = ${paused}`;
+    const res = await publishBasket(ctx.owner.h, r.id);
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(res.body)).toContain("ASSET_UNSUPPORTED");
+    expect((await basketRow(r.id)).status).toBe("DRAFT");
   });
 });

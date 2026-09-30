@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { BasketWizard } from "@/components/baskets/basket-wizard";
-import { BID, T, basketAsset, basketClient, basketDetail, basketVersion } from "./org-fixtures";
+import { BID, T, basketAsset, basketAssignment, basketClient, basketDetail, basketVersion } from "./org-fixtures";
 
 const wizard = (client: ReturnType<typeof basketClient>) => render(<QueryClientProvider client={new QueryClient()}><BasketWizard bid={BID} client={client} /></QueryClientProvider>);
 
@@ -61,5 +61,25 @@ describe("Basket wizard", () => {
     wizard(basketClient({ getBasket: vi.fn().mockResolvedValue(basketDetail({ assignments: [basketDetail().assignments[0]!, pending] })) }));
     await userEvent.click(await screen.findByRole("button", { name: /^Managers/ }));
     expect(within(screen.getByRole("list", { name: "Managers" })).getByText("Awaiting platform approval")).toBeInTheDocument();
+  });
+
+  it("hides the lead controls from a co-manager with assign, and self-edit and self-end-lead from everyone", async () => {
+    const lead = basketAssignment({ id: "a-lead", displayName: "Lead Person", isSelf: false });
+    const me = basketAssignment({ id: "a-me", membershipId: "m-me", displayName: "Me", role: "co_manager", permissions: ["edit", "assign"], isSelf: true });
+    const other = basketAssignment({ id: "a-other", membershipId: "m-other", displayName: "Other", role: "co_manager", permissions: ["edit", "submit"], isSelf: false });
+    const view = wizard(basketClient({ getBasket: vi.fn().mockResolvedValue(basketDetail({ myPermissions: ["edit", "assign"], canControlLead: false, assignments: [lead, me, other] })) }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Managers/ }));
+    const rows = within(screen.getByRole("list", { name: "Managers" })).getAllByRole("listitem");
+    expect(within(rows[0]!).queryByRole("button", { name: "End assignment" })).toBeNull();
+    expect(within(rows[1]!).getByRole("button", { name: "End assignment" })).toBeInTheDocument();
+    expect(within(rows[1]!).queryAllByRole("checkbox")).toHaveLength(0);
+    expect(within(rows[2]!).getAllByRole("checkbox").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("option", { name: "Lead" })).toBeNull();
+    view.unmount();
+
+    wizard(basketClient({ getBasket: vi.fn().mockResolvedValue(basketDetail({ assignments: [basketAssignment({ isSelf: true })] })) }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Managers/ }));
+    expect(within(screen.getByRole("list", { name: "Managers" })).queryByRole("button", { name: "End assignment" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Lead" })).toBeInTheDocument();
   });
 });

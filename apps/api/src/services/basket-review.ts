@@ -13,7 +13,7 @@ import { orgDisplayName } from "./members";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import {
-  assignmentViews, contentHash, currentAssets, currentDisclosures, eventViews, getBasketForMember, loadValidationInput, newSlug, notifyBasket, openVersionOf, requireBasketAction, versionDiff,
+  assignmentViews, contentHash, currentAssets, currentDisclosures, eventViews, getBasketForMember, loadValidationInput, newSlug, notifyBasket, notifyReassignmentRequired, READ_ONLY, requireReassignmentIfLeaderless, openVersionOf, requireBasketAction, versionDiff,
   versionView,
 } from "./baskets";
 import { PAGE_SIZE, assertNotMember } from "./organization-review";
@@ -95,10 +95,11 @@ export async function submitVersion(ctx: OwnerCtx, bid: string): Promise<BasketD
 /** Back to draft, allowed only while no reviewer has acted (an escalation flag does not count). */
 export async function withdrawVersion(ctx: OwnerCtx, bid: string): Promise<BasketDetail> {
   await db.transaction(async (tx) => {
-    await requireBasketAction(tx, ctx.userId, bid, "submit", true);
+    const { basket } = await requireBasketAction(tx, ctx.userId, bid, "submit", true);
+    if (READ_ONLY.includes(basket.status)) throw invalid("This basket is read-only.");
     const v = await openVersionOf(tx, bid, true);
     if (v?.status !== "in_review") throw invalid("There is no submission to withdraw.");
-    const [decided] = await tx.select({ id: basketReviews.id }).from(basketReviews).where(and(eq(basketReviews.versionId, v.id), sql`${basketReviews.decision} <> 'escalated'`)).limit(1);
+    const [decided] = await tx.select({ id: basketReviews.id }).from(basketReviews).where(and(eq(basketReviews.versionId, v.id), sql`${basketReviews.decision} <> 'escalated'`, sql`${basketReviews.createdAt} >= (select submitted_at from app.basket_versions where id = ${v.id})`)).limit(1);
     if (decided) throw invalid("This submission has already been reviewed.");
     await moveVersion(tx, v, "draft");
     await tx.insert(basketEvents).values({ basketId: bid, versionId: v.id, kind: "withdrawn", fromStatus: "in_review", toStatus: "draft", actorType: "member", actorUserId: ctx.userId, requestId: ctx.meta.requestId });
@@ -115,6 +116,9 @@ export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<Basket
     if (v?.status === "published" && basket.currentVersionId === v.id) return null;
     if (!v || v.status !== "approved") throw invalid("There is no approved version to publish.");
     if (basket.status !== "DRAFT" && basket.status !== "ACTIVE") throw invalid("This basket can't publish right now.");
+    // Registry, organization and lead state can change after approval; the hash does not cover them.
+    const { issues } = validateBasketVersion(await loadValidationInput(tx, v.id));
+    if (issues.length > 0) throw createHttpError(422, "Fix the listed issues before publishing.", { code: "BASKET_VALIDATION_FAILED", details: { issues } });
     // Compared before any re-pin: pins change the hash by template ids only, so a mismatch here is a content change.
     if ((await contentHash(tx, v.id)) !== v.approvedHash) throw invalid("This version changed after approval.");
     const repinned = await pinDisclosures(tx, v, true);
@@ -183,12 +187,14 @@ async function lockBasket(tx: Tx, ctx: OpsCtx, bid: string): Promise<BasketRow> 
 
 const opsMove = (ctx: OpsCtx) => ({ actorType: "ops", userId: ctx.userId, requestId: ctx.meta.requestId }) as const;
 const latest = (col: string) => sql`(select v.${sql.raw(col)} from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)`;
-const inReview = (escalated: boolean) => sql`exists (select 1 from app.basket_versions v where v.basket_id = ${baskets.id} and v.status = 'in_review'
-  and ${escalated ? sql`exists` : sql`not exists`} (select 1 from app.basket_reviews r where r.version_id = v.id and r.decision = 'escalated'))`;
+const LIVE = sql`${baskets.status} not in ('RETIRED', 'REJECTED')`;
+// Only reviews of the current submission count: an earlier round's escalation does not carry over.
+const inReview = (escalated: boolean) => sql`${LIVE} and exists (select 1 from app.basket_versions v where v.basket_id = ${baskets.id} and v.status = 'in_review'
+  and ${escalated ? sql`exists` : sql`not exists`} (select 1 from app.basket_reviews r where r.version_id = v.id and r.decision = 'escalated' and r.created_at >= v.submitted_at))`;
 const QUEUES = {
   review: inReview(false),
   escalated: inReview(true),
-  leads: sql`exists (select 1 from app.basket_assignments a where a.basket_id = ${baskets.id} and a.role = 'lead' and a.status = 'PENDING_APPROVAL')`,
+  leads: sql`${LIVE} and exists (select 1 from app.basket_assignments a where a.basket_id = ${baskets.id} and a.role = 'lead' and a.status = 'PENDING_APPROVAL')`,
   retirements: sql`${baskets.status} = 'RETIREMENT_PENDING'`,
 };
 
@@ -246,6 +252,7 @@ export async function getBasketForOps(bid: string): Promise<OpsBasketDetail> {
 export async function decideVersion(ctx: OpsCtx, bid: string, vid: string, i: BasketReviewDecisionRequest): Promise<OpsBasketDetail> {
   const { eventId, message } = await db.transaction(async (tx) => {
     const basket = await lockBasket(tx, ctx, bid);
+    if (READ_ONLY.includes(basket.status)) throw invalid("This basket is read-only.");
     if (i.decision === "approved" && !(await activeRoles(tx, ctx.userId)).includes("ops_admin")) throw createHttpError("Only an ops admin can approve a version.", { code: "FORBIDDEN" });
     const [v] = await tx.select().from(basketVersions).where(and(eq(basketVersions.id, vid), eq(basketVersions.basketId, bid))).for("update");
     if (!v) throw notFound("Version");
@@ -280,6 +287,7 @@ export async function decideVersion(ctx: OpsCtx, bid: string, vid: string, i: Ba
 export async function decideLead(ctx: OpsCtx, bid: string, aid: string, i: BasketApprovalRequest): Promise<OpsBasketDetail> {
   const eventId = await db.transaction(async (tx) => {
     const basket = await lockBasket(tx, ctx, bid);
+    if (READ_ONLY.includes(basket.status)) throw invalid("This basket is read-only.");
     const [a] = await tx.select().from(basketAssignments).where(and(eq(basketAssignments.id, aid), eq(basketAssignments.basketId, bid))).for("update");
     if (!a) throw notFound("Assignment");
     if (a.role !== "lead" || a.status !== "PENDING_APPROVAL") throw invalid("This assignment is not awaiting approval.");
@@ -329,7 +337,7 @@ export async function platformResume(ctx: OpsCtx, bid: string): Promise<OpsBaske
 }
 
 export async function platformRetire(ctx: OpsCtx, bid: string, reason: BasketReasonRequest["reason"]): Promise<OpsBasketDetail> {
-  const eventId = await db.transaction(async (tx) => moveBasket(tx, await lockBasket(tx, ctx, bid), "RETIRED", { ...opsMove(ctx), kind: "retired", action: "basket.retired", reason }));
+  const eventId = await db.transaction(async (tx) => moveBasket(tx, await lockBasket(tx, ctx, bid), "RETIRED", { ...opsMove(ctx), kind: "retired", action: "basket.retired", reason, set: { pauseKind: null, pauseReason: null, previousStatus: null } }));
   await notifyBasket(bid, "retired", { message: reason }, eventId);
   return getBasketForOps(bid);
 }
@@ -339,10 +347,14 @@ export async function decideRetirement(ctx: OpsCtx, bid: string, i: BasketApprov
   const eventId = await db.transaction(async (tx) => {
     const basket = await lockBasket(tx, ctx, bid);
     if (basket.status !== "RETIREMENT_PENDING") throw invalid("There is no retirement request to decide.");
-    return moveBasket(tx, basket, i.decision === "approved" ? "RETIRED" : basket.previousStatus ?? "ACTIVE", {
+    const id = await moveBasket(tx, basket, i.decision === "approved" ? "RETIRED" : basket.previousStatus ?? "ACTIVE", {
       ...opsMove(ctx), kind: "retirement_decided", action: "basket.retirement_decided", reason: i.reason, set: { previousStatus: null }, metadata: { decision: i.decision },
     });
+    // The lead may have left while the request was pending; a declined request must not restore a lead-less basket.
+    if (i.decision !== "approved") await requireReassignmentIfLeaderless(tx, bid, ctx.userId, ctx.meta.requestId);
+    return id;
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   await notifyBasket(bid, "retirement_decided", { decision: i.decision, message: i.reason }, eventId);
   return getBasketForOps(bid);
 }
