@@ -13,3 +13,11 @@ vi.mock("../src/providers/evm-rpc", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { verifyContractSignature: fakes.evm.verifyContractSignature };
 });
+vi.mock("../src/providers/r2", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { r2: { send: fakes.r2.send }, R2_BUCKET: "bytesac-test" };
+});
+vi.mock("@aws-sdk/s3-request-presigner", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { getSignedUrl: fakes.r2.getSignedUrl };
+});

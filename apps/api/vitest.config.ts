@@ -33,6 +33,10 @@ export default defineConfig({
       ALLOWED_ORIGINS: "http://localhost:3000",
       COOKIE_SECURE: "false",
       TRUST_PROXY: "loopback",
+      R2_ACCOUNT_ID: "acct",
+      R2_ACCESS_KEY_ID: "key",
+      R2_SECRET_ACCESS_KEY: "secret",
+      R2_BUCKET: "bytesac-test",
     },
   },
 });

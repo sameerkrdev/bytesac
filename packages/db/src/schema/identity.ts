@@ -5,6 +5,7 @@ import {
   addressStatus, app, chain, chainFamily, challengePurpose, challengeStatus, clientKind, revokeReason,
   userStatus, verificationMethod, walletStatus,
 } from "./enums";
+import { organizations } from "./organizations";
 
 const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -68,10 +69,12 @@ export const authChallenges = app.table(
     expiresAt: ts("expires_at").notNull(),
     resolvedAt: ts("resolved_at"),
     sessionId: uuid("session_id").references(() => sessions.id, { onDelete: "set null" }),
+    organizationId: uuid("organization_id").references((): AnyPgColumn => organizations.id),
   },
   (t) => [
     index("auth_challenges_expires_at_idx").on(t.expiresAt),
     check("auth_challenges_session_for_add", sql`${t.purpose} <> 'add_chain_account' OR ${t.sessionId} IS NOT NULL OR ${t.status} <> 'pending'`),
+    check("auth_challenges_org_for_payout", sql`${t.purpose}::text <> 'payout_wallet' OR (${t.organizationId} IS NOT NULL AND ${t.sessionId} IS NOT NULL)`),
   ],
 );
 

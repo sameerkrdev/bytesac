@@ -36,6 +36,13 @@
       "when": 1790717776453,
       "tag": "0004_purge_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790736986381,
+      "tag": "0005_organizations",
+      "breakpoints": true
     }
   ]
 }

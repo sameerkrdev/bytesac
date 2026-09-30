@@ -10,5 +10,6 @@ export * from "./auth";
 export * from "./contacts";
 export * from "./managers";
 export * from "./me";
+export * from "./organizations";
 export * from "./preferences";
 export * from "./http";

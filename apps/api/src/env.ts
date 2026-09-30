@@ -53,4 +53,8 @@ export const env = cleanEnv(process.env, {
   ALLOWED_ORIGINS: origins(),
   COOKIE_SECURE: bool({ default: true }),
   TRUST_PROXY: trustProxy({ default: "loopback" }),
+  R2_ACCOUNT_ID: nonEmpty(),
+  R2_ACCESS_KEY_ID: nonEmpty(),
+  R2_SECRET_ACCESS_KEY: nonEmpty(),
+  R2_BUCKET: nonEmpty(),
 });

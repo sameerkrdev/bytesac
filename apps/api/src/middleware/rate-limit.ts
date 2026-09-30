@@ -23,6 +23,9 @@ export const limits = {
   appResendEmail: limiter("app:resend:email", 5, 3600),
   appTokenIp: limiter("app:token:ip", 30, 60),
   opsUser: limiter("ops:user", 120, 60),
+  ownerMutationUser: limiter("org:mutate:user", 60, 60),
+  documentPresignOrg: limiter("org:presign:org", 30, 3600),
+  publicProfileIp: limiter("public:org:ip", 60, 60),
 };
 
 /** Takes one point for `key`; throws 429 RATE_LIMITED past the limit. Returns a function that gives the point back. */
