@@ -25,9 +25,10 @@ export function PayoutWallet({ org, onChange, client = api }: { org: Organizatio
 
   const active = org.payoutWallets.find((w) => w.status === "VERIFIED");
   const pending = org.payoutWallets.find((w) => w.status === "UNVERIFIED" || w.status === "VERIFYING" || w.status === "REPLACEMENT_PENDING");
-  const toSign = pending && pending.status !== "REPLACEMENT_PENDING" ? pending : undefined;
   // Wallet changes are refused by the API while the organization is under review.
   const canEdit = org.status === "DRAFT" || org.status === "CHANGES_REQUIRED" || org.status === "VERIFIED";
+  const toSign = canEdit && pending && pending.status !== "REPLACEMENT_PENDING" ? pending : undefined;
+  const otherNetwork = wallet.account !== null && wallet.account.chain !== "solana";
   const showEntry = canEdit && pending?.status !== "REPLACEMENT_PENDING" && (!active || changing);
   const connected = toSign && wallet.account?.chain === "solana" && wallet.account.address === toSign.address;
 
@@ -71,8 +72,8 @@ export function PayoutWallet({ org, onChange, client = api }: { org: Organizatio
         <div className="space-y-2 rounded-xl border border-border-dark p-3">
           <p className="text-sm text-ivory">Sign with <span className="font-mono">{shortAddress(toSign.address)}</span> to verify it.</p>
           {!connected && <p className="text-xs text-muted-foreground">Connect a Solana wallet with exactly this address.</p>}
-          <Button className="min-h-11" disabled={busy} onClick={() => void (connected ? sign() : wallet.connect())}>
-            {busy && <Loader2 aria-hidden className="animate-spin" />}{connected ? "Sign message" : "Connect & sign"}
+          <Button className="min-h-11" disabled={busy} onClick={() => void (connected ? sign() : otherNetwork ? wallet.chooseNetwork() : wallet.connect())}>
+            {busy && <Loader2 aria-hidden className="animate-spin" />}{connected ? "Sign message" : otherNetwork ? "Switch to Solana" : "Connect & sign"}
           </Button>
         </div>
       )}

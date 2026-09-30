@@ -92,6 +92,17 @@ describe("draft", () => {
     expect(full.body.missing.documents).toHaveLength(4);
   });
 
+  it("null clears a key: an optional field is removed, a required one is missing again", async () => {
+    const u = await user(app);
+    const id = await createOrg(app, u.h, "firm");
+    await patch(u.h, id, { ...FIELDS.firm, publicProfile: { ...FIELDS.firm.publicProfile, website: "https://example.com" } });
+    const res = await patch(u.h, id, { publicProfile: { website: null, about: null } });
+    expect(res.status).toBe(200);
+    expect(res.body.openVersion.publicProfile).not.toHaveProperty("website");
+    expect(res.body.openVersion.publicProfile).not.toHaveProperty("about");
+    expect(res.body.missing.fields).toEqual(["about"]);
+  });
+
   it("is not editable outside draft or changes_required", async () => {
     const u = await user(app);
     const id = await createOrg(app, u.h);

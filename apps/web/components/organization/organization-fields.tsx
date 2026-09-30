@@ -35,13 +35,16 @@ export function OrganizationFields({ org, version, readOnly, onChange, client = 
     ORGANIZATION_FIELDS[k].visibility === visibility && (visibility === "public" || required.has(k) || OPTIONAL_PRIVATE[org.type].includes(k)));
 
   async function save() {
-    const body = { publicProfile: {} as Record<string, string>, privateDetails: {} as Record<string, string> };
+    const body = { publicProfile: {} as Record<string, string | null>, privateDetails: {} as Record<string, string | null> };
     const errs: Record<string, string> = {};
     for (const k of ORGANIZATION_FIELD_KEYS) {
       const f = ORGANIZATION_FIELDS[k];
       const v = (values[k] ?? "").trim();
-      // The API merges, so an emptied field is only sent when the catalog accepts "" (otherwise the old value stays).
-      if (v === "" && (text(initial[k]) === "" || !f.schema.safeParse("").success)) continue;
+      // The API merges; null removes a key that had a value.
+      if (v === "") {
+        if (text(initial[k]) !== "") (f.visibility === "public" ? body.publicProfile : body.privateDetails)[k] = null;
+        continue;
+      }
       const r = f.schema.safeParse(v);
       if (!r.success) errs[k] = r.error.issues[0]?.message ?? "Invalid value";
       else (f.visibility === "public" ? body.publicProfile : body.privateDetails)[k] = v;

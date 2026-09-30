@@ -297,6 +297,6 @@ describe("change requests", () => {
     const [, v2] = await versions(o.id);
     await decide(reviewer.h, o.id, v2!.id, { decision: "rejected", internalNote: "secret" });
     expect(JSON.stringify(fakes.email.organization)).not.toContain("secret");
-    expect((await db.select().from(organizationEvents).where(eq(organizationEvents.kind, "version_decided")))[0]!.internalNote).toBe("Decision: rejected. secret");
+    expect((await db.select().from(organizationEvents).where(eq(organizationEvents.kind, "version_decided")))[0]).toMatchObject({ decision: "rejected", internalNote: "secret" });
   });
 });

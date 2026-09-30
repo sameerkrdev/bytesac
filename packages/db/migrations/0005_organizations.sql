@@ -2,7 +2,7 @@ CREATE TYPE "app"."organization_document_status" AS ENUM('pending_upload', 'uplo
 CREATE TYPE "app"."membership_role" AS ENUM('OWNER', 'ADMIN', 'MANAGER', 'ANALYST', 'VIEWER');--> statement-breakpoint
 CREATE TYPE "app"."membership_status" AS ENUM('active', 'revoked');--> statement-breakpoint
 CREATE TYPE "app"."organization_actor" AS ENUM('owner', 'ops', 'system');--> statement-breakpoint
-CREATE TYPE "app"."organization_event_kind" AS ENUM('status_changed', 'note', 'version_submitted', 'version_decided', 'document_uploaded', 'payout_wallet_changed');--> statement-breakpoint
+CREATE TYPE "app"."organization_event_kind" AS ENUM('status_changed', 'note', 'version_submitted', 'version_decided', 'document_uploaded', 'document_unlinked', 'version_created', 'payout_wallet_changed');--> statement-breakpoint
 CREATE TYPE "app"."organization_status" AS ENUM('DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'CHANGES_REQUIRED', 'RESUBMITTED', 'VERIFIED', 'REJECTED');--> statement-breakpoint
 CREATE TYPE "app"."organization_type" AS ENUM('individual', 'firm');--> statement-breakpoint
 CREATE TYPE "app"."payout_wallet_status" AS ENUM('UNVERIFIED', 'VERIFYING', 'VERIFIED', 'REPLACEMENT_PENDING', 'REVOKED');--> statement-breakpoint
@@ -33,6 +33,7 @@ CREATE TABLE "app"."organization_events" (
 	"to_status" "app"."organization_status",
 	"version_id" uuid,
 	"payout_wallet_id" uuid,
+	"decision" text,
 	"internal_note" text,
 	"message_to_owner" text,
 	"request_id" text,
@@ -56,6 +57,8 @@ CREATE TABLE "app"."organization_payout_wallets" (
 	"address" text NOT NULL,
 	"status" "app"."payout_wallet_status" DEFAULT 'UNVERIFIED' NOT NULL,
 	"verified_at" timestamp with time zone,
+	"verification_challenge_id" uuid,
+	"verification_signature" text,
 	"activated_at" timestamp with time zone,
 	"deactivated_at" timestamp with time zone,
 	"requested_by_user_id" uuid NOT NULL,
@@ -122,6 +125,7 @@ ALTER TABLE "app"."organization_events" ADD CONSTRAINT "organization_events_payo
 ALTER TABLE "app"."organization_memberships" ADD CONSTRAINT "organization_memberships_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "app"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."organization_memberships" ADD CONSTRAINT "organization_memberships_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "app"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."organization_payout_wallets" ADD CONSTRAINT "organization_payout_wallets_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "app"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app"."organization_payout_wallets" ADD CONSTRAINT "organization_payout_wallets_verification_challenge_id_auth_challenges_id_fk" FOREIGN KEY ("verification_challenge_id") REFERENCES "app"."auth_challenges"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."organization_payout_wallets" ADD CONSTRAINT "organization_payout_wallets_requested_by_user_id_users_id_fk" FOREIGN KEY ("requested_by_user_id") REFERENCES "app"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."organization_payout_wallets" ADD CONSTRAINT "organization_payout_wallets_decided_by_user_id_users_id_fk" FOREIGN KEY ("decided_by_user_id") REFERENCES "app"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."organization_version_documents" ADD CONSTRAINT "organization_version_documents_version_id_organization_versions_id_fk" FOREIGN KEY ("version_id") REFERENCES "app"."organization_versions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -176,3 +180,50 @@ INSERT INTO app.verification_requirement_templates (id, organization_type, juris
   (gen_random_uuid(), 'firm', NULL,
     ARRAY['displayName','about','experience','legalCompanyName','registrationNumber','registeredAddress','directors','beneficialOwners','authorizedRepresentatives'],
     ARRAY['company_registration','ownership_structure','director_id','proof_of_address']);
+
+--> statement-breakpoint
+-- Extends app.purge_expired() (0004 body, unchanged except the challenge rule): challenges that prove a payout wallet are kept, like sign-in wallet proofs.
+CREATE OR REPLACE FUNCTION app.purge_expired() RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  n_challenges integer;
+  n_sessions integer;
+  n_verifications integer;
+  n_codes integer;
+  n_applications integer;
+  result jsonb;
+BEGIN
+  DELETE FROM app.auth_challenges c
+   WHERE c.expires_at < now() - interval '7 days'
+     AND NOT EXISTS (SELECT 1 FROM app.wallet_addresses w WHERE w.verification_challenge_id = c.id)
+     AND NOT EXISTS (SELECT 1 FROM app.organization_payout_wallets p WHERE p.verification_challenge_id = c.id);
+  GET DIAGNOSTICS n_challenges = ROW_COUNT;
+
+  DELETE FROM app.sessions
+   WHERE (revoked_at IS NOT NULL AND revoked_at < now() - interval '90 days')
+      OR (revoked_at IS NULL AND LEAST(idle_expires_at, absolute_expires_at) < now() - interval '90 days');
+  GET DIAGNOSTICS n_sessions = ROW_COUNT;
+
+  DELETE FROM app.contact_verifications
+   WHERE (resolved_at IS NOT NULL AND resolved_at < now() - interval '90 days')
+      OR (status = 'pending' AND expires_at < now() - interval '90 days');
+  GET DIAGNOSTICS n_verifications = ROW_COUNT;
+
+  DELETE FROM app.application_email_codes
+   WHERE (resolved_at IS NOT NULL AND resolved_at < now() - interval '90 days')
+      OR application_id IN (SELECT id FROM app.manager_applications WHERE status = 'EMAIL_PENDING' AND created_at < now() - interval '24 hours');
+  GET DIAGNOSTICS n_codes = ROW_COUNT;
+
+  DELETE FROM app.application_events
+   WHERE application_id IN (SELECT id FROM app.manager_applications WHERE status = 'EMAIL_PENDING' AND created_at < now() - interval '24 hours');
+
+  DELETE FROM app.manager_applications WHERE status = 'EMAIL_PENDING' AND created_at < now() - interval '24 hours';
+  GET DIAGNOSTICS n_applications = ROW_COUNT;
+
+  result := jsonb_build_object('challenges', n_challenges, 'sessions', n_sessions, 'verifications', n_verifications, 'email_codes', n_codes, 'applications', n_applications);
+  INSERT INTO app.audit_events (id, actor_type, action, entity_type, entity_id, request_id, metadata)
+  VALUES (gen_random_uuid(), 'system', 'retention.purged', 'system', 'retention', 'retention-' || gen_random_uuid(), result);
+  RETURN result;
+END
+$$;

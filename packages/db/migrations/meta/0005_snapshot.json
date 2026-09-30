@@ -1,5 +1,5 @@
 {
-  "id": "021529a2-537f-4028-8874-d62a28c0b5d7",
+  "id": "0f95af00-e86c-4e60-9fd8-6ac4cdcf6db5",
   "prevId": "b63830ab-b048-4c4d-a6e0-6aa879e43cfa",
   "version": "7",
   "dialect": "postgresql",
@@ -2010,6 +2010,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "decision": {
+          "name": "decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "internal_note": {
           "name": "internal_note",
           "type": "text",
@@ -2293,6 +2299,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "verification_challenge_id": {
+          "name": "verification_challenge_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verification_signature": {
+          "name": "verification_signature",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "activated_at": {
           "name": "activated_at",
           "type": "timestamp with time zone",
@@ -2374,6 +2392,20 @@
           "schemaTo": "app",
           "columnsFrom": [
             "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "organization_payout_wallets_verification_challenge_id_auth_challenges_id_fk": {
+          "name": "organization_payout_wallets_verification_challenge_id_auth_challenges_id_fk",
+          "tableFrom": "organization_payout_wallets",
+          "tableTo": "auth_challenges",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "verification_challenge_id"
           ],
           "columnsTo": [
             "id"
@@ -3112,6 +3144,8 @@
         "version_submitted",
         "version_decided",
         "document_uploaded",
+        "document_unlinked",
+        "version_created",
         "payout_wallet_changed"
       ]
     },

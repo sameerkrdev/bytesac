@@ -171,7 +171,7 @@ export function OrganizationReviewView({ id, client = api }: { id: string; clien
           {o.events.map((e) => (
             <li key={e.id} className={e.internalNote ? "rounded-xl border border-warning/40 bg-warning/5 p-3" : "rounded-xl border border-border-dark p-3"}>
               <p className="text-xs text-stone">
-                {new Date(e.createdAt).toLocaleString()} · {e.actorType} · {e.kind.replaceAll("_", " ")}
+                {new Date(e.createdAt).toLocaleString()} · {e.actorType} · {e.kind.replaceAll("_", " ")}{e.decision && `: ${e.decision.replaceAll("_", " ")}`}
                 {e.fromStatus && e.toStatus && ` · ${ORGANIZATION_STATUS_LABEL[e.fromStatus].label} → ${ORGANIZATION_STATUS_LABEL[e.toStatus].label}`}
               </p>
               {e.internalNote && <p className="mt-1 whitespace-pre-wrap text-sm text-ivory"><span className="mr-2 rounded bg-warning/20 px-1.5 py-0.5 text-xs font-medium text-warning">Internal</span>{e.internalNote}</p>}

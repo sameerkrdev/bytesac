@@ -27,5 +27,5 @@ export const PAYOUT_WALLET_STATUS_LABEL: Record<PayoutWalletStatus, Label> = {
   VERIFYING: { label: "Waiting for signature", tone: "warning" },
   VERIFIED: { label: "Verified", tone: "success" },
   REPLACEMENT_PENDING: { label: "Replacement awaiting review", tone: "warning" },
-  REVOKED: { label: "Replaced", tone: "neutral" },
+  REVOKED: { label: "Revoked", tone: "neutral" },
 };

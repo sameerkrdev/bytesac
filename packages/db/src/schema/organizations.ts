@@ -5,7 +5,7 @@ import {
   app, chain, documentStatus, membershipRole, membershipStatus, organizationActor, organizationEventKind, organizationStatus, organizationType,
   payoutWalletStatus, scanStatus, versionStatus,
 } from "./enums";
-import { users } from "./identity";
+import { authChallenges, users } from "./identity";
 
 const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -128,6 +128,9 @@ export const organizationPayoutWallets = app.table(
     status: payoutWalletStatus("status").notNull().default("UNVERIFIED"),
     /** Signature time. */
     verifiedAt: ts("verified_at"),
+    /** The signed proof: the challenge (kept by retention) and the signature over its message. */
+    verificationChallengeId: uuid("verification_challenge_id").references(() => authChallenges.id),
+    verificationSignature: text("verification_signature"),
     activatedAt: ts("activated_at"),
     deactivatedAt: ts("deactivated_at"),
     requestedByUserId: uuid("requested_by_user_id").notNull().references(() => users.id),
@@ -154,6 +157,8 @@ export const organizationEvents = app.table(
     toStatus: organizationStatus("to_status"),
     versionId: uuid("version_id").references(() => organizationVersions.id),
     payoutWalletId: uuid("payout_wallet_id").references(() => organizationPayoutWallets.id),
+    /** Outcome of a decision event: approved, changes_required, rejected. */
+    decision: text("decision"),
     internalNote: text("internal_note"),
     messageToOwner: text("message_to_owner"),
     requestId: text("request_id"),

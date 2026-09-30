@@ -113,13 +113,17 @@ export const createOrganizationRequestSchema = z.strictObject({
 });
 export type CreateOrganizationRequest = z.infer<typeof createOrganizationRequestSchema>;
 
-/** Keys must be catalog keys of `visibility`; each value passes its field schema. Required-ness is only checked on submit. The output holds the parsed (trimmed) values. */
+/** Keys must be catalog keys of `visibility`; each value passes its field schema, or is `null` to remove the key. Required-ness is only checked on submit. The output holds the parsed (trimmed) values. */
 const draftPart = (visibility: "public" | "private") => z.record(z.string(), z.unknown()).transform((entries, ctx) => {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entries)) {
     const field = Object.hasOwn(ORGANIZATION_FIELDS, key) ? ORGANIZATION_FIELDS[key as OrganizationFieldKey] : undefined;
     if (field?.visibility !== visibility) {
       ctx.addIssue({ code: "custom", path: [key], message: `Unknown ${visibility} field` });
+      continue;
+    }
+    if (value === null) {
+      out[key] = null;
       continue;
     }
     const parsed = field.schema.safeParse(value);
@@ -303,11 +307,12 @@ export const organizationEventViewSchema = z.object({
   id: z.uuid(),
   actorType: z.enum(["owner", "ops", "system"]),
   actorUserId: z.uuid().nullable(),
-  kind: z.enum(["status_changed", "note", "version_submitted", "version_decided", "document_uploaded", "payout_wallet_changed"]),
+  kind: z.enum(["status_changed", "note", "version_submitted", "version_decided", "document_uploaded", "document_unlinked", "version_created", "payout_wallet_changed"]),
   fromStatus: organizationStatusSchema.nullable(),
   toStatus: organizationStatusSchema.nullable(),
   versionId: z.uuid().nullable(),
   payoutWalletId: z.uuid().nullable(),
+  decision: z.string().nullable(),
   internalNote: z.string().nullable(),
   messageToOwner: z.string().nullable(),
   createdAt: isoTime,

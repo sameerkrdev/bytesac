@@ -33,4 +33,4 @@ export const documentStatus = app.enum("organization_document_status", ["pending
 export const scanStatus = app.enum("document_scan_status", ["not_scanned"]);
 export const payoutWalletStatus = app.enum("payout_wallet_status", ["UNVERIFIED", "VERIFYING", "VERIFIED", "REPLACEMENT_PENDING", "REVOKED"]);
 export const organizationActor = app.enum("organization_actor", ["owner", "ops", "system"]);
-export const organizationEventKind = app.enum("organization_event_kind", ["status_changed", "note", "version_submitted", "version_decided", "document_uploaded", "payout_wallet_changed"]);
+export const organizationEventKind = app.enum("organization_event_kind", ["status_changed", "note", "version_submitted", "version_decided", "document_uploaded", "document_unlinked", "version_created", "payout_wallet_changed"]);

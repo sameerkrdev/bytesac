@@ -45,11 +45,20 @@ describe("payout wallet proof", () => {
     expect(res.body.payoutWallets).toEqual([expect.objectContaining({ address: wallet.address, status: "VERIFIED" })]);
     expect(res.body.missing.payoutWallet).toBe(false);
     expect(ch.message).toContain(`Verify payout wallet for Bytesac organization ${id}. This does not sign you in or authorize any transfer.`);
+    expect(ch.message.startsWith("Bytesac payout wallet verification\n\n")).toBe(true);
+    expect(ch.message).not.toContain("wants you to sign in");
+    expect(ch.message).toMatch(new RegExp(`\nOrganization: ${id}\nWallet: ${wallet.address}\nNonce: [0-9a-f]{32}\nIssued At: .+\nExpiration Time: .+$`));
     const [row] = await db.select().from(authChallenges).where(eq(authChallenges.id, ch.challengeId));
     expect(row).toMatchObject({ purpose: "payout_wallet", organizationId: id, chain: "solana", address: wallet.address, status: "consumed" });
     expect(await counts()).toEqual(before);
     const [w] = await wallets(id);
     expect(w!.activatedAt).toBeTruthy();
+    expect(w!.verificationChallengeId).toBe(ch.challengeId);
+    expect(w!.verificationSignature).toBeTruthy();
+    // the proof survives retention long after the challenge expired
+    await adminSql`UPDATE app.auth_challenges SET expires_at = now() - interval '8 days', issued_at = now() - interval '9 days'`;
+    await adminSql`SELECT app.purge_expired()`;
+    expect(await db.select({ id: authChallenges.id }).from(authChallenges).where(eq(authChallenges.id, ch.challengeId))).toHaveLength(1);
     expect((await db.select().from(auditEvents).where(eq(auditEvents.action, "payout_wallet.verified")))).toHaveLength(1);
     // the same signature cannot be replayed
     expect((await verify(u.h, id, { challengeId: ch.challengeId, signature: await wallet.sign(ch.message) })).body.error.code).toBe("CHALLENGE_CONSUMED");

@@ -43,9 +43,10 @@ export async function issuePayoutChallenge(ctx: OwnerCtx, orgId: string): Promis
   if (!w) throw createHttpError("Enter a payout wallet address first.", { code: "INVALID_TRANSITION" });
   const challenge = await issueChallenge({
     purpose: "payout_wallet", chain: "solana", rawAddress: w.address, sessionId: ctx.sessionId, organizationId: orgId, meta: ctx.meta,
-    statement: `Verify payout wallet for Bytesac organization ${orgId}. This does not sign you in or authorize any transfer.`,
   });
-  await db.update(organizationPayoutWallets).set({ status: "VERIFYING", updatedAt: sql`now()` }).where(eq(organizationPayoutWallets.id, w.id));
+  const marked = await db.update(organizationPayoutWallets).set({ status: "VERIFYING", updatedAt: sql`now()` })
+    .where(and(eq(organizationPayoutWallets.id, w.id), inArray(organizationPayoutWallets.status, ["UNVERIFIED", "VERIFYING"]))).returning({ id: organizationPayoutWallets.id });
+  if (marked.length === 0) throw createHttpError("The payout wallet changed. Start again.", { code: "INVALID_TRANSITION" });
   return challenge;
 }
 
@@ -68,19 +69,20 @@ export async function verifyPayoutWallet(ctx: OwnerCtx, orgId: string, i: { chal
     if (!WALLET_EDITABLE.includes(org.status)) throw inReview();
     const consumed = await tx.update(authChallenges).set({ status: "consumed", resolvedAt: sql`now()`, leaseExpiresAt: null })
       .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing"))).returning({ id: authChallenges.id });
-    if (consumed.length !== 1) throw createHttpError("This sign-in request is already being verified.", { code: "CHALLENGE_IN_PROGRESS" });
+    if (consumed.length !== 1) throw createHttpError("This payout wallet request is already being verified.", { code: "CHALLENGE_IN_PROGRESS" });
     const [w] = await tx.select().from(organizationPayoutWallets).where(and(
       eq(organizationPayoutWallets.organizationId, orgId), eq(organizationPayoutWallets.address, ch.address), eq(organizationPayoutWallets.status, "VERIFYING"),
     )).for("update");
     if (!w) throw createHttpError("Start the payout wallet check again.", { code: "INVALID_TRANSITION" });
     const [active] = await tx.select().from(organizationPayoutWallets)
       .where(and(eq(organizationPayoutWallets.organizationId, orgId), eq(organizationPayoutWallets.status, "VERIFIED"))).for("update");
+    const proof = { verificationChallengeId: ch.id, verificationSignature: i.signature };
     const replacement = active !== undefined && org.status === "VERIFIED";
     if (replacement) {
-      await tx.update(organizationPayoutWallets).set({ status: "REPLACEMENT_PENDING", verifiedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationPayoutWallets.id, w.id));
+      await tx.update(organizationPayoutWallets).set({ status: "REPLACEMENT_PENDING", ...proof, verifiedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationPayoutWallets.id, w.id));
     } else {
       if (active) await tx.update(organizationPayoutWallets).set({ status: "REVOKED", deactivatedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationPayoutWallets.id, active.id));
-      await tx.update(organizationPayoutWallets).set({ status: "VERIFIED", verifiedAt: sql`now()`, activatedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationPayoutWallets.id, w.id));
+      await tx.update(organizationPayoutWallets).set({ status: "VERIFIED", ...proof, verifiedAt: sql`now()`, activatedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(organizationPayoutWallets.id, w.id));
     }
     await tx.insert(organizationEvents).values({ organizationId: orgId, actorType: "owner", actorUserId: ctx.userId, kind: "payout_wallet_changed", payoutWalletId: w.id, requestId: ctx.meta.requestId });
     await writeAudit(tx, {

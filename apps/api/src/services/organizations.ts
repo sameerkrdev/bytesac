@@ -164,8 +164,10 @@ export async function getOrganizationForOwner(ctx: OwnerCtx, id: string): Promis
 export async function updateDraft(ctx: OwnerCtx, id: string, body: UpdateDraftRequest): Promise<OrganizationDetail> {
   await db.transaction(async (tx) => {
     const { version } = await lockEditable(tx, ctx.userId, id);
+    // A null value removes the key.
+    const merge = (old: Record<string, unknown>, next: Record<string, unknown> = {}) => Object.fromEntries(Object.entries({ ...old, ...next }).filter(([, v]) => v !== null));
     await tx.update(organizationVersions).set({
-      publicProfile: { ...version.publicProfile, ...body.publicProfile }, privateDetails: { ...version.privateDetails, ...body.privateDetails }, updatedAt: sql`now()`,
+      publicProfile: merge(version.publicProfile, body.publicProfile), privateDetails: merge(version.privateDetails, body.privateDetails), updatedAt: sql`now()`,
     }).where(eq(organizationVersions.id, version.id));
   });
   return getOrganizationForOwner(ctx, id);
@@ -206,7 +208,6 @@ export async function confirmDocument(ctx: OwnerCtx, id: string, docId: string):
   }
   const finalKey = `documents/${id}/${doc.id}`;
   await r2.send(new CopyObjectCommand({ Bucket: R2_BUCKET, CopySource: `${R2_BUCKET}/${doc.r2Key}`, Key: finalKey }));
-  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key }));
 
   await db.transaction(async (tx) => {
     const { version } = await lockEditable(tx, ctx.userId, id);
@@ -226,6 +227,8 @@ export async function confirmDocument(ctx: OwnerCtx, id: string, docId: string):
       requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { organizationId: id, documentType: doc.documentType },
     });
   });
+  // Best effort: the bucket lifecycle rule clears leftovers in incoming/.
+  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key })).catch(() => undefined);
   return getOrganizationForOwner(ctx, id);
 }
 
@@ -238,7 +241,7 @@ export async function unlinkDocument(ctx: OwnerCtx, id: string, docId: string): 
     )).returning({ id: organizationVersionDocuments.id });
     if (!unlinked) throw createHttpError("Document not found", { code: "NOT_FOUND" });
     await tx.insert(organizationEvents).values({
-      organizationId: id, actorType: "owner", actorUserId: ctx.userId, kind: "note", versionId: version.id, internalNote: `Document ${docId} removed from the draft.`, requestId: ctx.meta.requestId,
+      organizationId: id, actorType: "owner", actorUserId: ctx.userId, kind: "document_unlinked", versionId: version.id, requestId: ctx.meta.requestId,
     });
     await writeAudit(tx, {
       actorType: "user", actorUserId: ctx.userId, action: "organization_document.unlinked", entityType: "organization_document", entityId: docId,
@@ -248,16 +251,20 @@ export async function unlinkDocument(ctx: OwnerCtx, id: string, docId: string): 
   return getOrganizationForOwner(ctx, id);
 }
 
-/** Emails the owner's verified email contact; with none the notice is skipped (logged). Never throws for delivery problems. */
+/** Emails the owner's verified email contact; with none the notice is skipped (logged). Never throws: a committed state change is not undone by a notice problem. */
 export async function notifyOwner(orgId: string, kind: OrganizationEmailKind, data: OrganizationEmailData, idempotencyKey: string): Promise<void> {
-  const [owner] = await db.select({ email: contacts.value }).from(organizationMemberships)
-    .innerJoin(contacts, eq(contacts.userId, organizationMemberships.userId))
-    .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.role, "OWNER"), eq(organizationMemberships.status, "active"), eq(contacts.type, "email"), eq(contacts.status, "verified")));
-  if (!owner) {
-    logger.info("organization email skipped: owner has no verified email", { kind });
-    return;
+  try {
+    const [owner] = await db.select({ email: contacts.value }).from(organizationMemberships)
+      .innerJoin(contacts, eq(contacts.userId, organizationMemberships.userId))
+      .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.role, "OWNER"), eq(organizationMemberships.status, "active"), eq(contacts.type, "email"), eq(contacts.status, "verified")));
+    if (!owner) {
+      logger.info("organization email skipped: owner has no verified email", { kind });
+      return;
+    }
+    await sendOrganizationEmail(kind, owner.email, data, idempotencyKey);
+  } catch (err) {
+    logger.warn("organization email failed", { kind, error: err instanceof Error ? err.name : "unknown" });
   }
-  await sendOrganizationEmail(kind, owner.email, data, idempotencyKey);
 }
 
 const incomplete = (missing: MissingRequirements) => createHttpError(422, "Complete the missing items before submitting.", { code: "REQUIREMENTS_INCOMPLETE", details: { missing } });
@@ -297,6 +304,7 @@ export async function createChangeRequest(ctx: OwnerCtx, id: string): Promise<Or
     const links = await tx.select({ documentId: organizationVersionDocuments.documentId }).from(organizationVersionDocuments)
       .where(and(eq(organizationVersionDocuments.versionId, current!.id), isNull(organizationVersionDocuments.removedAt)));
     if (links.length > 0) await tx.insert(organizationVersionDocuments).values(links.map((l) => ({ versionId: draft!.id, documentId: l.documentId })));
+    await tx.insert(organizationEvents).values({ organizationId: id, actorType: "owner", actorUserId: ctx.userId, kind: "version_created", versionId: draft!.id, requestId: ctx.meta.requestId });
     await writeAudit(tx, {
       actorType: "user", actorUserId: ctx.userId, action: "organization_version.created", entityType: "organization", entityId: id,
       requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { versionId: draft!.id, versionNumber: draft!.versionNumber },

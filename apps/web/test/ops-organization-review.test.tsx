@@ -13,7 +13,7 @@ const detail = (over: Partial<OrganizationReviewDetail> = {}): OrganizationRevie
   owner: { userId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", addresses: [{ chain: "solana", address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T" }] },
   versions: [version({ status: "in_review", publicProfile: { displayName: "Ada Capital" }, privateDetails: { legalName: "Ada Lovelace" } })],
   documents: [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", documentType: "government_id", contentType: "application/pdf", sizeBytes: 2048, status: "uploaded", uploadedAt: T, versionIds: [] }],
-  payoutWallets: [], events: [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e71", actorType: "ops", actorUserId: null, kind: "note", fromStatus: null, toStatus: null, versionId: null, payoutWalletId: null, internalNote: "Looks fine", messageToOwner: null, createdAt: T }],
+  payoutWallets: [], events: [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e71", actorType: "ops", actorUserId: null, kind: "note", fromStatus: null, toStatus: null, versionId: null, payoutWalletId: null, decision: null, internalNote: "Looks fine", messageToOwner: null, createdAt: T }],
   template: { requiredFields: [], requiredDocuments: [] }, ...over,
 });
 const view = (opsGetOrganization: () => Promise<OrganizationReviewDetail>) =>

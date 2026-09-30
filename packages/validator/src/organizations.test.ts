@@ -41,6 +41,10 @@ describe("updateDraftRequestSchema", () => {
     expect(updateDraftRequestSchema.safeParse({ publicProfile: { website: "http://example.com" } }).success).toBe(false);
     expect(updateDraftRequestSchema.safeParse({ publicProfile: { website: "https://example.com" } }).success).toBe(true);
   });
+  it("accepts null as removal of a key, for a field that rejects empty strings", () => {
+    expect(updateDraftRequestSchema.parse({ publicProfile: { website: null }, privateDetails: { legalName: null } })).toEqual({ publicProfile: { website: null }, privateDetails: { legalName: null } });
+    expect(updateDraftRequestSchema.safeParse({ publicProfile: { nope: null } }).success).toBe(false);
+  });
   it("requires 18+ for dateOfBirth", () => {
     const year = new Date().getUTCFullYear();
     expect(updateDraftRequestSchema.safeParse({ privateDetails: { dateOfBirth: `${year - 10}-01-01` } }).success).toBe(false);

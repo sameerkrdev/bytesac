@@ -70,7 +70,7 @@ export async function getOrganizationForReview(id: string): Promise<Organization
     })),
     events: events.map((e) => ({
       id: e.id, actorType: e.actorType, actorUserId: e.actorUserId, kind: e.kind, fromStatus: e.fromStatus, toStatus: e.toStatus, versionId: e.versionId,
-      payoutWalletId: e.payoutWalletId, internalNote: e.internalNote, messageToOwner: e.messageToOwner, createdAt: e.createdAt.toISOString(),
+      payoutWalletId: e.payoutWalletId, decision: e.decision, internalNote: e.internalNote, messageToOwner: e.messageToOwner, createdAt: e.createdAt.toISOString(),
     })),
     template: { requiredFields: template.requiredFields, requiredDocuments: template.requiredDocuments },
   };
@@ -169,7 +169,7 @@ export async function decideVersion(ctx: OpsCtx, id: string, versionId: string, 
     }
     const [event] = await tx.insert(organizationEvents).values({
       organizationId: id, actorType: "ops", actorUserId: ctx.userId, kind: "version_decided", versionId: version.id,
-      internalNote: [`Decision: ${i.decision}`, i.internalNote].filter(Boolean).join(". "), messageToOwner: i.messageToOwner, requestId: ctx.meta.requestId,
+      decision: i.decision, internalNote: i.internalNote, messageToOwner: i.messageToOwner, requestId: ctx.meta.requestId,
     }).returning({ id: organizationEvents.id });
     await writeAudit(tx, {
       actorType: "user", actorUserId: ctx.userId, action: "organization_version.decided", entityType: "organization", entityId: id,
@@ -198,7 +198,7 @@ export async function decidePayoutWallet(ctx: OpsCtx, id: string, walletId: stri
     }
     const [event] = await tx.insert(organizationEvents).values({
       organizationId: id, actorType: "ops", actorUserId: ctx.userId, kind: "payout_wallet_changed", payoutWalletId: wallet.id,
-      internalNote: [`Decision: ${i.decision}`, i.internalNote].filter(Boolean).join(". "), requestId: ctx.meta.requestId,
+      decision: i.decision, internalNote: i.internalNote, requestId: ctx.meta.requestId,
     }).returning({ id: organizationEvents.id });
     await writeAudit(tx, {
       actorType: "user", actorUserId: ctx.userId, action: "payout_wallet.replacement_decided", entityType: "organization", entityId: id,

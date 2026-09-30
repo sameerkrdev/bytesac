@@ -36,8 +36,8 @@ async function dbNow(): Promise<Date> {
   return v instanceof Date ? v : new Date(v);
 }
 
-/** `statement` and `organizationId` are for payout-wallet proofs: the signed text names the organization and the row is bound to it. */
-export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; statement?: string; meta: RequestMeta }): Promise<ChallengeResponse> {
+/** `organizationId` is for payout-wallet proofs: the row is bound to the organization and the signed text is a plain custom message (not SIWS), naming it. */
+export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; meta: RequestMeta }): Promise<ChallengeResponse> {
   const address = canonicalizeAddress(i.chain, i.rawAddress);
   await consume(limits.challengeIp, i.meta.ip);
   await consume(limits.challengeAddress, address);
@@ -47,7 +47,20 @@ export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawA
   const nonce = randomBytes(16).toString("hex");
   const domain = env.AUTH_DOMAIN;
   const uri = env.AUTH_URI;
-  const { message, chainId } = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt, statement: i.statement });
+  const built = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt });
+  const chainId = built.chainId;
+  const message = i.organizationId ? [
+    "Bytesac payout wallet verification",
+    "",
+    `Verify payout wallet for Bytesac organization ${i.organizationId}. This does not sign you in or authorize any transfer.`,
+    "",
+    `Domain: ${domain}`,
+    `Organization: ${i.organizationId}`,
+    `Wallet: ${address}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${issuedAt.toISOString()}`,
+    `Expiration Time: ${expiresAt.toISOString()}`,
+  ].join("\n") : built.message;
 
   const [row] = await db.insert(authChallenges).values({
     nonce, purpose: i.purpose, chainFamily: familyOf(i.chain), chain: i.chain, address, message, domain, uri, chainId,
