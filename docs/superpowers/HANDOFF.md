@@ -77,10 +77,10 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - **Gate commands:** `pnpm db:up` (Docker Postgres 17 + Redis 7), `pnpm turbo run lint check-types test build`, mobile: `pnpm --filter mobile test`, `pnpm --filter mobile check-types`, `cd apps/mobile && npx expo lint && npx expo export --platform android --output-dir <tmp>`.
 - **Record rulings:** when you decide something on the user's behalf, log it and list every ruling (with "cost if wrong") in the final report.
 
-## 5. Spec 3 — in progress
+## 5. Spec 3 — implemented, awaiting merge decision
 
 - Spec: `docs/superpowers/specs/2026-09-30-organization-onboarding-design.md` (one spec for source §11–§24, user choice); branch `feat/spec3-organization-onboarding`.
-- Next: plan (4 tasks per spec §14) → implementer #1 Tasks 1–2 (API), implementer #2 Tasks 3–4 (web + docs), Sonnet 5.5 for all code-writing sub-agents → one Opus review → one Sonnet fix wave → user merge decision.
+- Implemented and reviewed (final whole-branch review + fix wave applied). Pre-release gate (not a merge gate): manual check against a real R2 bucket (presigned PUT, HEAD/copy) and Reown AppKit Solana signing per wallet. Next: user merge decision, then Spec 4.
 - Spec 2 leftovers (not blocking): ops form offers "Not approved" for a proven approved application (server 409); skipped review minors M3/M4 (migration edits), phone regex, M9–M13; open: email copy/sender domain, re-apply cooldown.
 
 ## 6. Roadmap after Spec 2
