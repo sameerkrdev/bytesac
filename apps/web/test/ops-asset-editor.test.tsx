@@ -136,3 +136,51 @@ describe("access", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Your role may have been removed");
   });
 });
+
+describe("correcting a draft", () => {
+  const PROVIDER_ID = "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4f11";
+  const route = (status = "DRAFT") => ({
+    id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4f30", instrumentId: ASSET_ID, deploymentId: DEPLOYMENT_ID, providerId: PROVIDER_ID, venue: "Jupiter", method: "swap", processingModel: "sync",
+    settlementInstrumentId: null, minimumAmount: null, notes: null, status, approvedByUserId: null, createdAt: "2026-09-30T00:00:00.000Z", updatedAt: "2026-09-30T00:00:00.000Z",
+  }) as unknown as OpsAssetDetail["routes"][number];
+
+  it("a reviewer edits a draft deployment's decimals", async () => {
+    const client = editor(asset(), { opsUpdateDeployment: vi.fn().mockResolvedValue(asset()) }, ["ops_reviewer"]);
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const decimals = screen.getAllByLabelText("Decimals")[0]!; // the edit form renders above the add form
+    await userEvent.clear(decimals);
+    await userEvent.type(decimals, "18");
+    await userEvent.click(screen.getByRole("button", { name: "Save deployment" }));
+    expect(client.opsUpdateDeployment).toHaveBeenCalledWith(ASSET_ID, DEPLOYMENT_ID, { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 18, sourceUrl: null });
+  });
+
+  it("a reviewer edits a draft route's venue", async () => {
+    const client = editor(asset({ routes: [route()] }), { opsUpdateRoute: vi.fn().mockResolvedValue(asset()) }, ["ops_reviewer"]);
+    const edit = await screen.findAllByRole("button", { name: "Edit" });
+    await userEvent.click(edit.at(-1)!);
+    const venue = await screen.findByLabelText("Venue", { selector: "input[id$='-e-venue']" });
+    await userEvent.clear(venue);
+    await userEvent.type(venue, "Orca");
+    await userEvent.click(screen.getByRole("button", { name: "Save route" }));
+    expect(client.opsUpdateRoute).toHaveBeenCalledWith(ASSET_ID, route().id, { providerId: PROVIDER_ID, deploymentId: DEPLOYMENT_ID, venue: "Orca", minimumAmount: null });
+  });
+
+  it("offers no edit once approved, or while the asset is under review", async () => {
+    editor(asset({ deployments: [deployment({ status: "ACTIVE" })], routes: [route("ACTIVE")] }));
+    await screen.findByText("Matches chain");
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("offers no edit while the asset is under review", async () => {
+    editor(asset({ status: "UNDER_REVIEW", routes: [route()] }));
+    await screen.findByText("Matches chain");
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("saves instrument links from the details form", async () => {
+    const client = editor(asset(), { opsUpdateAsset: vi.fn().mockResolvedValue(asset()) });
+    await userEvent.type(await screen.findByLabelText(/^Links/), "Site | https://circle.com");
+    await userEvent.click(screen.getByRole("button", { name: "Save details" }));
+    expect(client.opsUpdateAsset).toHaveBeenCalledWith(ASSET_ID, expect.objectContaining({ links: [{ label: "Site", url: "https://circle.com" }] }));
+  });
+});

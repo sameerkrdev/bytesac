@@ -2,7 +2,7 @@
 
 import type { ApiClient } from "@repo/api-client";
 import { ASSET_ITEM_STATUS_LABEL } from "@repo/app-core";
-import { ASSET_CHAINS, assetProviderKindSchema, createRouteRequestSchema, executionMethodSchema, processingModelSchema } from "@repo/validator";
+import { ASSET_CHAINS, assetProviderKindSchema, createRouteRequestSchema, executionMethodSchema, processingModelSchema, updateRouteRequestSchema } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { AssetError, ItemActions, type SectionProps } from "./asset-ui";
 
-type Client = Pick<ApiClient, "opsCreateRoute" | "opsAssetItemAction" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets">;
+type Client = Pick<ApiClient, "opsCreateRoute" | "opsUpdateRoute" | "opsAssetItemAction" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets">;
 const blank = { providerId: "", deploymentId: "", method: "swap", venue: "", settlementInstrumentId: "", minimumAmount: "", processingModel: "sync", notes: "" };
 
 export function AssetRoutes({ a, locked, isAdmin, onChange, client = api }: SectionProps & { client?: Client }) {
@@ -34,7 +34,14 @@ export function AssetRoutes({ a, locked, isAdmin, onChange, client = api }: Sect
   });
   const create = useMutation({ mutationFn: (b: Parameters<Client["opsCreateRoute"]>[1]) => client.opsCreateRoute(a.id, b), onSuccess: (d) => { setF(blank); onChange(d); } });
   const act = useMutation({ mutationFn: (v: { rid: string; action: Parameters<Client["opsAssetItemAction"]>[3] }) => client.opsAssetItemAction(a.id, "routes", v.rid, v.action), onSuccess: onChange });
-  const error = [createProvider, create, act].find((m) => m.isError)?.error ?? providers.error ?? instruments.error;
+  const [editing, setEditing] = useState<string | null>(null);
+  const [edit, setEdit] = useState({ providerId: "", deploymentId: "", venue: "", minimumAmount: "" });
+  const [editInvalid, setEditInvalid] = useState<string | null>(null);
+  const update = useMutation({
+    mutationFn: (v: { rid: string; body: Parameters<Client["opsUpdateRoute"]>[2] }) => client.opsUpdateRoute(a.id, v.rid, v.body),
+    onSuccess: (d) => { setEditing(null); onChange(d); },
+  });
+  const error = [createProvider, create, update, act].find((m) => m.isError)?.error ?? providers.error ?? instruments.error;
   const live = a.deployments.filter((d) => d.status !== "RETIRED");
   const providerName = (pid: string) => providers.data?.find((p) => p.id === pid)?.name ?? "Provider";
   const settlement = (iid: string | null) => instruments.data?.items.find((i) => i.id === iid)?.symbol;
@@ -57,6 +64,36 @@ export function AssetRoutes({ a, locked, isAdmin, onChange, client = api }: Sect
                   {r.settlementInstrumentId && ` · settles in ${settlement(r.settlementInstrumentId) ?? "another asset"}`}{r.minimumAmount && ` · minimum ${r.minimumAmount}`}
                 </p>
                 {r.notes && <p className="whitespace-pre-wrap text-xs text-stone">{r.notes}</p>}
+                {r.status === "DRAFT" && !locked && editing !== r.id && (
+                  <Button type="button" variant="secondary" className="min-h-11" onClick={() => { setEdit({ providerId: r.providerId, deploymentId: r.deploymentId, venue: r.venue, minimumAmount: r.minimumAmount ?? "" }); setEditInvalid(null); setEditing(r.id); }}>Edit</Button>
+                )}
+                {editing === r.id && !locked && (
+                  <form noValidate className="grid max-w-xl gap-3 rounded-xl border border-border-dark p-3" onSubmit={(e) => {
+                    e.preventDefault();
+                    const parsed = updateRouteRequestSchema.safeParse({ ...edit, minimumAmount: edit.minimumAmount.trim() || null });
+                    if (!parsed.success) return setEditInvalid("Choose a provider and a deployment, name the venue, and enter the minimum as a plain number.");
+                    setEditInvalid(null);
+                    update.mutate({ rid: r.id, body: parsed.data });
+                  }}>
+                    <Label htmlFor={`${id}-e-prov`} className="text-xs font-medium text-ivory">Provider</Label>
+                    <Select id={`${id}-e-prov`} value={edit.providerId} onChange={(e) => setEdit({ ...edit, providerId: e.target.value })}>
+                      {providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </Select>
+                    <Label htmlFor={`${id}-e-dep`} className="text-xs font-medium text-ivory">Deployment</Label>
+                    <Select id={`${id}-e-dep`} value={edit.deploymentId} onChange={(e) => setEdit({ ...edit, deploymentId: e.target.value })}>
+                      {live.map((x) => <option key={x.id} value={x.id}>{ASSET_CHAINS[x.chain].label} · {x.address ?? "native"}</option>)}
+                    </Select>
+                    <Label htmlFor={`${id}-e-venue`} className="text-xs font-medium text-ivory">Venue</Label>
+                    <Input id={`${id}-e-venue`} className="min-h-11 bg-space text-ivory" value={edit.venue} onChange={(e) => setEdit({ ...edit, venue: e.target.value })} />
+                    <Label htmlFor={`${id}-e-min`} className="text-xs font-medium text-ivory">Minimum amount (optional)</Label>
+                    <Input id={`${id}-e-min`} inputMode="decimal" className="min-h-11 bg-space text-ivory" value={edit.minimumAmount} onChange={(e) => setEdit({ ...edit, minimumAmount: e.target.value })} />
+                    {editInvalid && <p role="alert" className="text-sm text-danger">{editInvalid}</p>}
+                    <div className="flex gap-2">
+                      <Button type="submit" className="min-h-11" disabled={update.isPending}>Save route</Button>
+                      <Button type="button" variant="secondary" className="min-h-11" onClick={() => setEditing(null)}>Cancel</Button>
+                    </div>
+                  </form>
+                )}
                 {isAdmin && <div className="flex flex-wrap gap-2"><ItemActions status={r.status} disabled={locked} pending={act.isPending} onAct={(action) => act.mutate({ rid: r.id, action })} /></div>}
               </li>
             );

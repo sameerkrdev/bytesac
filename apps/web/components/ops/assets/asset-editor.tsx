@@ -16,8 +16,8 @@ import { AssetRoutes } from "./asset-routes";
 import { AssetRules } from "./asset-rules";
 
 type Client = Pick<ApiClient,
-  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction"
-  | "opsCreateRoute" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets" | "opsCreateRule" | "opsUpdateRule"
+  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction"
+  | "opsCreateRoute" | "opsUpdateRoute" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets" | "opsCreateRule" | "opsUpdateRule"
   | "opsPutPriceReference" | "opsRecordNav" | "opsSubmitAsset" | "opsDecideAsset" | "opsAssetAction">;
 
 export function AssetEditor({ id, client = api }: { id: string; client?: Client }) {

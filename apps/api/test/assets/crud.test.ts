@@ -132,6 +132,37 @@ describe("deployments", () => {
   });
 });
 
+describe("fix wave", () => {
+  it("a manual deployment source URL and an RWA issuer lock after approval", async () => {
+    const r = await reviewer();
+    const id = await mkAsset(r.h, { name: "Fund", symbol: "FND", assetType: "TOKENIZED_TREASURY", issuerId: await mkIssuer(r.h) });
+    const did = await mkDeployment(r.h, id, { chain: "bitcoin", tokenStandard: "native", address: undefined, decimals: 8, sourceUrl: "https://bitcoin.org" });
+    await setStatus("instrument_deployments", did, "APPROVED");
+    await setStatus("instruments", id, "ACTIVE");
+    const path = `/v1/ops/assets/${id}/deployments/${did}`;
+    for (const sourceUrl of ["https://other.example", null]) {
+      const res = await patch(r.h, path, { sourceUrl });
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe(LOCKED);
+    }
+    expect((await get(r.h, `/v1/ops/assets/${id}`)).body.deployments[0].sourceUrl).toBe("https://bitcoin.org");
+    expect((await patch(r.h, `/v1/ops/assets/${id}`, { issuerId: null })).status).toBe(409);
+  });
+
+  it("a route cannot use a retired deployment, and one on a retired deployment does not satisfy the route requirement", async () => {
+    const r = await reviewer();
+    const id = await mkAsset(r.h, { name: "Fund", symbol: "FND", assetType: "TOKENIZED_TREASURY" });
+    const did = await mkDeployment(r.h, id);
+    const provider = await mkProvider(r.h);
+    await mkRoute(r.h, id, did, provider);
+    expect((await get(r.h, `/v1/ops/assets/${id}`)).body.missing).not.toContain("route");
+    await setStatus("instrument_deployments", did, "RETIRED");
+    expect((await get(r.h, `/v1/ops/assets/${id}`)).body.missing).toContain("route");
+    const res = await post(r.h, `/v1/ops/assets/${id}/routes`, { deploymentId: did, providerId: provider, venue: "Jupiter", method: "swap", processingModel: "sync" });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("routes, rules, prices", () => {
   it("a route needs a deployment of the same instrument and existing references", async () => {
     const r = await reviewer();

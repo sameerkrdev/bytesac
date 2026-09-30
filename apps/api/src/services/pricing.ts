@@ -16,7 +16,7 @@ export async function getPrices(instrumentIds: string[]): Promise<PriceView[]> {
   if (!instrumentIds.length) return [];
   const refs = await db.select().from(priceReferences).where(and(inArray(priceReferences.instrumentId, instrumentIds), eq(priceReferences.status, "ACTIVE")));
   const market = refs.filter((r) => r.kind === "market");
-  const cached = market.length ? await redis.mget(market.map((r) => `price:cmc:${r.externalId}`)) : [];
+  const cached = market.length ? await redis.mget(market.map((r) => `price:cmc:${r.externalId}`)).catch(() => []) : [];
   const quotes = new Map<string, { value: string; observedAt: string }>();
   market.forEach((r, i) => { const hit = cached[i]; if (hit) quotes.set(r.externalId!, JSON.parse(hit)); });
   const missing = [...new Set(market.map((r) => r.externalId!).filter((cmcId) => !quotes.has(cmcId)))];

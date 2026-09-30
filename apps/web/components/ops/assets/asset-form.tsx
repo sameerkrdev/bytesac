@@ -97,9 +97,9 @@ export function CreateAssetForm({ client = api }: { client?: IssuerClient & Pick
 /** Symbol and type are locked once the instrument is approved (the API refuses the change). */
 export function AssetDetailsForm({ a, locked, onChange, client = api }: { a: OpsAssetDetail; locked: boolean; onChange(d: OpsAssetDetail): void; client?: IssuerClient & Pick<ApiClient, "opsUpdateAsset"> }) {
   const id = useId();
-  const [f, setF] = useState({ name: a.name, symbol: a.symbol, issuerId: a.issuerId ?? "", description: a.description ?? "", riskNotes: a.riskNotes ?? "" });
+  const [f, setF] = useState({ name: a.name, symbol: a.symbol, issuerId: a.issuerId ?? "", description: a.description ?? "", riskNotes: a.riskNotes ?? "", links: a.links.map((l) => `${l.label} | ${l.url}`).join("\n") });
   const identityLocked = a.status !== "DRAFT" && a.status !== "CHANGES_REQUIRED";
-  const save = useMutation({ mutationFn: () => client.opsUpdateAsset(a.id, { name: f.name.trim(), issuerId: f.issuerId || null, description: f.description.trim(), riskNotes: f.riskNotes.trim(), ...(identityLocked ? {} : { symbol: f.symbol.trim() }) }), onSuccess: onChange });
+  const save = useMutation({ mutationFn: () => client.opsUpdateAsset(a.id, { name: f.name.trim(), issuerId: f.issuerId || null, description: f.description.trim(), riskNotes: f.riskNotes.trim(), links: f.links.split("\n").filter((l) => l.trim()).map((l) => { const [label = "", ...url] = l.split("|"); return { label: label.trim(), url: url.join("|").trim() }; }), ...(identityLocked ? {} : { symbol: f.symbol.trim() }) }), onSuccess: onChange });
   const lock = <span title="Locked after approval" className="inline-flex items-center gap-1 text-xs text-stone"><Lock aria-hidden className="size-3.5" />Locked after approval</span>;
 
   return (
@@ -127,6 +127,10 @@ export function AssetDetailsForm({ a, locked, onChange, client = api }: { a: Ops
         <div className="space-y-2">
           <Label htmlFor={`${id}-risk`} className="text-xs font-medium text-ivory">Risk notes</Label>
           <Textarea id={`${id}-risk`} value={f.riskNotes} maxLength={2000} disabled={locked} onChange={(e) => setF({ ...f, riskNotes: e.target.value })} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${id}-links`} className="text-xs font-medium text-ivory">Links (one per line: label | https://url, up to 10)</Label>
+          <Textarea id={`${id}-links`} value={f.links} disabled={locked} onChange={(e) => setF({ ...f, links: e.target.value })} />
         </div>
         {!locked && <Button type="submit" className="min-h-11 w-fit" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save details</Button>}
       </form>

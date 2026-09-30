@@ -76,7 +76,7 @@ export async function missingRequirements(conn: DbOrTx, instrumentId: string): P
   const problems = deployments.map(deploymentProblem);
   const [market] = await conn.select({ id: priceReferences.id }).from(priceReferences).where(and(eq(priceReferences.instrumentId, instrumentId), eq(priceReferences.kind, "market"), eq(priceReferences.status, "ACTIVE")));
   const isRwa = RWA_ASSET_TYPES.includes(inst.assetType);
-  const [route] = isRwa ? await conn.select({ id: executionRoutes.id }).from(executionRoutes).where(and(eq(executionRoutes.instrumentId, instrumentId), ne(executionRoutes.status, "RETIRED"))).limit(1) : [];
+  const [route] = isRwa ? await conn.select({ id: executionRoutes.id }).from(executionRoutes).innerJoin(instrumentDeployments, eq(instrumentDeployments.id, executionRoutes.deploymentId)).where(and(eq(executionRoutes.instrumentId, instrumentId), ne(executionRoutes.status, "RETIRED"), ne(instrumentDeployments.status, "RETIRED"))).limit(1) : [];
   const [rule] = isRwa ? await conn.select({ id: eligibilityRules.id }).from(eligibilityRules).where(and(eq(eligibilityRules.instrumentId, instrumentId), eq(eligibilityRules.status, "ACTIVE"))).limit(1) : [];
   return [
     deployments.length === 0 && "deployment",
@@ -220,7 +220,7 @@ export async function createInstrument(ctx: OpsCtx, body: CreateInstrumentReques
 export async function updateInstrument(ctx: OpsCtx, id: string, body: UpdateInstrumentRequest): Promise<OpsAssetDetail> {
   await db.transaction(async (tx) => {
     const row = await lockEditable(tx, id);
-    if (row.status !== "DRAFT" && row.status !== "CHANGES_REQUIRED" && ((body.assetType && body.assetType !== row.assetType) || (body.symbol && body.symbol !== row.symbol))) throw invalid(LOCKED);
+    if (row.status !== "DRAFT" && row.status !== "CHANGES_REQUIRED" && ((body.assetType && body.assetType !== row.assetType) || (body.symbol && body.symbol !== row.symbol) || (body.issuerId === null && RWA_ASSET_TYPES.includes(row.assetType)))) throw invalid(LOCKED);
     await assertIssuer(tx, body.issuerId);
     await tx.update(instruments).set({ ...body, updatedAt: sql`now()` }).where(eq(instruments.id, id));
     await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "instrument", entityId: id, kind: "updated", metadata: { fields: Object.keys(body) } });
@@ -274,7 +274,7 @@ async function changeDeployment(ctx: OpsCtx, id: string, did: string, patch: Upd
   if (kind === "verified") {
     if (pre.status !== "DRAFT") throw invalid("Only a draft deployment can be re-verified.");
     if (pre.verification !== "onchain") throw invalid("This deployment is verified manually.");
-  } else if (pre.status !== "DRAFT" && (identityChanged || next.decimals !== pre.decimals)) {
+  } else if (pre.status !== "DRAFT" && (identityChanged || next.decimals !== pre.decimals || (pre.verification === "manual" && (next.sourceUrl ?? null) !== pre.sourceUrl))) {
     throw invalid(LOCKED);
   }
   const observed = identityChanged || kind === "verified" ? await observe(next.chain, next.tokenStandard, address) : {};
@@ -303,7 +303,7 @@ export async function verifyDeployment(ctx: OpsCtx, id: string, did: string): Pr
 
 async function assertRouteRefs(tx: Tx, instrumentId: string, refs: { deploymentId?: string; providerId?: string; settlementInstrumentId?: string | null }): Promise<void> {
   if (refs.deploymentId) {
-    const [d] = await tx.select({ id: instrumentDeployments.id }).from(instrumentDeployments).where(and(eq(instrumentDeployments.id, refs.deploymentId), eq(instrumentDeployments.instrumentId, instrumentId)));
+    const [d] = await tx.select({ id: instrumentDeployments.id }).from(instrumentDeployments).where(and(eq(instrumentDeployments.id, refs.deploymentId), eq(instrumentDeployments.instrumentId, instrumentId), ne(instrumentDeployments.status, "RETIRED")));
     if (!d) throw notFound("Deployment");
   }
   if (refs.providerId) {

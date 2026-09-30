@@ -87,6 +87,14 @@ describe("market prices", () => {
     expect(detail.body.prices[0].status).toBe("unavailable");
   });
 
+  it("a Redis read failure is a cache miss, not an error", async () => {
+    const r = await reviewer();
+    const id = await withMarket(r.h, "1");
+    fakes.cmc.quotes.set("1", quote("7"));
+    vi.spyOn(redis, "mget").mockRejectedValueOnce(new Error("redis down"));
+    expect((await getPrices([id]))[0]).toMatchObject({ status: "ok", value: "7" });
+  });
+
   it("an id the provider does not return is unavailable for that instrument only", async () => {
     const r = await reviewer();
     const a = await withMarket(r.h, "1");
