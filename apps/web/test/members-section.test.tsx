@@ -12,7 +12,7 @@ const client = (members: ListMembersResponse["members"], over: Record<string, un
   inviteOrganizationMember: vi.fn(), cancelMemberInvite: vi.fn(), changeMemberRole: vi.fn(), removeMember: vi.fn(), confirmMemberRemoval: vi.fn(), cancelMemberRemoval: vi.fn(), ...over,
 });
 const show = (role: Parameters<typeof asRole>[0], c: ReturnType<typeof client>) =>
-  render(<QueryClientProvider client={new QueryClient()}><Members org={asRole(role)} client={c} /></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient()}><Members org={asRole(role, { status: "VERIFIED" })} client={c} /></QueryClientProvider>);
 
 const people = () => [
   memberView({ role: "OWNER", isSelf: true, publicDisplayName: "Olga" }),
@@ -134,6 +134,32 @@ describe("Destructive actions", () => {
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm removal" }));
     expect(c.confirmMemberRemoval).toHaveBeenCalledWith(expect.any(String), adam.id);
+  });
+
+  it("a pending membership can be withdrawn through the same remove call", async () => {
+    const pending = memberView({ role: "MANAGER", status: "UNDER_REVIEW" });
+    const c = client([pending], { removeMember: vi.fn().mockResolvedValue({ members: [] }) });
+    show("ADMIN", c);
+    await userEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Withdraw membership" }));
+    expect(c.removeMember).toHaveBeenCalledWith(expect.any(String), pending.id);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Withdraw" })).toBeNull());
+  });
+
+  it("an ADMIN cannot withdraw a pending ADMIN or change a pending ADMIN promotion; the OWNER can withdraw", async () => {
+    const people = [memberView({ role: "ADMIN", status: "PENDING_DOCUMENTS" }), memberView({ role: "VIEWER", requestedRole: "ADMIN", publicDisplayName: "Vic" })];
+    show("ADMIN", client(people));
+    await screen.findByText("Vic");
+    expect(screen.queryByRole("button", { name: /Withdraw|^Remove$|Request removal/ })).toBeNull();
+    expect(screen.queryByLabelText(/Role for/)).toBeNull();
+    show("OWNER", client(people));
+    expect(await screen.findByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+  });
+
+  it("the invite form waits for a verified organization", async () => {
+    render(<QueryClientProvider client={new QueryClient()}><Members org={asRole("OWNER", { status: "SUBMITTED" })} client={client(people())} /></QueryClientProvider>);
+    await screen.findByText("Olga (you)");
+    expect(screen.queryByRole("form", { name: "Invite a member" })).toBeNull();
   });
 
   it("changing a role applies the chosen role", async () => {

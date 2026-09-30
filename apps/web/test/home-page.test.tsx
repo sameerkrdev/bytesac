@@ -22,7 +22,7 @@ describe("Home manager card", () => {
     expect(screen.queryByRole("link", { name: "Become a fund manager" })).toBeNull();
   });
   it("with an organization shows its status and links to the workspace", () => {
-    home(me(["create_manager_organization"], [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", role: "OWNER", status: "UNDER_REVIEW", membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus: "ACTIVE" }]));
+    home(me(["create_manager_organization"], [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: null, role: "OWNER", status: "UNDER_REVIEW", membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus: "ACTIVE" }]));
     expect(screen.getByText("Under review")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Your organization/ })).toHaveAttribute("href", "/organization");
   });

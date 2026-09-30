@@ -9,7 +9,7 @@ import { validate } from "../middleware/validate";
 import {
   confirmMemberDocument, getMemberVerification, presignMemberDocument, submitMemberVerification, unlinkMemberDocument, updateMemberVerification,
 } from "../services/member-verifications";
-import { acceptInvitation, declineInvitation, leaveOrganization, myMembershipView, updateMembershipProfile } from "../services/members";
+import { acceptInvitation, declineInvitation, expireInvites, leaveOrganization, myMembershipView, updateMembershipProfile } from "../services/members";
 import { db, organizationMemberships } from "@repo/db";
 import { and, eq } from "drizzle-orm";
 import createHttpError from "http-errors";
@@ -26,6 +26,7 @@ membershipsRouter.use(requireSession, async (req, _res, next) => {
 });
 
 membershipsRouter.get("/:mid", validate({ params: midParam }), async (req, res) => {
+  await db.transaction((tx) => expireInvites(tx, and(eq(organizationMemberships.id, req.params.mid as string), eq(organizationMemberships.userId, req.auth!.userId))!, req.ctx.requestId));
   const [m] = await db.select().from(organizationMemberships).where(and(eq(organizationMemberships.id, req.params.mid as string), eq(organizationMemberships.userId, req.auth!.userId)));
   if (!m) throw createHttpError(404, "Membership not found", { code: "NOT_FOUND" });
   res.json(myMembershipView(m));

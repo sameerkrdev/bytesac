@@ -90,7 +90,7 @@ describe("every organization route honors the role matrix", () => {
     expect(owner.body.members.some((m: { invitedWallet: unknown }) => m.invitedWallet !== null)).toBe(true);
     const viewer = await request(app).get(`/v1/organizations/${orgId}/members`).set(actors.VIEWER.h);
     expect(viewer.body.members.length).toBeGreaterThan(1);
-    for (const m of viewer.body.members) expect(m).toMatchObject({ invitedWallet: null, invitedEmail: null });
+    for (const m of viewer.body.members) expect(m).toMatchObject({ invitedWallet: null, invitedEmail: null, verificationStatus: null });
   });
 });
 
@@ -107,6 +107,14 @@ describe("crafted requests against the OWNER and other ADMINs change nothing", (
     expect(await rowOf(otherAdmin.mid)).toMatchObject({ role: "ADMIN", status: "ACTIVE" });
     expect(await rowOf(actors.OWNER.mid)).toMatchObject({ role: "OWNER", status: "ACTIVE" });
     expect((await rowOf(target.mid)).role).not.toBe("ADMIN");
+  });
+
+  it("an ADMIN cannot cancel or replace the OWNER's pending ADMIN promotion", async () => {
+    const viewer = await addMember(app, orgId, "VIEWER");
+    await memberAction(app, actors.OWNER.h, orgId, viewer.mid, "role", { role: "ADMIN" });
+    expect(await rowOf(viewer.mid)).toMatchObject({ role: "VIEWER", requested_role: "ADMIN" });
+    expect((await memberAction(app, actors.ADMIN.h, orgId, viewer.mid, "role", { role: "ANALYST" })).status).toBe(403);
+    expect(await rowOf(viewer.mid)).toMatchObject({ role: "VIEWER", requested_role: "ADMIN" });
   });
 
   it("ADMIN removing an ADMIN only requests the removal; the OWNER confirms or cancels", async () => {

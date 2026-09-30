@@ -32,7 +32,7 @@ describe("create", () => {
     expect(m).toMatchObject({ userId: u.userId, role: "OWNER", status: "ACTIVE" });
     expect(m!.activatedAt).toBeTruthy();
     expect((await db.select().from(auditEvents).where(eq(auditEvents.action, "organization.created")))[0]).toMatchObject({ entityId: res.body.id, actorUserId: u.userId });
-    expect((await request(app).get("/v1/organizations/mine").set(u.h)).body.organizations).toEqual([{ id: res.body.id, type: "firm", status: "DRAFT", jurisdiction: "GB", role: "OWNER", membershipId: m!.id, membershipStatus: "ACTIVE" }]);
+    expect((await request(app).get("/v1/organizations/mine").set(u.h)).body.organizations).toEqual([{ id: res.body.id, type: "firm", status: "DRAFT", jurisdiction: "GB", displayName: null, role: "OWNER", membershipId: m!.id, membershipStatus: "ACTIVE" }]);
   });
 
   it("allows one open organization; a rejected one frees the slot", async () => {

@@ -58,7 +58,7 @@ export async function getOrganizationForReview(id: string): Promise<Organization
   const members = await db.select({
     id: organizationMemberships.id, role: organizationMemberships.role, status: organizationMemberships.status, publicDisplayName: organizationMemberships.publicDisplayName,
     // Same rule as transferOwnership (hasApprovedVerification); drizzle leaves a column of a single-table select unqualified, so the outer column is written out.
-    verificationApproved: sql<boolean>`exists (select 1 from app.member_verifications mv join app.organization_memberships om on om.id = mv.membership_id where om.organization_id = ${id} and om.user_id = "app"."organization_memberships"."user_id" and mv.status = 'approved')`,
+    verificationApproved: sql<boolean>`exists (select 1 from app.member_verifications mv where mv.membership_id = "app"."organization_memberships"."id" and mv.status = 'approved')`,
   }).from(organizationMemberships)
     .where(and(eq(organizationMemberships.organizationId, id), notInArray(organizationMemberships.status, ["REJECTED", "REVOKED"])))
     .orderBy(organizationMemberships.joinedAt, organizationMemberships.id);

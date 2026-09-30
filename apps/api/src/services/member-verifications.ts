@@ -11,7 +11,7 @@ import {
 import { consume, limits } from "../middleware/rate-limit";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
-import { hasApprovedVerification, moveMembership, notifyMember, orgDisplayName } from "./members";
+import { closeOpenVerification, hasApprovedVerification, moveMembership, notifyMember, orgDisplayName } from "./members";
 import { PAGE_SIZE, assertNotMember, downloadUrl } from "./organization-review";
 import { mergeDetails, missingFromTemplate, presignUpload, resolveTemplate, storeUpload, type OwnerCtx } from "./organizations";
 
@@ -85,6 +85,9 @@ export async function updateMemberVerification(ctx: OwnerCtx, mid: string, body:
 
 export async function presignMemberDocument(ctx: OwnerCtx, mid: string, body: PresignDocumentRequest): Promise<PresignDocumentResponse> {
   const { m } = await lockEditableVerification(db, ctx, mid);
+  if (!(await memberTemplate(db, m.organizationId)).requiredDocuments.includes(body.documentType)) {
+    throw createHttpError("This document type is not part of the member verification.", { code: "VALIDATION_FAILED", details: { fields: ["documentType"] } });
+  }
   await consume(limits.memberDocumentPresign, mid);
   return presignUpload({ organizationId: m.organizationId, membershipId: mid, key: (documentId) => `incoming/members/${mid}/${documentId}`, userId: ctx.userId, body });
 }
@@ -191,11 +194,12 @@ export async function listMembersForReview(q: ListMemberReviewQuery): Promise<Li
   };
 }
 
-export async function getMemberForReview(mid: string): Promise<MemberReviewDetail> {
+export async function getMemberForReview(ctx: OpsCtx, mid: string): Promise<MemberReviewDetail> {
   const [row] = await db.select({ m: organizationMemberships, org: organizations, name: orgDisplayName }).from(organizationMemberships)
     .innerJoin(organizations, eq(organizations.id, organizationMemberships.organizationId)).where(eq(organizationMemberships.id, mid));
   if (!row) throw notFound();
   const { m } = row;
+  await assertNotMember(db, ctx.userId, m.organizationId);
   const v = await latestVerification(db, m.id);
   const events = await db.select().from(membershipEvents).where(eq(membershipEvents.membershipId, mid)).orderBy(membershipEvents.createdAt, membershipEvents.id);
   const addresses = m.userId ? await db.select({ chain: walletAddresses.chain, address: walletAddresses.address }).from(walletAddresses)
@@ -244,7 +248,7 @@ export async function decideMemberVerification(ctx: OpsCtx, mid: string, i: Deci
     return { m, key: `member-verification/${v.id}/${i.decision}/${v.submittedAt?.getTime()}` };
   });
   await notifyMember(DECISION_EMAIL[i.decision], { userId: m.userId! }, { orgId: m.organizationId, message: i.messageToMember }, key);
-  return getMemberForReview(mid);
+  return getMemberForReview(ctx, mid);
 }
 
 /** Short-lived attachment link to a member's stored file. Reviewers who belong to the organization cannot download it. */
@@ -270,9 +274,10 @@ export async function transferOwnership(ctx: OpsCtx, orgId: string, i: TransferO
     const [owner] = await tx.select().from(organizationMemberships).where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.role, "OWNER"), eq(organizationMemberships.status, "ACTIVE"))).for("update");
     const [target] = await tx.select().from(organizationMemberships).where(and(eq(organizationMemberships.id, i.targetMembershipId), eq(organizationMemberships.organizationId, orgId))).for("update");
     if (!owner || !target || target.id === owner.id || target.status !== "ACTIVE") throw invalid("Pick an active member of this organization.");
-    if (!(await hasApprovedVerification(tx, orgId, target.userId!))) throw invalid("This member must complete verification first.");
+    if (!(await hasApprovedVerification(tx, target.id))) throw invalid("This member must complete verification first.");
     await tx.update(organizationMemberships).set({ role: "ADMIN", updatedAt: sql`now()` }).where(eq(organizationMemberships.id, owner.id));
     await tx.update(organizationMemberships).set({ role: "OWNER", requestedRole: null, updatedAt: sql`now()` }).where(eq(organizationMemberships.id, target.id));
+    await closeOpenVerification(tx, target.id);
     const events = await tx.insert(membershipEvents).values([owner, target].map((m, n) => ({
       membershipId: m.id, organizationId: orgId, actorType: "ops" as const, actorUserId: ctx.userId, kind: "ownership_transferred" as const, fromStatus: m.status, toStatus: m.status,
       fromRole: m.role, toRole: n === 0 ? "ADMIN" as const : "OWNER" as const, reason: i.reason, requestId: ctx.meta.requestId,

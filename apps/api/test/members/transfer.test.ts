@@ -82,6 +82,19 @@ describe("ownership transfer", () => {
     expect((await transfer(admin.h, "00000000-0000-4000-8000-000000000000", { targetMembershipId: unverified.mid, reason: REASON })).status).toBe(404);
   });
 
+  it("an approval on a past membership does not make the current one eligible", async () => {
+    const owner = await orgWithOwner(app);
+    const admin = await opsUser(app, "ops_admin");
+    const old = await eligible(owner.id);
+    await adminSql`UPDATE app.organization_memberships SET status = 'REVOKED' WHERE id = ${old.mid}`;
+    const [again] = await adminSql<{ id: string }[]>`INSERT INTO app.organization_memberships (id, organization_id, user_id, role, status, activated_at) VALUES (gen_random_uuid(), ${owner.id}, ${old.userId}, 'ADMIN', 'ACTIVE', now()) RETURNING id`;
+    const res = await transfer(admin.h, owner.id, { targetMembershipId: again!.id, reason: REASON });
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toBe("This member must complete verification first.");
+    const review = await request(app).get(`/v1/ops/organizations/${owner.id}`).set(admin.h);
+    expect(review.body.members.find((m: { id: string }) => m.id === again!.id)).toMatchObject({ verificationApproved: false });
+  });
+
   it("an ops_admin who belongs to the organization cannot transfer it", async () => {
     const owner = await orgWithOwner(app);
     const target = await eligible(owner.id);

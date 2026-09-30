@@ -20,6 +20,7 @@ type EventKind = typeof membershipEvents.$inferInsert.kind;
 
 const INVITE_OPEN: MembershipStatus[] = ["PENDING_WALLET_VERIFICATION", "INVITED"];
 const TERMINAL: MembershipStatus[] = ["REJECTED", "REVOKED"];
+const WITHDRAWABLE: MembershipStatus[] = ["PENDING_DOCUMENTS", "UNDER_REVIEW", "CHANGES_REQUIRED"];
 const DECLINABLE: MembershipStatus[] = ["INVITED", "PENDING_DOCUMENTS", "CHANGES_REQUIRED"];
 
 export const notFound = () => createHttpError("Organization not found", { code: "NOT_FOUND" });
@@ -59,11 +60,17 @@ const guardRoles = (actor: MembershipRow, ...roles: MembershipRow["role"][]) => 
 
 const isReviewed = (role: MembershipRow["role"]) => (REVIEWED_ROLES as readonly string[]).includes(role);
 
-export async function hasApprovedVerification(conn: DbOrTx, orgId: string, userId: string): Promise<boolean> {
+/** Only an approval of this very membership counts: a past membership's approval (leave, re-invite) does not carry over. */
+export async function hasApprovedVerification(conn: DbOrTx, membershipId: string): Promise<boolean> {
   const [v] = await conn.select({ id: memberVerifications.id }).from(memberVerifications)
-    .innerJoin(organizationMemberships, eq(organizationMemberships.id, memberVerifications.membershipId))
-    .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.userId, userId), eq(memberVerifications.status, "approved"))).limit(1);
+    .where(and(eq(memberVerifications.membershipId, membershipId), eq(memberVerifications.status, "approved"))).limit(1);
   return v !== undefined;
+}
+
+/** Closes the membership's open verification without an approval (role downgrade, withdrawal, leaving): it can never be approved later without a fresh one. */
+export async function closeOpenVerification(tx: Tx, membershipId: string): Promise<void> {
+  await tx.update(memberVerifications).set({ status: "rejected", decidedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(eq(memberVerifications.membershipId, membershipId), inArray(memberVerifications.status, ["draft", "in_review", "changes_required"])));
 }
 
 /** Idempotent: a membership has at most one open verification, so an existing one is kept. */
@@ -93,6 +100,7 @@ export async function moveMembership(tx: Tx, m: MembershipRow, to: MembershipSta
     ...(to === "ACTIVE" && !m.activatedAt ? { activatedAt: sql`now()` } : {}),
     ...(to === "REVOKED" && m.activatedAt ? { leftAt: sql`now()` } : {}),
   }).where(eq(organizationMemberships.id, m.id));
+  if (TERMINAL.includes(to)) await closeOpenVerification(tx, m.id);
   await tx.insert(membershipEvents).values({
     membershipId: m.id, organizationId: m.organizationId, actorType: i.actorType, actorUserId: i.actorUserId, kind: i.kind, fromStatus: m.status, toStatus: to,
     fromRole: m.role, toRole: i.set?.role ?? m.role, decision: i.decision, messageToMember: i.messageToMember, internalNote: i.internalNote, reason: i.reason, requestId: i.requestId,
@@ -104,7 +112,7 @@ export async function moveMembership(tx: Tx, m: MembershipRow, to: MembershipSta
 }
 
 /** Moves open invites matching `scope` whose 14 days ran out to REVOKED (event `expired`). Returns how many. No job: every read or accept of an invite calls this first. */
-async function expireInvites(tx: Tx, scope: SQL, requestId: string): Promise<number> {
+export async function expireInvites(tx: Tx, scope: SQL, requestId: string): Promise<number> {
   const due = await tx.select().from(organizationMemberships)
     .where(and(inArray(organizationMemberships.status, INVITE_OPEN), lte(organizationMemberships.inviteExpiresAt, sql`now()`), scope)).for("update");
   for (const m of due) await moveMembership(tx, m, "REVOKED", { actorType: "system", actorUserId: null, requestId, kind: "expired", action: "membership.invite_expired" });
@@ -147,7 +155,7 @@ export async function listMembers(ctx: OwnerCtx, orgId: string): Promise<ListMem
       id: m.id, role: m.role, requestedRole: m.requestedRole, status: m.status, publicDisplayName: m.publicDisplayName, publicTitle: m.publicTitle,
       isSelf: m.userId === ctx.userId, activatedAt: iso(m.activatedAt), inviteExpiresAt: iso(m.inviteExpiresAt),
       invitedWallet: canManage && m.invitedWalletChain && m.invitedWalletAddress ? { chain: m.invitedWalletChain, address: m.invitedWalletAddress } : null,
-      invitedEmail: canManage ? m.invitedEmail : null, verificationStatus,
+      invitedEmail: canManage ? m.invitedEmail : null, verificationStatus: canManage ? verificationStatus : null,
     })),
   };
 }
@@ -199,16 +207,17 @@ export async function changeRole(ctx: OwnerCtx, orgId: string, mid: string, body
   await db.transaction(async (tx) => {
     const { membership: actor } = await requirePermission(tx, ctx.userId, orgId, "members.manage", true);
     const m = await lockMembership(tx, mid, eq(organizationMemberships.organizationId, orgId));
-    guardRoles(actor, m.role, body.role);
+    guardRoles(actor, m.role, m.requestedRole ?? m.role, body.role); // a pending ADMIN promotion is an ADMIN change in flight
     if (m.status !== "ACTIVE") throw invalid("Only an active member's role can be changed.");
     if (m.role === body.role) throw invalid("The member already has this role.");
     // Moving into a reviewed role needs the member's own approved verification first; until ops approve it the current role's permissions apply.
     const upgrade = isReviewed(body.role) && !isReviewed(m.role)
-      && !(await hasApprovedVerification(tx, orgId, m.userId!));
+      && !(await hasApprovedVerification(tx, m.id));
     await tx.update(organizationMemberships).set(
       upgrade ? { requestedRole: body.role, updatedAt: sql`now()` } : { role: body.role, requestedRole: null, updatedAt: sql`now()` },
     ).where(eq(organizationMemberships.id, m.id));
     if (upgrade) await openMemberVerification(tx, m.id);
+    else await closeOpenVerification(tx, m.id);
     await tx.insert(membershipEvents).values({
       membershipId: m.id, organizationId: orgId, actorType: "org", actorUserId: ctx.userId, kind: upgrade ? "role_requested" : "role_changed",
       fromStatus: m.status, toStatus: m.status, fromRole: m.role, toRole: body.role, requestId: ctx.meta.requestId,
@@ -221,14 +230,19 @@ export async function changeRole(ctx: OwnerCtx, orgId: string, mid: string, body
   return listMembers(ctx, orgId);
 }
 
-/** OWNER removes anyone (except the OWNER); an ADMIN removes non-admins and can only request the removal of another ADMIN. */
+/**
+ * OWNER removes anyone (except the OWNER); an ADMIN removes non-admins and can only request the removal of another ADMIN.
+ * A pending membership (documents, review, changes required) is withdrawn the same way; its open verification is closed. Nobody removes themselves: that is leaving.
+ */
 export async function removeMember(ctx: OwnerCtx, orgId: string, mid: string): Promise<ListMembersResponse> {
   const removed = await db.transaction(async (tx) => {
     const { membership: actor } = await requirePermission(tx, ctx.userId, orgId, "members.manage", true);
     const m = await lockMembership(tx, mid, eq(organizationMemberships.organizationId, orgId));
     if (m.role === "OWNER") guardRoles(actor, "OWNER");
-    if (m.status !== "ACTIVE") throw invalid("Only an active member can be removed.");
-    const request = m.role === "ADMIN" && !ROLE_PERMISSIONS[actor.role].includes("members.manage_admins");
+    if (m.userId === ctx.userId) throw invalid("Use Leave organization.");
+    if (m.status !== "ACTIVE" && !WITHDRAWABLE.includes(m.status)) throw invalid("Only an active or pending member can be removed.");
+    const request = m.status === "ACTIVE" && m.role === "ADMIN" && !ROLE_PERMISSIONS[actor.role].includes("members.manage_admins");
+    if (!request) guardRoles(actor, m.role, m.requestedRole ?? m.role);
     await moveMembership(tx, m, request ? "REMOVAL_REQUESTED" : "REVOKED", {
       actorType: "org", actorUserId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, kind: request ? "removal_requested" : "removed",
       action: request ? "membership.removal_requested" : "membership.removed", set: request ? { removalRequestedByUserId: ctx.userId } : undefined,
@@ -270,7 +284,7 @@ export async function acceptInvitation(ctx: OwnerCtx, mid: string): Promise<MyMe
     const m = await lockMembership(tx, mid, eq(organizationMemberships.userId, ctx.userId));
     if (await expireInvites(tx, eq(organizationMemberships.id, mid), ctx.meta.requestId) > 0) return null;
     if (m.status !== "INVITED") throw invalid(`A membership in ${m.status} cannot be accepted.`);
-    const pending = isReviewed(m.role) && !(await hasApprovedVerification(tx, m.organizationId, ctx.userId));
+    const pending = isReviewed(m.role); // a new invitation is a new membership: earlier approvals do not carry over
     if (pending) await openMemberVerification(tx, m.id);
     await moveMembership(tx, m, pending ? "PENDING_DOCUMENTS" : "ACTIVE", {
       actorType: "member", actorUserId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, kind: "accepted", action: "membership.accepted",
@@ -331,7 +345,7 @@ export async function linkInvitesIfProven(tx: Tx, i: { userId: string; chain: Ch
     eq(organizationMemberships.invitedWalletAddress, i.address),
     gt(organizationMemberships.inviteExpiresAt, sql`now()`),
     i.method === "erc1271" || i.method === "erc6492" ? eq(organizationMemberships.invitedWalletChain, i.chain) : sql`true`,
-  )).for("update");
+  )).orderBy(organizationMemberships.id).for("update");
   for (const m of invites) {
     const [open] = await tx.select({ id: organizationMemberships.id }).from(organizationMemberships).where(and(
       eq(organizationMemberships.organizationId, m.organizationId), eq(organizationMemberships.userId, i.userId),

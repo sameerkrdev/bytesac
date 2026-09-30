@@ -20,6 +20,7 @@ type Confirm = { title: string; description: string; action: string; run(): Prom
 
 const ASSIGNABLE: MembershipRole[] = ["ADMIN", "MANAGER", "ANALYST", "VIEWER"];
 const OPEN_INVITE = ["PENDING_WALLET_VERIFICATION", "INVITED"];
+const PENDING_REVIEW = ["PENDING_DOCUMENTS", "UNDER_REVIEW", "CHANGES_REQUIRED"];
 
 export function Members({ org, client = api }: { org: OrganizationDetail; client?: Client }) {
   const id = useId();
@@ -53,7 +54,7 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
 
   const actError = act.isError && <p role="alert" className="text-sm text-danger"><span className="font-medium">{toDisplayError(act.error).title}</span> {toDisplayError(act.error).message}</p>;
   // A member's row is actionable by the caller only per the matrix: ADMIN rows need members.manage_admins, except that an ADMIN may request an ADMIN's removal.
-  const actionable = (m: MemberView) => canManage && !m.isSelf && m.role !== "OWNER" && (m.role !== "ADMIN" || canManageAdmins);
+  const actionable = (m: MemberView) => canManage && !m.isSelf && m.role !== "OWNER" && (m.role !== "ADMIN" || canManageAdmins) && (m.requestedRole !== "ADMIN" || canManageAdmins);
   const who = (m: MemberView) => m.publicDisplayName ?? "this member";
 
   const actions = (m: MemberView) => {
@@ -68,6 +69,13 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
     if (OPEN_INVITE.includes(m.status) && canManage && (m.role !== "ADMIN" || canManageAdmins)) {
       return <Button variant="secondary" className="min-h-11" onClick={() => setConfirm({ title: "Cancel this invitation?", description: "The invitation can no longer be accepted.", action: "Cancel invitation", run: () => client.cancelMemberInvite(org.id, m.id) })}>Cancel invite</Button>;
     }
+    // Nobody touches an ADMIN, or an ADMIN promotion in flight, without members.manage_admins; removing yourself is leaving.
+    const removable = canManage && !m.isSelf && m.role !== "OWNER" && (m.requestedRole !== "ADMIN" || canManageAdmins);
+    if (PENDING_REVIEW.includes(m.status)) {
+      return removable && (m.role !== "ADMIN" || canManageAdmins)
+        ? <Button variant="secondary" className="min-h-11" onClick={() => setConfirm({ title: "Withdraw this membership?", description: "The member's verification is closed and they lose the membership. Their history is kept.", action: "Withdraw membership", run: () => client.removeMember(org.id, m.id) })}>Withdraw</Button>
+        : null;
+    }
     if (m.status !== "ACTIVE") return null;
     const request = m.role === "ADMIN" && !canManageAdmins;
     return (
@@ -80,7 +88,7 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
             </Select>
           </>
         )}
-        {canManage && !m.isSelf && m.role !== "OWNER" && (
+        {removable && (
           <Button variant="destructive" className="min-h-11" onClick={() => setConfirm(request
             ? { title: "Request removal of this admin?", description: "Only the owner can remove an admin. They will be asked to confirm.", action: "Request removal", run: () => client.removeMember(org.id, m.id) }
             : { title: "Remove this member?", description: "They lose access immediately. Their history is kept.", action: "Remove member", run: () => client.removeMember(org.id, m.id) })}>
@@ -120,7 +128,7 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
       )}
       {actError && !confirm && actError}
 
-      {canManage && (
+      {canManage && org.status === "VERIFIED" && (
         <form noValidate className="space-y-3 rounded-xl border border-border-dark p-4" aria-label="Invite a member" onSubmit={(e) => { e.preventDefault(); submitInvite(); }}>
           <h4 className="text-sm font-medium text-ivory">Invite a member</h4>
           <div className="space-y-2">

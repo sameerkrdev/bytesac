@@ -1,10 +1,11 @@
 "use client";
 
-import { MEMBERSHIP_STATUS_LABEL, ORGANIZATION_STATUS_LABEL } from "@repo/app-core";
+import { MEMBERSHIP_ROLE_LABEL, MEMBERSHIP_STATUS_LABEL, ORGANIZATION_STATUS_LABEL } from "@repo/app-core";
 import type { OrganizationDetail } from "@repo/validator";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, type ReactNode } from "react";
 import { ChangeRequest } from "@/components/organization/change-request";
 import { CreateOrganization } from "@/components/organization/create-organization";
 import { Members } from "@/components/organization/members";
@@ -14,16 +15,37 @@ import { PayoutWallet } from "@/components/organization/payout-wallet";
 import { SubmitChecklist } from "@/components/organization/submit-checklist";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 
 const REVIEW_STATUSES = ["SUBMITTED", "UNDER_REVIEW", "RESUBMITTED"];
 
 export default function OrganizationPage() {
+  return <Suspense><Workspace /></Suspense>; // useSearchParams needs a Suspense boundary
+}
+
+function Workspace() {
   const qc = useQueryClient();
+  const router = useRouter();
+  const params = useSearchParams();
   const { data: me } = useMe();
   const mine = me?.organizations ?? [];
-  const row = mine.find((o) => o.status !== "REJECTED") ?? mine[0];
+  // `?org=` picks the workspace; otherwise prefer the ACTIVE organization the user owns, then any ACTIVE one, then one not rejected.
+  const row = mine.find((o) => o.id === params.get("org"))
+    ?? mine.find((o) => o.role === "OWNER" && o.membershipStatus === "ACTIVE")
+    ?? mine.find((o) => o.membershipStatus === "ACTIVE")
+    ?? mine.find((o) => o.status !== "REJECTED")
+    ?? mine[0];
+  const switcher = mine.length > 1 && row && (
+    <div className="space-y-2">
+      <Label htmlFor="org-switcher" className="text-xs font-medium text-ivory">Organization</Label>
+      <Select id="org-switcher" className="min-h-11" value={row.id} onChange={(e) => router.replace(`/organization?org=${e.target.value}`)}>
+        {mine.map((o) => <option key={o.id} value={o.id}>{o.displayName ?? "Unnamed organization"} · {MEMBERSHIP_ROLE_LABEL[o.role]} · {MEMBERSHIP_STATUS_LABEL[o.membershipStatus].label}</option>)}
+      </Select>
+    </div>
+  );
   const id = row?.id;
   // Only an ACTIVE membership can read the organization (the API answers 403 otherwise).
   const active = row?.membershipStatus === "ACTIVE";
@@ -37,16 +59,16 @@ export default function OrganizationPage() {
     ? <CreateOrganization onCreated={setOrg} />
     : <p className="text-base text-ivory">You need approval before you can create an organization. <Link href="/managers/apply" className="text-mint underline">Become a fund manager</Link></p>;
 
-  if (!row) return <Shell>{create}</Shell>;
+  if (!row) return <Shell switcher={switcher}>{create}</Shell>;
   if (!active) {
     return (
-      <Shell badge={<StatusBadge {...MEMBERSHIP_STATUS_LABEL[row.membershipStatus]} />}>
+      <Shell switcher={switcher} badge={<StatusBadge {...MEMBERSHIP_STATUS_LABEL[row.membershipStatus]} />}>
         <p className="text-base text-ivory">Your membership is not active yet. <Link href={`/organization/membership/${row.membershipId}`} className="text-mint underline">Open your membership</Link></p>
       </Shell>
     );
   }
-  if (query.isError) { const e = toDisplayError(query.error); return <Shell><p role="alert" className="text-sm text-danger"><span className="font-medium">{e.title}</span> {e.message}</p></Shell>; }
-  if (!org) return <Shell><p role="status" className="text-sm text-muted-foreground">Loading…</p></Shell>;
+  if (query.isError) { const e = toDisplayError(query.error); return <Shell switcher={switcher}><p role="alert" className="text-sm text-danger"><span className="font-medium">{e.title}</span> {e.message}</p></Shell>; }
+  if (!org) return <Shell switcher={switcher}><p role="status" className="text-sm text-muted-foreground">Loading…</p></Shell>;
 
   const version = org.openVersion ?? org.currentVersion;
   const canEdit = org.myPermissions.includes("org.edit");
@@ -63,7 +85,7 @@ export default function OrganizationPage() {
   const message = (org.status === "CHANGES_REQUIRED" || org.openVersion?.status === "changes_required") ? org.latestMessageToOwner : null;
 
   return (
-    <Shell badge={<StatusBadge {...label} />}>
+    <Shell switcher={switcher} badge={<StatusBadge {...label} />}>
       {banner && <p role="status" className="rounded-xl border border-border-dark bg-slate p-4 text-sm text-ivory">{banner}</p>}
       {message && (
         <div role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">
@@ -87,13 +109,14 @@ export default function OrganizationPage() {
   );
 }
 
-function Shell({ badge, children }: { badge?: ReactNode; children: ReactNode }) {
+function Shell({ badge, switcher, children }: { badge?: ReactNode; switcher?: ReactNode; children: ReactNode }) {
   return (
     <section aria-labelledby="org-title" className="max-w-3xl space-y-8">
       <div className="space-y-2">
         <h1 id="org-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Your organization</h1>
         {badge}
       </div>
+      {switcher}
       {children}
     </section>
   );

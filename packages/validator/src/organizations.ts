@@ -263,6 +263,8 @@ export const organizationSummarySchema = z.object({
   type: organizationTypeSchema,
   status: organizationStatusSchema,
   jurisdiction: z.string(),
+  /** Public display name of the latest version (draft or approved); null until one is typed. */
+  displayName: z.string().nullable(),
   role: membershipRoleSchema,
   /** The membership this row comes from; `status` above is the organization's own status. */
   membershipId: z.uuid(),

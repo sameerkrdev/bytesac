@@ -178,6 +178,21 @@ describe("ops review of a new member", () => {
     expect((await rowOf(m.mid)).status).toBe("UNDER_REVIEW");
   });
 
+  it("a reviewer who belongs to the organization cannot read the member's details either", async () => {
+    const owner = await orgWithOwner(app);
+    const m = await acceptedMember(owner, "MANAGER");
+    const insider = await addMember(app, owner.id, "VIEWER");
+    await grantRole({ operator: "test", requestId: "grant" }, insider.userId, "ops_reviewer");
+    expect((await request(app).get(`/v1/ops/members/${m.mid}`).set(insider.h)).status).toBe(403);
+  });
+
+  it("a document type outside the member template is rejected", async () => {
+    const owner = await orgWithOwner(app);
+    const m = await acceptedMember(owner, "MANAGER");
+    const res = await request(app).post(`/v1/memberships/${m.mid}/verification/documents`).set(m.h).send({ documentType: "license_registration", contentType: "application/pdf", sizeBytes: 10 });
+    expect(res.status).toBe(400);
+  });
+
   it("only ops reviewers reach the ops routes", async () => {
     const owner = await orgWithOwner(app);
     const m = await acceptedMember(owner, "MANAGER");

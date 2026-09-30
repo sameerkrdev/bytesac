@@ -31,7 +31,7 @@ export const meResponseSchema = z.object({
   /** Active platform roles (ops_reviewer, ops_admin). */
   platformRoles: z.array(platformRoleSchema),
   /** Open memberships (not invited, rejected or revoked); `status` is the organization status. */
-  organizations: z.array(organizationSummarySchema.pick({ id: true, role: true, status: true, membershipId: true, membershipStatus: true })),
+  organizations: z.array(organizationSummarySchema.pick({ id: true, displayName: true, role: true, status: true, membershipId: true, membershipStatus: true })),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 

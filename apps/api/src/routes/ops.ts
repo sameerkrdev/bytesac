@@ -78,7 +78,7 @@ opsRouter.get("/members", requireRole("ops_reviewer"), async (req, res) => {
 });
 
 opsRouter.get("/members/:mid", requireRole("ops_reviewer"), validate({ params: midParam }), async (req, res) => {
-  res.json(await getMemberForReview(req.params.mid as string));
+  res.json(await getMemberForReview(ctx(req), req.params.mid as string));
 });
 
 opsRouter.post("/members/:mid/decision", requireRole("ops_reviewer"), validate({ params: midParam, body: decideMemberVerificationRequestSchema }), async (req, res) => {

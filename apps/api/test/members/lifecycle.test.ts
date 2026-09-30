@@ -6,7 +6,7 @@ import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { newEvmWallet } from "../helpers/wallets";
 import { createOrg, resetOrgDb, user, verifyEmail } from "../organizations/helpers";
-import { addMember, eventsOf, invite, inviteBody, inviteExisting, invitePending, memberAction, membershipAction, orgWithOwner, rowOf } from "./helpers";
+import { acceptedMember, addMember, completeAndSubmit, eventsOf, invite, inviteBody, inviteExisting, invitePending, memberAction, membershipAction, orgWithOwner, rowOf } from "./helpers";
 
 beforeEach(resetOrgDb);
 
@@ -103,11 +103,17 @@ describe("accept, decline, expiry", () => {
     }
   });
 
-  it("a user with an approved verification in this organization is ACTIVE at once", async () => {
+  it("a re-invite after leaving goes through review again: an approval of the old membership does not carry over", async () => {
     const owner = await orgWithOwner(app);
     const invitee = await inviteExisting(owner, "MANAGER");
+    await adminSql`UPDATE app.organization_memberships SET status = 'ACTIVE', activated_at = now() WHERE id = ${invitee.mid}`;
     await adminSql`INSERT INTO app.member_verifications (id, membership_id, status) VALUES (gen_random_uuid(), ${invitee.mid}, 'approved')`;
-    expect((await membershipAction(app, invitee.h, invitee.mid, "accept")).body.status).toBe("ACTIVE");
+    expect((await membershipAction(app, invitee.h, invitee.mid, "leave")).body.status).toBe("REVOKED");
+    expect((await invite(app, owner.h, owner.id, inviteBody(invitee.wallet, "MANAGER"))).status).toBe(201);
+    const [again] = await adminSql<{ id: string }[]>`SELECT id FROM app.organization_memberships WHERE user_id = ${invitee.userId} AND organization_id = ${owner.id} AND status = 'INVITED'`;
+    const res = await membershipAction(app, invitee.h, again!.id, "accept");
+    expect(res.body.status).toBe("PENDING_DOCUMENTS");
+    expect(await adminSql`SELECT status FROM app.member_verifications WHERE membership_id = ${again!.id}`).toEqual([{ status: "draft" }]);
   });
 
   it("decline is REJECTED and terminal", async () => {
@@ -136,7 +142,7 @@ describe("accept, decline, expiry", () => {
     await membershipAction(app, invitee.h, invitee.mid, "accept");
     expect((await request(app).get("/v1/me/invitations").set(invitee.h)).body.invitations).toEqual([]);
     expect((await request(app).get("/v1/me").set(invitee.h)).body.organizations).toEqual([
-      { id: owner.id, role: "MANAGER", status: "VERIFIED", membershipId: invitee.mid, membershipStatus: "PENDING_DOCUMENTS" },
+      { id: owner.id, displayName: null, role: "MANAGER", status: "VERIFIED", membershipId: invitee.mid, membershipStatus: "PENDING_DOCUMENTS" },
     ]);
   });
 
@@ -247,8 +253,8 @@ describe("role changes, removal and leaving", () => {
   });
 });
 
-describe("data migration 0006", () => {
-  it("Spec 3 owners are ACTIVE OWNER rows with an activation time", async () => {
+describe("0006 status mapping and owner rows", () => {
+  it("createOrganization writes the OWNER membership as ACTIVE with an activation time (the new code path, not the migration)", async () => {
     const owner = await user(app);
     const id = await createOrg(app, owner.h);
     expect(await adminSql`SELECT role, status, activated_at IS NOT NULL AS activated FROM app.organization_memberships WHERE organization_id = ${id}`).toEqual([{ role: "OWNER", status: "ACTIVE", activated: true }]);
@@ -262,5 +268,82 @@ describe("data migration 0006", () => {
       const [row] = await adminSql.unsafe<{ v: string }[]>(`SELECT (${expression!.replace('"status"::text', `'${old}'::text`)})::text AS v`);
       expect(row!.v).toBe(mapped);
     }
+  });
+});
+
+describe("the organization withdraws a pending membership", () => {
+  const verificationOf = (mid: string) => adminSql<{ status: string; decided: boolean }[]>`SELECT status, decided_at IS NOT NULL AS decided FROM app.member_verifications WHERE membership_id = ${mid}`;
+  type Invitee = { mid: string; h: Record<string, string> };
+
+  it.each([
+    ["PENDING_DOCUMENTS", async () => undefined],
+    ["UNDER_REVIEW", async (m: Invitee) => { await completeAndSubmit(m.h, m.mid); }],
+    ["CHANGES_REQUIRED", async (m: Invitee) => {
+      await adminSql`UPDATE app.organization_memberships SET status = 'CHANGES_REQUIRED' WHERE id = ${m.mid}`;
+      await adminSql`UPDATE app.member_verifications SET status = 'changes_required' WHERE membership_id = ${m.mid}`;
+    }],
+  ])("%s: the OWNER removes it, the membership is REVOKED and the open verification is rejected", async (status, prepare) => {
+    const owner = await orgWithOwner(app);
+    const m = await acceptedMember(owner, "MANAGER");
+    await prepare(m);
+    expect((await rowOf(m.mid)).status).toBe(status);
+    const res = await memberAction(app, owner.h, owner.id, m.mid, "remove");
+    expect(res.status).toBe(200);
+    expect(await rowOf(m.mid)).toMatchObject({ status: "REVOKED", left_at: null });
+    expect(await verificationOf(m.mid)).toEqual([{ status: "rejected", decided: true }]);
+    expect((await eventsOf(m.mid)).at(-1)).toMatchObject({ kind: "removed", from_status: status, to_status: "REVOKED" });
+    expect(await adminSql`SELECT 1 FROM app.audit_events WHERE entity_id = ${m.mid} AND action = 'membership.removed'`).toHaveLength(1);
+    expect((await memberAction(app, owner.h, owner.id, m.mid, "remove")).status).toBe(409);
+  });
+
+  it("an ADMIN withdraws a pending MANAGER but not a pending ADMIN or a pending ADMIN promotion", async () => {
+    const owner = await orgWithOwner(app);
+    const admin = await addMember(app, owner.id, "ADMIN");
+    const manager = await acceptedMember(owner, "MANAGER");
+    const pendingAdmin = await acceptedMember(owner, "ADMIN");
+    const promoted = await addMember(app, owner.id, "VIEWER");
+    await memberAction(app, owner.h, owner.id, promoted.mid, "role", { role: "ADMIN" });
+    for (const mid of [pendingAdmin.mid, promoted.mid]) {
+      expect((await memberAction(app, admin.h, owner.id, mid, "remove")).status).toBe(403);
+      expect((await rowOf(mid)).status).not.toBe("REVOKED");
+    }
+    expect((await memberAction(app, admin.h, owner.id, manager.mid, "remove")).status).toBe(200);
+    expect((await memberAction(app, owner.h, owner.id, pendingAdmin.mid, "remove")).status).toBe(200);
+    expect((await memberAction(app, owner.h, owner.id, promoted.mid, "remove")).status).toBe(200);
+    expect(await verificationOf(promoted.mid)).toEqual([{ status: "rejected", decided: true }]);
+  });
+
+  it("nobody removes themselves: that is leaving", async () => {
+    const owner = await orgWithOwner(app);
+    const admin = await addMember(app, owner.id, "ADMIN");
+    const res = await memberAction(app, admin.h, owner.id, admin.mid, "remove");
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: "INVALID_TRANSITION", message: "Use Leave organization." });
+    expect((await rowOf(admin.mid)).status).toBe("ACTIVE");
+  });
+});
+
+describe("a pending upgrade", () => {
+  it("is closed by a role change: a later request starts a fresh draft", async () => {
+    const owner = await orgWithOwner(app);
+    const viewer = await addMember(app, owner.id, "VIEWER");
+    await memberAction(app, owner.h, owner.id, viewer.mid, "role", { role: "MANAGER" });
+    await completeAndSubmit(viewer.h, viewer.mid);
+    expect(await adminSql`SELECT status FROM app.member_verifications WHERE membership_id = ${viewer.mid}`).toEqual([{ status: "in_review" }]);
+    await memberAction(app, owner.h, owner.id, viewer.mid, "role", { role: "ANALYST" });
+    expect(await rowOf(viewer.mid)).toMatchObject({ role: "ANALYST", requested_role: null });
+    await memberAction(app, owner.h, owner.id, viewer.mid, "role", { role: "MANAGER" });
+    const rows = await adminSql<{ status: string }[]>`SELECT status FROM app.member_verifications WHERE membership_id = ${viewer.mid} ORDER BY created_at, id`;
+    expect(rows).toEqual([{ status: "rejected" }, { status: "draft" }]);
+  });
+});
+
+describe("reading an invitation", () => {
+  it("an expired open invite is REVOKED on read", async () => {
+    const owner = await orgWithOwner(app);
+    const invitee = await inviteExisting(owner, "VIEWER");
+    await adminSql`UPDATE app.organization_memberships SET invite_expires_at = now() - interval '1 minute' WHERE id = ${invitee.mid}`;
+    expect((await request(app).get(`/v1/memberships/${invitee.mid}`).set(invitee.h)).body.status).toBe("REVOKED");
+    expect((await eventsOf(invitee.mid)).at(-1)).toMatchObject({ kind: "expired" });
   });
 });

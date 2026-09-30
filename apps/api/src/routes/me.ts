@@ -37,7 +37,7 @@ meRouter.get("/", async (req, res) => {
     contacts: current.map(contactView),
     permissions: (await db.select({ permission: userPermissions.permission }).from(userPermissions).where(and(eq(userPermissions.userId, userId), isNull(userPermissions.revokedAt)))).map((p) => p.permission),
     platformRoles: await activeRoles(db, userId),
-    organizations: (await listMyOrganizations(userId)).organizations.map((o) => ({ id: o.id, role: o.role, status: o.status, membershipId: o.membershipId, membershipStatus: o.membershipStatus })),
+    organizations: (await listMyOrganizations(userId)).organizations.map((o) => ({ id: o.id, displayName: o.displayName, role: o.role, status: o.status, membershipId: o.membershipId, membershipStatus: o.membershipStatus })),
   };
   res.json(body);
 });

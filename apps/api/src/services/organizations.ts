@@ -133,6 +133,7 @@ export async function createOrganization(ctx: OwnerCtx, body: CreateOrganization
 export async function listMyOrganizations(userId: string): Promise<ListMyOrganizationsResponse> {
   const rows = await db.select({
     id: organizations.id, type: organizations.type, status: organizations.status, jurisdiction: organizations.jurisdiction, role: organizationMemberships.role,
+    displayName: sql<string | null>`(select v.public_profile->>'displayName' from app.organization_versions v where v.organization_id = ${organizations.id} order by v.version_number desc limit 1)`,
     membershipId: organizationMemberships.id, membershipStatus: organizationMemberships.status,
   }).from(organizationMemberships).innerJoin(organizations, eq(organizations.id, organizationMemberships.organizationId))
     .where(and(eq(organizationMemberships.userId, userId), inArray(organizationMemberships.status, WORKSPACE_STATUSES))).orderBy(organizations.createdAt, organizations.id);
