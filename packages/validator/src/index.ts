@@ -8,6 +8,7 @@ export * from "./chains";
 export * from "./errors";
 export * from "./assets";
 export * from "./auth";
+export * from "./baskets";
 export * from "./contacts";
 export * from "./managers";
 export * from "./members";

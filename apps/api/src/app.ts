@@ -7,6 +7,7 @@ import { errorHandler, notFoundHandler } from "./middleware/error-handler";
 import { requestContext } from "./middleware/request-context";
 import { csrfGuard, noCors, rejectDualAuth } from "./middleware/security";
 import { assetsRouter } from "./routes/assets";
+import { basketsRouter } from "./routes/baskets";
 import { authRouter } from "./routes/auth";
 import { contactsRouter } from "./routes/contacts";
 import { healthRouter } from "./routes/health";
@@ -41,6 +42,7 @@ app.use("/v1/me", meRouter);
 app.use("/v1/organizations", organizationsRouter);
 app.use("/v1/memberships", membershipsRouter);
 app.use("/v1/assets", assetsRouter);
+app.use("/v1/baskets", basketsRouter);
 app.use("/v1/public", publicRouter);
 app.use("/v1/ops", opsRouter);
 

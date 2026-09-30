@@ -16,8 +16,13 @@ export async function resetTestDatabase(adminUrl: string): Promise<void> {
   await setDevRolePasswords(adminUrl);
 }
 
-/** Empties every table in the `app` schema except the seeded reference data (run as the schema owner). */
+/** Empties every table in the `app` schema except the seeded reference data (verification and disclosure templates) (run as the schema owner). */
 export async function truncateAppTables(admin: postgres.Sql): Promise<void> {
-  const tables = await admin<{ name: string }[]>`SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables WHERE schemaname = 'app' AND tablename <> 'verification_requirement_templates'`;
-  await admin.unsafe(`TRUNCATE ${tables.map((t) => t.name).join(", ")} CASCADE`);
+  const tables = await admin<{ name: string }[]>`SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables WHERE schemaname = 'app' AND tablename NOT IN ('verification_requirement_templates', 'disclosure_templates')`;
+  // TRUNCATE ... CASCADE on users also empties disclosure_templates (created_by_user_id FK): keep the seeded rows, active again.
+  await admin.begin(async (tx) => {
+    await tx.unsafe("CREATE TEMP TABLE seeded_disclosures ON COMMIT DROP AS SELECT * FROM app.disclosure_templates WHERE created_by_user_id IS NULL");
+    await tx.unsafe(`TRUNCATE ${tables.map((t) => t.name).join(", ")} CASCADE`);
+    await tx.unsafe("INSERT INTO app.disclosure_templates (id, key, version, title, body, condition, status, created_at) SELECT id, key, version, title, body, condition, 'active', created_at FROM seeded_disclosures");
+  });
 }
