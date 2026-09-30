@@ -11,7 +11,11 @@ vi.mock("../src/providers/twilio", async () => {
 });
 vi.mock("../src/providers/evm-rpc", async () => {
   const { fakes } = await import("./helpers/fakes");
-  return { verifyContractSignature: fakes.evm.verifyContractSignature };
+  return { verifyContractSignature: fakes.evm.verifyContractSignature, readTokenMetadata: fakes.evm.readTokenMetadata };
+});
+vi.mock("../src/providers/solana-rpc", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { getMintDecimals: fakes.solana.getMintDecimals };
 });
 vi.mock("../src/providers/r2", async () => {
   const { fakes } = await import("./helpers/fakes");

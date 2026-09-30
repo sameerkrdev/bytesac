@@ -1,4 +1,8 @@
 import {
+  assetProviderViewSchema, issuerViewSchema, opsAssetDetailSchema, opsAssetListResponseSchema,
+  type AssetProviderRequest, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type IssuerView,
+  type NavEntryRequest, type OpsAssetDetail, type OpsAssetListQuery, type OpsAssetListResponse, type PutPriceReferenceRequest, type UpdateAssetProviderRequest, type UpdateDeploymentRequest,
+  type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
   addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
   listApplicationsResponseSchema, platformRoleViewSchema, platformRolesResponseSchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
   listInvitationsResponseSchema, listMemberReviewResponseSchema, listMembersResponseSchema, memberReviewDetailSchema, memberVerificationViewSchema, listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, myMembershipSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
@@ -20,7 +24,10 @@ import { ApiError } from "./api-error";
 export type Transport = { kind: "cookie" } | { kind: "bearer"; getToken: () => Promise<string | null> };
 export interface ApiClientOptions { baseUrl: string; transport: Transport; fetch?: typeof fetch }
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+const e = encodeURIComponent;
+const qs = (q: object) => new URLSearchParams(Object.entries(q).filter((x): x is [string, string] => x[1] !== undefined));
 
 export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -172,6 +179,27 @@ export function createApiClient(options: ApiClientOptions) {
       request("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/payout-wallets/${encodeURIComponent(walletId)}/decision`, organizationReviewDetailSchema, b),
     opsAddOrganizationNote: (id: string, b: OrganizationNoteRequest): Promise<OrganizationReviewDetail> =>
       request("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/notes`, organizationReviewDetailSchema, b),
+
+    opsListAssets: (q: OpsAssetListQuery = {}): Promise<OpsAssetListResponse> => request("GET", `/v1/ops/assets?${qs(q)}`, opsAssetListResponseSchema),
+    opsCreateAsset: (b: CreateInstrumentRequest): Promise<OpsAssetDetail> => request("POST", "/v1/ops/assets", opsAssetDetailSchema, b),
+    opsGetAsset: (id: string): Promise<OpsAssetDetail> => request("GET", `/v1/ops/assets/${e(id)}`, opsAssetDetailSchema),
+    opsUpdateAsset: (id: string, b: UpdateInstrumentRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}`, opsAssetDetailSchema, b),
+    opsCreateDeployment: (id: string, b: CreateDeploymentRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/deployments`, opsAssetDetailSchema, b),
+    opsUpdateDeployment: (id: string, did: string, b: UpdateDeploymentRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/deployments/${e(did)}`, opsAssetDetailSchema, b),
+    opsVerifyDeployment: (id: string, did: string): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/deployments/${e(did)}/verify`, opsAssetDetailSchema),
+    opsCreateRoute: (id: string, b: CreateRouteRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/routes`, opsAssetDetailSchema, b),
+    opsUpdateRoute: (id: string, rid: string, b: UpdateRouteRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/routes/${e(rid)}`, opsAssetDetailSchema, b),
+    opsCreateRule: (id: string, b: CreateRuleRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/rules`, opsAssetDetailSchema, b),
+    opsUpdateRule: (id: string, ruleId: string, b: UpdateRuleRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/rules/${e(ruleId)}`, opsAssetDetailSchema, b),
+    opsPutPriceReference: (id: string, kind: "market" | "nav", b: PutPriceReferenceRequest): Promise<OpsAssetDetail> =>
+      request("PUT", `/v1/ops/assets/${e(id)}/price-references/${kind}`, opsAssetDetailSchema, b),
+    opsRecordNav: (id: string, b: NavEntryRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/nav`, opsAssetDetailSchema, b),
+    opsListAssetIssuers: (): Promise<IssuerView[]> => request("GET", "/v1/ops/asset-issuers", issuerViewSchema.array()),
+    opsCreateAssetIssuer: (b: IssuerRequest): Promise<IssuerView> => request("POST", "/v1/ops/asset-issuers", issuerViewSchema, b),
+    opsUpdateAssetIssuer: (id: string, b: UpdateIssuerRequest): Promise<IssuerView> => request("PATCH", `/v1/ops/asset-issuers/${e(id)}`, issuerViewSchema, b),
+    opsListAssetProviders: (): Promise<AssetProviderView[]> => request("GET", "/v1/ops/asset-providers", assetProviderViewSchema.array()),
+    opsCreateAssetProvider: (b: AssetProviderRequest): Promise<AssetProviderView> => request("POST", "/v1/ops/asset-providers", assetProviderViewSchema, b),
+    opsUpdateAssetProvider: (id: string, b: UpdateAssetProviderRequest): Promise<AssetProviderView> => request("PATCH", `/v1/ops/asset-providers/${e(id)}`, assetProviderViewSchema, b),
 
     opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
     opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),

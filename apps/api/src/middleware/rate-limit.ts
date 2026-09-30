@@ -27,6 +27,7 @@ export const limits = {
   documentPresignOrg: limiter("org:presign:org", 30, 3600),
   inviteOrg: limiter("org:invite:org", 20, 3600),
   memberDocumentPresign: limiter("member:presign:membership", 30, 3600),
+  assetVerifyUser: limiter("asset:verify:user", 30, 3600),
   publicProfileIp: limiter("public:org:ip", 60, 60),
 };
 
