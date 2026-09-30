@@ -168,7 +168,7 @@ export interface BasketValidationInput {
   orgVerified: boolean;
 }
 
-const micro = (d: string): bigint => {
+export const micro = (d: string): bigint => {
   const [i = "0", f = ""] = d.split(".");
   return BigInt(i) * 1_000_000n + BigInt(f.padEnd(6, "0"));
 };

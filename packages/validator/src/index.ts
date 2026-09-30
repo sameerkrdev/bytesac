@@ -16,3 +16,5 @@ export * from "./me";
 export * from "./organizations";
 export * from "./preferences";
 export * from "./http";
+export * from "./discovery";
+export * from "./performance";

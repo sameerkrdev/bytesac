@@ -134,11 +134,18 @@ class FakeR2 {
   };
 }
 
-export const fakes = { evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
+/** Records jobs instead of adding them to Redis. */
+class FakeQueue {
+  jobs: Array<{ name: string; data: Record<string, unknown> }> = [];
+  enqueue = async (name: string, data: Record<string, unknown>): Promise<void> => { this.jobs.push({ name, data }); };
+}
+
+export const fakes = { queue: new FakeQueue(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [] });
   Object.assign(fakes.solana, { behavior: "ok", decimals: 6, calls: [] });
+  fakes.queue.jobs = [];
   Object.assign(fakes.cmc, { quotes: new Map(), calls: [], fail: false });
   Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], fail: false });
   fakes.r2.objects.clear();

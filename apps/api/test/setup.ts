@@ -21,6 +21,10 @@ vi.mock("../src/providers/coinmarketcap", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { fetchQuotes: fakes.cmc.fetchQuotes };
 });
+vi.mock("../src/queues", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { queues: {}, enqueue: fakes.queue.enqueue };
+});
 vi.mock("../src/providers/r2", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { r2: { send: fakes.r2.send }, R2_BUCKET: "bytesac-test" };

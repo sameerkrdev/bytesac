@@ -59,4 +59,8 @@ export const env = cleanEnv(process.env, {
   R2_BUCKET: nonEmpty(),
   /** Empty disables market prices (they report "unavailable"). */
   COINMARKETCAP_API_KEY: str({ default: "" }),
+  /** Empty disables AI search and embeddings (structured and keyword search still work). */
+  GEMINI_API_KEY: str({ default: "" }),
+  GEMINI_MODEL: str({ default: "gemini-3.1-flash-lite" }),
+  GEMINI_EMBEDDING_MODEL: str({ default: "gemini-embedding-2" }),
 });

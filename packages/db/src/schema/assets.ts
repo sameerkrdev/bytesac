@@ -10,6 +10,9 @@ export const assetType = app.enum("asset_type", [
 export const assetChain = app.enum("asset_chain", ["solana", "ethereum", "base", "bnb", "arbitrum", "polygon", "bitcoin"]);
 export const tokenStandard = app.enum("token_standard", ["native", "erc20", "spl", "spl_token_2022", "other"]);
 export const instrumentStatus = app.enum("instrument_status", ["DRAFT", "UNDER_REVIEW", "CHANGES_REQUIRED", "APPROVED", "ACTIVE", "PAUSED", "DEPRECATED", "RETIRED"]);
+export const instrumentSector = app.enum("instrument_sector", [
+  "store_of_value", "smart_contract_platform", "layer2", "defi", "stablecoin", "oracle_infra", "gaming_metaverse", "ai_data", "meme", "rwa_treasury", "rwa_credit", "rwa_commodity", "rwa_equity", "other",
+]);
 export const assetItemStatus = app.enum("asset_item_status", ["DRAFT", "APPROVED", "ACTIVE", "PAUSED", "RETIRED"]);
 export const ruleStatus = app.enum("rule_status", ["DRAFT", "ACTIVE", "RETIRED"]);
 export const deploymentVerification = app.enum("deployment_verification", ["onchain", "manual"]);
@@ -61,6 +64,7 @@ export const instruments = app.table(
     description: text("description"),
     issuerId: uuid("issuer_id").references(() => assetIssuers.id),
     riskNotes: text("risk_notes"),
+    sector: instrumentSector("sector").notNull().default("other"),
     /** `{ label, url }[]`, https only, at most 10. */
     links: jsonb("links").$type<Array<{ label: string; url: string }>>().notNull().default([]),
     status: instrumentStatus("status").notNull().default("DRAFT"),
