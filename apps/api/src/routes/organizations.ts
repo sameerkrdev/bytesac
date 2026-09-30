@@ -1,13 +1,14 @@
 import { Router, type Request } from "express";
 import {
-  changeRoleRequestSchema, createOrganizationRequestSchema, enterPayoutWalletRequestSchema, inviteMemberRequestSchema, presignDocumentRequestSchema, updateDraftRequestSchema,
+  changeRoleRequestSchema, createBasketRequestSchema, createOrganizationRequestSchema, enterPayoutWalletRequestSchema, inviteMemberRequestSchema, listBasketsQuerySchema, presignDocumentRequestSchema, updateDraftRequestSchema,
   verifyPayoutWalletRequestSchema, z,
-  type ChangeRoleRequest, type CreateOrganizationRequest, type EnterPayoutWalletRequest, type InviteMemberRequest, type PresignDocumentRequest, type UpdateDraftRequest,
+  type ChangeRoleRequest, type CreateBasketRequest, type CreateOrganizationRequest, type EnterPayoutWalletRequest, type InviteMemberRequest, type PresignDocumentRequest, type UpdateDraftRequest,
   type VerifyPayoutWalletRequest,
 } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
+import { createBasket, listOrgBaskets } from "../services/baskets";
 import { cancelInvite, changeRole, decideRemoval, inviteMember, listMembers, removeMember } from "../services/members";
 import {
   confirmDocument, createChangeRequest, createOrganization, getOrganizationForMember, listMyOrganizations, presignDocument, submitChangeRequest, submitOrganization,
@@ -104,4 +105,12 @@ organizationsRouter.post("/:id/members/:mid/removal/cancel", validate({ params: 
 
 organizationsRouter.post("/:id/change-request/submit", validate({ params: idParam }), async (req, res) => {
   res.json(await submitChangeRequest(ctx(req), req.params.id as string));
+});
+
+organizationsRouter.post("/:id/baskets", validate({ params: idParam, body: createBasketRequestSchema }), async (req, res) => {
+  res.status(201).json(await createBasket(ctx(req), req.params.id as string, req.body as CreateBasketRequest));
+});
+
+organizationsRouter.get("/:id/baskets", validate({ params: idParam }), async (req, res) => {
+  res.json(await listOrgBaskets(ctx(req), req.params.id as string, listBasketsQuerySchema.parse(req.query)));
 });

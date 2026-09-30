@@ -23,7 +23,7 @@ Provider keys (`ALCHEMY_API_KEY`, `RESEND_API_KEY`, `TWILIO_*`) are required by 
 ## Supabase setup
 
 1. Enable the `pg_cron` extension (Dashboard -> Database -> Extensions).
-2. Run migrations with the project's `postgres` role as `MIGRATOR_DATABASE_URL` in `packages/db/.env` (`pnpm --filter @repo/db db:migrate`). Migration `0002` schedules the retention job when pg_cron is enabled. Specs 2 to 4 need no new Supabase extension, environment variable or provider. Ownership transfer is an ops action (an `ops_admin` on `/ops/organizations/<id>`), not a CLI command; invitation and member-verification emails use the existing Resend setup.
+2. Run migrations with the project's `postgres` role as `MIGRATOR_DATABASE_URL` in `packages/db/.env` (`pnpm --filter @repo/db db:migrate`). Migration `0002` schedules the retention job when pg_cron is enabled. Specs 2 to 4 and 6 (baskets, migration `0008_baskets.sql`, which also seeds the platform disclosure templates) need no new Supabase extension, environment variable or provider. Ownership transfer is an ops action (an `ops_admin` on `/ops/organizations/<id>`), not a CLI command; invitation and member-verification emails use the existing Resend setup.
 3. As an operator, run `ALTER ROLE bytesac_api LOGIN PASSWORD '<secret>'`.
 4. Use the pooler URL with that role for `DATABASE_URL`.
 5. Confirm schema `app` is **not** listed in Dashboard -> API -> Exposed schemas.

@@ -5,9 +5,11 @@ import {
   updateRouteRequestSchema, updateRuleRequestSchema,
   type AssetDecisionRequest, type AssetProviderRequest, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type NavEntryRequest,
   type PutPriceReferenceRequest, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
+  basketApprovalRequestSchema, basketReasonRequestSchema, basketReviewDecisionRequestSchema, createDisclosureTemplateRequestSchema, listOpsBasketsQuerySchema,
   applicationNoteRequestSchema, decideMemberVerificationRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listMemberReviewQuerySchema, listOrganizationsQuerySchema,
   organizationNoteRequestSchema, payoutWalletDecisionRequestSchema, transferOwnershipRequestSchema, transitionApplicationRequestSchema, transitionOrganizationRequestSchema,
   versionDecisionRequestSchema, z,
+  type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest,
   type ApplicationNoteRequest, type DecideMemberVerificationRequest, type GrantRoleRequest, type TransferOwnershipRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
   type TransitionApplicationRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
 } from "@repo/validator";
@@ -27,6 +29,10 @@ import {
   recordNav, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
 } from "../services/assets";
 import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "../services/asset-review";
+import {
+  createDisclosureTemplate, decideLead, decideRetirement, decideVersion as decideBasketVersion, getBasketForOps, listBasketsForOps, listDisclosureTemplates, platformPause, platformResume, platformRetire,
+  retireDisclosureTemplate,
+} from "../services/basket-review";
 
 const idParam = z.object({ id: z.uuid() });
 const midParam = z.object({ mid: z.uuid() });
@@ -225,3 +231,50 @@ for (const kind of ["deployments", "routes"] as const) {
     });
   }
 }
+
+const basketParam = z.object({ bid: z.uuid() });
+
+opsRouter.get("/baskets", requireRole("ops_reviewer"), async (req, res) => {
+  res.json(await listBasketsForOps(listOpsBasketsQuerySchema.parse(req.query)));
+});
+
+opsRouter.get("/baskets/:bid", requireRole("ops_reviewer"), validate({ params: basketParam }), async (req, res) => {
+  res.json(await getBasketForOps(req.params.bid as string));
+});
+
+// A reviewer may decide changes required, reject and escalate; the service requires ops_admin for an approval.
+opsRouter.post("/baskets/:bid/versions/:vid/decision", requireRole("ops_reviewer"), validate({ params: z.object({ bid: z.uuid(), vid: z.uuid() }), body: basketReviewDecisionRequestSchema }), async (req, res) => {
+  res.json(await decideBasketVersion(ctx(req), req.params.bid as string, req.params.vid as string, req.body as BasketReviewDecisionRequest));
+});
+
+opsRouter.post("/baskets/:bid/assignments/:aid/decision", requireRole("ops_admin"), validate({ params: z.object({ bid: z.uuid(), aid: z.uuid() }), body: basketApprovalRequestSchema }), async (req, res) => {
+  res.json(await decideLead(ctx(req), req.params.bid as string, req.params.aid as string, req.body as BasketApprovalRequest));
+});
+
+opsRouter.post("/baskets/:bid/pause", requireRole("ops_reviewer"), validate({ params: basketParam, body: basketReasonRequestSchema }), async (req, res) => {
+  res.json(await platformPause(ctx(req), req.params.bid as string, (req.body as BasketReasonRequest).reason));
+});
+
+opsRouter.post("/baskets/:bid/resume", requireRole("ops_admin"), validate({ params: basketParam }), async (req, res) => {
+  res.json(await platformResume(ctx(req), req.params.bid as string));
+});
+
+opsRouter.post("/baskets/:bid/retire", requireRole("ops_admin"), validate({ params: basketParam, body: basketReasonRequestSchema }), async (req, res) => {
+  res.json(await platformRetire(ctx(req), req.params.bid as string, (req.body as BasketReasonRequest).reason));
+});
+
+opsRouter.post("/baskets/:bid/retirement/decision", requireRole("ops_admin"), validate({ params: basketParam, body: basketApprovalRequestSchema }), async (req, res) => {
+  res.json(await decideRetirement(ctx(req), req.params.bid as string, req.body as BasketApprovalRequest));
+});
+
+opsRouter.get("/disclosure-templates", requireRole("ops_admin"), async (_req, res) => {
+  res.json(await listDisclosureTemplates());
+});
+
+opsRouter.post("/disclosure-templates", requireRole("ops_admin"), validate({ body: createDisclosureTemplateRequestSchema }), async (req, res) => {
+  res.status(201).json(await createDisclosureTemplate(ctx(req), req.body as CreateDisclosureTemplateRequest));
+});
+
+opsRouter.post("/disclosure-templates/:id/retire", requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
+  res.json(await retireDisclosureTemplate(ctx(req), req.params.id as string));
+});

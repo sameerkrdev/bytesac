@@ -79,3 +79,29 @@ export async function sendMembershipEmail(kind: MembershipEmailKind, to: string,
   const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...MEMBERSHIP_EMAILS[kind](data) }, { idempotencyKey });
   if (error) logger.warn("membership email failed", { kind, errorName: error.name });
 }
+
+export type BasketEmailKind = "submitted" | "changes_required" | "approved" | "rejected" | "published" | "platform_paused" | "platform_resumed" | "retirement_decided" | "retired" | "reassignment_required" | "lead_approved" | "lead_rejected";
+export interface BasketEmailData { basketName?: string | null; message?: string | null; decision?: "approved" | "rejected" }
+
+const basketLabel = (d: BasketEmailData) => d.basketName ?? "your basket";
+
+const BASKET_EMAILS: Record<BasketEmailKind, (d: BasketEmailData) => { subject: string; text: string }> = {
+  submitted: (d) => ({ subject: "Bytesac basket submitted for review", text: `A version of ${basketLabel(d)} was submitted for review. Nothing is published until the Bytesac team approves it and a manager publishes it.` }),
+  changes_required: (d) => ({ subject: "Bytesac basket: changes required", text: `${basketLabel(d)} needs changes before it can be approved. Sign in to Bytesac to review them and resubmit.${withMessage(d.message)}` }),
+  approved: (d) => ({ subject: "Bytesac basket version approved", text: `The submitted version of ${basketLabel(d)} was approved. It is not public until a manager publishes it.` }),
+  rejected: (d) => ({ subject: "Bytesac basket version decision", text: `We are unable to approve the submitted version of ${basketLabel(d)}.${withMessage(d.message)}` }),
+  published: (d) => ({ subject: "Bytesac basket version published", text: `A new version of ${basketLabel(d)} is now published on Bytesac. No assets were moved and no fees were charged.` }),
+  platform_paused: (d) => ({ subject: "Bytesac basket paused", text: `${basketLabel(d)} was paused by the Bytesac team.${withMessage(d.message)}` }),
+  platform_resumed: (d) => ({ subject: "Bytesac basket resumed", text: `${basketLabel(d)} was resumed by the Bytesac team.` }),
+  retirement_decided: (d) => ({ subject: "Bytesac basket retirement decision", text: `Your request to retire ${basketLabel(d)} was ${d.decision === "approved" ? "approved; the basket is retired" : "declined; the basket continues"}.${withMessage(d.message)}` }),
+  retired: (d) => ({ subject: "Bytesac basket retired", text: `${basketLabel(d)} was retired by the Bytesac team.${withMessage(d.message)}` }),
+  reassignment_required: (d) => ({ subject: "Bytesac basket needs a new lead manager", text: `${basketLabel(d)} has no active lead manager. Assign a new lead in Bytesac; the Bytesac team must approve the change.` }),
+  lead_approved: (d) => ({ subject: "Bytesac lead manager approved", text: `The new lead manager of ${basketLabel(d)} was approved.` }),
+  lead_rejected: (d) => ({ subject: "Bytesac lead manager not approved", text: `The proposed lead manager of ${basketLabel(d)} was not approved.${withMessage(d.message)}` }),
+};
+
+/** Sends a basket email. Failures only log: a state change never rolls back for an undelivered notice. The text never claims assets moved. */
+export async function sendBasketEmail(kind: BasketEmailKind, to: string, data: BasketEmailData, idempotencyKey: string): Promise<void> {
+  const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...BASKET_EMAILS[kind](data) }, { idempotencyKey });
+  if (error) logger.warn("basket email failed", { kind, errorName: error.name });
+}

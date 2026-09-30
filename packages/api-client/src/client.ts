@@ -1,4 +1,10 @@
 import {
+  listDisclosureTemplatesResponseSchema, opsBasketDetailSchema, opsBasketListResponseSchema, publicBasketListResponseSchema, publicBasketResponseSchema,
+  type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest, type ListDisclosureTemplatesResponse, type ListOpsBasketsQuery,
+  type OpsBasketDetail, type OpsBasketListResponse, type PublicBasketListResponse, type PublicBasketResponse,
+  basketDetailSchema, basketDiffSchema, basketPreviewSchema, basketValidationSchema, listBasketsResponseSchema, listBasketVersionsResponseSchema,
+  type BasketDetail, type BasketDiff, type BasketPreview, type BasketValidation, type CreateAssignmentRequest, type CreateBasketRequest, type EndAssignmentRequest, type ListBasketsQuery,
+  type ListBasketsResponse, type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
   assetProviderViewSchema, priceViewSchema, publicAssetDetailSchema, publicAssetListResponseSchema, issuerViewSchema, opsAssetDetailSchema, opsAssetListResponseSchema,
   type AssetDecisionRequest, type AssetListQuery, type PriceView, type PublicAssetDetail, type PublicAssetListResponse, type AssetProviderRequest, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type IssuerView,
   type NavEntryRequest, type OpsAssetDetail, type OpsAssetListQuery, type OpsAssetListResponse, type PutPriceReferenceRequest, type UpdateAssetProviderRequest, type UpdateDeploymentRequest,
@@ -211,6 +217,43 @@ export function createApiClient(options: ApiClientOptions) {
 
     listAssets: (q: AssetListQuery = {}): Promise<PublicAssetListResponse> => request("GET", `/v1/assets?${qs(q)}`, publicAssetListResponseSchema),
     getAsset: (id: string): Promise<PublicAssetDetail> => request("GET", `/v1/assets/${e(id)}`, publicAssetDetailSchema),
+
+    createBasket: (orgId: string, b: CreateBasketRequest): Promise<BasketDetail> => request("POST", `/v1/organizations/${e(orgId)}/baskets`, basketDetailSchema, b),
+    listOrgBaskets: (orgId: string, q: ListBasketsQuery = {}): Promise<ListBasketsResponse> => request("GET", `/v1/organizations/${e(orgId)}/baskets?${qs(q)}`, listBasketsResponseSchema),
+    getBasket: (bid: string): Promise<BasketDetail> => request("GET", `/v1/baskets/${e(bid)}`, basketDetailSchema),
+    saveBasketDraft: (bid: string, b: SaveBasketDraftRequest): Promise<BasketDetail> => request("PATCH", `/v1/baskets/${e(bid)}/draft`, basketDetailSchema, b),
+    validateBasket: (bid: string): Promise<BasketValidation> => request("POST", `/v1/baskets/${e(bid)}/validate`, basketValidationSchema),
+    previewBasket: (bid: string): Promise<BasketPreview> => request("GET", `/v1/baskets/${e(bid)}/preview`, basketPreviewSchema),
+    createBasketVersion: (bid: string): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/versions`, basketDetailSchema),
+    listBasketVersions: (bid: string): Promise<ListBasketVersionsResponse> => request("GET", `/v1/baskets/${e(bid)}/versions`, listBasketVersionsResponseSchema),
+    getBasketVersionDiff: (bid: string, vid: string): Promise<BasketDiff> => request("GET", `/v1/baskets/${e(bid)}/versions/${e(vid)}/diff`, basketDiffSchema),
+    addBasketAssignment: (bid: string, b: CreateAssignmentRequest): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/assignments`, basketDetailSchema, b),
+    updateBasketAssignment: (bid: string, aid: string, b: UpdateAssignmentRequest): Promise<BasketDetail> => request("PATCH", `/v1/baskets/${e(bid)}/assignments/${e(aid)}`, basketDetailSchema, b),
+    endBasketAssignment: (bid: string, aid: string, b: EndAssignmentRequest): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/assignments/${e(aid)}/end`, basketDetailSchema, b),
+
+    submitBasket: (bid: string): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/submit`, basketDetailSchema),
+    withdrawBasket: (bid: string): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/withdraw`, basketDetailSchema),
+    publishBasket: (bid: string): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/publish`, basketDetailSchema),
+    pauseBasket: (bid: string, b: BasketReasonRequest): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/pause`, basketDetailSchema, b),
+    resumeBasket: (bid: string): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/resume`, basketDetailSchema),
+    requestBasketRetirement: (bid: string, b: BasketReasonRequest): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/retirement-request`, basketDetailSchema, b),
+
+    opsListBaskets: (q: Partial<ListOpsBasketsQuery> = {}): Promise<OpsBasketListResponse> => request("GET", `/v1/ops/baskets?${qs(q)}`, opsBasketListResponseSchema),
+    opsGetBasket: (bid: string): Promise<OpsBasketDetail> => request("GET", `/v1/ops/baskets/${e(bid)}`, opsBasketDetailSchema),
+    opsDecideBasketVersion: (bid: string, vid: string, b: BasketReviewDecisionRequest): Promise<OpsBasketDetail> =>
+      request("POST", `/v1/ops/baskets/${e(bid)}/versions/${e(vid)}/decision`, opsBasketDetailSchema, b),
+    opsDecideBasketLead: (bid: string, aid: string, b: BasketApprovalRequest): Promise<OpsBasketDetail> =>
+      request("POST", `/v1/ops/baskets/${e(bid)}/assignments/${e(aid)}/decision`, opsBasketDetailSchema, b),
+    opsPauseBasket: (bid: string, b: BasketReasonRequest): Promise<OpsBasketDetail> => request("POST", `/v1/ops/baskets/${e(bid)}/pause`, opsBasketDetailSchema, b),
+    opsResumeBasket: (bid: string): Promise<OpsBasketDetail> => request("POST", `/v1/ops/baskets/${e(bid)}/resume`, opsBasketDetailSchema),
+    opsRetireBasket: (bid: string, b: BasketReasonRequest): Promise<OpsBasketDetail> => request("POST", `/v1/ops/baskets/${e(bid)}/retire`, opsBasketDetailSchema, b),
+    opsDecideBasketRetirement: (bid: string, b: BasketApprovalRequest): Promise<OpsBasketDetail> => request("POST", `/v1/ops/baskets/${e(bid)}/retirement/decision`, opsBasketDetailSchema, b),
+    opsListDisclosureTemplates: (): Promise<ListDisclosureTemplatesResponse> => request("GET", "/v1/ops/disclosure-templates", listDisclosureTemplatesResponseSchema),
+    opsCreateDisclosureTemplate: (b: CreateDisclosureTemplateRequest): Promise<ListDisclosureTemplatesResponse> => request("POST", "/v1/ops/disclosure-templates", listDisclosureTemplatesResponseSchema, b),
+    opsRetireDisclosureTemplate: (id: string): Promise<ListDisclosureTemplatesResponse> => request("POST", `/v1/ops/disclosure-templates/${e(id)}/retire`, listDisclosureTemplatesResponseSchema),
+
+    listPublicBaskets: (cursor?: string): Promise<PublicBasketListResponse> => request("GET", `/v1/public/baskets?${qs({ cursor })}`, publicBasketListResponseSchema),
+    getPublicBasket: (slug: string): Promise<PublicBasketResponse> => request("GET", `/v1/public/baskets/${e(slug)}`, publicBasketResponseSchema),
 
     opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
     opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),

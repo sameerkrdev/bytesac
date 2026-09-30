@@ -11,6 +11,7 @@ import {
 } from "@repo/validator";
 import { consume, limits } from "../middleware/rate-limit";
 import { sendMembershipEmail, type MembershipEmailKind } from "../providers/resend";
+import { endIneligibleAssignments, notifyReassignmentRequired } from "./baskets";
 import { writeAudit } from "./audit";
 import type { OrganizationRow, OwnerCtx } from "./organizations";
 import { canonicalizeAddress, findAddressOwner } from "./wallets";
@@ -109,6 +110,7 @@ export async function moveMembership(tx: Tx, m: MembershipRow, to: MembershipSta
     actorType: i.actorUserId ? "user" : "system", actorUserId: i.actorUserId, action: i.action, entityType: "organization_membership", entityId: m.id,
     requestId: i.requestId, sessionId: i.sessionId, metadata: { organizationId: m.organizationId, from: m.status, to },
   });
+  await endIneligibleAssignments(tx, m.id, i.requestId, i.actorUserId);
 }
 
 /** Moves open invites matching `scope` whose 14 days ran out to REVOKED (event `expired`). Returns how many. No job: every read or accept of an invite calls this first. */
@@ -218,6 +220,7 @@ export async function changeRole(ctx: OwnerCtx, orgId: string, mid: string, body
     ).where(eq(organizationMemberships.id, m.id));
     if (upgrade) await openMemberVerification(tx, m.id);
     else await closeOpenVerification(tx, m.id);
+    await endIneligibleAssignments(tx, m.id, ctx.meta.requestId, ctx.userId);
     await tx.insert(membershipEvents).values({
       membershipId: m.id, organizationId: orgId, actorType: "org", actorUserId: ctx.userId, kind: upgrade ? "role_requested" : "role_changed",
       fromStatus: m.status, toStatus: m.status, fromRole: m.role, toRole: body.role, requestId: ctx.meta.requestId,
@@ -227,6 +230,7 @@ export async function changeRole(ctx: OwnerCtx, orgId: string, mid: string, body
       requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { organizationId: orgId, from: m.role, to: body.role },
     });
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   return listMembers(ctx, orgId);
 }
 
@@ -249,6 +253,7 @@ export async function removeMember(ctx: OwnerCtx, orgId: string, mid: string): P
     });
     return request ? null : m;
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   if (removed) await notifyMember("removed", { userId: removed.userId! }, { orgId }, `membership-removed/${removed.id}`);
   return listMembers(ctx, orgId);
 }
@@ -266,6 +271,7 @@ export async function decideRemoval(ctx: OwnerCtx, orgId: string, mid: string, d
     });
     return confirm ? m : null;
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   if (revoked) await notifyMember("removed", { userId: revoked.userId! }, { orgId }, `membership-removed/${revoked.id}`);
   return listMembers(ctx, orgId);
 }
@@ -312,6 +318,7 @@ export async function leaveOrganization(ctx: OwnerCtx, mid: string): Promise<MyM
     if (m.status !== "ACTIVE" && m.status !== "REMOVAL_REQUESTED") throw invalid("Only an active member can leave.");
     await moveMembership(tx, m, "REVOKED", { actorType: "member", actorUserId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, kind: "left", action: "membership.left" });
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   return myMembershipView((await db.select().from(organizationMemberships).where(eq(organizationMemberships.id, mid)))[0]!);
 }
 

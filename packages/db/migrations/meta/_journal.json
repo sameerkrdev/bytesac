@@ -57,6 +57,13 @@
       "when": 1790787607152,
       "tag": "0007_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790800702547,
+      "tag": "0008_baskets",
+      "breakpoints": true
     }
   ]
 }

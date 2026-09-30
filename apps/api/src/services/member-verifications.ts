@@ -11,6 +11,7 @@ import {
 import { consume, limits } from "../middleware/rate-limit";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
+import { endIneligibleAssignments } from "./baskets";
 import { closeOpenVerification, hasApprovedVerification, moveMembership, notifyMember, orgDisplayName } from "./members";
 import { PAGE_SIZE, assertNotMember, downloadUrl } from "./organization-review";
 import { mergeDetails, missingFromTemplate, presignUpload, resolveTemplate, storeUpload, type OwnerCtx } from "./organizations";
@@ -236,6 +237,7 @@ export async function decideMemberVerification(ctx: OpsCtx, mid: string, i: Deci
       const role = i.decision === "approved" ? m.requestedRole! : m.role;
       await tx.update(organizationMemberships).set({ ...(i.decision === "changes_required" ? {} : { role, requestedRole: null, decidedByUserId: ctx.userId }), updatedAt: sql`now()` })
         .where(eq(organizationMemberships.id, m.id));
+      await endIneligibleAssignments(tx, m.id, ctx.meta.requestId, ctx.userId);
       await tx.insert(membershipEvents).values({ ...event, membershipId: m.id, organizationId: m.organizationId, fromStatus: m.status, toStatus: m.status, fromRole: m.role, toRole: role });
       await writeAudit(tx, {
         actorType: "user", actorUserId: ctx.userId, action: "membership.verification_decided", entityType: "organization_membership", entityId: m.id,
@@ -278,6 +280,7 @@ export async function transferOwnership(ctx: OpsCtx, orgId: string, i: TransferO
     await tx.update(organizationMemberships).set({ role: "ADMIN", updatedAt: sql`now()` }).where(eq(organizationMemberships.id, owner.id));
     await tx.update(organizationMemberships).set({ role: "OWNER", requestedRole: null, updatedAt: sql`now()` }).where(eq(organizationMemberships.id, target.id));
     await closeOpenVerification(tx, target.id);
+    await endIneligibleAssignments(tx, owner.id, ctx.meta.requestId, ctx.userId);
     const events = await tx.insert(membershipEvents).values([owner, target].map((m, n) => ({
       membershipId: m.id, organizationId: orgId, actorType: "ops" as const, actorUserId: ctx.userId, kind: "ownership_transferred" as const, fromStatus: m.status, toStatus: m.status,
       fromRole: m.role, toRole: n === 0 ? "ADMIN" as const : "OWNER" as const, reason: i.reason, requestId: ctx.meta.requestId,

@@ -2,6 +2,7 @@ import { ORGANIZATION_FIELDS, ORGANIZATION_FIELD_KEYS, publicOrganizationSchema,
 import { BadgeCheck } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "Organization · Bytesac" };
@@ -54,6 +55,12 @@ export default async function PublicOrganizationPage({ params }: { params: Promi
           </ul>
         </section>
       ))}
+      {org.baskets.length > 0 && (
+        <section aria-label="Baskets" className="space-y-3">
+          <h2 className="font-display text-xl font-semibold text-ivory">Baskets</h2>
+          <ul className="space-y-2">{org.baskets.map((b) => <li key={b.slug}><Link href={`/baskets/${b.slug}`} className="text-sm text-mint underline">{b.name}</Link></li>)}</ul>
+        </section>
+      )}
     </main>
   );
 }

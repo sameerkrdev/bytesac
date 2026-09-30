@@ -29,6 +29,8 @@ export const limits = {
   memberDocumentPresign: limiter("member:presign:membership", 30, 3600),
   assetVerifyUser: limiter("asset:verify:user", 30, 3600),
   publicProfileIp: limiter("public:org:ip", 60, 60),
+  basketMutationUser: limiter("basket:mutate:user", 60, 60),
+  publicBasketIp: limiter("public:basket:ip", 60, 60),
 };
 
 /** Takes one point for `key`; throws 429 RATE_LIMITED past the limit. Returns a function that gives the point back. */

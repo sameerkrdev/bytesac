@@ -66,6 +66,10 @@ class FakeEmail {
   sendMembership = async (kind: string, to: string, data: { organizationName?: string | null; role?: string; message?: string | null }, idempotencyKey: string): Promise<void> => {
     this.membership.push({ kind, to, data, idempotencyKey });
   };
+  basket: Array<{ kind: string; to: string; data: { basketName?: string | null; message?: string | null; decision?: string }; idempotencyKey: string }> = [];
+  sendBasket = async (kind: string, to: string, data: { basketName?: string | null; message?: string | null; decision?: string }, idempotencyKey: string): Promise<void> => {
+    this.basket.push({ kind, to, data, idempotencyKey });
+  };
   sendOtp = async (to: string, code: string, verificationId: string): Promise<void> => {
     if (this.fail) throw deliveryFailure("resend down");
     this.sent.push({ to, code, verificationId });
@@ -136,7 +140,7 @@ export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [] });
   Object.assign(fakes.solana, { behavior: "ok", decimals: 6, calls: [] });
   Object.assign(fakes.cmc, { quotes: new Map(), calls: [], fail: false });
-  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], fail: false });
+  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], fail: false });
   fakes.r2.objects.clear();
   fakes.r2.signed = [];
   Object.assign(fakes.sms, { started: [], approveCode: "123456", fail: false, checkFail: false });
