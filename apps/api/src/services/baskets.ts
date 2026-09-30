@@ -2,15 +2,17 @@ import { createHash, randomBytes } from "node:crypto";
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, lt, max, sql } from "drizzle-orm";
 import {
-  basketAssignments, basketEvents, basketReviews, basketVersionAssets, basketVersionDisclosures, basketVersions, baskets, db, disclosureTemplates,
+  basketAssignments, basketEvents, basketReviews, contacts, basketVersionAssets, basketVersionDisclosures, basketVersions, baskets, db, disclosureTemplates,
   instruments, isUniqueViolation, organizationMemberships, organizations, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
   ASSIGNMENT_FLAGS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS, ROLE_PERMISSIONS, basketConstraintsSchema, basketFeesSchema, canonicalJson, diffBasketVersions, validateBasketVersion,
-  type AssignmentFlag, type BasketDetail, type BasketDiff, type BasketDiffInput, type BasketPreview, type BasketStatus, type BasketValidation, type BasketValidationInput,
+  type AssignmentFlag, type BasketAssignmentView, type BasketDetail, type BasketEventView, type BasketDiff, type BasketDiffInput, type BasketPreview, type BasketStatus, type BasketValidation, type BasketValidationInput,
   type BasketVersionView, type CreateAssignmentRequest, type CreateBasketRequest, type EndAssignmentRequest, type ListBasketsQuery, type ListBasketsResponse,
   type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
 } from "@repo/validator";
+import { logger } from "@repo/logger";
+import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "../providers/resend";
 import { writeAudit } from "./audit";
 import { requirePermission, type MembershipRow } from "./members";
 import type { OrganizationRow, OwnerCtx } from "./organizations";
@@ -43,7 +45,7 @@ export async function requireBasketAction(conn: DbOrTx, userId: string, basketId
 }
 
 /** Assets of the version's current revision with their registry status; `hasActiveDeployment` is true when at least one deployment is ACTIVE. */
-async function currentAssets(conn: DbOrTx, v: Pick<VersionRow, "id" | "assetsRevision">) {
+export async function currentAssets(conn: DbOrTx, v: Pick<VersionRow, "id" | "assetsRevision">) {
   return conn.select({
     instrumentId: basketVersionAssets.instrumentId, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, instrumentStatus: instruments.status,
     targetWeightBps: basketVersionAssets.targetWeightBps, minWeightBps: basketVersionAssets.minWeightBps, maxWeightBps: basketVersionAssets.maxWeightBps, rationale: basketVersionAssets.rationale,
@@ -54,7 +56,7 @@ async function currentAssets(conn: DbOrTx, v: Pick<VersionRow, "id" | "assetsRev
 }
 
 /** Disclosure templates pinned at the version's current pin revision. */
-async function currentDisclosures(conn: DbOrTx, v: Pick<VersionRow, "id" | "disclosuresRevision">) {
+export async function currentDisclosures(conn: DbOrTx, v: Pick<VersionRow, "id" | "disclosuresRevision">) {
   return conn.select({ templateId: disclosureTemplates.id, key: disclosureTemplates.key, title: disclosureTemplates.title, body: disclosureTemplates.body })
     .from(basketVersionDisclosures).innerJoin(disclosureTemplates, eq(disclosureTemplates.id, basketVersionDisclosures.templateId))
     .where(and(eq(basketVersionDisclosures.versionId, v.id), eq(basketVersionDisclosures.revision, v.disclosuresRevision))).orderBy(disclosureTemplates.key);
@@ -135,7 +137,7 @@ export async function versionDiff(conn: DbOrTx, v: VersionRow): Promise<BasketDi
 const DEFAULT_FEES = { entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 0 }, rebalance: { type: "percent", bps: 0 }, subscription: null } as const;
 
 /** Name lowercased with non-alphanumerics as `-` (≤80), plus `-` and 6 random base36 characters. */
-const newSlug = (name: string) =>
+export const newSlug = (name: string) =>
   `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/, "") || "basket"}-${Array.from(randomBytes(6), (b) => (b % 36).toString(36)).join("")}`;
 
 export async function createBasket(ctx: OwnerCtx, orgId: string, body: CreateBasketRequest): Promise<BasketDetail> {
@@ -178,12 +180,28 @@ export async function listOrgBaskets(ctx: OwnerCtx, orgId: string, q: ListBasket
   };
 }
 
-const openVersionOf = async (conn: DbOrTx, basketId: string, lock = false): Promise<VersionRow | undefined> => {
+export const openVersionOf = async (conn: DbOrTx, basketId: string, lock = false): Promise<VersionRow | undefined> => {
   const q = conn.select().from(basketVersions).where(and(eq(basketVersions.basketId, basketId), inArray(basketVersions.status, [...OPEN_VERSION_STATUSES])));
   return (lock ? await q.for("update") : await q)[0];
 };
 
 /** Private view for any active member of the organization: never includes a reviewer's internal note. */
+/** Every assignment of the basket (history included) with its public display name; `selfUserId` marks the caller's own. */
+export async function assignmentViews(conn: DbOrTx, bid: string, selfUserId: string | null): Promise<BasketAssignmentView[]> {
+  const rows = await conn.select({ a: basketAssignments, displayName: organizationMemberships.publicDisplayName }).from(basketAssignments)
+    .innerJoin(organizationMemberships, eq(organizationMemberships.id, basketAssignments.membershipId)).where(eq(basketAssignments.basketId, bid)).orderBy(basketAssignments.createdAt, basketAssignments.id);
+  return rows.map(({ a, displayName }) => ({
+    id: a.id, membershipId: a.membershipId, displayName, role: a.role, permissions: a.permissions as AssignmentFlag[], status: a.status, startedAt: iso(a.startedAt), endedAt: iso(a.endedAt),
+    endReason: a.endReason, isSelf: a.userId === selfUserId,
+  }));
+}
+
+/** The basket's history, oldest first; actors appear as a type only, never as a user id. */
+export async function eventViews(conn: DbOrTx, bid: string): Promise<BasketEventView[]> {
+  const events = await conn.select().from(basketEvents).where(eq(basketEvents.basketId, bid)).orderBy(basketEvents.createdAt, basketEvents.id);
+  return events.map((e) => ({ id: e.id, kind: e.kind, versionId: e.versionId, fromStatus: e.fromStatus, toStatus: e.toStatus, actorType: e.actorType, reason: e.reason, createdAt: e.createdAt.toISOString() }));
+}
+
 export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<BasketDetail> {
   const { basket, membership } = await requireBasketAction(db, ctx.userId, bid, "read");
   const open = await openVersionOf(db, bid);
@@ -191,13 +209,10 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
   const [mine] = await db.select({ permissions: basketAssignments.permissions }).from(basketAssignments)
     .where(and(eq(basketAssignments.basketId, bid), eq(basketAssignments.membershipId, membership.id), eq(basketAssignments.status, "ACTIVE")));
   const isAdmin = membership.role === "OWNER" || membership.role === "ADMIN";
-  const assignments = await db.select({ a: basketAssignments, displayName: organizationMemberships.publicDisplayName }).from(basketAssignments)
-    .innerJoin(organizationMemberships, eq(organizationMemberships.id, basketAssignments.membershipId)).where(eq(basketAssignments.basketId, bid)).orderBy(basketAssignments.createdAt, basketAssignments.id);
   const reviews = await db.select({
     id: basketReviews.id, versionId: basketReviews.versionId, decision: basketReviews.decision, checklist: basketReviews.checklist, sectionComments: basketReviews.sectionComments,
     messageToManager: basketReviews.messageToManager, createdAt: basketReviews.createdAt,
   }).from(basketReviews).where(eq(basketReviews.basketId, bid)).orderBy(basketReviews.createdAt, basketReviews.id);
-  const events = await db.select().from(basketEvents).where(eq(basketEvents.basketId, bid)).orderBy(basketEvents.createdAt, basketEvents.id);
   const publishedView = published ? await versionView(db, published) : null;
   return {
     id: basket.id, organizationId: basket.organizationId, slug: basket.slug, status: basket.status, previousStatus: basket.previousStatus, pauseKind: basket.pauseKind, pauseReason: basket.pauseReason,
@@ -205,12 +220,9 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
     myPermissions: isAdmin ? [...ASSIGNMENT_FLAGS] : ROLE_PERMISSIONS[membership.role].includes("baskets.manage") ? (mine?.permissions ?? []) as AssignmentFlag[] : [],
     openVersion: open ? await versionView(db, open) : null,
     publishedVersion: publishedView,
-    assignments: assignments.map(({ a, displayName }) => ({
-      id: a.id, membershipId: a.membershipId, displayName, role: a.role, permissions: a.permissions as AssignmentFlag[], status: a.status, startedAt: iso(a.startedAt), endedAt: iso(a.endedAt),
-      endReason: a.endReason, isSelf: a.userId === ctx.userId,
-    })),
+    assignments: await assignmentViews(db, bid, ctx.userId),
     reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
-    events: events.map((e) => ({ id: e.id, kind: e.kind, versionId: e.versionId, fromStatus: e.fromStatus, toStatus: e.toStatus, actorType: e.actorType, reason: e.reason, createdAt: e.createdAt.toISOString() })),
+    events: await eventViews(db, bid),
     validation: open ? validateBasketVersion(await loadValidationInput(db, open.id)) : null,
     hasAssetWarning: publishedView?.assets.some((a) => a.instrumentStatus === "PAUSED" || a.instrumentStatus === "DEPRECATED") ?? false,
   };
@@ -380,6 +392,7 @@ export async function endAssignment(ctx: OwnerCtx, bid: string, aid: string, bod
     await requireReassignmentIfLeaderless(tx, bid, ctx.userId, ctx.meta.requestId);
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "basket.assignment_ended", entityType: "basket_assignment", entityId: a.id, requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { basketId: bid } });
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   return getBasketForMember(ctx, bid);
 }
 
@@ -401,4 +414,31 @@ export async function endIneligibleAssignments(tx: Tx, membershipId: string, req
     await writeAudit(tx, { actorType: actorUserId ? "user" : "system", actorUserId, action: "basket.assignment_ended", entityType: "basket_assignment", entityId: a.id, requestId, metadata: { basketId: a.basketId } });
   }
   return reassign;
+}
+
+/** Emails the basket's active lead(s) and the organization's OWNER (verified email contacts only); a basket email is per event and recipient. Never throws: a committed change is not undone by a notice problem. */
+export async function notifyBasket(basketId: string, kind: BasketEmailKind, data: Omit<BasketEmailData, "basketName">, eventId: string): Promise<void> {
+  try {
+    const [b] = await db.select({ orgId: baskets.organizationId, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, basketId));
+    if (!b) return;
+    const recipients = await db.select({ id: contacts.id, email: contacts.value }).from(contacts).where(and(
+      eq(contacts.type, "email"), eq(contacts.status, "verified"),
+      sql`(exists (select 1 from app.basket_assignments a where a.basket_id = ${basketId} and a.user_id = ${contacts.userId} and a.role = 'lead' and a.status = 'ACTIVE')
+        or exists (select 1 from app.organization_memberships m where m.organization_id = ${b.orgId} and m.user_id = ${contacts.userId} and m.role = 'OWNER' and m.status = 'ACTIVE'))`,
+    ));
+    if (recipients.length === 0) logger.info("basket email skipped: no verified email", { kind });
+    for (const r of recipients) await sendBasketEmail(kind, r.email, { ...data, basketName: b.name }, `basket/${eventId}/${r.id}`);
+  } catch (err) {
+    logger.warn("basket email failed", { kind, error: err instanceof Error ? err.name : "unknown" });
+  }
+}
+
+/** After commit: emails for the baskets that one request moved to REASSIGNMENT_REQUIRED (the hook runs inside several membership transactions). */
+export async function notifyReassignmentRequired(requestId: string): Promise<void> {
+  try {
+    const events = await db.select({ id: basketEvents.id, basketId: basketEvents.basketId }).from(basketEvents).where(and(eq(basketEvents.kind, "reassignment_required"), eq(basketEvents.requestId, requestId)));
+    for (const e of events) await notifyBasket(e.basketId, "reassignment_required", {}, e.id);
+  } catch (err) {
+    logger.warn("basket email failed", { kind: "reassignment_required", error: err instanceof Error ? err.name : "unknown" });
+  }
 }

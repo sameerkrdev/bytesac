@@ -62,3 +62,28 @@ export async function forceStatus(bid: string, status: "in_review" | "approved" 
 export const basketRow = async (bid: string) => (await adminSql`SELECT * FROM app.baskets WHERE id = ${bid}`)[0]!;
 export const assignmentsOf = (bid: string) => adminSql<{ id: string; role: string; status: string; permissions: string[]; end_reason: string | null; user_id: string }[]>`SELECT id, role, status, permissions, end_reason, user_id FROM app.basket_assignments WHERE basket_id = ${bid} ORDER BY created_at, id`;
 export const eventKinds = async (bid: string) => (await adminSql<{ kind: string }[]>`SELECT kind FROM app.basket_events WHERE basket_id = ${bid} ORDER BY created_at, id`).map((e) => e.kind);
+
+export const PASS = Object.fromEntries(["completeness", "assets", "allocation", "communication", "managers", "fees", "operations"].map((k) => [k, { result: "pass" }]));
+export const decision = (d: string, over: object = {}) => ({ decision: d, checklist: PASS, ...over });
+export const submitBasket = (h: Headers, bid: string) => post(h, `/v1/baskets/${bid}/submit`);
+export const publishBasket = (h: Headers, bid: string) => post(h, `/v1/baskets/${bid}/publish`);
+export const decideBasket = (h: Headers, bid: string, vid: string, body: object) => post(h, `/v1/ops/baskets/${bid}/versions/${vid}/decision`, body);
+export const opsGet = (h: Headers, bid: string) => request(app).get(`/v1/ops/baskets/${bid}`).set(h);
+
+/** A basket led by `lead` with valid content over two ACTIVE instruments, submitted and approved by `admin`: ready to publish. */
+export async function approvedBasket(lead: { h: Headers }, orgId: string, admin: { h: Headers }, a: string, b: string, name = "Core Crypto") {
+  const { id, openVersion } = await createBasket(lead.h, orgId, { name, category: "thematic" });
+  await saveOpen(lead.h, id, validContent(a, b));
+  const submitted = await submitBasket(lead.h, id);
+  if (submitted.status !== 200) throw new Error(`submit failed: ${JSON.stringify(submitted.body)}`);
+  const approved = await decideBasket(admin.h, id, openVersion.id, decision("approved"));
+  if (approved.status !== 200) throw new Error(`approve failed: ${JSON.stringify(approved.body)}`);
+  return { id, vid: openVersion.id };
+}
+
+export async function publishedBasket(lead: { h: Headers }, orgId: string, admin: { h: Headers }, a: string, b: string, name?: string) {
+  const r = await approvedBasket(lead, orgId, admin, a, b, name);
+  const res = await publishBasket(lead.h, r.id);
+  if (res.status !== 200) throw new Error(`publish failed: ${JSON.stringify(res.body)}`);
+  return r;
+}

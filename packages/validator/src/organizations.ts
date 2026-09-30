@@ -307,6 +307,8 @@ export const publicOrganizationSchema = z.object({
     current: z.array(z.object({ displayName: z.string(), title: z.string().nullable(), role: membershipRoleSchema })),
     former: z.array(z.object({ displayName: z.string(), title: z.string().nullable(), role: membershipRoleSchema, from: isoTime, to: isoTime })),
   }),
+  /** Published baskets in a listed status (see the public basket list). */
+  baskets: z.array(z.object({ slug: z.string(), name: z.string(), status: z.string() })).default([]),
 });
 export type PublicOrganization = z.infer<typeof publicOrganizationSchema>;
 

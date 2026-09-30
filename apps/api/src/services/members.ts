@@ -11,7 +11,7 @@ import {
 } from "@repo/validator";
 import { consume, limits } from "../middleware/rate-limit";
 import { sendMembershipEmail, type MembershipEmailKind } from "../providers/resend";
-import { endIneligibleAssignments } from "./baskets";
+import { endIneligibleAssignments, notifyReassignmentRequired } from "./baskets";
 import { writeAudit } from "./audit";
 import type { OrganizationRow, OwnerCtx } from "./organizations";
 import { canonicalizeAddress, findAddressOwner } from "./wallets";
@@ -230,6 +230,7 @@ export async function changeRole(ctx: OwnerCtx, orgId: string, mid: string, body
       requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { organizationId: orgId, from: m.role, to: body.role },
     });
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   return listMembers(ctx, orgId);
 }
 
@@ -252,6 +253,7 @@ export async function removeMember(ctx: OwnerCtx, orgId: string, mid: string): P
     });
     return request ? null : m;
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   if (removed) await notifyMember("removed", { userId: removed.userId! }, { orgId }, `membership-removed/${removed.id}`);
   return listMembers(ctx, orgId);
 }
@@ -269,6 +271,7 @@ export async function decideRemoval(ctx: OwnerCtx, orgId: string, mid: string, d
     });
     return confirm ? m : null;
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   if (revoked) await notifyMember("removed", { userId: revoked.userId! }, { orgId }, `membership-removed/${revoked.id}`);
   return listMembers(ctx, orgId);
 }
@@ -315,6 +318,7 @@ export async function leaveOrganization(ctx: OwnerCtx, mid: string): Promise<MyM
     if (m.status !== "ACTIVE" && m.status !== "REMOVAL_REQUESTED") throw invalid("Only an active member can leave.");
     await moveMembership(tx, m, "REVOKED", { actorType: "member", actorUserId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, kind: "left", action: "membership.left" });
   });
+  await notifyReassignmentRequired(ctx.meta.requestId);
   return myMembershipView((await db.select().from(organizationMemberships).where(eq(organizationMemberships.id, mid)))[0]!);
 }
 

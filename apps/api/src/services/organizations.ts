@@ -5,7 +5,7 @@ import createHttpError from "http-errors";
 import { and, desc, eq, inArray, isNotNull, isNull, max, or, sql } from "drizzle-orm";
 import { logger } from "@repo/logger";
 import {
-  contacts, db, isUniqueViolation, membershipEvents, organizationDocuments, organizationEvents, organizationMemberships, organizationPayoutWallets, organizationVersionDocuments,
+  basketVersions, baskets, contacts, db, isUniqueViolation, membershipEvents, organizationDocuments, organizationEvents, organizationMemberships, organizationPayoutWallets, organizationVersionDocuments,
   organizationVersions, organizations, userPermissions, verificationRequirementTemplates, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
@@ -20,6 +20,7 @@ import { R2_BUCKET, r2 } from "../providers/r2";
 import { sendOrganizationEmail, type OrganizationEmailData, type OrganizationEmailKind } from "../providers/resend";
 import { writeAudit } from "./audit";
 import { notFound, requirePermission } from "./members";
+import { LISTED_BASKET_STATUSES } from "./public-baskets";
 
 export interface OwnerCtx { userId: string; sessionId: string; meta: RequestMeta }
 export type OrganizationRow = typeof organizations.$inferSelect;
@@ -364,8 +365,10 @@ export async function getPublicOrganization(id: string): Promise<PublicOrganizat
   ));
   const rank = (role: (typeof members)[number]["role"]) => membershipRoleSchema.options.indexOf(role);
   const person = (m: (typeof members)[number]) => ({ displayName: m.publicDisplayName!, title: m.publicTitle, role: m.role });
+  const published = await db.select({ slug: baskets.slug, name: basketVersions.name, status: baskets.status }).from(baskets).innerJoin(basketVersions, eq(basketVersions.id, baskets.currentVersionId))
+    .where(and(eq(baskets.organizationId, id), inArray(baskets.status, [...LISTED_BASKET_STATUSES]))).orderBy(desc(basketVersions.publishedAt), desc(baskets.id));
   return {
-    id: row.org.id, type: row.org.type, jurisdiction: row.org.jurisdiction, verifiedAt: row.org.verifiedAt.toISOString(), profile,
+    id: row.org.id, type: row.org.type, jurisdiction: row.org.jurisdiction, verifiedAt: row.org.verifiedAt.toISOString(), profile, baskets: published,
     team: {
       current: members.filter((m) => m.status === "ACTIVE").sort((a, b) => rank(a.role) - rank(b.role) || a.publicDisplayName!.localeCompare(b.publicDisplayName!)).map(person),
       former: members.filter((m) => m.status === "REVOKED").sort((a, b) => (b.leftAt ?? b.updatedAt).getTime() - (a.leftAt ?? a.updatedAt).getTime())

@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import {
-  createAssignmentRequestSchema, endAssignmentRequestSchema, saveBasketDraftRequestSchema, updateAssignmentRequestSchema, z,
-  type CreateAssignmentRequest, type EndAssignmentRequest, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
+  basketReasonRequestSchema, createAssignmentRequestSchema, endAssignmentRequestSchema, saveBasketDraftRequestSchema, updateAssignmentRequestSchema, z,
+  type BasketReasonRequest, type CreateAssignmentRequest, type EndAssignmentRequest, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
 } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
@@ -9,6 +9,7 @@ import { validate } from "../middleware/validate";
 import {
   addAssignment, createNextVersion, endAssignment, getBasketForMember, getVersionDiff, listVersions, previewOpenVersion, saveDraft, updateAssignment, validateOpenVersion,
 } from "../services/baskets";
+import { pauseBasket, publishVersion, requestRetirement, resumeBasket, submitVersion, withdrawVersion } from "../services/basket-review";
 
 const bidParam = z.object({ bid: z.uuid() });
 const versionParams = z.object({ bid: z.uuid(), vid: z.uuid() });
@@ -60,4 +61,28 @@ basketsRouter.patch("/:bid/assignments/:aid", validate({ params: assignmentParam
 
 basketsRouter.post("/:bid/assignments/:aid/end", validate({ params: assignmentParams, body: endAssignmentRequestSchema }), async (req, res) => {
   res.json(await endAssignment(ctx(req), req.params.bid as string, req.params.aid as string, req.body as EndAssignmentRequest));
+});
+
+basketsRouter.post("/:bid/submit", validate({ params: bidParam }), async (req, res) => {
+  res.json(await submitVersion(ctx(req), req.params.bid as string));
+});
+
+basketsRouter.post("/:bid/withdraw", validate({ params: bidParam }), async (req, res) => {
+  res.json(await withdrawVersion(ctx(req), req.params.bid as string));
+});
+
+basketsRouter.post("/:bid/publish", validate({ params: bidParam }), async (req, res) => {
+  res.json(await publishVersion(ctx(req), req.params.bid as string));
+});
+
+basketsRouter.post("/:bid/pause", validate({ params: bidParam, body: basketReasonRequestSchema }), async (req, res) => {
+  res.json(await pauseBasket(ctx(req), req.params.bid as string, (req.body as BasketReasonRequest).reason));
+});
+
+basketsRouter.post("/:bid/resume", validate({ params: bidParam }), async (req, res) => {
+  res.json(await resumeBasket(ctx(req), req.params.bid as string));
+});
+
+basketsRouter.post("/:bid/retirement-request", validate({ params: bidParam, body: basketReasonRequestSchema }), async (req, res) => {
+  res.json(await requestRetirement(ctx(req), req.params.bid as string, (req.body as BasketReasonRequest).reason));
 });

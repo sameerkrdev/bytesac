@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sdk = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("resend", () => ({ Resend: class { emails = { send: sdk.send }; } }));
 
-const { sendOtpEmail, sendApplicationEmail, sendOrganizationEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
+const { sendOtpEmail, sendApplicationEmail, sendOrganizationEmail, sendBasketEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
 
 beforeEach(() => sdk.send.mockReset());
 
@@ -53,5 +53,20 @@ describe("sendOrganizationEmail", () => {
   it("a delivery failure is logged, not thrown", async () => {
     sdk.send.mockResolvedValueOnce({ data: null, error: { name: "application_error", message: "down", statusCode: null } });
     await expect(sendOrganizationEmail("verified", "a@b.co", {}, "organization-status/e-2")).resolves.toBeUndefined();
+  });
+});
+
+describe("sendBasketEmail", () => {
+  it("sends with the caller's idempotency key and never claims assets moved", async () => {
+    sdk.send.mockResolvedValueOnce({ data: { id: "e1" }, error: null });
+    await sendBasketEmail("published", "a@b.co", { basketName: "Core" }, "basket/e-1/u-1");
+    const [payload, options] = sdk.send.mock.calls[0]!;
+    expect(payload).toMatchObject({ to: "a@b.co", subject: "Bytesac basket version published" });
+    expect(payload.text).toContain("No assets were moved");
+    expect(options).toEqual({ idempotencyKey: "basket/e-1/u-1" });
+  });
+  it("a failure is logged, not thrown", async () => {
+    sdk.send.mockResolvedValueOnce({ data: null, error: { name: "application_error", message: "down", statusCode: null } });
+    await expect(sendBasketEmail("rejected", "a@b.co", { message: "Why" }, "basket/e-2/u-1")).resolves.toBeUndefined();
   });
 });

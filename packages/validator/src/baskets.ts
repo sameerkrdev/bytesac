@@ -305,6 +305,8 @@ export const basketEventViewSchema = z.object({
   id: z.string(), kind: z.string(), versionId: z.string().nullable(), fromStatus: z.string().nullable(), toStatus: z.string().nullable(), actorType: z.string(), reason: z.string().nullable(), createdAt: iso,
 });
 
+export type BasketEventView = z.infer<typeof basketEventViewSchema>;
+
 export const basketSummarySchema = z.object({
   id: z.string(), slug: z.string(), name: z.string(), category: basketCategorySchema, status: basketStatusSchema, currentVersionNumber: z.number().nullable(),
   openVersionStatus: basketVersionStatusSchema.nullable(), updatedAt: iso,
@@ -335,3 +337,98 @@ export type ListBasketVersionsResponse = z.infer<typeof listBasketVersionsRespon
 /** A public-shaped rendering of the open version, labelled as a preview by the client. */
 export const basketPreviewSchema = z.object({ version: basketVersionViewSchema, validation: basketValidationSchema });
 export type BasketPreview = z.infer<typeof basketPreviewSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Lifecycle, review and ops
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const basketReasonRequestSchema = z.strictObject({ reason: z.string().trim().min(1).max(500) });
+export type BasketReasonRequest = z.infer<typeof basketReasonRequestSchema>;
+
+/** Lead approval and the retirement decision. */
+export const basketApprovalRequestSchema = z.strictObject({ decision: z.enum(["approved", "rejected"]), reason: z.string().trim().max(500).optional() });
+export type BasketApprovalRequest = z.infer<typeof basketApprovalRequestSchema>;
+
+export const REVIEW_CHECKLIST_KEYS = ["completeness", "assets", "allocation", "communication", "managers", "fees", "operations"] as const;
+const checklistItemSchema = z.strictObject({ result: z.enum(["pass", "fail", "na"]), note: z.string().trim().max(500).optional() });
+export const basketReviewDecisionRequestSchema = z.strictObject({
+  decision: basketReviewDecisionSchema,
+  checklist: z.strictObject(Object.fromEntries(REVIEW_CHECKLIST_KEYS.map((k) => [k, checklistItemSchema])) as Record<(typeof REVIEW_CHECKLIST_KEYS)[number], typeof checklistItemSchema>),
+  sectionComments: z.array(z.strictObject({ section: basketSectionSchema, comment: z.string().trim().min(1).max(1000) })).max(30).optional(),
+  messageToManager: z.string().trim().max(2000).optional(),
+  internalNote: z.string().trim().max(2000).optional(),
+}).superRefine((v, ctx) => {
+  if ((v.decision === "changes_required" || v.decision === "rejected") && !v.messageToManager) ctx.addIssue({ code: "custom", path: ["messageToManager"], message: "Tell the manager what to change." });
+  if (v.decision === "escalated" && !v.internalNote) ctx.addIssue({ code: "custom", path: ["internalNote"], message: "Add an internal note for the escalation." });
+});
+export type BasketReviewDecisionRequest = z.infer<typeof basketReviewDecisionRequestSchema>;
+
+export const listOpsBasketsQuerySchema = z.strictObject({ queue: z.enum(["review", "escalated", "leads", "retirements"]).default("review"), cursor: z.string().max(200).optional() });
+export type ListOpsBasketsQuery = z.infer<typeof listOpsBasketsQuerySchema>;
+
+export const opsBasketSummarySchema = z.object({
+  id: z.string(), name: z.string(), organizationId: z.string(), organizationName: z.string().nullable(), status: basketStatusSchema,
+  latestVersionNumber: z.number(), latestVersionStatus: basketVersionStatusSchema, updatedAt: iso,
+});
+export const opsBasketListResponseSchema = z.object({ items: z.array(opsBasketSummarySchema), nextCursor: z.string().nullable() });
+export type OpsBasketListResponse = z.infer<typeof opsBasketListResponseSchema>;
+
+export const opsBasketDetailSchema = basketDetailSchema.omit({ myPermissions: true, reviews: true }).extend({
+  organization: z.object({ id: z.string(), displayName: z.string().nullable(), status: z.string() }),
+  versions: z.array(basketVersionSummarySchema),
+  /** Every review with the internal note, for ops only. */
+  reviews: z.array(basketReviewViewSchema.extend({ reviewerUserId: z.string(), internalNote: z.string().nullable(), reviewedHash: z.string() })),
+  diff: basketDiffSchema.nullable(),
+});
+export type OpsBasketDetail = z.infer<typeof opsBasketDetailSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Disclosure templates
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const createDisclosureTemplateRequestSchema = z.strictObject({
+  key: z.string().regex(/^[a-z_]{3,60}$/), title: z.string().trim().min(1).max(120), body: z.string().trim().min(1).max(5000), condition: disclosureConditionSchema,
+});
+export type CreateDisclosureTemplateRequest = z.infer<typeof createDisclosureTemplateRequestSchema>;
+export const disclosureTemplateViewSchema = z.object({
+  id: z.string(), key: z.string(), version: z.number(), title: z.string(), body: z.string(), condition: disclosureConditionSchema, status: z.enum(["active", "retired"]), createdAt: iso, retiredAt: iso.nullable(),
+});
+export type DisclosureTemplateView = z.infer<typeof disclosureTemplateViewSchema>;
+export const listDisclosureTemplatesResponseSchema = z.object({ groups: z.array(z.object({ key: z.string(), templates: z.array(disclosureTemplateViewSchema) })) });
+export type ListDisclosureTemplatesResponse = z.infer<typeof listDisclosureTemplatesResponseSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Public (no session): published content only, never ids of users or memberships, reviews or emails
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const publicBasketQuerySchema = z.strictObject({ cursor: z.string().max(200).optional() });
+export const publicBasketCardSchema = z.object({
+  slug: z.string(), name: z.string(), shortDescription: z.string().nullable(), organizationName: z.string().nullable(), category: basketCategorySchema, assetCount: z.number(),
+  minimumInvestmentUsdc: z.string().nullable(), status: basketStatusSchema, publishedAt: iso,
+});
+export const publicBasketListResponseSchema = z.object({ items: z.array(publicBasketCardSchema), nextCursor: z.string().nullable() });
+export type PublicBasketListResponse = z.infer<typeof publicBasketListResponseSchema>;
+
+const publicPriceSchema = z.object({
+  instrumentId: z.string(), kind: z.enum(["market", "nav"]), status: z.enum(["ok", "unavailable"]), value: z.string().nullable(), currency: z.string(), source: z.string(), observedAt: z.string().nullable(), stale: z.boolean(),
+});
+export const publicBasketDetailSchema = z.object({
+  slug: z.string(), status: basketStatusSchema, hasAssetWarning: z.boolean(),
+  organization: z.object({ id: z.string(), displayName: z.string().nullable() }),
+  version: z.object({
+    versionNumber: z.number(), publishedAt: iso, name: z.string(), shortDescription: z.string().nullable(), longDescription: z.string().nullable(), category: basketCategorySchema, tags: z.array(z.string()),
+    objective: z.string().nullable(), thesis: z.string().nullable(), methodology: z.string().nullable(), intendedInvestor: z.string().nullable(), horizon: z.string().nullable(),
+    keyAssumptions: z.string().nullable(), knownLimitations: z.string().nullable(), strategyRisks: z.string().nullable(), liquidityNotes: z.string().nullable(), conflictsOfInterest: z.string().nullable(),
+    constraints: basketConstraintsSchema, rebalance: basketRebalanceSchema, fees: basketFeesSchema, minimumInvestmentUsdc: z.string().nullable(), minimumIncrementUsdc: z.string().nullable(),
+  }),
+  allocation: z.array(z.object({
+    instrumentId: z.string(), name: z.string(), symbol: z.string(), assetType: assetTypeSchema, chains: z.array(z.string()), targetWeightBps: z.number(),
+    minWeightBps: z.number().nullable(), maxWeightBps: z.number().nullable(), prices: z.array(publicPriceSchema),
+  })),
+  disclosures: z.array(z.object({ title: z.string(), body: z.string() })),
+  versionHistory: z.array(z.object({ versionNumber: z.number(), publishedAt: iso, rationale: z.string().nullable(), diff: basketDiffSchema })),
+  managers: z.array(z.object({ displayName: z.string(), role: basketAssignmentRoleSchema, from: iso, to: iso.nullable() })),
+});
+export type PublicBasketDetail = z.infer<typeof publicBasketDetailSchema>;
+export const publicBasketResponseSchema = z.union([publicBasketDetailSchema, z.object({ redirectTo: z.string() })]);
+export type PublicBasketResponse = z.infer<typeof publicBasketResponseSchema>;

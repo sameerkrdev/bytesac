@@ -6,6 +6,15 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 }
 
 describe("api client", () => {
+  it("basket routes hit the documented paths; a renamed public basket parses as a redirect", async () => {
+    const f = vi.fn(async () => jsonResponse(200, { redirectTo: "new-slug-abc123" }));
+    const api = createApiClient({ baseUrl: "/api", transport: { kind: "cookie" }, fetch: f });
+    expect(await api.getPublicBasket("old-slug")).toEqual({ redirectTo: "new-slug-abc123" });
+    await expect(api.listPublicBaskets("c")).rejects.toThrow();
+    const urls = f.mock.calls.map((c) => (c as unknown as [string])[0]);
+    expect(urls).toEqual(["/api/v1/public/baskets/old-slug", "/api/v1/public/baskets?cursor=c"]);
+  });
+
   it("cookie transport sends credentials and CSRF header", async () => {
     const f = vi.fn(async () => jsonResponse(200, { challengeId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", message: "m", expiresAt: "2026-01-01T00:00:00.000Z" }));
     const api = createApiClient({ baseUrl: "/api", transport: { kind: "cookie" }, fetch: f });
