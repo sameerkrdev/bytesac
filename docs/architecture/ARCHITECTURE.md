@@ -106,13 +106,13 @@ Represent:
 Implemented in Spec 5 (ADR-010): ops draft, verify, review and activate instruments; signed-in users read `ACTIVE` ones through `/v1/assets`. Managers select only platform-approved instruments. Arbitrary token addresses must not become investable merely by being entered in a basket. The initial scope is crypto, crypto tokens and approved RWAs on supported routes. Future asset categories remain disabled until explicitly approved.
 
 ### Basket and versioning
-- A basket is a versioned investment strategy owned by an approved organization.
-- New baskets begin as `DRAFT`; drafts are not publicly investable.
-- Manager configures identity, thesis, approved assets, weights, constraints, rebalance settings, disclosures and commercial terms.
-- Validate before submission; platform review precedes publication.
-- Published versions are immutable snapshots. Changes create a new version and pass the applicable review/publication workflow.
-- Preserve historical versions, manager attribution, approvals and investor-facing change summaries.
-- Pause, retire and archive are explicit lifecycle operations.
+Implemented in Spec 6 (ADR-011); nothing invests, executes or charges yet.
+- A basket is a versioned investment strategy owned by a verified organization. The basket (slug, status, current version) and its versions (content) are separate state machines; one open version at a time, editable only as `draft` or `changes_required`.
+- New baskets begin as `DRAFT`; drafts are not public. The manager configures identity, thesis, registry instruments with hand-entered target weights, constraints, rebalance disclosures, fees and minimums; platform disclosures come from ops-managed templates pinned per version.
+- `validateBasketVersion` (`@repo/validator`) runs in the browser and on the server with stable issue codes; saving reports and never normalizes, submit and publish return 422.
+- Submit freezes and content-hashes the version; an `ops_admin` approves (reviewers request changes, reject or escalate); the manager publishes the approved hash. Published versions are immutable; asset rows and disclosure pins are revisioned, never deleted (the runtime role has no DELETE).
+- Per-basket assignments (lead, co-manager, flags) gate every action; a departing lead ends assignments and the basket waits in `REASSIGNMENT_REQUIRED` for an ops-approved lead.
+- Pause (manager or platform), retirement (manager request, ops decision, or direct) are explicit lifecycle operations. Public `/baskets` pages serve published content only; history, diffs and manager history are kept.
 
 ### Portfolio ledger
 Maintain separate representations for:
@@ -177,8 +177,7 @@ Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind 
 10. Basket creation and publication remain separately gated.
 
 ### Basket creation and publication
-`DRAFT → VALIDATION → SUBMITTED_FOR_REVIEW → CHANGES_REQUESTED / APPROVED → PUBLISHED`
-The exact status names should follow the domain specification and be represented as explicit transitions. A draft or unapproved basket must not be investable.
+Version: `draft → in_review → changes_required → in_review → approved → published → superseded` (or `rejected`), basket: `DRAFT → ACTIVE ⇄ PAUSED → RETIRED` with `REASSIGNMENT_REQUIRED` and `RETIREMENT_PENDING` side states (`BASKET_TRANSITIONS`, `BASKET_VERSION_TRANSITIONS`). Every transition locks the basket, writes an event and an audit row in one transaction. A draft or unapproved basket is never public or investable.
 
 ### Rebalance, skip, drift and fix
 - Manager publishes a reviewed basket version and change reason/summary.
@@ -211,7 +210,7 @@ Names are indicative; align final names with existing migrations and implementat
 - `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
 - `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `member_verification_documents`, `membership_events`, `organization_payout_wallets`, `organization_events`
 - `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010)
-- `baskets`, `basket_versions`, `basket_version_assets`, `basket_assignments`, `basket_reviews`
+- `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` (revisioned), `disclosure_templates`, `basket_version_disclosures` (revisioned), `basket_assignments`, `basket_reviews`, `basket_events` (implemented, ADR-011)
 - `user_portfolios`, `wallet_asset_balances`, `basket_positions`, `unassigned_positions`
 - `investment_operations`, `operation_steps`, `blockchain_transactions`, `provider_requests`
 - `portfolio_activity`, `ledger_entries`, `transition_plans`, `transition_plan_legs`
