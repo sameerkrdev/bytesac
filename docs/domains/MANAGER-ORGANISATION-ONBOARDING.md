@@ -21,10 +21,17 @@ Statuses: `EMAIL_PENDING → SUBMITTED → SCREENING → CONTACTED / ADDITIONAL_
 Rules: one open application per email and per wallet address (rejected applications may re-apply); `EMAIL_PENDING` applications older than 24 h are purged; if the code email fails on submit, the API returns `OTP_DELIVERY_FAILED` with the application id so the applicant can resend; the applicant sees only status, the latest ops message and whether a reply is allowed, never internal notes.
 
 ## Organization and wallet
-- Organization information has private and public subsets.
-- Changes to approved public information may require re-verification; keep the currently approved public version visible until approval.
-- Organization payout wallet is distinct from personal/authentication wallets and requires ownership verification.
-- Payout wallet changes are controlled and auditable.
+Statuses: `DRAFT → SUBMITTED → UNDER_REVIEW → VERIFIED`, with `CHANGES_REQUIRED → RESUBMITTED → UNDER_REVIEW` and `REJECTED` (terminal). Ops transitions are one table in code (`ORGANIZATION_TRANSITIONS`); owner submit and resubmit are separate actions; anything else is `INVALID_TRANSITION`. There is no stored `APPROVED` state. ADR-008.
+1. A user with `create_manager_organization` creates an individual or firm organization (`/organization`) with a two-letter jurisdiction and becomes its `OWNER`. At most one owned organization that is not `REJECTED` may exist; the permission is not consumed.
+2. Required fields and documents come from a seeded requirement template (type, optionally jurisdiction; the most specific wins). Fields come from a catalog with public and private visibility (`@repo/validator`); private details are never shown publicly. The owner edits a draft version; required-ness is checked only on submit.
+3. Documents (PDF, JPEG or PNG, at most 10 MB) go straight to R2 by presigned PUT, then a confirm step checks size, type and magic bytes. Removing a document from a draft is a soft unlink. Documents stay private: owners see metadata only and only ops download them (short-lived attachment links; reviewers who are members of the organization are refused).
+4. The payout wallet is a separate Solana wallet. It becomes `VERIFIED` only after a signature over a payout-specific challenge; typed addresses never verify, and payout challenges cannot sign in. Wallet entry, challenge and verify are refused while the organization is under review.
+5. Submit needs every template-required field valid, every required document uploaded and linked, and a verified payout wallet; otherwise 422 `REQUIREMENTS_INCOMPLETE` lists exactly what is missing. Submit moves the draft version to `in_review`.
+6. Ops review in `/ops/organizations`: move to `UNDER_REVIEW`, request changes (message to the owner required; the version becomes editable again), verify or reject. Internal notes, timeline and audit are kept; an ops user who is a member of the organization cannot act on it.
+7. Verification makes the reviewed version current and publishes the public profile (`/organizations/[id]`), which only ever shows the current approved version's public fields.
+8. Later edits to a verified organization are whole-profile change requests: one open draft at a time, copied from the current version, submitted and decided by ops (approve, request changes, reject). The organization stays `VERIFIED` and the public profile is unchanged until approval.
+9. Replacing the payout wallet needs a new signature and ops approval: the new wallet is `REPLACEMENT_PENDING`, the old one stays active until approval, rejection leaves it active. Wallet rows are history and are never overwritten; exactly one wallet is `VERIFIED` per organization.
+10. Owners get Resend emails for changes required, verified, rejected, change request decisions and payout wallet replacement events (failures are logged, never roll back a state change).
 
 ## Members and roles
 The source describes Owner, Admin, Manager, Analyst and Viewer roles with role-based permissions. Enforce permissions by organization and resource. Membership verification is distinct from user authentication. Removing a member revokes access but preserves person, basket and audit history.

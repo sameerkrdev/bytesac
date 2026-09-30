@@ -58,11 +58,11 @@ Optional catalog fields may always be filled; only template-required ones gate s
 - **`organization_memberships`**: `id`, `organization_id`, `user_id`, `role` enum(`OWNER`,`ADMIN`,`MANAGER`,`ANALYST`,`VIEWER`), `status` enum(`active`,`revoked`), `joined_at`, `left_at`. Partial unique `(organization_id, user_id)` where `status='active'`. Spec 3 only creates `OWNER`.
 - **`organization_versions`**: `id`, `organization_id`, `version_number` (unique per org), `status` enum(`draft`,`in_review`,`changes_required`,`approved`,`rejected`,`superseded`), `public_profile` jsonb, `private_details` jsonb, `created_by_user_id`, `submitted_at`, `decided_at`, `decided_by_user_id`, `created_at`, `updated_at`. Partial unique: one version per org in (`draft`,`in_review`,`changes_required`). Content is editable only in `draft`/`changes_required`.
 - **`organization_documents`**: `id`, `organization_id`, `document_type`, `r2_key`, `content_type`, `size_bytes`, `status` enum(`pending_upload`,`uploaded`,`rejected_file`), `scan_status` enum(`not_scanned`), `uploaded_by_user_id`, `created_at`, `uploaded_at`. Rows immutable after `uploaded`.
-- **`organization_version_documents`**: `version_id`, `document_id` (PK both). A new draft copies the current version's links.
+- **`organization_version_documents`**: `id`, `version_id`, `document_id`, `created_at`, `removed_at` (soft unlink; partial unique `(version_id, document_id)` where `removed_at is null`; no DELETE, D-038). A new draft copies the current version's active links.
 - **`verification_requirement_templates`**: `id`, `organization_type`, `jurisdiction` (nullable = default), `required_fields` text[], `required_documents` text[], `created_at`, `retired_at`. Partial unique `(organization_type, coalesce(jurisdiction,''))` where `retired_at is null`.
 - **`organization_payout_wallets`**: `id`, `organization_id`, `chain` (Chain; `solana` only enforced by check), `address`, `status` enum(`UNVERIFIED`,`VERIFYING`,`VERIFIED`,`REPLACEMENT_PENDING`,`REVOKED`), `verified_at` (signature time), `activated_at`, `deactivated_at`, `requested_by_user_id`, `decided_by_user_id`, `created_at`, `updated_at`. Partial uniques: one `VERIFIED` per org; one row in (`UNVERIFIED`,`VERIFYING`,`REPLACEMENT_PENDING`) per org. Rows are the history (never overwritten).
 - **`organization_events`** (append-only): `id`, `organization_id`, `actor_type` (`owner`,`ops`,`system`), `actor_user_id`, `kind` enum(`status_changed`,`note`,`version_submitted`,`version_decided`,`document_uploaded`,`payout_wallet_changed`), `from_status`, `to_status`, `version_id`, `payout_wallet_id`, `internal_note`, `message_to_owner`, `request_id`, `created_at`.
-- `challenge_purpose` enum gains `payout_wallet`; `auth_challenges` gains nullable `organization_id`.
+- `challenge_purpose` enum gains `payout_wallet`; `auth_challenges` gains nullable `organization_id` (check `auth_challenges_org_for_payout` written with `purpose::text`, because Postgres forbids using a newly added enum value in the transaction that adds it).
 - Grants/RLS as 0001/0003 (runtime role SELECT/INSERT/UPDATE, no DELETE). `user_permissions` unchanged.
 
 ## 6. State machines (tables in `@repo/validator`)
@@ -89,9 +89,9 @@ All transitions `SELECT … FOR UPDATE` the org row; invalid → 409 `INVALID_TR
 1. `POST /v1/organizations/:id/documents` `{ documentType, contentType, sizeBytes }` — owner, org editable (draft version exists in `draft`/`changes_required`); content type ∈ `application/pdf`,`image/jpeg`,`image/png`; `sizeBytes` ≤ 10 MB; creates `pending_upload` row; returns `{ documentId, uploadUrl, headers }`: presigned PUT (5 min) to `incoming/<orgId>/<documentId>` with signed `Content-Type` and `Content-Length`.
 2. Browser PUTs the file to R2 (R2 CORS allows PUT from web origins).
 3. `POST /v1/organizations/:id/documents/:docId/confirm` — HEAD object (size/type must equal declared), GET first bytes and check magic bytes (`%PDF-`, `FF D8 FF`, `89 50 4E 47 0D 0A 1A 0A`); match → copy to `documents/<orgId>/<documentId>`, delete incoming, row `uploaded`, link to the draft version (replacing an existing link of the same `document_type` in that draft), event `document_uploaded`; mismatch/missing → row `rejected_file`, delete object, 422 `DOCUMENT_REJECTED`.
-4. `DELETE /v1/organizations/:id/draft/documents/:docId` unlinks from the draft only (object and row kept).
+4. `DELETE /v1/organizations/:id/draft/documents/:docId` soft-unlinks (`removed_at`) from the draft only (object and row kept).
 5. R2 lifecycle rule deletes `incoming/` objects after 1 day. `pending_upload` rows older than 1 day are left as history (no purge needed; they hold no PII).
-6. Ops download: `GET /v1/ops/organizations/:id/documents/:docId/download` → 302 to presigned GET (5 min) with `ResponseContentDisposition: attachment`. Owners see metadata only (type, size, uploaded date), no download.
+6. Ops download: `GET /v1/ops/organizations/:id/documents/:docId/download` → 302 to presigned GET (5 min) with `ResponseContentDisposition: attachment`. Owners see metadata only (type, size, uploaded date), no download. Reviewers who are members of the organization are refused (403), like every ops mutation.
 7. `providers/r2.ts`: S3 client (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, pinned) configured from env `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`; tests mock it.
 
 ## 8. Payout wallet proof
@@ -100,6 +100,7 @@ All transitions `SELECT … FOR UPDATE` the org row; invalid → 409 `INVALID_TR
 - `payout_wallet` challenges are refused by `/v1/auth/verify`; sign-in challenges are refused by the payout verify route.
 - Verification uses the existing Solana ed25519 verifier; finalize (wallet status change + challenge consume + event + audit) is one transaction.
 - The payout address may equal any user wallet; it is a separate resource either way.
+- Wallet entry, challenge and verify are refused (409) while the organization is `SUBMITTED`, `UNDER_REVIEW` or `RESUBMITTED`.
 
 ## 9. API (validator schemas in `@repo/validator`)
 

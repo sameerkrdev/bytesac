@@ -88,10 +88,11 @@ Investor Web / Mobile                     Manager Web
 - Applications are email-confirmed before they enter the ops queue; the platform team screens them in the web ops area (`/ops`), gated by `platform_roles` (`ops_reviewer`, `ops_admin`), with every action audited (ADR-007).
 - The applicant supplies a chain and typed wallet address at application time; it is an identifier only. Wallet control is proven by the normal sign-in signature flow, and a typed address never creates or links a user.
 - The narrowly scoped `create_manager_organization` permission is granted when the application is `SCREENING_APPROVED` and the exact address is proven: immediately at approval if a proven user owns it, otherwise inside the sign-in/add-chain transaction (race-safe: the open application is locked by wallet family and address).
-- User creates an organization; organization is submitted for platform review.
+- User creates an individual or firm organization (at most one owned organization that is not rejected) and fills template-driven public and private information. Content is versioned as a whole; private documents go to R2 by presigned upload and are readable only by ops. The organization is submitted for platform review in `/ops/organizations` (ADR-008).
 - Organization approval, membership verification and basket approval are separate gates.
 - Organization is the durable owner/manager context for baskets. Member removal revokes access but preserves history.
-- Organization payout wallet is distinct from personal/authentication wallets and requires ownership verification.
+- Organization payout wallet is distinct from personal/authentication wallets and requires a Solana signature over a payout-specific challenge; replacement also needs ops approval.
+- The public organization profile shows only the current approved version; later edits are change requests reviewed before they replace it.
 
 ### Asset registry
 Represent:
@@ -207,7 +208,7 @@ Names are indicative; align final names with existing migrations and implementat
 
 - `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
 - `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
-- `organizations`, `organization_versions`, `organization_memberships`, `organization_permissions`, `organization_payout_wallets`
+- `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `organization_payout_wallets`, `organization_events`, `organization_permissions` (Spec 4)
 - `instruments`, `deployments`, `providers`, `execution_routes`, `price_references`, `eligibility_policies`
 - `baskets`, `basket_versions`, `basket_version_assets`, `basket_assignments`, `basket_reviews`
 - `user_portfolios`, `wallet_asset_balances`, `basket_positions`, `unassigned_positions`
@@ -249,7 +250,7 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | Swaps/cross-chain | 0x where the route is supported |
 | Native BTC | Dedicated Bitcoin adapter |
 | Crypto prices | CoinMarketCap |
-| Files | Cloudflare R2 |
+| Files | Cloudflare R2 (private bucket, S3 API via `@aws-sdk/client-s3` behind `providers/r2.ts`; presigned direct upload to `incoming/`, verified copy to `documents/`, ops-only presigned download) |
 
 Current provider capabilities, supported chains, plan limits and commercial terms must be verified against official provider documentation before implementation or release.
 

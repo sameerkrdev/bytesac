@@ -21,7 +21,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Spec 1 — foundation + user auth | ✅ merged to `main` (API, web, mobile). |
 | Restructure (packages, API layout, pg_cron) | ✅ on `main` after `refactor/packages-and-api-layout` merge (verify with `git log --oneline -5`; if that branch still exists unmerged, stop and ask the user). |
 | Spec 2 — manager application + screening | ✅ merged to `main` (`0db41ea`): public apply/status, `/ops` screening, platform roles, wallet-proof grant, self-approval blocked (ADR-007). |
-| Spec 3 — organization onboarding | Spec written on branch `feat/spec3-organization-onboarding` (`docs/superpowers/specs/2026-09-30-organization-onboarding-design.md`); plan + implementation next. |
+| Spec 3 — organization onboarding | Implemented on branch `feat/spec3-organization-onboarding` (API, web owner workspace, public profile, ops review, docs, ADR-008); pending whole-branch review and user merge decision. Real-R2 manual check pending (tests use a fake). |
 | Spec 4 — members/roles | Not started (scope in §6). |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
