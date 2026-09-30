@@ -6,7 +6,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 
 ## 0. Paste-ready starter prompt (for a fresh Claude Code session)
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–3 are merged to `main` (Spec 3 merge `d409758`). Spec 4 (members, roles, permissions) has an **approved spec and plan committed on branch `feat/spec4-members-roles`** (`e677c7a`, `9922345`) and **no implementation yet**.
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–3 are merged to `main` (Spec 3 merge `d409758`). Spec 4 (members, roles, permissions) is **implemented on branch `feat/spec4-members-roles`** (API, web, ops, docs); review, fix wave and merge are pending (§5).
 >
 > **1. Load context (mandatory, in order):** `docs/superpowers/HANDOFF.md` (follow it exactly — §3 rules, §4 working method), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ ADR-007, ADR-008), `docs/engineering/CODING-STANDARDS.md`, the Spec 4 spec `docs/superpowers/specs/2026-09-30-members-roles-design.md` and plan `docs/superpowers/plans/2026-09-30-spec4-members-roles.md`. Check memory files for user preferences.
 >
@@ -47,7 +47,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Restructure (packages, API layout, pg_cron) | ✅ on `main` after `refactor/packages-and-api-layout` merge (verify with `git log --oneline -5`; if that branch still exists unmerged, stop and ask the user). |
 | Spec 2 — manager application + screening | ✅ merged to `main` (`0db41ea`): public apply/status, `/ops` screening, platform roles, wallet-proof grant, self-approval blocked (ADR-007). |
 | Spec 3 — organization onboarding | ✅ merged to `main` (`d409758`): org drafts + templates, R2 presigned documents, payout wallet proof + replacement review, ops review, public profile (ADR-008). Pre-release: real-R2 and AppKit Solana signing manual checks. |
-| Spec 4 — members/roles | Spec + plan approved and committed on branch `feat/spec4-members-roles` (`e677c7a`, `9922345`); implementation not started (first implementer stopped before any edits). |
+| Spec 4 — members/roles | Implemented on branch `feat/spec4-members-roles` (API, web, ops, docs, ADR-009); pending the whole-branch review, fix wave and the user's merge decision. |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
 ### Monorepo layout (after restructure)
@@ -102,10 +102,11 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - **Gate commands:** `pnpm db:up` (Docker Postgres 17 + Redis 7), `pnpm turbo run lint check-types test build`, mobile: `pnpm --filter mobile test`, `pnpm --filter mobile check-types`, `cd apps/mobile && npx expo lint && npx expo export --platform android --output-dir <tmp>`.
 - **Record rulings:** when you decide something on the user's behalf, log it and list every ruling (with "cost if wrong") in the final report.
 
-## 5. Spec 4 — in progress
+## 5. Spec 4 — implemented, pending review and merge
 
-- Spec: `docs/superpowers/specs/2026-09-30-members-roles-design.md`; branch `feat/spec4-members-roles`. Basket-related member rules deferred to the basket spec.
-- Next: plan (4 tasks per spec §15) → implementer #1 Tasks 1–2 (API), implementer #2 Tasks 3–4 (web + docs), Sonnet 5.5 for code-writing sub-agents → one Opus review → one Sonnet fix wave → user merge decision.
+- Spec: `docs/superpowers/specs/2026-09-30-members-roles-design.md`; plan `docs/superpowers/plans/2026-09-30-spec4-members-roles.md`; ADR-009 and D-048 to D-052; branch `feat/spec4-members-roles` holds all four tasks. Basket-related member rules (manager assignments, basket state when a manager leaves, investor notifications) are deferred to the basket spec.
+- Next: one Opus whole-branch review → one Sonnet fix wave → user merge decision; then the roadmap in §6.
+- Pre-release checks for the user: invitation and member-verification email copy and sender domain (Resend); member document retention period (compliance); a manual run of invite → wallet proof → accept → verification → ops approval with a real wallet and R2 bucket.
 - Known env issue: Windows vitest worker crash (0xC0000409) hits ~1 in 2–3 full api runs on a random file (native Node crash; `pool: threads` makes it worse). Re-run crashed files; consider Linux CI or a newer Node.
 - Spec 2/3 leftovers (not blocking): Spec 2 ops form offers "Not approved" for a proven approved application (server 409); Spec 3 orphan final R2 copy on DB failure after copy; open: email copy/sender domain, re-apply cooldown, jurisdiction templates, document retention.
 

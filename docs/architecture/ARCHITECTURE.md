@@ -91,6 +91,7 @@ Investor Web / Mobile                     Manager Web
 - User creates an individual or firm organization (at most one owned organization that is not rejected) and fills template-driven public and private information. Content is versioned as a whole; private documents go to R2 by presigned upload and are readable only by ops. The organization is submitted for platform review in `/ops/organizations` (ADR-008).
 - Organization approval, membership verification and basket approval are separate gates.
 - Organization is the durable owner/manager context for baskets. Member removal revokes access but preserves history.
+- Members: one fixed permission matrix (`ROLE_PERMISSIONS` in `@repo/validator`) is checked server-side on every organization route and only `ACTIVE` memberships grant permissions. Owner/Admin invite by wallet and email; an invite attaches to a user only when the wallet is proven in the sign-in/add-chain transaction (never by a typed address). Admin and Manager members complete their own verification, reviewed by ops in `/ops/members`; exactly one `ACTIVE` `OWNER` is enforced by a partial unique index and ownership moves only through an audited `ops_admin` transfer. Memberships follow one transition table and are never deleted (ADR-009).
 - Organization payout wallet is distinct from personal/authentication wallets and requires a Solana signature over a payout-specific challenge; replacement also needs ops approval.
 - The public organization profile shows only the current approved version; later edits are change requests reviewed before they replace it.
 
@@ -171,7 +172,7 @@ Use CoinMarketCap as the selected primary crypto market-data provider, subject t
 5. The permission is the only outcome of Spec 2; no pending user is ever created.
 6. User signs in and creates an individual or firm organization.
 7. Organization submits required information and payout wallet.
-8. Platform verifies the organization and relevant members.
+8. Platform verifies the organization; Owner/Admin invite members, invitees prove their wallet and accept, and Admin/Manager members are verified by the platform before they become active (ADR-009).
 9. Approved organization receives appropriate manager capabilities.
 10. Basket creation and publication remain separately gated.
 
@@ -208,7 +209,7 @@ Names are indicative; align final names with existing migrations and implementat
 
 - `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
 - `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
-- `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `organization_payout_wallets`, `organization_events`, `organization_permissions` (Spec 4)
+- `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `member_verification_documents`, `membership_events`, `organization_payout_wallets`, `organization_events`
 - `instruments`, `deployments`, `providers`, `execution_routes`, `price_references`, `eligibility_policies`
 - `baskets`, `basket_versions`, `basket_version_assets`, `basket_assignments`, `basket_reviews`
 - `user_portfolios`, `wallet_asset_balances`, `basket_positions`, `unassigned_positions`

@@ -6,7 +6,7 @@ Source: `Fund-Manager-Detailed-Features.txt`
 Individuals and firms may apply, but cannot immediately publish baskets. The platform performs internal screening and detailed verification before granting manager capabilities.
 
 ## Workspace and organization
-Managers work through an approved organization. Team management uses scoped roles (Owner, Admin, Manager, Analyst, Viewer) and verified memberships. Organization profile, payout wallet and public manager history are separately managed and auditable.
+Managers work through an approved organization. Team management uses scoped roles (Owner, Admin, Manager, Analyst, Viewer) from one fixed permission matrix; Admin and Manager memberships become active only after platform review of the member's own verification, ownership transfer is an ops action, and verified organizations may show an opt-in public team (ADR-009). Organization profile, payout wallet and public manager history are separately managed and auditable.
 
 ## Basket creation and review
 Managers create drafts, define strategy, choose approved assets, set target weights, constraints, rebalance configuration and commercial terms, then submit for platform review. Public publication follows approval. Review includes strategy, asset, weighting, rebalance, management and fee checks.

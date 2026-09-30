@@ -2,7 +2,7 @@
 
 ## Overview
 
-Express 5 + TypeScript API for Bytesac (initial settlement currency: USDC on Solana). This foundation covers wallet sign-in (SIWE/SIWS challenge and verify), sessions, linked chain accounts, contact verification (email and SMS OTP), notification preferences, manager applications and platform screening (public apply/status endpoints, `/v1/ops` for reviewers and admins, platform roles and the wallet-proof permission grant), organization onboarding (owner drafts, private documents in Cloudflare R2, payout wallet proof, `/v1/ops/organizations` review, public profile), audited ops commands and retention. Postgres (schema `app`, Drizzle, in `packages/db`) is the system of record; Redis backs rate limits; retention runs inside Postgres via pg_cron (ADR-006).
+Express 5 + TypeScript API for Bytesac (initial settlement currency: USDC on Solana). This foundation covers wallet sign-in (SIWE/SIWS challenge and verify), sessions, linked chain accounts, contact verification (email and SMS OTP), notification preferences, manager applications and platform screening (public apply/status endpoints, `/v1/ops` for reviewers and admins, platform roles and the wallet-proof permission grant), organization onboarding (owner drafts, private documents in Cloudflare R2, payout wallet proof, `/v1/ops/organizations` review, public profile), organization members (invitations linked by wallet proof, fixed permission matrix, member verification and `/v1/ops/members` review, ops-only ownership transfer, public team), audited ops commands and retention. Postgres (schema `app`, Drizzle, in `packages/db`) is the system of record; Redis backs rate limits; retention runs inside Postgres via pg_cron (ADR-006).
 
 Layout: `src/app.ts` (configured express `app`), `src/server.ts` (listens), `src/env.ts` (envalid), `src/middleware/`, `src/routes/`, `src/services/`, `src/providers/` (Twilio, Resend, EVM RPC, R2), `src/ops/`. Errors are `http-errors` with a stable `code`; logging is winston via `@repo/logger` (set `LOG_LEVEL=http` to see request logs).
 
@@ -23,7 +23,7 @@ Provider keys (`ALCHEMY_API_KEY`, `RESEND_API_KEY`, `TWILIO_*`) are required by 
 ## Supabase setup
 
 1. Enable the `pg_cron` extension (Dashboard -> Database -> Extensions).
-2. Run migrations with the project's `postgres` role as `MIGRATOR_DATABASE_URL` in `packages/db/.env` (`pnpm --filter @repo/db db:migrate`). Migration `0002` schedules the retention job when pg_cron is enabled. Spec 2 needs no new Supabase extension.
+2. Run migrations with the project's `postgres` role as `MIGRATOR_DATABASE_URL` in `packages/db/.env` (`pnpm --filter @repo/db db:migrate`). Migration `0002` schedules the retention job when pg_cron is enabled. Specs 2 to 4 need no new Supabase extension, environment variable or provider. Ownership transfer is an ops action (an `ops_admin` on `/ops/organizations/<id>`), not a CLI command; invitation and member-verification emails use the existing Resend setup.
 3. As an operator, run `ALTER ROLE bytesac_api LOGIN PASSWORD '<secret>'`.
 4. Use the pooler URL with that role for `DATABASE_URL`.
 5. Confirm schema `app` is **not** listed in Dashboard -> API -> Exposed schemas.
