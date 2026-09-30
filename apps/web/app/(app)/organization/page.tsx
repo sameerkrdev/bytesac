@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
+import { Baskets } from "@/components/organization/baskets";
 import { ChangeRequest } from "@/components/organization/change-request";
 import { CreateOrganization } from "@/components/organization/create-organization";
 import { Members } from "@/components/organization/members";
@@ -104,6 +105,7 @@ function Workspace() {
       {editable && <SubmitChecklist org={org} onChange={setOrg} onIncomplete={() => void qc.invalidateQueries({ queryKey: key })} />}
       {org.status === "REJECTED" && create}
       <Members org={org} />
+      {org.myPermissions.includes("org.read") && <Baskets org={org} />}
       <Link href={`/organization/membership/${row.membershipId}`} className="inline-flex min-h-11 items-center text-sm text-mint underline">Your membership</Link>
     </Shell>
   );

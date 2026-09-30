@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./basket-status": "./src/basket-status.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

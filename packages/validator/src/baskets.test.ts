@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASSIGNMENT_FLAGS, BASKET_ISSUE_CODES, BASKET_STATUSES, BASKET_TRANSITIONS, BASKET_VERSION_STATUSES, BASKET_VERSION_TRANSITIONS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS,
-  basketFeesSchema, canonicalJson, createAssignmentRequestSchema, decimalStringSchema, diffBasketVersions, feeSchema, feeWithinCap, saveBasketDraftRequestSchema,
+  basketFeesSchema, canonicalJson, createAssignmentRequestSchema, decimalStringSchema, diffBasketVersions, feeSchema, feeWithinCap, maxFixedFeeUsdc, saveBasketDraftRequestSchema,
   validateBasketVersion, type BasketIssueCode, type BasketValidationInput,
 } from "./index";
 
@@ -80,6 +80,7 @@ describe("fixed fee cap (exact micro-USDC)", () => {
     expect(feeWithinCap("12.345679", "1234.567891")).toBe(false);
     expect(feeWithinCap("1", "100")).toBe(true);
     expect(feeWithinCap("1.000001", "100")).toBe(false);
+    expect([maxFixedFeeUsdc("100"), maxFixedFeeUsdc("1234.567891"), maxFixedFeeUsdc("1000")]).toEqual(["1", "12.345678", "10"]);
   });
   it("accepts percent 100 bps and rejects 101 at the schema", () => {
     expect(feeSchema.safeParse({ type: "percent", bps: 100 }).success).toBe(true);

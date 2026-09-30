@@ -174,6 +174,11 @@ const micro = (d: string): bigint => {
 };
 /** Fixed fee rule: amount ≤ 1% of the minimum investment, compared exactly in micro-USDC. */
 export const feeWithinCap = (amountUsdc: string, minimumUsdc: string): boolean => micro(amountUsdc) * 100n <= micro(minimumUsdc);
+/** The largest allowed fixed fee for a minimum investment: 1% of it, rounded down to a whole micro-USDC (for display). */
+export const maxFixedFeeUsdc = (minimumUsdc: string): string => {
+  const cap = micro(minimumUsdc) / 100n;
+  return `${cap / 1_000_000n}.${String(cap % 1_000_000n).padStart(6, "0")}`.replace(/.?0+$/, "");
+};
 
 export function validateBasketVersion(i: BasketValidationInput): { issues: BasketIssue[]; warnings: BasketIssue[] } {
   const issues: BasketIssue[] = [];

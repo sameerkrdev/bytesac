@@ -14,3 +14,6 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
   }
   return "just now";
 }
+
+/** 2550 -> "25.5%". */
+export const formatBps = (bps: number): string => `${bps / 100}%`;
