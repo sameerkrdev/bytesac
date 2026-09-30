@@ -17,7 +17,7 @@ import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import { notifyOwner, resolveTemplate, versionView } from "./organizations";
 
-const PAGE_SIZE = 25;
+export const PAGE_SIZE = 25;
 const DOWNLOAD_TTL_SEC = 300;
 const EXTENSIONS: Record<DocumentContentType, string> = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" };
 const STATUS_EMAILS: Partial<Record<OrganizationStatus, OrganizationEmailKind>> = { CHANGES_REQUIRED: "changes_required", VERIFIED: "verified", REJECTED: "rejected" };
@@ -26,7 +26,7 @@ const notFound = () => createHttpError("Organization not found", { code: "NOT_FO
 const invalid = (message: string) => createHttpError(message, { code: "INVALID_TRANSITION" });
 
 /** Ops users who belong to an organization (in any role or status) cannot act on it. */
-async function assertNotMember(conn: DbOrTx, userId: string, orgId: string): Promise<void> {
+export async function assertNotMember(conn: DbOrTx, userId: string, orgId: string): Promise<void> {
   const [m] = await conn.select({ id: organizationMemberships.id }).from(organizationMemberships)
     .where(and(eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.userId, userId)));
   if (m) throw createHttpError("You can't review your own organization.", { code: "FORBIDDEN" });
@@ -44,7 +44,7 @@ export async function getOrganizationForReview(id: string): Promise<Organization
   const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
   if (!org) throw notFound();
   const versions = await db.select().from(organizationVersions).where(eq(organizationVersions.organizationId, id)).orderBy(organizationVersions.versionNumber);
-  const documents = await db.select().from(organizationDocuments).where(eq(organizationDocuments.organizationId, id)).orderBy(organizationDocuments.createdAt, organizationDocuments.id);
+  const documents = await db.select().from(organizationDocuments).where(and(eq(organizationDocuments.organizationId, id), isNull(organizationDocuments.membershipId))).orderBy(organizationDocuments.createdAt, organizationDocuments.id);
   const links = versions.length === 0 ? [] : await db.select({ versionId: organizationVersionDocuments.versionId, documentId: organizationVersionDocuments.documentId }).from(organizationVersionDocuments)
     .where(and(inArray(organizationVersionDocuments.versionId, versions.map((v) => v.id)), isNull(organizationVersionDocuments.removedAt)));
   const wallets = await db.select().from(organizationPayoutWallets).where(eq(organizationPayoutWallets.organizationId, id)).orderBy(organizationPayoutWallets.createdAt, organizationPayoutWallets.id);
@@ -219,17 +219,21 @@ export async function addOrganizationNote(ctx: OpsCtx, id: string, note: Organiz
   return getOrganizationForReview(id);
 }
 
-/** Short-lived attachment link to the stored file. Reviewers who belong to the organization cannot download its documents. */
-export async function documentDownloadUrl(ctx: OpsCtx, id: string, docId: string): Promise<string> {
-  await assertNotMember(db, ctx.userId, id);
-  const [doc] = await db.select().from(organizationDocuments).where(and(eq(organizationDocuments.id, docId), eq(organizationDocuments.organizationId, id), eq(organizationDocuments.status, "uploaded")));
-  if (!doc) throw createHttpError("Document not found", { code: "NOT_FOUND" });
+/** Short-lived attachment link to the stored file, audited as `action`. Callers have already checked access (reviewers who belong to the organization cannot download). */
+export async function downloadUrl(ctx: OpsCtx, doc: typeof organizationDocuments.$inferSelect, action: string, metadata: Record<string, unknown>): Promise<string> {
   const url = await getSignedUrl(r2, new GetObjectCommand({
     Bucket: R2_BUCKET, Key: doc.r2Key, ResponseContentDisposition: `attachment; filename="${doc.documentType}.${EXTENSIONS[doc.contentType as DocumentContentType]}"`,
   }), { expiresIn: DOWNLOAD_TTL_SEC });
-  await writeAudit(db, {
-    actorType: "user", actorUserId: ctx.userId, action: "organization_document.downloaded", entityType: "organization_document", entityId: doc.id,
-    requestId: ctx.meta.requestId, metadata: { organizationId: id },
-  });
+  await writeAudit(db, { actorType: "user", actorUserId: ctx.userId, action, entityType: "organization_document", entityId: doc.id, requestId: ctx.meta.requestId, metadata });
   return url;
+}
+
+/** Organization documents only: a member's documents download through the member review route. */
+export async function documentDownloadUrl(ctx: OpsCtx, id: string, docId: string): Promise<string> {
+  await assertNotMember(db, ctx.userId, id);
+  const [doc] = await db.select().from(organizationDocuments).where(and(
+    eq(organizationDocuments.id, docId), eq(organizationDocuments.organizationId, id), eq(organizationDocuments.status, "uploaded"), isNull(organizationDocuments.membershipId),
+  ));
+  if (!doc) throw createHttpError("Document not found", { code: "NOT_FOUND" });
+  return downloadUrl(ctx, doc, "organization_document.downloaded", { organizationId: id });
 }

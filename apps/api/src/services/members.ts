@@ -28,7 +28,7 @@ const forbidden = () => createHttpError("You don't have access to this organizat
 const invalid = (message: string) => createHttpError(message, { code: "INVALID_TRANSITION" });
 const ownerImmovable = () => invalid("Contact support to transfer ownership first.");
 const iso = (d: Date | null) => d?.toISOString() ?? null;
-const orgDisplayName = sql<string | null>`(select v.public_profile->>'displayName' from app.organization_versions v where v.id = ${organizations.currentVersionId})`;
+export const orgDisplayName = sql<string | null>`(select v.public_profile->>'displayName' from app.organization_versions v where v.id = ${organizations.currentVersionId})`;
 
 /**
  * Guard for every organization route: 404 for an unknown organization, 403 unless the user holds an ACTIVE membership whose role grants `permission`.
@@ -138,7 +138,7 @@ export async function listMembers(ctx: OwnerCtx, orgId: string): Promise<ListMem
   await db.transaction((tx) => expireInvites(tx, eq(organizationMemberships.organizationId, orgId), ctx.meta.requestId));
   const rows = await db.select({
     m: organizationMemberships,
-    verificationStatus: sql<ListMembersResponse["members"][number]["verificationStatus"]>`(select v.status from app.member_verifications v where v.membership_id = ${organizationMemberships.id} order by v.created_at desc, v.id desc limit 1)`,
+    verificationStatus: sql<ListMembersResponse["members"][number]["verificationStatus"]>`(select v.status from app.member_verifications v where v.membership_id = "app"."organization_memberships"."id" order by v.created_at desc, v.id desc limit 1)`, // drizzle leaves a column of a single-table select unqualified
   }).from(organizationMemberships)
     .where(and(eq(organizationMemberships.organizationId, orgId), notInArray(organizationMemberships.status, TERMINAL)))
     .orderBy(organizationMemberships.joinedAt, organizationMemberships.id);

@@ -6,18 +6,9 @@ import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { newEvmWallet } from "../helpers/wallets";
 import { createOrg, resetOrgDb, user, verifyEmail } from "../organizations/helpers";
-import { addMember, eventsOf, invite, inviteBody, invitePending, memberAction, membershipAction, orgWithOwner, rowOf } from "./helpers";
+import { addMember, eventsOf, invite, inviteBody, inviteExisting, invitePending, memberAction, membershipAction, orgWithOwner, rowOf } from "./helpers";
 
 beforeEach(resetOrgDb);
-
-/** An existing user's wallet invited by the owner: the invite is INVITED with that user. */
-async function inviteExisting(owner: { h: Record<string, string>; id: string }, role: "ADMIN" | "MANAGER" | "ANALYST" | "VIEWER") {
-  const invitee = await user(app, false);
-  const res = await invite(app, owner.h, owner.id, inviteBody(invitee.wallet, role));
-  expect(res.status, JSON.stringify(res.body)).toBe(201);
-  const [m] = await adminSql<{ id: string }[]>`SELECT id FROM app.organization_memberships WHERE user_id = ${invitee.userId}`;
-  return { ...invitee, mid: m!.id };
-}
 
 describe("invites", () => {
   it("only a VERIFIED organization can invite", async () => {

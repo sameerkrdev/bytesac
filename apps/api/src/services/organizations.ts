@@ -6,7 +6,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, max, or, sql } from "drizzle
 import { logger } from "@repo/logger";
 import {
   contacts, db, isUniqueViolation, membershipEvents, organizationDocuments, organizationEvents, organizationMemberships, organizationPayoutWallets, organizationVersionDocuments,
-  organizationVersions, organizations, userPermissions, verificationRequirementTemplates, type DbOrTx,
+  organizationVersions, organizations, userPermissions, verificationRequirementTemplates, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
   DOCUMENT_TYPE_KEYS, ORGANIZATION_FIELDS, ROLE_PERMISSIONS, membershipRoleSchema,
@@ -61,19 +61,28 @@ export async function resolveTemplate(conn: DbOrTx, subject: TemplateSubject, ju
   return t;
 }
 
-/** What still blocks a submit of `version`. A template naming an unknown field or document type is a configuration error (500). */
-export async function missingRequirements(conn: DbOrTx, org: OrganizationRow, version: VersionRow): Promise<MissingRequirements> {
-  const template = await resolveTemplate(conn, org.type, org.jurisdiction);
-  const values: Record<string, unknown> = { ...version.publicProfile, ...version.privateDetails };
+/** What a template still needs: fields whose value fails the catalog schema and document types nobody uploaded. A template naming an unknown field or document type is a configuration error (500). */
+export function missingFromTemplate(template: { requiredFields: string[]; requiredDocuments: string[] }, values: Record<string, unknown>, uploadedTypes: Set<string>) {
   const fields = template.requiredFields.filter((key) => {
     if (!Object.hasOwn(ORGANIZATION_FIELDS, key)) throw createHttpError(500, "Verification template names an unknown field", { code: "INTERNAL" });
     return !ORGANIZATION_FIELDS[key as OrganizationFieldKey].schema.safeParse(values[key]).success;
   });
-  const uploaded = new Set((await linkedDocuments(conn, version.id)).filter((d) => d.status === "uploaded").map((d) => d.documentType));
   const documents = template.requiredDocuments.filter((type) => {
     if (!(DOCUMENT_TYPE_KEYS as readonly string[]).includes(type)) throw createHttpError(500, "Verification template names an unknown document type", { code: "INTERNAL" });
-    return !uploaded.has(type);
+    return !uploadedTypes.has(type);
   });
+  return { fields, documents };
+}
+
+/** Merges `next` over `old`; a null value removes the key. */
+export const mergeDetails = (old: Record<string, unknown>, next: Record<string, unknown> = {}) => Object.fromEntries(Object.entries({ ...old, ...next }).filter(([, v]) => v !== null));
+
+/** What still blocks a submit of `version`. A template naming an unknown field or document type is a configuration error (500). */
+export async function missingRequirements(conn: DbOrTx, org: OrganizationRow, version: VersionRow): Promise<MissingRequirements> {
+  const template = await resolveTemplate(conn, org.type, org.jurisdiction);
+  const values: Record<string, unknown> = { ...version.publicProfile, ...version.privateDetails };
+  const uploaded = new Set((await linkedDocuments(conn, version.id)).filter((d) => d.status === "uploaded").map((d) => d.documentType));
+  const { fields, documents } = missingFromTemplate(template, values, uploaded);
   const [verified] = await conn.select({ id: organizationPayoutWallets.id }).from(organizationPayoutWallets)
     .where(and(eq(organizationPayoutWallets.organizationId, org.id), eq(organizationPayoutWallets.status, "VERIFIED")));
   return { fields, documents, payoutWallet: !verified };
@@ -159,38 +168,39 @@ export async function getOrganizationForMember(ctx: OwnerCtx, id: string): Promi
 export async function updateDraft(ctx: OwnerCtx, id: string, body: UpdateDraftRequest): Promise<OrganizationDetail> {
   await db.transaction(async (tx) => {
     const { version } = await lockEditable(tx, ctx.userId, id);
-    // A null value removes the key.
-    const merge = (old: Record<string, unknown>, next: Record<string, unknown> = {}) => Object.fromEntries(Object.entries({ ...old, ...next }).filter(([, v]) => v !== null));
     await tx.update(organizationVersions).set({
-      publicProfile: merge(version.publicProfile, body.publicProfile), privateDetails: merge(version.privateDetails, body.privateDetails), updatedAt: sql`now()`,
+      publicProfile: mergeDetails(version.publicProfile, body.publicProfile), privateDetails: mergeDetails(version.privateDetails, body.privateDetails), updatedAt: sql`now()`,
     }).where(eq(organizationVersions.id, version.id));
   });
   return getOrganizationForMember(ctx, id);
+}
+
+/** Records a pending upload and signs the browser's PUT to `incoming/`. Shared by organization and member documents: `membershipId` marks the latter. */
+export async function presignUpload(i: { organizationId: string; membershipId?: string; key: (documentId: string) => string; userId: string; body: PresignDocumentRequest }): Promise<PresignDocumentResponse> {
+  const documentId = randomUUID();
+  const key = i.key(documentId);
+  await db.insert(organizationDocuments).values({
+    id: documentId, organizationId: i.organizationId, membershipId: i.membershipId, documentType: i.body.documentType, r2Key: key, contentType: i.body.contentType,
+    sizeBytes: i.body.sizeBytes, uploadedByUserId: i.userId,
+  });
+  const uploadUrl = await getSignedUrl(r2, new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: i.body.contentType, ContentLength: i.body.sizeBytes }), {
+    expiresIn: PRESIGN_TTL_SEC, signableHeaders: new Set(["content-type", "content-length"]),
+  });
+  return { documentId, uploadUrl, headers: { "Content-Type": i.body.contentType } };
 }
 
 export async function presignDocument(ctx: OwnerCtx, id: string, body: PresignDocumentRequest): Promise<PresignDocumentResponse> {
   await requirePermission(db, ctx.userId, id, "org.edit");
   await editableVersion(db, id);
   await consume(limits.documentPresignOrg, id);
-  const documentId = randomUUID();
-  const key = `incoming/${id}/${documentId}`;
-  await db.insert(organizationDocuments).values({
-    id: documentId, organizationId: id, documentType: body.documentType, r2Key: key, contentType: body.contentType, sizeBytes: body.sizeBytes, uploadedByUserId: ctx.userId,
-  });
-  const uploadUrl = await getSignedUrl(r2, new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: body.contentType, ContentLength: body.sizeBytes }), {
-    expiresIn: PRESIGN_TTL_SEC, signableHeaders: new Set(["content-type", "content-length"]),
-  });
-  return { documentId, uploadUrl, headers: { "Content-Type": body.contentType } };
+  return presignUpload({ organizationId: id, key: (documentId) => `incoming/${id}/${documentId}`, userId: ctx.userId, body });
 }
 
-export async function confirmDocument(ctx: OwnerCtx, id: string, docId: string): Promise<OrganizationDetail> {
-  await requirePermission(db, ctx.userId, id, "org.edit");
-  const [doc] = await db.select().from(organizationDocuments).where(and(eq(organizationDocuments.id, docId), eq(organizationDocuments.organizationId, id)));
-  if (!doc) throw createHttpError("Document not found", { code: "NOT_FOUND" });
-  if (doc.status !== "pending_upload") throw createHttpError("This document was already processed.", { code: "INVALID_TRANSITION" });
-  await editableVersion(db, id);
-
-  // The uploaded object is untrusted: size and type must match what was declared, and the leading bytes must match the type.
+/**
+ * Checks the uploaded object, copies it to `finalKey` and, in one transaction, marks the document uploaded and runs `link` (the caller's linking, events and audit).
+ * The object is untrusted: size and type must match what was declared, and the leading bytes must match the type.
+ */
+export async function storeUpload(doc: typeof organizationDocuments.$inferSelect, finalKey: string, link: (tx: Tx) => Promise<void>): Promise<void> {
   const head = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key })).catch(() => null);
   const first = head && head.ContentLength === doc.sizeBytes && head.ContentType === doc.contentType
     ? Buffer.from(await (await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key, Range: "bytes=0-7" }))).Body!.transformToByteArray())
@@ -201,14 +211,25 @@ export async function confirmDocument(ctx: OwnerCtx, id: string, docId: string):
     await db.update(organizationDocuments).set({ status: "rejected_file" }).where(and(eq(organizationDocuments.id, doc.id), eq(organizationDocuments.status, "pending_upload")));
     throw createHttpError(422, "This file doesn't match its type or size. Upload a PDF, JPEG or PNG up to 10 MB.", { code: "DOCUMENT_REJECTED" });
   }
-  const finalKey = `documents/${id}/${doc.id}`;
   await r2.send(new CopyObjectCommand({ Bucket: R2_BUCKET, CopySource: `${R2_BUCKET}/${doc.r2Key}`, Key: finalKey }));
-
   await db.transaction(async (tx) => {
-    const { version } = await lockEditable(tx, ctx.userId, id);
     const done = await tx.update(organizationDocuments).set({ status: "uploaded", r2Key: finalKey, uploadedAt: sql`now()` })
       .where(and(eq(organizationDocuments.id, doc.id), eq(organizationDocuments.status, "pending_upload"))).returning({ id: organizationDocuments.id });
     if (done.length === 0) throw createHttpError("This document was already processed.", { code: "INVALID_TRANSITION" });
+    await link(tx);
+  });
+  // Best effort: the bucket lifecycle rule clears leftovers in incoming/.
+  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key })).catch(() => undefined);
+}
+
+export async function confirmDocument(ctx: OwnerCtx, id: string, docId: string): Promise<OrganizationDetail> {
+  await requirePermission(db, ctx.userId, id, "org.edit");
+  const [doc] = await db.select().from(organizationDocuments).where(and(eq(organizationDocuments.id, docId), eq(organizationDocuments.organizationId, id), isNull(organizationDocuments.membershipId)));
+  if (!doc) throw createHttpError("Document not found", { code: "NOT_FOUND" });
+  if (doc.status !== "pending_upload") throw createHttpError("This document was already processed.", { code: "INVALID_TRANSITION" });
+  await editableVersion(db, id);
+  await storeUpload(doc, `documents/${id}/${doc.id}`, async (tx) => {
+    const { version } = await lockEditable(tx, ctx.userId, id);
     // A new document replaces the version's link of the same type.
     await tx.update(organizationVersionDocuments).set({ removedAt: sql`now()` }).where(and(
       eq(organizationVersionDocuments.versionId, version.id), isNull(organizationVersionDocuments.removedAt),
@@ -222,8 +243,6 @@ export async function confirmDocument(ctx: OwnerCtx, id: string, docId: string):
       requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { organizationId: id, documentType: doc.documentType },
     });
   });
-  // Best effort: the bucket lifecycle rule clears leftovers in incoming/.
-  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key })).catch(() => undefined);
   return getOrganizationForMember(ctx, id);
 }
 

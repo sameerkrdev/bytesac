@@ -128,7 +128,7 @@ export const createOrganizationRequestSchema = z.strictObject({
 export type CreateOrganizationRequest = z.infer<typeof createOrganizationRequestSchema>;
 
 /** Keys must be catalog keys of `visibility`; each value passes its field schema, or is `null` to remove the key. Required-ness is only checked on submit. The output holds the parsed (trimmed) values. */
-const draftPart = (visibility: "public" | "private") => z.record(z.string(), z.unknown()).transform((entries, ctx) => {
+export const draftPart = (visibility: "public" | "private") => z.record(z.string(), z.unknown()).transform((entries, ctx) => {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entries)) {
     const field = Object.hasOwn(ORGANIZATION_FIELDS, key) ? ORGANIZATION_FIELDS[key as OrganizationFieldKey] : undefined;
