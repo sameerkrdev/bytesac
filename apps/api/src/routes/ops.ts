@@ -1,9 +1,9 @@
 import { Router, type Request } from "express";
 import {
-  assetProviderRequestSchema, createDeploymentRequestSchema, createInstrumentRequestSchema, createRouteRequestSchema, createRuleRequestSchema, issuerRequestSchema, navEntryRequestSchema,
+  assetDecisionRequestSchema, assetProviderRequestSchema, createDeploymentRequestSchema, createInstrumentRequestSchema, createRouteRequestSchema, createRuleRequestSchema, issuerRequestSchema, navEntryRequestSchema,
   opsAssetListQuerySchema, priceKindSchema, putPriceReferenceRequestSchema, updateAssetProviderRequestSchema, updateDeploymentRequestSchema, updateInstrumentRequestSchema, updateIssuerRequestSchema,
   updateRouteRequestSchema, updateRuleRequestSchema,
-  type AssetProviderRequest, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type NavEntryRequest,
+  type AssetDecisionRequest, type AssetProviderRequest, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type NavEntryRequest,
   type PutPriceReferenceRequest, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
   applicationNoteRequestSchema, decideMemberVerificationRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listMemberReviewQuerySchema, listOrganizationsQuerySchema,
   organizationNoteRequestSchema, payoutWalletDecisionRequestSchema, transferOwnershipRequestSchema, transitionApplicationRequestSchema, transitionOrganizationRequestSchema,
@@ -26,6 +26,7 @@ import {
   createAssetProvider, createDeployment, createInstrument, createIssuer, createRoute, createRule, getAssetForOps, listAssetProviders, listAssetsForOps, listIssuers, putPriceReference,
   recordNav, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
 } from "../services/assets";
+import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "../services/asset-review";
 
 const idParam = z.object({ id: z.uuid() });
 const midParam = z.object({ mid: z.uuid() });
@@ -198,3 +199,29 @@ opsRouter.post("/asset-providers", reviewer, validate({ body: assetProviderReque
 opsRouter.patch("/asset-providers/:id", reviewer, validate({ params: idParam, body: updateAssetProviderRequestSchema }), async (req, res) => {
   res.json(await updateAssetProvider(ctx(req), req.params.id as string, req.body as UpdateAssetProviderRequest));
 });
+
+opsRouter.get("/assets/:id/prices", reviewer, validate({ params: idParam }), async (req, res) => {
+  res.json((await getAssetForOps(req.params.id as string)).prices);
+});
+
+opsRouter.post("/assets/:id/submit", reviewer, validate({ params: idParam }), async (req, res) => {
+  res.json(await submitInstrument(ctx(req), req.params.id as string));
+});
+
+opsRouter.post("/assets/:id/decision", requireRole("ops_admin"), validate({ params: idParam, body: assetDecisionRequestSchema }), async (req, res) => {
+  res.json(await decideInstrument(ctx(req), req.params.id as string, req.body as AssetDecisionRequest));
+});
+
+for (const action of ["activate", "pause", "resume", "deprecate", "retire"] as const) {
+  opsRouter.post(`/assets/:id/${action}`, requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
+    res.json(await transitionInstrument(ctx(req), req.params.id as string, action));
+  });
+}
+
+for (const kind of ["deployments", "routes"] as const) {
+  for (const action of ["approve", "activate", "pause", "resume", "retire"] as const) {
+    opsRouter.post(`/assets/:id/${kind}/:itemId/${action}`, requireRole("ops_admin"), validate({ params: z.object({ id: z.uuid(), itemId: z.uuid() }) }), async (req, res) => {
+      res.json(await transitionAssetItem(ctx(req), req.params.id as string, kind, req.params.itemId as string, action));
+    });
+  }
+}

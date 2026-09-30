@@ -22,6 +22,7 @@ export default defineConfig({
       SESSION_TOKEN_PEPPER: "test-pepper-test-pepper-test-pepper-00",
       OTP_HMAC_SECRET: "test-otp-secret-test-otp-secret-000",
       ALCHEMY_API_KEY: "x",
+      COINMARKETCAP_API_KEY: "test-cmc-key",
       RESEND_API_KEY: "x",
       EMAIL_FROM: "Bytesac <no-reply@test.dev>",
       TWILIO_ACCOUNT_SID: "AC",

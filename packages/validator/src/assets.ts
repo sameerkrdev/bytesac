@@ -225,6 +225,7 @@ export const opsAssetDetailSchema = z.object({
     message: z.string().nullable(), internalNote: z.string().nullable(), createdAt: isoTime,
   })),
   missing: z.array(z.string()),
+  prices: z.array(priceViewSchema),
 });
 export type OpsAssetDetail = z.infer<typeof opsAssetDetailSchema>;
 

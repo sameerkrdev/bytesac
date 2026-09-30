@@ -1,6 +1,6 @@
 import {
-  assetProviderViewSchema, issuerViewSchema, opsAssetDetailSchema, opsAssetListResponseSchema,
-  type AssetProviderRequest, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type IssuerView,
+  assetProviderViewSchema, priceViewSchema, publicAssetDetailSchema, publicAssetListResponseSchema, issuerViewSchema, opsAssetDetailSchema, opsAssetListResponseSchema,
+  type AssetDecisionRequest, type AssetListQuery, type PriceView, type PublicAssetDetail, type PublicAssetListResponse, type AssetProviderRequest, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type IssuerView,
   type NavEntryRequest, type OpsAssetDetail, type OpsAssetListQuery, type OpsAssetListResponse, type PutPriceReferenceRequest, type UpdateAssetProviderRequest, type UpdateDeploymentRequest,
   type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
   addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
@@ -200,6 +200,17 @@ export function createApiClient(options: ApiClientOptions) {
     opsListAssetProviders: (): Promise<AssetProviderView[]> => request("GET", "/v1/ops/asset-providers", assetProviderViewSchema.array()),
     opsCreateAssetProvider: (b: AssetProviderRequest): Promise<AssetProviderView> => request("POST", "/v1/ops/asset-providers", assetProviderViewSchema, b),
     opsUpdateAssetProvider: (id: string, b: UpdateAssetProviderRequest): Promise<AssetProviderView> => request("PATCH", `/v1/ops/asset-providers/${e(id)}`, assetProviderViewSchema, b),
+
+    opsSubmitAsset: (id: string): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/submit`, opsAssetDetailSchema),
+    opsDecideAsset: (id: string, b: AssetDecisionRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/decision`, opsAssetDetailSchema, b),
+    opsAssetAction: (id: string, action: "activate" | "pause" | "resume" | "deprecate" | "retire"): Promise<OpsAssetDetail> =>
+      request("POST", `/v1/ops/assets/${e(id)}/${action}`, opsAssetDetailSchema),
+    opsAssetItemAction: (id: string, kind: "deployments" | "routes", itemId: string, action: "approve" | "activate" | "pause" | "resume" | "retire"): Promise<OpsAssetDetail> =>
+      request("POST", `/v1/ops/assets/${e(id)}/${kind}/${e(itemId)}/${action}`, opsAssetDetailSchema),
+    opsGetAssetPrices: (id: string): Promise<PriceView[]> => request("GET", `/v1/ops/assets/${e(id)}/prices`, priceViewSchema.array()),
+
+    listAssets: (q: AssetListQuery = {}): Promise<PublicAssetListResponse> => request("GET", `/v1/assets?${qs(q)}`, publicAssetListResponseSchema),
+    getAsset: (id: string): Promise<PublicAssetDetail> => request("GET", `/v1/assets/${e(id)}`, publicAssetDetailSchema),
 
     opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
     opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),

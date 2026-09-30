@@ -65,3 +65,17 @@ export async function readyCrypto(h: Headers, over: Record<string, unknown> = {}
 export const setStatus = (table: "instruments" | "instrument_deployments" | "execution_routes" | "eligibility_rules", id: string, status: string) =>
   adminSql`UPDATE ${adminSql(`app.${table}`)} SET status = ${status} WHERE id = ${id}`;
 
+
+export const submit = (h: Headers, id: string) => post(h, `/v1/ops/assets/${id}/submit`);
+export const decide = (h: Headers, id: string, body: object) => post(h, `/v1/ops/assets/${id}/decision`, body);
+export const act = (h: Headers, id: string, action: string) => post(h, `/v1/ops/assets/${id}/${action}`);
+export const itemAct = (h: Headers, id: string, kind: "deployments" | "routes", itemId: string, action: string) => post(h, `/v1/ops/assets/${id}/${kind}/${itemId}/${action}`);
+
+/** A complete CRYPTO instrument driven through submit, approval by `admin` and activation, all through the API. */
+export async function activeCrypto(r: { h: Headers }, a: { h: Headers }, over: Record<string, unknown> = {}) {
+  const asset = await readyCrypto(r.h, over);
+  ok(await submit(r.h, asset.id));
+  ok(await decide(a.h, asset.id, { decision: "approved" }));
+  ok(await act(a.h, asset.id, "activate"));
+  return asset;
+}

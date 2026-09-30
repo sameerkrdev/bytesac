@@ -38,6 +38,18 @@ class FakeSolanaRpc {
   };
 }
 
+class FakeCoinMarketCap {
+  /** Quotes by CoinMarketCap id; ids not in here are missing from the response. */
+  quotes = new Map<string, { value: string; observedAt: string }>();
+  calls: string[][] = [];
+  fail = false;
+  fetchQuotes = async (ids: string[]): Promise<Map<string, { value: string; observedAt: string }>> => {
+    this.calls.push(ids);
+    if (this.fail) throw new Error("coinmarketcap down");
+    return new Map(ids.flatMap((id) => (this.quotes.has(id) ? [[id, this.quotes.get(id)!] as const] : [])));
+  };
+}
+
 class FakeEmail {
   sent: Array<{ to: string; code: string; verificationId: string }> = [];
   fail = false;
@@ -118,11 +130,12 @@ class FakeR2 {
   };
 }
 
-export const fakes = { evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
+export const fakes = { evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [] });
   Object.assign(fakes.solana, { behavior: "ok", decimals: 6, calls: [] });
+  Object.assign(fakes.cmc, { quotes: new Map(), calls: [], fail: false });
   Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], fail: false });
   fakes.r2.objects.clear();
   fakes.r2.signed = [];

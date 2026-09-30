@@ -17,6 +17,10 @@ vi.mock("../src/providers/solana-rpc", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { getMintDecimals: fakes.solana.getMintDecimals };
 });
+vi.mock("../src/providers/coinmarketcap", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { fetchQuotes: fakes.cmc.fetchQuotes };
+});
 vi.mock("../src/providers/r2", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { r2: { send: fakes.r2.send }, R2_BUCKET: "bytesac-test" };

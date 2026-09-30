@@ -1,4 +1,5 @@
 import createHttpError from "http-errors";
+import { alias } from "drizzle-orm/pg-core";
 import { and, desc, eq, exists, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   assetEvents, assetIssuers, assetProviders, db, eligibilityRules, executionRoutes, instrumentDeployments, instruments, isUniqueViolation, navObservations, priceReferences,
@@ -6,8 +7,8 @@ import {
 } from "@repo/db";
 import {
   ASSET_CHAINS, RWA_ASSET_TYPES, createDeploymentRequestSchema,
-  type AssetChain, type AssetProviderRequest, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest,
-  type IssuerRequest, type IssuerView, type NavEntryRequest, type OpsAssetDetail, type OpsAssetListResponse, type OpsAssetListQuery, type PutPriceReferenceRequest,
+  type AssetChain, type AssetProviderRequest, type AssetListQuery, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest,
+  type IssuerRequest, type IssuerView, type NavEntryRequest, type OpsAssetDetail, type OpsAssetListResponse, type OpsAssetListQuery, type PublicAssetDetail, type PublicAssetListResponse, type PutPriceReferenceRequest,
   type TokenStandard, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
 } from "@repo/validator";
 import { consume, limits } from "../middleware/rate-limit";
@@ -15,6 +16,7 @@ import { readTokenMetadata } from "../providers/evm-rpc";
 import { getMintDecimals } from "../providers/solana-rpc";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
+import { getPrices } from "./pricing";
 import { canonicalizeAddress } from "./wallets";
 
 export const PAGE_SIZE = 25;
@@ -49,7 +51,7 @@ export async function lockInstrument(tx: Tx, id: string) {
 }
 
 /** Edits and additions are refused while the admin is deciding (they decide on what was submitted) and after retirement. */
-async function lockEditable(tx: Tx, id: string) {
+export async function lockEditable(tx: Tx, id: string) {
   const row = await lockInstrument(tx, id);
   if (row.status === "UNDER_REVIEW") throw invalid("This asset is under review.");
   if (row.status === "RETIRED") throw invalid("This asset is retired.");
@@ -133,13 +135,14 @@ export async function listAssetsForOps(q: OpsAssetListQuery): Promise<OpsAssetLi
 export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
   const [inst] = await db.select().from(instruments).where(eq(instruments.id, id));
   if (!inst) throw notFound("Asset");
-  const [deployments, routes, rules, refs, events, missing] = await Promise.all([
+  const [deployments, routes, rules, refs, events, missing, prices] = await Promise.all([
     db.select().from(instrumentDeployments).where(eq(instrumentDeployments.instrumentId, id)).orderBy(instrumentDeployments.createdAt, instrumentDeployments.id),
     db.select().from(executionRoutes).where(eq(executionRoutes.instrumentId, id)).orderBy(executionRoutes.createdAt, executionRoutes.id),
     db.select().from(eligibilityRules).where(eq(eligibilityRules.instrumentId, id)).orderBy(eligibilityRules.createdAt, eligibilityRules.id),
     db.select().from(priceReferences).where(eq(priceReferences.instrumentId, id)).orderBy(priceReferences.createdAt, priceReferences.id),
     db.select().from(assetEvents).where(eq(assetEvents.instrumentId, id)).orderBy(assetEvents.createdAt, assetEvents.id),
     missingRequirements(db, id),
+    getPrices([id]),
   ]);
   const navs = refs.length === 0 ? [] : await db.select().from(navObservations).where(inArray(navObservations.priceReferenceId, refs.map((r) => r.id))).orderBy(desc(navObservations.asOf), desc(navObservations.createdAt));
   return {
@@ -152,7 +155,45 @@ export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
     priceReferences: refs.map((r) => ({ id: r.id, kind: r.kind, provider: r.provider, externalId: r.externalId, quoteCurrency: "USD" as const, status: r.status, createdAt: r.createdAt.toISOString() })),
     navObservations: navs.map((n) => ({ ...n, currency: "USD" as const, createdAt: n.createdAt.toISOString() })),
     events: events.map((e) => ({ id: e.id, entityType: e.entityType, entityId: e.entityId, kind: e.kind, fromStatus: e.fromStatus, toStatus: e.toStatus, actorUserId: e.actorUserId, message: e.message, internalNote: e.internalNote, createdAt: e.createdAt.toISOString() })),
-    missing,
+    missing, prices,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Session read API: ACTIVE instruments with ACTIVE items, explicit public columns only
+// ---------------------------------------------------------------------------------------------------------------------
+
+export async function listPublicAssets(q: AssetListQuery): Promise<PublicAssetListResponse> {
+  const { items, nextCursor } = await pageInstruments(q, true);
+  return { items: items.map((i) => ({ id: i.id, name: i.name, symbol: i.symbol, assetType: i.assetType, chains: i.chains })), nextCursor };
+}
+
+/** An instrument that is not ACTIVE is a 404, and so is everything under it: a paused or deprecated instrument hides all of its items. */
+export async function getPublicAsset(id: string): Promise<PublicAssetDetail> {
+  const [inst] = await db.select({
+    id: instruments.id, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, description: instruments.description, riskNotes: instruments.riskNotes, links: instruments.links,
+    issuerName: assetIssuers.name, issuerWebsite: assetIssuers.website,
+  }).from(instruments).leftJoin(assetIssuers, eq(assetIssuers.id, instruments.issuerId)).where(and(eq(instruments.id, id), eq(instruments.status, "ACTIVE")));
+  if (!inst) throw notFound("Asset");
+  const settlement = alias(instruments, "settlement");
+  const [deployments, routes, prices] = await Promise.all([
+    db.select({ chain: instrumentDeployments.chain, tokenStandard: instrumentDeployments.tokenStandard, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals })
+      .from(instrumentDeployments).where(and(eq(instrumentDeployments.instrumentId, id), eq(instrumentDeployments.status, "ACTIVE"))).orderBy(instrumentDeployments.createdAt, instrumentDeployments.id),
+    // A route is shown only with its own deployment active; a settlement asset only while it is ACTIVE itself.
+    db.select({
+      chain: instrumentDeployments.chain, method: executionRoutes.method, providerName: assetProviders.name, settlementSymbol: settlement.symbol,
+      minimumAmount: executionRoutes.minimumAmount, processingModel: executionRoutes.processingModel,
+    }).from(executionRoutes)
+      .innerJoin(instrumentDeployments, and(eq(instrumentDeployments.id, executionRoutes.deploymentId), eq(instrumentDeployments.status, "ACTIVE")))
+      .innerJoin(assetProviders, eq(assetProviders.id, executionRoutes.providerId))
+      .leftJoin(settlement, and(eq(settlement.id, executionRoutes.settlementInstrumentId), eq(settlement.status, "ACTIVE")))
+      .where(and(eq(executionRoutes.instrumentId, id), eq(executionRoutes.status, "ACTIVE"))).orderBy(executionRoutes.createdAt, executionRoutes.id),
+    getPrices([id]),
+  ]);
+  return {
+    id: inst.id, name: inst.name, symbol: inst.symbol, assetType: inst.assetType, description: inst.description, riskNotes: inst.riskNotes, links: inst.links,
+    issuer: inst.issuerName === null ? null : { name: inst.issuerName, website: inst.issuerWebsite },
+    deployments, routes, prices,
   };
 }
 
