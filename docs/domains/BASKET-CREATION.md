@@ -9,7 +9,7 @@ A basket is a versioned investment strategy owned by a verified organization. It
 Basket and version are separate state machines.
 - **Basket:** `DRAFT` → first publish → `ACTIVE` ⇄ `PAUSED`; `ACTIVE`/`PAUSED` without an active lead → `REASSIGNMENT_REQUIRED` → ops approves a new lead → previous status; a manager's retirement request → `RETIREMENT_PENDING` → an `ops_admin` retires (`RETIRED`) or declines (previous status); ops may retire directly; a rejected version 1 → `REJECTED`. `RETIRED` and `REJECTED` are read-only.
 - **Version:** `draft` → submit → `in_review` → `changes_required` → resubmit, or `approved` (only an `ops_admin`) → manager publishes → `published` → next published version makes it `superseded`; `in_review` can be withdrawn before a decision, or `rejected`. One open version per basket; editable only as `draft` or `changes_required`.
-- Submit hashes the content; publish is refused if the hash differs from the approved one. Publish is idempotent. Drafting is allowed while paused, reassignment-required or retirement-pending; submit and publish are not.
+- Submit hashes the content; publish is refused if the hash differs from the approved one, and publish re-runs the submit validation (422 `BASKET_VALIDATION_FAILED`) because registry, organization and lead state can change after approval. Publish is idempotent. Drafting is allowed while paused, reassignment-required or retirement-pending; submit and publish are not.
 
 ## Creating a basket
 A member holding `baskets.manage` in a `VERIFIED` organization creates a basket (name, category) and becomes its `lead`. The web wizard has nine sections: Basics, Thesis, Assets & allocation, Constraints, Rebalance, Managers, Fees & minimum, Risks & disclosures, Review & preview. Saving is explicit and sends the version's `updatedAt`; a stale save is 409 `VERSION_CONFLICT` and nothing is overwritten. Validation runs live in the browser and again on the server.
@@ -25,6 +25,8 @@ Mandatory platform notices come from ops-managed templates chosen by asset types
 
 ## Managers
 Per-basket assignments (`lead`, `co_manager`) carry flags `edit`, `submit`, `publish`, `lifecycle`, `assign`; OWNER and ADMIN act on every basket. When a manager leaves the organization (or loses `baskets.manage`) their assignments end and a published basket without a lead becomes `REASSIGNMENT_REQUIRED`; a new lead is `PENDING_APPROVAL` until an `ops_admin` approves (the current lead stays active until then). Assignment history is public on the basket page as current and former managers.
+
+Assignment lockdown: nobody changes their own flags or ends their own lead role (ending one's own co-manager assignment, i.e. leaving, stays allowed); only OWNER, ADMIN or the current ACTIVE lead add, replace or end a lead assignment; a co-manager holding `assign` only adds, edits and ends other co-manager assignments. Retired and rejected baskets take no decisions, withdrawals or assignment changes.
 
 ## Review
 `ops_reviewer` requests changes, rejects, escalates or pauses; only `ops_admin` approves a version or a lead, lifts a platform pause, decides a retirement or retires directly. Each decision stores the checklist (completeness, assets, allocation, communication, managers, fees, operations: pass, fail or n/a with a note), section comments shown beside the manager's sections, a message to the manager and an internal note that managers never see. An ops user with any membership in the organization cannot decide on its baskets.
