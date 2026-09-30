@@ -29,9 +29,10 @@ describe("create", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ type: "firm", status: "DRAFT", openVersion: { versionNumber: 1, status: "draft" }, currentVersion: null });
     const [m] = await db.select().from(organizationMemberships).where(eq(organizationMemberships.organizationId, res.body.id));
-    expect(m).toMatchObject({ userId: u.userId, role: "OWNER", status: "active" });
+    expect(m).toMatchObject({ userId: u.userId, role: "OWNER", status: "ACTIVE" });
+    expect(m!.activatedAt).toBeTruthy();
     expect((await db.select().from(auditEvents).where(eq(auditEvents.action, "organization.created")))[0]).toMatchObject({ entityId: res.body.id, actorUserId: u.userId });
-    expect((await request(app).get("/v1/organizations/mine").set(u.h)).body.organizations).toEqual([{ id: res.body.id, type: "firm", status: "DRAFT", jurisdiction: "GB", role: "OWNER" }]);
+    expect((await request(app).get("/v1/organizations/mine").set(u.h)).body.organizations).toEqual([{ id: res.body.id, type: "firm", status: "DRAFT", jurisdiction: "GB", role: "OWNER", membershipId: m!.id, membershipStatus: "ACTIVE" }]);
   });
 
   it("allows one open organization; a rejected one frees the slot", async () => {
@@ -115,7 +116,7 @@ describe("draft", () => {
 
 describe("templates", () => {
   it("a jurisdiction-specific template wins over the default", async () => {
-    await adminSql`INSERT INTO app.verification_requirement_templates (id, organization_type, jurisdiction, required_fields, required_documents)
+    await adminSql`INSERT INTO app.verification_requirement_templates (id, subject, jurisdiction, required_fields, required_documents)
       VALUES (gen_random_uuid(), 'individual', 'SG', ARRAY['displayName'], ARRAY['government_id'])`;
     const u = await user(app);
     const id = await createOrg(app, u.h, "individual", "SG");
@@ -127,7 +128,7 @@ describe("templates", () => {
   it("a template naming an unknown field or document type is a 500 configuration error", async () => {
     for (const [fields, docs] of [["'displayName','bogusField'", "'government_id'"], ["'displayName'", "'passport'"]]) {
       await adminSql.unsafe(`DELETE FROM app.verification_requirement_templates WHERE jurisdiction = 'ZZ'`);
-      await adminSql.unsafe(`INSERT INTO app.verification_requirement_templates (id, organization_type, jurisdiction, required_fields, required_documents)
+      await adminSql.unsafe(`INSERT INTO app.verification_requirement_templates (id, subject, jurisdiction, required_fields, required_documents)
         VALUES (gen_random_uuid(), 'individual', 'ZZ', ARRAY[${fields}], ARRAY[${docs}])`);
       const u = await user(app);
       // The organization is created, then its detail view computes `missing` and fails.

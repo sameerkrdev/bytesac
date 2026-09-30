@@ -50,10 +50,10 @@ export async function getOrganizationForReview(id: string): Promise<Organization
   const wallets = await db.select().from(organizationPayoutWallets).where(eq(organizationPayoutWallets.organizationId, id)).orderBy(organizationPayoutWallets.createdAt, organizationPayoutWallets.id);
   const events = await db.select().from(organizationEvents).where(eq(organizationEvents.organizationId, id)).orderBy(organizationEvents.createdAt, organizationEvents.id);
   const [owner] = await db.select({ userId: organizationMemberships.userId }).from(organizationMemberships)
-    .where(and(eq(organizationMemberships.organizationId, id), eq(organizationMemberships.role, "OWNER"), eq(organizationMemberships.status, "active")));
+    .where(and(eq(organizationMemberships.organizationId, id), eq(organizationMemberships.role, "OWNER"), eq(organizationMemberships.status, "ACTIVE")));
   const addresses = owner ? await db.select({ chain: walletAddresses.chain, address: walletAddresses.address }).from(walletAddresses)
     .innerJoin(investmentWallets, eq(investmentWallets.id, walletAddresses.investmentWalletId))
-    .where(and(eq(investmentWallets.userId, owner.userId), eq(investmentWallets.status, "active"))).orderBy(walletAddresses.createdAt) : [];
+    .where(and(eq(investmentWallets.userId, owner.userId!), eq(investmentWallets.status, "active"))).orderBy(walletAddresses.createdAt) : [];
   const template = await resolveTemplate(db, org.type, org.jurisdiction);
   return {
     id: org.id, type: org.type, status: org.status, jurisdiction: org.jurisdiction, currentVersionId: org.currentVersionId, submittedAt: iso(org.submittedAt),

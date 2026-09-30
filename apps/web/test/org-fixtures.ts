@@ -11,7 +11,8 @@ export const orgDetail = (over: Partial<OrganizationDetail> = {}): OrganizationD
   id: ORG_ID, type: "individual", status: "DRAFT", jurisdiction: "GB", submittedAt: null, verifiedAt: null,
   openVersion: version(), currentVersion: null, payoutWallets: [],
   template: { requiredFields: ["displayName", "about", "experience", "legalName", "dateOfBirth", "residentialAddress", "professionalHistory"], requiredDocuments: ["government_id", "proof_of_address"] },
-  missing: { fields: [], documents: [], payoutWallet: false }, latestMessageToOwner: null, ...over,
+  missing: { fields: [], documents: [], payoutWallet: false }, latestMessageToOwner: null,
+  myRole: "OWNER", myPermissions: ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage"], ...over,
 });
 
 export const wallet = (over: Partial<OrganizationDetail["payoutWallets"][number]> = {}): OrganizationDetail["payoutWallets"][number] => ({

@@ -27,7 +27,16 @@ export const userPermission = app.enum("user_permission", ["create_manager_organ
 export const organizationType = app.enum("organization_type", ["individual", "firm"]);
 export const organizationStatus = app.enum("organization_status", ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUIRED", "RESUBMITTED", "VERIFIED", "REJECTED"]);
 export const membershipRole = app.enum("membership_role", ["OWNER", "ADMIN", "MANAGER", "ANALYST", "VIEWER"]);
-export const membershipStatus = app.enum("membership_status", ["active", "revoked"]);
+export const membershipStatus = app.enum("membership_status", [
+  "PENDING_WALLET_VERIFICATION", "INVITED", "PENDING_DOCUMENTS", "UNDER_REVIEW", "CHANGES_REQUIRED", "ACTIVE", "REJECTED", "REMOVAL_REQUESTED", "REVOKED",
+]);
+export const templateSubject = app.enum("template_subject", ["individual", "firm", "member"]);
+export const memberVerificationStatus = app.enum("member_verification_status", ["draft", "in_review", "changes_required", "approved", "rejected"]);
+export const membershipActor = app.enum("membership_actor", ["member", "org", "ops", "system"]);
+export const membershipEventKind = app.enum("membership_event_kind", [
+  "invited", "linked", "accepted", "declined", "cancelled", "expired", "verification_submitted", "verification_decided", "role_changed", "role_requested",
+  "removal_requested", "removal_cancelled", "removed", "left", "ownership_transferred", "profile_updated",
+]);
 export const versionStatus = app.enum("organization_version_status", ["draft", "in_review", "changes_required", "approved", "rejected", "superseded"]);
 export const documentStatus = app.enum("organization_document_status", ["pending_upload", "uploaded", "rejected_file"]);
 export const scanStatus = app.enum("document_scan_status", ["not_scanned"]);

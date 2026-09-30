@@ -9,6 +9,7 @@ export * from "./errors";
 export * from "./auth";
 export * from "./contacts";
 export * from "./managers";
+export * from "./members";
 export * from "./me";
 export * from "./organizations";
 export * from "./preferences";

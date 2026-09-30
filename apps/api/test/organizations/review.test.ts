@@ -78,7 +78,7 @@ describe("full review journey", () => {
     expect(ownerEmail.map((m) => m.kind)).toEqual(["changes_required", "verified"]);
     expect(ownerEmail.every((m) => m.to.startsWith("owner-"))).toBe(true);
     expect(verified.body.events.map((e: { kind: string; toStatus: string | null }) => e.toStatus).filter(Boolean)).toEqual(["DRAFT", "SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUIRED", "RESUBMITTED", "UNDER_REVIEW", "VERIFIED"]);
-    expect((await request(app).get("/v1/me").set(o.h)).body.organizations).toEqual([{ id: o.id, role: "OWNER", status: "VERIFIED" }]);
+    expect((await request(app).get("/v1/me").set(o.h)).body.organizations).toEqual([{ id: o.id, role: "OWNER", status: "VERIFIED", membershipId: expect.any(String), membershipStatus: "ACTIVE" }]);
     const audit = await db.select().from(auditEvents).where(eq(auditEvents.action, "organization.status_changed"));
     expect(audit).toHaveLength(6);
   });

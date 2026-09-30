@@ -13,6 +13,7 @@ describe("Public organization page", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       id: ID, type: "firm", jurisdiction: "GB", verifiedAt: "2026-09-29T00:00:00.000Z",
       profile: { displayName: "Ada Capital", about: "We manage baskets carefully for investors.", website: "https://ada.example", legalCompanyName: "SECRET LTD", registrationNumber: "12345678" },
+      team: { current: [], former: [] },
     }), { status: 200 })));
     render(await PublicOrganizationPage({ params: Promise.resolve({ id: ID }) }));
     expect(screen.getByRole("heading", { name: "Ada Capital" })).toBeInTheDocument();

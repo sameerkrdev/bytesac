@@ -17,7 +17,7 @@ const me = (status: MeResponse["organizations"][number]["status"] | null): MeRes
   user: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
   wallet: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e50", walletProvider: null, addresses: [] },
   contacts: [], permissions: ["create_manager_organization"], platformRoles: [],
-  organizations: status ? [{ id: ORG_ID, role: "OWNER", status }] : [],
+  organizations: status ? [{ id: ORG_ID, role: "OWNER", status, membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus: "ACTIVE" }] : [],
 });
 const page = (m: MeResponse) => render(<QueryClientProvider client={new QueryClient()}><MeProvider initial={m}><OrganizationPage /></MeProvider></QueryClientProvider>);
 

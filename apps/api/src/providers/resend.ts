@@ -60,3 +60,22 @@ export async function sendOrganizationEmail(kind: OrganizationEmailKind, to: str
   const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...ORGANIZATION_EMAILS[kind](data) }, { idempotencyKey });
   if (error) logger.warn("organization email failed", { kind, errorName: error.name });
 }
+
+export type MembershipEmailKind = "invited" | "accepted" | "verification_changes_required" | "verification_approved" | "verification_rejected" | "removed" | "ownership_transferred";
+export interface MembershipEmailData { organizationName?: string | null; role?: string; message?: string | null }
+
+const MEMBERSHIP_EMAILS: Record<MembershipEmailKind, (d: MembershipEmailData) => { subject: string; text: string }> = {
+  invited: (d) => ({ subject: `You are invited to ${d.organizationName ?? "an organization"} on Bytesac`, text: `You were invited to join ${d.organizationName ?? "an organization"} on Bytesac as ${d.role}. Sign in with the invited wallet at ${env.AUTH_URI} to review the invitation. It expires in 14 days.` }),
+  accepted: (d) => ({ subject: "Bytesac invitation accepted", text: `Your invitation to join ${d.organizationName ?? "your organization"} as ${d.role} was accepted.` }),
+  verification_changes_required: (d) => ({ subject: "Bytesac member verification: changes required", text: `Your member verification for ${d.organizationName ?? "the organization"} needs changes. Sign in to Bytesac to review them and resubmit.${withMessage(d.message)}` }),
+  verification_approved: (d) => ({ subject: "Bytesac member verification approved", text: `Your member verification for ${d.organizationName ?? "the organization"} was approved.` }),
+  verification_rejected: (d) => ({ subject: "Bytesac member verification decision", text: `We are unable to approve your member verification for ${d.organizationName ?? "the organization"}.${withMessage(d.message)}` }),
+  removed: (d) => ({ subject: "Bytesac organization access removed", text: `Your access to ${d.organizationName ?? "the organization"} on Bytesac was removed.` }),
+  ownership_transferred: (d) => ({ subject: "Bytesac organization ownership transferred", text: `Ownership of ${d.organizationName ?? "the organization"} on Bytesac was transferred by the Bytesac team. Your role is now ${d.role}.` }),
+};
+
+/** Sends a membership email. Failures only log: a state change never rolls back for an undelivered notice. */
+export async function sendMembershipEmail(kind: MembershipEmailKind, to: string, data: MembershipEmailData, idempotencyKey: string): Promise<void> {
+  const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...MEMBERSHIP_EMAILS[kind](data) }, { idempotencyKey });
+  if (error) logger.warn("membership email failed", { kind, errorName: error.name });
+}
