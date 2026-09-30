@@ -6,24 +6,13 @@ Read this first, then follow it. It captures the project state, the rules the us
 
 ## 0. Paste-ready starter prompt (for a fresh Claude Code session)
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–3 are merged to `main` (Spec 3 merge `d409758`). Spec 4 (members, roles, permissions) is **implemented on branch `feat/spec4-members-roles`** (API, web, ops, docs); review, fix wave and merge are pending (§5).
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–4 are merged to `main` (Spec 4 merge `33c2ab3`: members, permission matrix, invitations, member verification, ownership transfer, org switcher, public team — ADR-009). The next phase is the asset registry (§6).
 >
-> **1. Load context (mandatory, in order):** `docs/superpowers/HANDOFF.md` (follow it exactly — §3 rules, §4 working method), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ ADR-007, ADR-008), `docs/engineering/CODING-STANDARDS.md`, the Spec 4 spec `docs/superpowers/specs/2026-09-30-members-roles-design.md` and plan `docs/superpowers/plans/2026-09-30-spec4-members-roles.md`. Check memory files for user preferences.
+> **1. Load context (mandatory, in order):** `docs/superpowers/HANDOFF.md` (follow it exactly — §3 rules, §4 working method), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ relevant ADRs), `docs/engineering/CODING-STANDARDS.md`, the domain doc and `docs/source/*` file for the phase. Check memory files for user preferences.
 >
-> **2. Resume Spec 4 execution** with `superpowers:subagent-driven-development`, adapted to the user's model (HANDOFF §4 — it overrides the skill's per-task reviews):
-> - `git switch feat/spec4-members-roles`; confirm `git log --oneline main..HEAD` shows only the two docs commits and the tree is clean except `.claude/settings.json` (never stage it, root `AGENTS.md`, or generated `apps/*/AGENTS.md`/`CLAUDE.md`).
-> - Workspace/ledger: `.superpowers/sdd/2026-09-30-spec4-members-roles/` (git-ignored; has `progress.md` with pre-flight scan + Rulings 1–2, and `task-1..4-brief.md`). If missing, regenerate with the skill's `scripts/sdd-workspace` and `scripts/task-brief` and recreate the ledger from the plan.
-> - Start Docker Desktop if `docker info` fails, then `pnpm db:up`.
-> - Dispatch **implementer #1** (`model: "sonnet"` = Sonnet 5.5, background) for **Tasks 1–2** (API): give it the two brief paths, tell it to read only the plan's header/Global Constraints/Review Focus/File Structure plus the spec, ponytail skill, official docs first, no Python, per-task gates and commits with the Claude attribution line, no subagents, report to `task-1-2-report.md`, reply ≤12 lines. Carry Ruling 2 (migration mapping evidence) into the dispatch.
-> - Then **implementer #2** (Sonnet 5.5) for **Tasks 3–4** (web + docs incl. ADR-009, and the small `getOrganizationForReview` members-list API addition), passing implementer #1's deviations.
-> - Then **one Opus whole-branch review** (`model: "opus"`) with a trimmed diff file (`git diff <merge-base>..HEAD -- . ':!packages/db/migrations/meta' ':!pnpm-lock.yaml'`), spec, plan, ledger and both reports; focus: permission matrix on every route (incl. refactored Spec 3 routes), invite-link hook correctness/concurrency, membership lifecycle enforcement, one-OWNER invariant + transfer, member document privacy, enum migration safety, public team exposure.
-> - Items that affect permissions, money, custody or data migration → ask the user (AskUserQuestion, recommended option first). Otherwise rule and log `Ruling: … — why — cost if wrong` in the ledger.
-> - Then **one Sonnet fix wave** for all Critical/Important + cheap Minors; a short scoped Sonnet re-review if the fix touched security-critical code.
-> - Verify the full gate yourself (`pnpm turbo run lint check-types test build`, 28 tasks). Known flake: Windows vitest worker crash `3221226505` on a random api file — re-run crashed files alone; `ECONNREFUSED :54329` means Docker/Postgres is down.
-> - Report: commits, tests, migrations, every ruling with cost-if-wrong, open items; then present the finishing menu (merge locally / PR / keep) and **wait for the user** before merging. After merge: gate on merged `main`, delete branch + workspace, update HANDOFF §2/§5.
-> - If a sub-agent stalls or errors, check `git status`/`git log`, then resume the same agent with `SendMessage` (its context is intact) rather than starting over.
+> **2. Per phase** run the full cycle in §4: `superpowers:brainstorming` → written spec → user approval → `superpowers:writing-plans` (~4 tasks) → user approval → `superpowers:subagent-driven-development` adapted to §4 (implementer #1 API, implementer #2 web + docs, Sonnet 5.5, background, briefs/reports as files, ≤12-line replies; one Opus whole-branch review on a trimmed diff; one Sonnet fix wave; scoped re-review if security-critical) → verify the full gate yourself → finishing menu and **wait for the user** before merging → after merge gate on `main`, delete branch + workspace, update HANDOFF §0/§2/§5. Items touching permissions, money, custody or data migration → ask the user (AskUserQuestion, recommended option first); otherwise log `Ruling: … — why — cost if wrong`. If a sub-agent stalls, check `git status`/`git log` and resume it with `SendMessage`.
 >
-> **3. After Spec 4 is merged**, continue the roadmap in HANDOFF §6 "Later phases", one phase at a time, each through the full cycle (brainstorm → written spec → user approval → plan → user approval → execute as above → review → fix wave → user merge decision):
+> **3. Roadmap** (HANDOFF §6 "Later phases"), one phase at a time:
 > 1. **Asset registry** (`docs/source/Assets-Registry.txt`, `docs/domains/ASSET-REGISTRY.md`): instrument/deployment/route model, platform approval + lifecycle, eligibility policy, CoinMarketCap pricing adapter (D-015, ADR-002).
 > 2. **Basket creation & review** (`Basket-Creation.txt`): org-owned versioned baskets, wizard, validation, platform review, publication, pause/retire, **plus the deferred Spec 4 items**: basket manager assignments + history, basket state when a manager leaves, investor notifications (onboarding source §31–§38).
 > 3. **Public discovery & research** (`User-Detailed-Features.txt` §2–§5).
@@ -47,7 +36,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Restructure (packages, API layout, pg_cron) | ✅ on `main` after `refactor/packages-and-api-layout` merge (verify with `git log --oneline -5`; if that branch still exists unmerged, stop and ask the user). |
 | Spec 2 — manager application + screening | ✅ merged to `main` (`0db41ea`): public apply/status, `/ops` screening, platform roles, wallet-proof grant, self-approval blocked (ADR-007). |
 | Spec 3 — organization onboarding | ✅ merged to `main` (`d409758`): org drafts + templates, R2 presigned documents, payout wallet proof + replacement review, ops review, public profile (ADR-008). Pre-release: real-R2 and AppKit Solana signing manual checks. |
-| Spec 4 — members/roles | Implemented on branch `feat/spec4-members-roles` (API, web, ops, docs, ADR-009); pending the whole-branch review, fix wave and the user's merge decision. |
+| Spec 4 — members/roles | ✅ merged to `main` (`33c2ab3`): permission matrix, wallet invitations linked by wallet proof, member verification + ops review, withdraw/remove/leave, ops-only ownership transfer, org switcher (`?org=`), opt-in public team (ADR-009, D-048..D-052). |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
 ### Monorepo layout (after restructure)
@@ -102,13 +91,13 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - **Gate commands:** `pnpm db:up` (Docker Postgres 17 + Redis 7), `pnpm turbo run lint check-types test build`, mobile: `pnpm --filter mobile test`, `pnpm --filter mobile check-types`, `cd apps/mobile && npx expo lint && npx expo export --platform android --output-dir <tmp>`.
 - **Record rulings:** when you decide something on the user's behalf, log it and list every ruling (with "cost if wrong") in the final report.
 
-## 5. Spec 4 — implemented, pending review and merge
+## 5. Spec 4 — merged; leftovers
 
-- Spec: `docs/superpowers/specs/2026-09-30-members-roles-design.md`; plan `docs/superpowers/plans/2026-09-30-spec4-members-roles.md`; ADR-009 and D-048 to D-052; branch `feat/spec4-members-roles` holds all four tasks. Basket-related member rules (manager assignments, basket state when a manager leaves, investor notifications) are deferred to the basket spec.
-- Next: one Opus whole-branch review → one Sonnet fix wave → user merge decision; then the roadmap in §6.
-- Pre-release checks for the user: invitation and member-verification email copy and sender domain (Resend); member document retention period (compliance); a manual run of invite → wallet proof → accept → verification → ops approval with a real wallet and R2 bucket.
-- Known env issue: Windows vitest worker crash (0xC0000409) hits ~1 in 2–3 full api runs on a random file (native Node crash; `pool: threads` makes it worse). Re-run crashed files; consider Linux CI or a newer Node.
-- Spec 2/3 leftovers (not blocking): Spec 2 ops form offers "Not approved" for a proven approved application (server 409); Spec 3 orphan final R2 copy on DB failure after copy; open: email copy/sender domain, re-apply cooldown, jurisdiction templates, document retention.
+- Spec `docs/superpowers/specs/2026-09-30-members-roles-design.md`, plan `docs/superpowers/plans/2026-09-30-spec4-members-roles.md`, ADR-009. Basket-related member rules (manager assignments, basket state when a manager leaves, investor notifications) move to the basket spec.
+- Deferred minors (not blocking): a concurrent invite during the invitee's sign-in can abort that sign-in with a 500 (unique violation in `linkInvitesIfProven`; self-heals on retry; fix with a savepoint); a rejected invite still consumes the org's 20/h invite budget; `/me.organizations` `displayName` uses the latest (possibly unapproved) version name; withdrawn vs ops-rejected member verifications differ only by `decided_by_user_id` null; permission-table test treats "allowed" as "not 403".
+- Pre-release checks for the user: invitation/member-verification email copy and sender domain (Resend); member document retention period (compliance); a manual run of invite → wallet proof → accept → verification → ops approval with a real wallet and R2 bucket.
+- Known env issue: Windows vitest worker crash (0xC0000409 / 3221226505) hits most full api runs on 1–3 random files (native Node crash). Re-run crashed files alone; consider Linux CI or a newer Node.
+- Spec 2/3 leftovers (not blocking): Spec 2 ops form offers "Not approved" for a proven approved application (server 409); Spec 3 orphan final R2 copy on DB failure after copy; open: re-apply cooldown, jurisdiction templates, document retention.
 
 ## 6. Roadmap after Spec 2
 
