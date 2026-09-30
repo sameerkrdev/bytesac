@@ -21,8 +21,8 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Spec 1 — foundation + user auth | ✅ merged to `main` (API, web, mobile). |
 | Restructure (packages, API layout, pg_cron) | ✅ on `main` after `refactor/packages-and-api-layout` merge (verify with `git log --oneline -5`; if that branch still exists unmerged, stop and ask the user). |
 | Spec 2 — manager application + screening | ✅ merged to `main` (`0db41ea`): public apply/status, `/ops` screening, platform roles, wallet-proof grant, self-approval blocked (ADR-007). |
-| Spec 3 — organization onboarding | Implemented on branch `feat/spec3-organization-onboarding` (API, web owner workspace, public profile, ops review, docs, ADR-008); pending whole-branch review and user merge decision. Real-R2 manual check pending (tests use a fake). |
-| Spec 4 — members/roles | Not started (scope in §6). |
+| Spec 3 — organization onboarding | ✅ merged to `main` (`d409758`): org drafts + templates, R2 presigned documents, payout wallet proof + replacement review, ops review, public profile (ADR-008). Pre-release: real-R2 and AppKit Solana signing manual checks. |
+| Spec 4 — members/roles | Spec written on branch `feat/spec4-members-roles` (`docs/superpowers/specs/2026-09-30-members-roles-design.md`); plan + implementation next. |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
 ### Monorepo layout (after restructure)
@@ -77,11 +77,12 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - **Gate commands:** `pnpm db:up` (Docker Postgres 17 + Redis 7), `pnpm turbo run lint check-types test build`, mobile: `pnpm --filter mobile test`, `pnpm --filter mobile check-types`, `cd apps/mobile && npx expo lint && npx expo export --platform android --output-dir <tmp>`.
 - **Record rulings:** when you decide something on the user's behalf, log it and list every ruling (with "cost if wrong") in the final report.
 
-## 5. Spec 3 — implemented, awaiting merge decision
+## 5. Spec 4 — in progress
 
-- Spec: `docs/superpowers/specs/2026-09-30-organization-onboarding-design.md` (one spec for source §11–§24, user choice); branch `feat/spec3-organization-onboarding`.
-- Implemented and reviewed (final whole-branch review + fix wave applied). Pre-release gate (not a merge gate): manual check against a real R2 bucket (presigned PUT, HEAD/copy) and Reown AppKit Solana signing per wallet. Next: user merge decision, then Spec 4.
-- Spec 2 leftovers (not blocking): ops form offers "Not approved" for a proven approved application (server 409); skipped review minors M3/M4 (migration edits), phone regex, M9–M13; open: email copy/sender domain, re-apply cooldown.
+- Spec: `docs/superpowers/specs/2026-09-30-members-roles-design.md`; branch `feat/spec4-members-roles`. Basket-related member rules deferred to the basket spec.
+- Next: plan (4 tasks per spec §15) → implementer #1 Tasks 1–2 (API), implementer #2 Tasks 3–4 (web + docs), Sonnet 5.5 for code-writing sub-agents → one Opus review → one Sonnet fix wave → user merge decision.
+- Known env issue: Windows vitest worker crash (0xC0000409) hits ~1 in 2–3 full api runs on a random file (native Node crash; `pool: threads` makes it worse). Re-run crashed files; consider Linux CI or a newer Node.
+- Spec 2/3 leftovers (not blocking): Spec 2 ops form offers "Not approved" for a proven approved application (server 409); Spec 3 orphan final R2 copy on DB failure after copy; open: email copy/sender domain, re-apply cooldown, jurisdiction templates, document retention.
 
 ## 6. Roadmap after Spec 2
 
