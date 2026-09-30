@@ -19,6 +19,7 @@ export default async function OpsLayout({ children }: { children: ReactNode }) {
         <nav aria-label="Ops" className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-4 px-4 md:px-8">
           <span className="flex items-center gap-2"><Logo size={28} /><span className="font-display text-lg font-bold text-ivory">Ops</span></span>
           {allowed && <Link href="/ops/applications" className={linkCls}>Applications</Link>}
+          {allowed && <Link href="/ops/organizations" className={linkCls}>Organizations</Link>}
           {isAdmin && <Link href="/ops/roles" className={linkCls}>Roles</Link>}
           <Link href="/home" className={`${linkCls} ml-auto`}>Back to Home</Link>
         </nav>
