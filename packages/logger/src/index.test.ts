@@ -22,6 +22,14 @@ describe("logger", () => {
     expect(out).toContain("[redacted]");
     expect(out).toContain("23505");
   });
+  it("redacts application tokens and personal or free-text fields", () => {
+    const c = capture();
+    logger.warn("body", { statusToken: "st0k", "x-application-token": "h0k", fullName: "Ada Lovelace", professionalBackground: "bg", internalNote: "n0te", reason: "kept" });
+    c.remove();
+    const out = c.lines().join("");
+    for (const secret of ["st0k", "h0k", "Ada Lovelace", "n0te"]) expect(out).not.toContain(secret);
+    expect(out).toContain("kept");
+  });
   it("supports the http level used for request logs", () => {
     const c = capture();
     logger.http("GET /health 200");

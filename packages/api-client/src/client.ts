@@ -1,7 +1,10 @@
 import {
-  addContactResponseSchema, apiErrorBodySchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
+  addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
+  listApplicationsResponseSchema, platformRoleViewSchema, platformRolesResponseSchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
   meResponseSchema, notificationPreferencesSchema, sessionsResponseSchema, verifyResponseSchema,
-  type AddContactRequest, type AddContactResponse, type ChallengeRequest, type ChallengeResponse,
+  type AddContactRequest, type AddContactResponse, type ApplicationStatusResponse, type ChallengeRequest, type ChallengeResponse,
+  type ApplicationDetail, type GrantRoleRequest, type ListApplicationsQuery, type ListApplicationsResponse, type PlatformRoleView, type PlatformRolesResponse,
+  type TransitionApplicationRequest, type ConfirmApplicationEmailRequest, type ConfirmApplicationEmailResponse, type CreateApplicationRequest, type CreateApplicationResponse,
   type ContactView, type MeResponse, type NotificationPreferences, type SessionsResponse,
   type UpdateNotificationPreferences, type VerifyContactRequest, type VerifyRequest, type VerifyResponse,
   type z,
@@ -16,8 +19,8 @@ type Method = "GET" | "POST" | "PATCH" | "DELETE";
 export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 
-  async function request<S extends z.ZodType = z.ZodVoid>(method: Method, path: string, schema: S | null, body?: unknown): Promise<z.infer<S>> {
-    const headers = new Headers({ Accept: "application/json", [CSRF_HEADER]: CSRF_HEADER_VALUE });
+  async function request<S extends z.ZodType = z.ZodVoid>(method: Method, path: string, schema: S | null, body?: unknown, extraHeaders?: Record<string, string>): Promise<z.infer<S>> {
+    const headers = new Headers({ Accept: "application/json", [CSRF_HEADER]: CSRF_HEADER_VALUE, ...extraHeaders });
     if (body !== undefined) headers.set("Content-Type", "application/json");
     if (options.transport.kind === "bearer") {
       // Native clients identify themselves so the API's CSRF guard can exempt Origin-less mobile sign-in.
@@ -41,7 +44,7 @@ export function createApiClient(options: ApiClientOptions) {
       const parsed = apiErrorBodySchema.safeParse(await res.json().catch(() => null));
       if (parsed.success) {
         const n = Number(retry);
-        throw new ApiError(parsed.data.error.code, res.status, parsed.data.error.message, retry !== null && Number.isFinite(n) ? n : undefined);
+        throw new ApiError(parsed.data.error.code, res.status, parsed.data.error.message, retry !== null && Number.isFinite(n) ? n : undefined, parsed.data.error.details);
       }
       throw new ApiError("INTERNAL", res.status, `Unexpected ${res.status} response`);
     }
@@ -67,6 +70,27 @@ export function createApiClient(options: ApiClientOptions) {
     getPreferences: (): Promise<NotificationPreferences> => request("GET", "/v1/me/notification-preferences", notificationPreferencesSchema),
     updatePreferences: (b: UpdateNotificationPreferences): Promise<NotificationPreferences> =>
       request("PATCH", "/v1/me/notification-preferences", notificationPreferencesSchema, b),
+
+    createApplication: (b: CreateApplicationRequest): Promise<CreateApplicationResponse> =>
+      request("POST", "/v1/manager-applications", createApplicationResponseSchema, b),
+    confirmApplicationEmail: (id: string, b: ConfirmApplicationEmailRequest): Promise<ConfirmApplicationEmailResponse> =>
+      request("POST", `/v1/manager-applications/${encodeURIComponent(id)}/confirm-email`, confirmApplicationEmailResponseSchema, b),
+    resendApplicationCode: (id: string): Promise<void> =>
+      request<z.ZodVoid>("POST", `/v1/manager-applications/${encodeURIComponent(id)}/resend-code`, null),
+    getApplicationStatus: (token: string): Promise<ApplicationStatusResponse> =>
+      request("GET", "/v1/manager-applications/status", applicationStatusResponseSchema, undefined, { "X-Application-Token": token }),
+    replyToApplication: (token: string, message: string): Promise<void> =>
+      request<z.ZodVoid>("POST", "/v1/manager-applications/reply", null, { message }, { "X-Application-Token": token }),
+    opsListApplications: (q: ListApplicationsQuery = {}): Promise<ListApplicationsResponse> =>
+      request("GET", `/v1/ops/applications?${new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => e[1] !== undefined))}`, listApplicationsResponseSchema),
+    opsGetApplication: (id: string): Promise<ApplicationDetail> => request("GET", `/v1/ops/applications/${encodeURIComponent(id)}`, applicationDetailSchema),
+    opsTransitionApplication: (id: string, b: TransitionApplicationRequest): Promise<ApplicationDetail> =>
+      request("POST", `/v1/ops/applications/${encodeURIComponent(id)}/transition`, applicationDetailSchema, b),
+    opsAddApplicationNote: (id: string, internalNote: string): Promise<ApplicationDetail> =>
+      request("POST", `/v1/ops/applications/${encodeURIComponent(id)}/notes`, applicationDetailSchema, { internalNote }),
+    opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
+    opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),
+    opsRevokeRole: (id: string): Promise<void> => request<z.ZodVoid>("DELETE", `/v1/ops/roles/${encodeURIComponent(id)}`, null),
   };
 }
 

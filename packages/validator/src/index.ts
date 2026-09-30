@@ -8,6 +8,7 @@ export * from "./chains";
 export * from "./errors";
 export * from "./auth";
 export * from "./contacts";
+export * from "./managers";
 export * from "./me";
 export * from "./preferences";
 export * from "./http";

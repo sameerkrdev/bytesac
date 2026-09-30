@@ -34,9 +34,12 @@ export function csrfGuard(req: Request, _res: Response, next: NextFunction): voi
   const hasCookie = Boolean(cookies?.[SESSION_COOKIE]);
   const body = req.body as { client?: unknown } | undefined;
   const path = normalizePath(req.path);
+  const hasBearer = /^Bearer\s+/i.test(req.header("authorization") ?? "");
   const webAuthEntry = AUTH_ENTRY.has(path) && body?.client === "web";
-  const challengeWithoutClient = path === "/v1/auth/challenge" && !/^Bearer\s+/i.test(req.header("authorization") ?? "") && req.header(CLIENT_HEADER) !== MOBILE_CLIENT;
-  if (!hasCookie && !webAuthEntry && !challengeWithoutClient) return next();
+  const challengeWithoutClient = path === "/v1/auth/challenge" && !hasBearer &&req.header(CLIENT_HEADER) !== MOBILE_CLIENT;
+  // Public application forms are browser-only and cookie-less: require Origin unless a bearer token is present.
+  const applicationForm = path.startsWith("/v1/manager-applications") && !hasBearer;
+  if (!hasCookie && !webAuthEntry && !challengeWithoutClient && !applicationForm) return next();
   const origin = req.header("origin");
   if (!origin || !allowedOrigins.has(origin) || req.header(CSRF_HEADER) !== CSRF_HEADER_VALUE) {
     throw createHttpError("Request rejected by CSRF protection", { code: "CSRF_REJECTED" });

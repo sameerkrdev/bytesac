@@ -9,6 +9,8 @@ const me = {
     { chain: "solana" as const, chainFamily: "solana" as const, address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T", status: "active" as const, verificationMethod: "ed25519" as const, verifiedAt: "2026-09-29T00:00:00.000Z" },
   ] },
   contacts: [],
+  permissions: [],
+  platformRoles: [],
 };
 
 describe("WalletSection (mobile)", () => {

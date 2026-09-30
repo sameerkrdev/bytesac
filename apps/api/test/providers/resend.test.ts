@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sdk = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("resend", () => ({ Resend: class { emails = { send: sdk.send }; } }));
 
-const { sendOtpEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
+const { sendOtpEmail, sendApplicationEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
 
 beforeEach(() => sdk.send.mockReset());
 
@@ -19,5 +19,24 @@ describe("sendOtpEmail", () => {
   it("a reported error -> 503 OTP_DELIVERY_FAILED", async () => {
     sdk.send.mockResolvedValueOnce({ data: null, error: { name: "application_error", message: "down", statusCode: null } });
     await expect(sendOtpEmail("a@b.co", "123456", "v-2")).rejects.toMatchObject({ code: "OTP_DELIVERY_FAILED" });
+  });
+});
+
+describe("sendApplicationEmail", () => {
+  const error = { name: "application_error", message: "down", statusCode: null };
+  it("sends with the caller's idempotency key", async () => {
+    sdk.send.mockResolvedValueOnce({ data: { id: "e1" }, error: null });
+    await sendApplicationEmail("approved", "a@b.co", { walletLabel: "0x12…abcd on Base" }, "application-status/e-1");
+    const [payload, options] = sdk.send.mock.calls[0]!;
+    expect(payload.text).toContain("Sign in to Bytesac with wallet 0x12…abcd on Base to finish.");
+    expect(options).toEqual({ idempotencyKey: "application-status/e-1" });
+  });
+  it("code failure -> 503 OTP_DELIVERY_FAILED", async () => {
+    sdk.send.mockResolvedValueOnce({ data: null, error });
+    await expect(sendApplicationEmail("code", "a@b.co", { code: "123456" }, "application-code/c-1")).rejects.toMatchObject({ code: "OTP_DELIVERY_FAILED" });
+  });
+  it("status email failure is logged, not thrown", async () => {
+    sdk.send.mockResolvedValueOnce({ data: null, error });
+    await expect(sendApplicationEmail("rejected", "a@b.co", {}, "application-status/e-2")).resolves.toBeUndefined();
   });
 });

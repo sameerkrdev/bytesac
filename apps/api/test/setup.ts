@@ -3,7 +3,7 @@ import { vi } from "vitest";
 // Third-party providers are replaced by in-memory fakes; tests drive them through `fakes`.
 vi.mock("../src/providers/resend", async () => {
   const { fakes } = await import("./helpers/fakes");
-  return { sendOtpEmail: fakes.email.sendOtp };
+  return { sendOtpEmail: fakes.email.sendOtp, sendApplicationEmail: fakes.email.sendApplication };
 });
 vi.mock("../src/providers/twilio", async () => {
   const { fakes } = await import("./helpers/fakes");

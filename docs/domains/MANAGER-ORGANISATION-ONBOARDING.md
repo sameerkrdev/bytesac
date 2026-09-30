@@ -6,16 +6,19 @@ Source: `Fund-Manager-&-Organisation-Onboarding-Flow.txt`, `Fund-Manager-Detaile
 A person authenticates as a user. A manager operates through an organization. The organization is the durable business context and owns/manages baskets; memberships and permissions grant people access.
 
 ## Application flow
-1. Anyone may submit the Become a Fund Manager application.
-2. Platform team contacts the applicant and performs initial screening.
-3. Platform performs the required manager/person or firm verification.
-4. After clearance, the platform requests the relevant wallet address.
-5. Verify control of the wallet; an entered address alone is not proof.
-6. Associate an existing user or create a user through the approved flow.
-7. Grant narrowly scoped organization-creation permission.
-8. The user signs in and creates an individual or firm organization.
-9. Submit the organization and required evidence for platform verification.
-10. Only after approval grant the appropriate manager capabilities.
+Statuses: `EMAIL_PENDING → SUBMITTED → SCREENING → CONTACTED / ADDITIONAL_INFORMATION_REQUIRED → SCREENING_APPROVED | SCREENING_REJECTED`. Allowed transitions are one table in code (`APPLICATION_TRANSITIONS`); anything else is `INVALID_TRANSITION`.
+1. Anyone may submit the Become a Fund Manager application at `/managers/apply` (applicant type individual or firm, contact details, background, intent, wallet chain and typed address). The application is `EMAIL_PENDING` until the applicant confirms a 6-digit emailed code; only then does it become `SUBMITTED` and enter the ops queue. The applicant receives a private status link once (also emailed).
+2. Platform reviewers work the queue in `/ops`: move it to `SCREENING`, `CONTACTED` (contact happens outside the app) or `ADDITIONAL_INFORMATION_REQUIRED` (message to the applicant required, enforced by the API; the applicant may reply once at the status page, which returns it to `SCREENING`, or ops may return it to `SCREENING` without a reply), add internal notes, and finally approve or reject. Every change is an event plus an audit record; applicants get an email for contacted, information required, approved and rejected.
+3. Approval records the decision. The permission is granted only when the submitted wallet is proven: a typed address is an identifier, never proof, and never creates or links a user.
+   - If a proven user already owns the address at approval time, `create_manager_organization` is granted immediately.
+   - Otherwise the application waits, and the grant happens in the Spec 1 sign-in or add-chain transaction when the applicant proves the exact address (EVM: EOA proof on any EVM chain, or ERC-1271/6492 on exactly the submitted chain; Solana: ed25519). The hook locks the open application by wallet family and address and checks status, proof and chain under that lock, so a concurrent approve and first sign-in always yield exactly one grant.
+   - Disabled addresses and non-active users never receive the grant.
+   - Self-approval is blocked: a reviewer cannot transition an application whose wallet they own (403 `FORBIDDEN`), and the grant hook never grants to the user who approved the application, recording a note and an audit entry instead. Such an application stays unproven until another reviewer rejects it (an approved application can be rejected while its wallet is unproven), after which the applicant can re-apply.
+4. The user signs in and creates an individual or firm organization (Spec 3).
+5. Submit the organization and required evidence for platform verification.
+6. Only after approval grant the appropriate manager capabilities.
+
+Rules: one open application per email and per wallet address (rejected applications may re-apply); `EMAIL_PENDING` applications older than 24 h are purged; if the code email fails on submit, the API returns `OTP_DELIVERY_FAILED` with the application id so the applicant can resend; the applicant sees only status, the latest ops message and whether a reply is allowed, never internal notes.
 
 ## Organization and wallet
 - Organization information has private and public subsets.

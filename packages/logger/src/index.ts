@@ -9,8 +9,8 @@ const { LOG_LEVEL } = cleanEnv(process.env, {
   LOG_LEVEL: str({ choices: [...Object.keys(levels), "silent"], default: isProduction ? "info" : "debug" }),
 });
 
-/** Values that must never reach a log line: credentials, signatures, OTP codes and contact details. */
-const REDACTED_KEYS = /^(token|tokenHash|signature|code|codeHash|password|secret|value|destination|email|phone|authorization|cookie|set-cookie)$/i;
+/** Values that must never reach a log line: credentials, signatures, OTP codes, contact details and manager-application personal data or free text. */
+const REDACTED_KEYS = /^(token|tokenHash|statusToken|x-application-token|signature|code|codeHash|password|secret|value|destination|email|phone|authorization|cookie|set-cookie|fullName|firmName|website|professionalBackground|investmentExperience|qualifications|intendedBaskets|internalNote|messageToApplicant|applicantMessage)$/i;
 
 const redact = (v: unknown): unknown => {
   if (Array.isArray(v)) return v.map(redact);

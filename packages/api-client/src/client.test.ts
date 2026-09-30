@@ -17,6 +17,23 @@ describe("api client", () => {
     expect(new Headers(init.headers).get("Authorization")).toBeNull();
   });
 
+  it("application status and reply send the token as X-Application-Token", async () => {
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    const api = createApiClient({ baseUrl: "/api", transport: { kind: "cookie" }, fetch: f });
+    await api.replyToApplication("t0k", "hi");
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/v1/manager-applications/reply");
+    expect(new Headers(init.headers).get("X-Application-Token")).toBe("t0k");
+    expect(init.body).toBe(JSON.stringify({ message: "hi" }));
+  });
+
+  it("ops list sends the filters as a query string", async () => {
+    const f = vi.fn(async () => jsonResponse(200, { items: [], nextCursor: null }));
+    const api = createApiClient({ baseUrl: "/api", transport: { kind: "cookie" }, fetch: f });
+    await api.opsListApplications({ status: "SCREENING", q: "ada lovelace" });
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe("/api/v1/ops/applications?status=SCREENING&q=ada+lovelace");
+  });
+
   it("bearer transport adds Authorization and omits credentials", async () => {
     const f = vi.fn(async () => new Response(null, { status: 204 }));
     const api = createApiClient({ baseUrl: "https://api.test", transport: { kind: "bearer", getToken: async () => "tok" }, fetch: f });

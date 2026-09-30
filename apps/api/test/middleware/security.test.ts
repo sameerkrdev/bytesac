@@ -77,3 +77,15 @@ describe("security middleware", () => {
     expect((await request(a).post("/v1/auth/challenge").set("Origin", ORIGIN).set("X-Requested-With", "bytesac").send({})).status).toBe(200);
   });
 });
+
+describe("public application forms", () => {
+  it("cookie-less browser POST needs Origin; a bearer request is exempt", async () => {
+    const a = express();
+    a.use(requestContext, express.json(), cookieParser(), csrfGuard);
+    a.post("/v1/manager-applications", (_req, res) => { res.json({ ok: true }); });
+    a.use(errorHandler);
+    expect((await request(a).post("/v1/manager-applications").send({})).status).toBe(403);
+    expect((await request(a).post("/v1/manager-applications").set("Origin", ORIGIN).set("X-Requested-With", "bytesac").send({})).status).toBe(200);
+    expect((await request(a).post("/v1/manager-applications").set("Authorization", "Bearer t").send({})).status).toBe(200);
+  });
+});
