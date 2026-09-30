@@ -1,12 +1,15 @@
 import {
   addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
   listApplicationsResponseSchema, platformRoleViewSchema, platformRolesResponseSchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
-  meResponseSchema, notificationPreferencesSchema, sessionsResponseSchema, verifyResponseSchema,
+  listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
   type AddContactRequest, type AddContactResponse, type ApplicationStatusResponse, type ChallengeRequest, type ChallengeResponse,
   type ApplicationDetail, type GrantRoleRequest, type ListApplicationsQuery, type ListApplicationsResponse, type PlatformRoleView, type PlatformRolesResponse,
   type TransitionApplicationRequest, type ConfirmApplicationEmailRequest, type ConfirmApplicationEmailResponse, type CreateApplicationRequest, type CreateApplicationResponse,
   type ContactView, type MeResponse, type NotificationPreferences, type SessionsResponse,
   type UpdateNotificationPreferences, type VerifyContactRequest, type VerifyRequest, type VerifyResponse,
+  type EnterPayoutWalletRequest, type ListOrganizationsQuery, type ListOrganizationsResponse, type OrganizationNoteRequest, type OrganizationReviewDetail, type PayoutWalletDecisionRequest,
+  type PublicOrganization, type TransitionOrganizationRequest, type VerifyPayoutWalletRequest, type VersionDecisionRequest,
+  type CreateOrganizationRequest, type ListMyOrganizationsResponse, type OrganizationDetail, type PresignDocumentRequest, type PresignDocumentResponse, type UpdateDraftRequest,
   type z,
 } from "@repo/validator";
 import { ApiError } from "./api-error";
@@ -88,6 +91,43 @@ export function createApiClient(options: ApiClientOptions) {
       request("POST", `/v1/ops/applications/${encodeURIComponent(id)}/transition`, applicationDetailSchema, b),
     opsAddApplicationNote: (id: string, internalNote: string): Promise<ApplicationDetail> =>
       request("POST", `/v1/ops/applications/${encodeURIComponent(id)}/notes`, applicationDetailSchema, { internalNote }),
+    createOrganization: (b: CreateOrganizationRequest): Promise<OrganizationDetail> => request("POST", "/v1/organizations", organizationDetailSchema, b),
+    myOrganizations: (): Promise<ListMyOrganizationsResponse> => request("GET", "/v1/organizations/mine", listMyOrganizationsResponseSchema),
+    getOrganization: (id: string): Promise<OrganizationDetail> => request("GET", `/v1/organizations/${encodeURIComponent(id)}`, organizationDetailSchema),
+    updateOrganizationDraft: (id: string, b: UpdateDraftRequest): Promise<OrganizationDetail> =>
+      request("PATCH", `/v1/organizations/${encodeURIComponent(id)}/draft`, organizationDetailSchema, b),
+    presignOrganizationDocument: (id: string, b: PresignDocumentRequest): Promise<PresignDocumentResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/documents`, presignDocumentResponseSchema, b),
+    confirmOrganizationDocument: (id: string, docId: string): Promise<OrganizationDetail> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}/confirm`, organizationDetailSchema),
+    unlinkOrganizationDocument: (id: string, docId: string): Promise<OrganizationDetail> =>
+      request("DELETE", `/v1/organizations/${encodeURIComponent(id)}/draft/documents/${encodeURIComponent(docId)}`, organizationDetailSchema),
+
+    enterPayoutWallet: (id: string, b: EnterPayoutWalletRequest): Promise<OrganizationDetail> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/payout-wallet`, organizationDetailSchema, b),
+    createPayoutChallenge: (id: string): Promise<ChallengeResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/payout-wallet/challenge`, challengeResponseSchema),
+    verifyPayoutWallet: (id: string, b: VerifyPayoutWalletRequest): Promise<OrganizationDetail> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/payout-wallet/verify`, organizationDetailSchema, b),
+    submitOrganization: (id: string): Promise<OrganizationDetail> => request("POST", `/v1/organizations/${encodeURIComponent(id)}/submit`, organizationDetailSchema),
+    createOrganizationChangeRequest: (id: string): Promise<OrganizationDetail> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/change-request`, organizationDetailSchema),
+    submitOrganizationChangeRequest: (id: string): Promise<OrganizationDetail> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/change-request/submit`, organizationDetailSchema),
+    getPublicOrganization: (id: string): Promise<PublicOrganization> => request("GET", `/v1/public/organizations/${encodeURIComponent(id)}`, publicOrganizationSchema),
+
+    opsListOrganizations: (q: ListOrganizationsQuery = {}): Promise<ListOrganizationsResponse> =>
+      request("GET", `/v1/ops/organizations?${new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => e[1] !== undefined))}`, listOrganizationsResponseSchema),
+    opsGetOrganization: (id: string): Promise<OrganizationReviewDetail> => request("GET", `/v1/ops/organizations/${encodeURIComponent(id)}`, organizationReviewDetailSchema),
+    opsTransitionOrganization: (id: string, b: TransitionOrganizationRequest): Promise<OrganizationReviewDetail> =>
+      request("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/transition`, organizationReviewDetailSchema, b),
+    opsDecideOrganizationVersion: (id: string, versionId: string, b: VersionDecisionRequest): Promise<OrganizationReviewDetail> =>
+      request("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/decision`, organizationReviewDetailSchema, b),
+    opsDecidePayoutWallet: (id: string, walletId: string, b: PayoutWalletDecisionRequest): Promise<OrganizationReviewDetail> =>
+      request("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/payout-wallets/${encodeURIComponent(walletId)}/decision`, organizationReviewDetailSchema, b),
+    opsAddOrganizationNote: (id: string, b: OrganizationNoteRequest): Promise<OrganizationReviewDetail> =>
+      request("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/notes`, organizationReviewDetailSchema, b),
+
     opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
     opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),
     opsRevokeRole: (id: string): Promise<void> => request<z.ZodVoid>("DELETE", `/v1/ops/roles/${encodeURIComponent(id)}`, null),

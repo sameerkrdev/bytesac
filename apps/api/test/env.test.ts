@@ -6,6 +6,7 @@ const base = {
   RESEND_API_KEY: "r", EMAIL_FROM: "Bytesac <a@b.co>", TWILIO_ACCOUNT_SID: "AC1", TWILIO_AUTH_TOKEN: "t",
   TWILIO_VERIFY_SERVICE_SID: "VA1", SMS_ALLOWED_COUNTRIES: "IN, us", AUTH_DOMAIN: "localhost:3000",
   AUTH_URI: "http://localhost:3000", ALLOWED_ORIGINS: "http://localhost:3000,https://app.bytesac.com",
+  R2_ACCOUNT_ID: "a", R2_ACCESS_KEY_ID: "k", R2_SECRET_ACCESS_KEY: "s", R2_BUCKET: "b",
 };
 
 /** env.ts validates process.env when first imported, so each case imports a fresh copy. */

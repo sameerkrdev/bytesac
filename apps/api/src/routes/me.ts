@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { Router } from "express";
-import { contacts, db, investmentWallets, sessions, userPermissions, users } from "@repo/db";
+import { contacts, db, investmentWallets, organizationMemberships, organizations, sessions, userPermissions, users } from "@repo/db";
 import { familyOf, z, type MeResponse, type SessionsResponse } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -35,6 +35,9 @@ meRouter.get("/", async (req, res) => {
     contacts: current.map(contactView),
     permissions: (await db.select({ permission: userPermissions.permission }).from(userPermissions).where(and(eq(userPermissions.userId, userId), isNull(userPermissions.revokedAt)))).map((p) => p.permission),
     platformRoles: await activeRoles(db, userId),
+    organizations: await db.select({ id: organizations.id, role: organizationMemberships.role, status: organizations.status }).from(organizationMemberships)
+      .innerJoin(organizations, eq(organizations.id, organizationMemberships.organizationId))
+      .where(and(eq(organizationMemberships.userId, userId), eq(organizationMemberships.status, "active"))).orderBy(organizations.createdAt, organizations.id),
   };
   res.json(body);
 });

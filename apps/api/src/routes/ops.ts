@@ -1,12 +1,17 @@
 import { Router, type Request } from "express";
 import {
-  applicationNoteRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, transitionApplicationRequestSchema, z,
-  type ApplicationNoteRequest, type GrantRoleRequest, type PlatformRolesResponse, type TransitionApplicationRequest,
+  applicationNoteRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listOrganizationsQuerySchema, organizationNoteRequestSchema, payoutWalletDecisionRequestSchema,
+  transitionApplicationRequestSchema, transitionOrganizationRequestSchema, versionDecisionRequestSchema, z,
+  type ApplicationNoteRequest, type GrantRoleRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
+  type TransitionApplicationRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
 } from "@repo/validator";
 import { requireRole, requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import { addApplicationNote, getApplicationDetail, listApplications, transitionApplication } from "../services/applications";
+import {
+  addOrganizationNote, decidePayoutWallet, decideVersion, documentDownloadUrl, getOrganizationForReview, listOrganizationsForReview, transitionOrganization,
+} from "../services/organization-review";
 import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
 
 const idParam = z.object({ id: z.uuid() });
@@ -33,6 +38,34 @@ opsRouter.post("/applications/:id/transition", requireRole("ops_reviewer"), vali
 
 opsRouter.post("/applications/:id/notes", requireRole("ops_reviewer"), validate({ params: idParam, body: applicationNoteRequestSchema }), async (req, res) => {
   res.status(201).json(await addApplicationNote(ctx(req), req.params.id as string, (req.body as ApplicationNoteRequest).internalNote));
+});
+
+opsRouter.get("/organizations", requireRole("ops_reviewer"), async (req, res) => {
+  res.json(await listOrganizationsForReview(listOrganizationsQuerySchema.parse(req.query)));
+});
+
+opsRouter.get("/organizations/:id", requireRole("ops_reviewer"), validate({ params: idParam }), async (req, res) => {
+  res.json(await getOrganizationForReview(req.params.id as string));
+});
+
+opsRouter.post("/organizations/:id/transition", requireRole("ops_reviewer"), validate({ params: idParam, body: transitionOrganizationRequestSchema }), async (req, res) => {
+  res.json(await transitionOrganization(ctx(req), req.params.id as string, req.body as TransitionOrganizationRequest));
+});
+
+opsRouter.post("/organizations/:id/versions/:versionId/decision", requireRole("ops_reviewer"), validate({ params: z.object({ id: z.uuid(), versionId: z.uuid() }), body: versionDecisionRequestSchema }), async (req, res) => {
+  res.json(await decideVersion(ctx(req), req.params.id as string, req.params.versionId as string, req.body as VersionDecisionRequest));
+});
+
+opsRouter.post("/organizations/:id/payout-wallets/:walletId/decision", requireRole("ops_reviewer"), validate({ params: z.object({ id: z.uuid(), walletId: z.uuid() }), body: payoutWalletDecisionRequestSchema }), async (req, res) => {
+  res.json(await decidePayoutWallet(ctx(req), req.params.id as string, req.params.walletId as string, req.body as PayoutWalletDecisionRequest));
+});
+
+opsRouter.post("/organizations/:id/notes", requireRole("ops_reviewer"), validate({ params: idParam, body: organizationNoteRequestSchema }), async (req, res) => {
+  res.status(201).json(await addOrganizationNote(ctx(req), req.params.id as string, (req.body as OrganizationNoteRequest).internalNote));
+});
+
+opsRouter.get("/organizations/:id/documents/:docId/download", requireRole("ops_reviewer"), validate({ params: z.object({ id: z.uuid(), docId: z.uuid() }) }), async (req, res) => {
+  res.set("Cache-Control", "no-store").redirect(302, await documentDownloadUrl(ctx(req), req.params.id as string, req.params.docId as string));
 });
 
 opsRouter.get("/roles", requireRole("ops_admin"), async (_req, res) => {

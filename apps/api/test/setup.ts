@@ -3,7 +3,7 @@ import { vi } from "vitest";
 // Third-party providers are replaced by in-memory fakes; tests drive them through `fakes`.
 vi.mock("../src/providers/resend", async () => {
   const { fakes } = await import("./helpers/fakes");
-  return { sendOtpEmail: fakes.email.sendOtp, sendApplicationEmail: fakes.email.sendApplication };
+  return { sendOtpEmail: fakes.email.sendOtp, sendApplicationEmail: fakes.email.sendApplication, sendOrganizationEmail: fakes.email.sendOrganization };
 });
 vi.mock("../src/providers/twilio", async () => {
   const { fakes } = await import("./helpers/fakes");
@@ -12,4 +12,12 @@ vi.mock("../src/providers/twilio", async () => {
 vi.mock("../src/providers/evm-rpc", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { verifyContractSignature: fakes.evm.verifyContractSignature };
+});
+vi.mock("../src/providers/r2", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { r2: { send: fakes.r2.send }, R2_BUCKET: "bytesac-test" };
+});
+vi.mock("@aws-sdk/s3-request-presigner", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { getSignedUrl: fakes.r2.getSignedUrl };
 });

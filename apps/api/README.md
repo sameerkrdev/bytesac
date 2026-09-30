@@ -2,9 +2,9 @@
 
 ## Overview
 
-Express 5 + TypeScript API for Bytesac (initial settlement currency: USDC on Solana). This foundation covers wallet sign-in (SIWE/SIWS challenge and verify), sessions, linked chain accounts, contact verification (email and SMS OTP), notification preferences, manager applications and platform screening (public apply/status endpoints, `/v1/ops` for reviewers and admins, platform roles and the wallet-proof permission grant), audited ops commands and retention. Postgres (schema `app`, Drizzle, in `packages/db`) is the system of record; Redis backs rate limits; retention runs inside Postgres via pg_cron (ADR-006).
+Express 5 + TypeScript API for Bytesac (initial settlement currency: USDC on Solana). This foundation covers wallet sign-in (SIWE/SIWS challenge and verify), sessions, linked chain accounts, contact verification (email and SMS OTP), notification preferences, manager applications and platform screening (public apply/status endpoints, `/v1/ops` for reviewers and admins, platform roles and the wallet-proof permission grant), organization onboarding (owner drafts, private documents in Cloudflare R2, payout wallet proof, `/v1/ops/organizations` review, public profile), audited ops commands and retention. Postgres (schema `app`, Drizzle, in `packages/db`) is the system of record; Redis backs rate limits; retention runs inside Postgres via pg_cron (ADR-006).
 
-Layout: `src/app.ts` (configured express `app`), `src/server.ts` (listens), `src/env.ts` (envalid), `src/middleware/`, `src/routes/`, `src/services/`, `src/providers/` (Twilio, Resend, EVM RPC), `src/ops/`. Errors are `http-errors` with a stable `code`; logging is winston via `@repo/logger` (set `LOG_LEVEL=http` to see request logs).
+Layout: `src/app.ts` (configured express `app`), `src/server.ts` (listens), `src/env.ts` (envalid), `src/middleware/`, `src/routes/`, `src/services/`, `src/providers/` (Twilio, Resend, EVM RPC, R2), `src/ops/`. Errors are `http-errors` with a stable `code`; logging is winston via `@repo/logger` (set `LOG_LEVEL=http` to see request logs).
 
 ## Local setup
 
@@ -27,6 +27,18 @@ Provider keys (`ALCHEMY_API_KEY`, `RESEND_API_KEY`, `TWILIO_*`) are required by 
 3. As an operator, run `ALTER ROLE bytesac_api LOGIN PASSWORD '<secret>'`.
 4. Use the pooler URL with that role for `DATABASE_URL`.
 5. Confirm schema `app` is **not** listed in Dashboard -> API -> Exposed schemas.
+
+## Cloudflare R2 (organization documents)
+
+Organization verification documents are private and live in one R2 bucket (ADR-008). The API never streams files: it signs short-lived URLs. Every step below is a user action; the API refuses to start without the four `R2_*` variables.
+
+1. Create a bucket (keep public access off; no custom domain or `r2.dev` URL).
+2. Create an R2 API token with Object Read & Write scoped to that bucket, and note the account id, access key id and secret.
+3. Add a CORS rule on the bucket allowing `PUT` from every web origin (for example `https://app.bytesac.example` and `http://localhost:3000`), with allowed header `Content-Type`. No other methods or wildcard origins are needed.
+4. Add a lifecycle rule that deletes objects under the prefix `incoming/` after 1 day. Unconfirmed uploads land there; confirmed files are copied to `documents/`.
+5. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` and `R2_BUCKET` in `apps/api/.env` (see `.env.example`).
+
+Automated tests use a fake R2 client. A manual check against a real bucket is still pending: upload a PDF from `/organization` (CORS, signed `Content-Length`, confirm), then download it as a reviewer from `/ops/organizations/<id>`.
 
 ## Tests
 

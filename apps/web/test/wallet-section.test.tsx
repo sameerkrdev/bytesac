@@ -15,6 +15,7 @@ const me = (addresses: MeResponse["wallet"]["addresses"]): MeResponse => ({
   contacts: [],
   permissions: [],
   platformRoles: [],
+  organizations: [],
 });
 
 describe("WalletSection", () => {

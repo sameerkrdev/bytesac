@@ -16,8 +16,8 @@ export async function resetTestDatabase(adminUrl: string): Promise<void> {
   await setDevRolePasswords(adminUrl);
 }
 
-/** Empties every table in the `app` schema (run as the schema owner). */
+/** Empties every table in the `app` schema except the seeded reference data (run as the schema owner). */
 export async function truncateAppTables(admin: postgres.Sql): Promise<void> {
-  const tables = await admin<{ name: string }[]>`SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables WHERE schemaname = 'app'`;
+  const tables = await admin<{ name: string }[]>`SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables WHERE schemaname = 'app' AND tablename <> 'verification_requirement_templates'`;
   await admin.unsafe(`TRUNCATE ${tables.map((t) => t.name).join(", ")} CASCADE`);
 }

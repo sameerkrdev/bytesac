@@ -3,6 +3,7 @@ import { chainFamilySchema, chainSchema } from "./chains";
 import { clientKindSchema } from "./auth";
 import { contactViewSchema } from "./contacts";
 import { platformRoleSchema } from "./managers";
+import { organizationSummarySchema } from "./organizations";
 
 export const verificationMethodSchema = z.enum(["eoa_ecdsa", "erc1271", "erc6492", "ed25519"]);
 export type VerificationMethod = z.infer<typeof verificationMethodSchema>;
@@ -29,6 +30,8 @@ export const meResponseSchema = z.object({
   permissions: z.array(z.enum(["create_manager_organization"])),
   /** Active platform roles (ops_reviewer, ops_admin). */
   platformRoles: z.array(platformRoleSchema),
+  /** Active organization memberships. */
+  organizations: z.array(organizationSummarySchema.pick({ id: true, role: true, status: true })),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 
