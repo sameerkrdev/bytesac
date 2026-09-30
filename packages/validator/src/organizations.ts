@@ -29,6 +29,16 @@ export const payoutWalletStatusSchema = z.enum(PAYOUT_WALLET_STATUSES);
 export type PayoutWalletStatus = z.infer<typeof payoutWalletStatusSchema>;
 
 export const membershipRoleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "ANALYST", "VIEWER"]);
+export type MembershipRole = z.infer<typeof membershipRoleSchema>;
+
+export const ORGANIZATION_PERMISSIONS = ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage"] as const;
+export const organizationPermissionSchema = z.enum(ORGANIZATION_PERMISSIONS);
+export type OrganizationPermission = z.infer<typeof organizationPermissionSchema>;
+
+/** What a verification requirement template applies to: an organization type, or a member of an organization. */
+export const TEMPLATE_SUBJECTS = ["individual", "firm", "member"] as const;
+export const templateSubjectSchema = z.enum(TEMPLATE_SUBJECTS);
+export type TemplateSubject = z.infer<typeof templateSubjectSchema>;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Field catalog and document types
@@ -87,8 +97,8 @@ export const ORGANIZATION_DOCUMENT_TYPES: Readonly<Record<DocumentTypeKey, { lab
   license_registration: { label: "Licence or registration" },
 };
 
-/** Seeded by migration 0005 (jurisdiction null); apps/api/test/db checks the seeded rows equal this. */
-export const DEFAULT_TEMPLATES: Readonly<Record<OrganizationType, { requiredFields: readonly OrganizationFieldKey[]; requiredDocuments: readonly DocumentTypeKey[] }>> = {
+/** Seeded by migrations 0005 and 0006 (jurisdiction null); apps/api/test/db checks the seeded rows equal this. */
+export const DEFAULT_TEMPLATES: Readonly<Record<TemplateSubject, { requiredFields: readonly OrganizationFieldKey[]; requiredDocuments: readonly DocumentTypeKey[] }>> = {
   individual: {
     requiredFields: ["displayName", "about", "experience", "legalName", "dateOfBirth", "residentialAddress", "professionalHistory"],
     requiredDocuments: ["government_id", "proof_of_address"],
@@ -96,6 +106,10 @@ export const DEFAULT_TEMPLATES: Readonly<Record<OrganizationType, { requiredFiel
   firm: {
     requiredFields: ["displayName", "about", "experience", "legalCompanyName", "registrationNumber", "registeredAddress", "directors", "beneficialOwners", "authorizedRepresentatives"],
     requiredDocuments: ["company_registration", "ownership_structure", "director_id", "proof_of_address"],
+  },
+  member: {
+    requiredFields: ["legalName", "dateOfBirth", "residentialAddress", "professionalHistory"],
+    requiredDocuments: ["government_id", "proof_of_address"],
   },
 };
 
@@ -114,7 +128,7 @@ export const createOrganizationRequestSchema = z.strictObject({
 export type CreateOrganizationRequest = z.infer<typeof createOrganizationRequestSchema>;
 
 /** Keys must be catalog keys of `visibility`; each value passes its field schema, or is `null` to remove the key. Required-ness is only checked on submit. The output holds the parsed (trimmed) values. */
-const draftPart = (visibility: "public" | "private") => z.record(z.string(), z.unknown()).transform((entries, ctx) => {
+export const draftPart = (visibility: "public" | "private") => z.record(z.string(), z.unknown()).transform((entries, ctx) => {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entries)) {
     const field = Object.hasOwn(ORGANIZATION_FIELDS, key) ? ORGANIZATION_FIELDS[key as OrganizationFieldKey] : undefined;
@@ -249,7 +263,12 @@ export const organizationSummarySchema = z.object({
   type: organizationTypeSchema,
   status: organizationStatusSchema,
   jurisdiction: z.string(),
+  /** Public display name of the latest version (draft or approved); null until one is typed. */
+  displayName: z.string().nullable(),
   role: membershipRoleSchema,
+  /** The membership this row comes from; `status` above is the organization's own status. */
+  membershipId: z.uuid(),
+  membershipStatus: z.enum(["PENDING_DOCUMENTS", "UNDER_REVIEW", "CHANGES_REQUIRED", "ACTIVE", "REMOVAL_REQUESTED"]),
 });
 export type OrganizationSummary = z.infer<typeof organizationSummarySchema>;
 
@@ -270,6 +289,9 @@ export const organizationDetailSchema = z.object({
   template: z.object({ requiredFields: z.array(z.string()), requiredDocuments: z.array(z.string()) }),
   missing: missingRequirementsSchema.nullable(),
   latestMessageToOwner: z.string().nullable(),
+  /** The caller's active role and the permissions it grants (the server stays authoritative). */
+  myRole: membershipRoleSchema,
+  myPermissions: z.array(organizationPermissionSchema),
 });
 export type OrganizationDetail = z.infer<typeof organizationDetailSchema>;
 
@@ -280,6 +302,11 @@ export const publicOrganizationSchema = z.object({
   verifiedAt: isoTime,
   /** Public catalog fields of the current approved version. */
   profile: z.record(z.string(), z.unknown()),
+  /** Members who opted in with a public name. Never ids, wallets or emails. */
+  team: z.object({
+    current: z.array(z.object({ displayName: z.string(), title: z.string().nullable(), role: membershipRoleSchema })),
+    former: z.array(z.object({ displayName: z.string(), title: z.string().nullable(), role: membershipRoleSchema, from: isoTime, to: isoTime })),
+  }),
 });
 export type PublicOrganization = z.infer<typeof publicOrganizationSchema>;
 
@@ -336,5 +363,7 @@ export const organizationReviewDetailSchema = z.object({
   payoutWallets: z.array(payoutWalletViewSchema.extend({ requestedByUserId: z.uuid(), decidedByUserId: z.uuid().nullable() })),
   events: z.array(organizationEventViewSchema),
   template: z.object({ requiredFields: z.array(z.string()), requiredDocuments: z.array(z.string()) }),
+  /** Open memberships, for picking an ownership-transfer target (an ACTIVE member with an approved verification). `status` is a membership status. */
+  members: z.array(z.object({ id: z.uuid(), role: membershipRoleSchema, status: z.string(), publicDisplayName: z.string().nullable(), verificationApproved: z.boolean() })),
 });
 export type OrganizationReviewDetail = z.infer<typeof organizationReviewDetailSchema>;

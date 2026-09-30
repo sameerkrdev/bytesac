@@ -1,7 +1,7 @@
 import {
   addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
   listApplicationsResponseSchema, platformRoleViewSchema, platformRolesResponseSchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
-  listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
+  listInvitationsResponseSchema, listMemberReviewResponseSchema, listMembersResponseSchema, memberReviewDetailSchema, memberVerificationViewSchema, listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, myMembershipSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
   type AddContactRequest, type AddContactResponse, type ApplicationStatusResponse, type ChallengeRequest, type ChallengeResponse,
   type ApplicationDetail, type GrantRoleRequest, type ListApplicationsQuery, type ListApplicationsResponse, type PlatformRoleView, type PlatformRolesResponse,
   type TransitionApplicationRequest, type ConfirmApplicationEmailRequest, type ConfirmApplicationEmailResponse, type CreateApplicationRequest, type CreateApplicationResponse,
@@ -10,6 +10,9 @@ import {
   type EnterPayoutWalletRequest, type ListOrganizationsQuery, type ListOrganizationsResponse, type OrganizationNoteRequest, type OrganizationReviewDetail, type PayoutWalletDecisionRequest,
   type PublicOrganization, type TransitionOrganizationRequest, type VerifyPayoutWalletRequest, type VersionDecisionRequest,
   type CreateOrganizationRequest, type ListMyOrganizationsResponse, type OrganizationDetail, type PresignDocumentRequest, type PresignDocumentResponse, type UpdateDraftRequest,
+  type DecideMemberVerificationRequest, type ListMemberReviewQuery, type ListMemberReviewResponse, type MemberReviewDetail, type MemberVerificationView,
+  type TransferOwnershipRequest, type UpdateMemberVerificationRequest,
+  type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MyMembership,
   type z,
 } from "@repo/validator";
 import { ApiError } from "./api-error";
@@ -115,6 +118,48 @@ export function createApiClient(options: ApiClientOptions) {
     submitOrganizationChangeRequest: (id: string): Promise<OrganizationDetail> =>
       request("POST", `/v1/organizations/${encodeURIComponent(id)}/change-request/submit`, organizationDetailSchema),
     getPublicOrganization: (id: string): Promise<PublicOrganization> => request("GET", `/v1/public/organizations/${encodeURIComponent(id)}`, publicOrganizationSchema),
+
+    listOrganizationMembers: (id: string): Promise<ListMembersResponse> => request("GET", `/v1/organizations/${encodeURIComponent(id)}/members`, listMembersResponseSchema),
+    inviteOrganizationMember: (id: string, b: InviteMemberRequest): Promise<ListMembersResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/invitations`, listMembersResponseSchema, b),
+    cancelMemberInvite: (id: string, mid: string): Promise<ListMembersResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/cancel`, listMembersResponseSchema),
+    changeMemberRole: (id: string, mid: string, b: ChangeRoleRequest): Promise<ListMembersResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/role`, listMembersResponseSchema, b),
+    removeMember: (id: string, mid: string): Promise<ListMembersResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/remove`, listMembersResponseSchema),
+    confirmMemberRemoval: (id: string, mid: string): Promise<ListMembersResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/removal/confirm`, listMembersResponseSchema),
+    cancelMemberRemoval: (id: string, mid: string): Promise<ListMembersResponse> =>
+      request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/removal/cancel`, listMembersResponseSchema),
+    myInvitations: (): Promise<ListInvitationsResponse> => request("GET", "/v1/me/invitations", listInvitationsResponseSchema),
+    acceptInvitation: (mid: string): Promise<MyMembership> => request("POST", `/v1/memberships/${encodeURIComponent(mid)}/accept`, myMembershipSchema),
+    declineInvitation: (mid: string): Promise<MyMembership> => request("POST", `/v1/memberships/${encodeURIComponent(mid)}/decline`, myMembershipSchema),
+    leaveOrganization: (mid: string): Promise<MyMembership> => request("POST", `/v1/memberships/${encodeURIComponent(mid)}/leave`, myMembershipSchema),
+    getMembership: (mid: string): Promise<MyMembership> => request("GET", `/v1/memberships/${encodeURIComponent(mid)}`, myMembershipSchema),
+    updateMembershipProfile: (mid: string, b: MembershipProfileRequest): Promise<MyMembership> =>
+      request("PATCH", `/v1/memberships/${encodeURIComponent(mid)}/profile`, myMembershipSchema, b),
+
+    getMemberVerification: (mid: string): Promise<MemberVerificationView> =>
+      request("GET", `/v1/memberships/${encodeURIComponent(mid)}/verification`, memberVerificationViewSchema),
+    updateMemberVerification: (mid: string, b: UpdateMemberVerificationRequest): Promise<MemberVerificationView> =>
+      request("PATCH", `/v1/memberships/${encodeURIComponent(mid)}/verification`, memberVerificationViewSchema, b),
+    presignMemberDocument: (mid: string, b: PresignDocumentRequest): Promise<PresignDocumentResponse> =>
+      request("POST", `/v1/memberships/${encodeURIComponent(mid)}/verification/documents`, presignDocumentResponseSchema, b),
+    confirmMemberDocument: (mid: string, docId: string): Promise<MemberVerificationView> =>
+      request("POST", `/v1/memberships/${encodeURIComponent(mid)}/verification/documents/${encodeURIComponent(docId)}/confirm`, memberVerificationViewSchema),
+    unlinkMemberDocument: (mid: string, docId: string): Promise<MemberVerificationView> =>
+      request("DELETE", `/v1/memberships/${encodeURIComponent(mid)}/verification/documents/${encodeURIComponent(docId)}`, memberVerificationViewSchema),
+    submitMemberVerification: (mid: string): Promise<MemberVerificationView> =>
+      request("POST", `/v1/memberships/${encodeURIComponent(mid)}/verification/submit`, memberVerificationViewSchema),
+
+    opsListMembers: (q: ListMemberReviewQuery = {}): Promise<ListMemberReviewResponse> =>
+      request("GET", `/v1/ops/members?${new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => e[1] !== undefined))}`, listMemberReviewResponseSchema),
+    opsGetMember: (mid: string): Promise<MemberReviewDetail> => request("GET", `/v1/ops/members/${encodeURIComponent(mid)}`, memberReviewDetailSchema),
+    opsDecideMember: (mid: string, b: DecideMemberVerificationRequest): Promise<MemberReviewDetail> =>
+      request("POST", `/v1/ops/members/${encodeURIComponent(mid)}/decision`, memberReviewDetailSchema, b),
+    opsTransferOwnership: (id: string, b: TransferOwnershipRequest): Promise<void> =>
+      request<z.ZodVoid>("POST", `/v1/ops/organizations/${encodeURIComponent(id)}/transfer-ownership`, null, b),
 
     opsListOrganizations: (q: ListOrganizationsQuery = {}): Promise<ListOrganizationsResponse> =>
       request("GET", `/v1/ops/organizations?${new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => e[1] !== undefined))}`, listOrganizationsResponseSchema),

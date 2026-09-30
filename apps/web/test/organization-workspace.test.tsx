@@ -6,18 +6,21 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MeProvider } from "@/components/me-context";
 import { SubmitChecklist } from "@/components/organization/submit-checklist";
-import { orgDetail, ORG_ID, version } from "./org-fixtures";
+import { asRole, orgDetail, ORG_ID, version, wallet } from "./org-fixtures";
 
 const getOrganization = vi.fn();
-vi.mock("@/lib/api", () => ({ api: { getOrganization: (id: string) => getOrganization(id) } }));
+const replace = vi.fn();
+let search = "";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }), useSearchParams: () => new URLSearchParams(search) }));
+vi.mock("@/lib/api", () => ({ api: { getOrganization: (id: string) => getOrganization(id), listOrganizationMembers: vi.fn().mockResolvedValue({ members: [] }) } }));
 vi.mock("@/lib/wallet/use-wallet-connector", () => ({ useWalletConnector: () => ({ account: null, signMessage: vi.fn(), connect: vi.fn() }) }));
 import OrganizationPage from "@/app/(app)/organization/page";
 
-const me = (status: MeResponse["organizations"][number]["status"] | null): MeResponse => ({
+const me = (status: MeResponse["organizations"][number]["status"] | null, role: MeResponse["organizations"][number]["role"] = "OWNER", membershipStatus: MeResponse["organizations"][number]["membershipStatus"] = "ACTIVE"): MeResponse => ({
   user: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
   wallet: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e50", walletProvider: null, addresses: [] },
   contacts: [], permissions: ["create_manager_organization"], platformRoles: [],
-  organizations: status ? [{ id: ORG_ID, role: "OWNER", status }] : [],
+  organizations: status ? [{ id: ORG_ID, displayName: null, role, status, membershipId: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", membershipStatus }] : [],
 });
 const page = (m: MeResponse) => render(<QueryClientProvider client={new QueryClient()}><MeProvider initial={m}><OrganizationPage /></MeProvider></QueryClientProvider>);
 
@@ -56,6 +59,33 @@ describe("Organization workspace", () => {
   });
 });
 
+describe("Organization workspace by role", () => {
+  it("VIEWER gets a read-only workspace: disabled fields, no save/submit/wallet actions, no member controls", async () => {
+    getOrganization.mockResolvedValue(asRole("VIEWER", { status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved", publicProfile: { displayName: "Ada" } }), payoutWallets: [wallet({ status: "VERIFIED" })] }));
+    page(me("VERIFIED", "VIEWER"));
+    expect(await screen.findByText("You have read-only access to this organization.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Display name")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change payout wallet" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /submit|save draft/i })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Invite a member" })).toBeNull();
+    expect(screen.queryByText("To transfer ownership, contact support.")).toBeNull();
+  });
+
+  it("OWNER sees the members section and the transfer note", async () => {
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(me("VERIFIED"));
+    expect(await screen.findByText("To transfer ownership, contact support.")).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Invite a member" })).toBeInTheDocument();
+  });
+
+  it("a member who is not active yet is sent to the membership page instead of the organization", async () => {
+    page(me("VERIFIED", "ADMIN", "PENDING_DOCUMENTS"));
+    expect(await screen.findByRole("link", { name: "Open your membership" })).toHaveAttribute("href", "/organization/membership/0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70");
+    expect(getOrganization).not.toHaveBeenCalled();
+  });
+});
+
 describe("SubmitChecklist", () => {
   const client = (over: Record<string, unknown> = {}) => ({ submitOrganization: vi.fn(), submitOrganizationChangeRequest: vi.fn(), ...over });
 
@@ -84,5 +114,61 @@ describe("SubmitChecklist", () => {
     await userEvent.click(screen.getByRole("button", { name: "Submit for review" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Not ready to submit");
     expect(onIncomplete).toHaveBeenCalled();
+  });
+});
+
+describe("Organization switcher", () => {
+  const OTHER = "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e62";
+  const row = (id: string, over: Partial<MeResponse["organizations"][number]>): MeResponse["organizations"][number] =>
+    ({ id, displayName: null, role: "OWNER", status: "VERIFIED", membershipId: `${id.slice(0, -2)}99`, membershipStatus: "ACTIVE", ...over });
+  const multi = (...orgs: MeResponse["organizations"]): MeResponse => ({ ...me(null), organizations: orgs });
+  const OWN = row(ORG_ID, { displayName: "My fund" });
+  const INVITED = row(OTHER, { displayName: "Older org", role: "ADMIN", status: "VERIFIED", membershipStatus: "PENDING_DOCUMENTS" });
+
+  beforeEach(() => { search = ""; replace.mockReset(); });
+
+  it("is hidden with one organization", async () => {
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(multi(OWN));
+    await screen.findByRole("link", { name: "View public profile" });
+    expect(screen.queryByLabelText("Organization")).toBeNull();
+  });
+
+  it("lists every organization with name, role and membership status, and defaults to the ACTIVE one the user owns", async () => {
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(multi(INVITED, OWN));
+    const select = (await screen.findByLabelText("Organization")) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual(["Older org · Admin · Verification needed", "My fund · Owner · Active"]);
+    expect(select.value).toBe(ORG_ID);
+    expect(getOrganization).toHaveBeenCalledWith(ORG_ID);
+  });
+
+  it("?org= selects that organization's workspace (a pending membership shows its notice)", async () => {
+    search = `org=${OTHER}`;
+    page(multi(OWN, INVITED));
+    expect(await screen.findByText(/Your membership is not active yet/)).toBeInTheDocument();
+    expect(getOrganization).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Organization") as HTMLSelectElement).value).toBe(OTHER);
+  });
+
+  it("an unknown ?org= falls back to the default", async () => {
+    search = "org=0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4eff";
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(multi(INVITED, OWN));
+    expect(((await screen.findByLabelText("Organization")) as HTMLSelectElement).value).toBe(ORG_ID);
+    expect(getOrganization).toHaveBeenCalledWith(ORG_ID);
+  });
+
+  it("choosing an organization puts it in the URL", async () => {
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(multi(OWN, INVITED));
+    await userEvent.selectOptions(await screen.findByLabelText("Organization"), OTHER);
+    expect(replace).toHaveBeenCalledWith(`/organization?org=${OTHER}`);
+  });
+
+  it("without an owned ACTIVE organization, any ACTIVE one wins over a pending one", async () => {
+    getOrganization.mockResolvedValue(orgDetail({ status: "VERIFIED", openVersion: null, currentVersion: version({ status: "approved" }) }));
+    page(multi(INVITED, row(ORG_ID, { displayName: "Advised", role: "VIEWER" })));
+    expect(((await screen.findByLabelText("Organization")) as HTMLSelectElement).value).toBe(ORG_ID);
   });
 });

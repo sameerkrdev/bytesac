@@ -6,6 +6,7 @@ import { app } from "../../src/app";
 import { grantRole } from "../../src/services/platform-roles";
 import { adminSql, testDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
+import { addMember, orgWithOwner } from "../members/helpers";
 import { DOCS, createOrg, fillAll, ops, proveWallet, readyOrg, resetOrgDb, submit, transition, user, verifiedOrg } from "./helpers";
 
 const db = testDb.db;
@@ -78,7 +79,7 @@ describe("full review journey", () => {
     expect(ownerEmail.map((m) => m.kind)).toEqual(["changes_required", "verified"]);
     expect(ownerEmail.every((m) => m.to.startsWith("owner-"))).toBe(true);
     expect(verified.body.events.map((e: { kind: string; toStatus: string | null }) => e.toStatus).filter(Boolean)).toEqual(["DRAFT", "SUBMITTED", "UNDER_REVIEW", "CHANGES_REQUIRED", "RESUBMITTED", "UNDER_REVIEW", "VERIFIED"]);
-    expect((await request(app).get("/v1/me").set(o.h)).body.organizations).toEqual([{ id: o.id, role: "OWNER", status: "VERIFIED" }]);
+    expect((await request(app).get("/v1/me").set(o.h)).body.organizations).toEqual([{ id: o.id, displayName: expect.any(String), role: "OWNER", status: "VERIFIED", membershipId: expect.any(String), membershipStatus: "ACTIVE" }]);
     const audit = await db.select().from(auditEvents).where(eq(auditEvents.action, "organization.status_changed"));
     expect(audit).toHaveLength(6);
   });
@@ -298,5 +299,24 @@ describe("change requests", () => {
     await decide(reviewer.h, o.id, v2!.id, { decision: "rejected", internalNote: "secret" });
     expect(JSON.stringify(fakes.email.organization)).not.toContain("secret");
     expect((await db.select().from(organizationEvents).where(eq(organizationEvents.kind, "version_decided")))[0]).toMatchObject({ decision: "rejected", internalNote: "secret" });
+  });
+});
+
+describe("members in the ops organization detail", () => {
+  it("lists open memberships with their role, status and approved-verification flag, and omits ended ones", async () => {
+    const reviewer = await ops(app);
+    const owner = await orgWithOwner(app);
+    const approved = await addMember(app, owner.id, "ADMIN");
+    const plain = await addMember(app, owner.id, "VIEWER");
+    await addMember(app, owner.id, "VIEWER", "REVOKED");
+    await adminSql`INSERT INTO app.member_verifications (id, membership_id, status) VALUES (gen_random_uuid(), ${approved.mid}, 'approved')`;
+    const res = await opsGet(reviewer.h, `/${owner.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.members).toHaveLength(3);
+    expect(res.body.members).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: owner.mid, role: "OWNER", status: "ACTIVE", verificationApproved: false }),
+      expect.objectContaining({ id: approved.mid, role: "ADMIN", status: "ACTIVE", verificationApproved: true }),
+      expect.objectContaining({ id: plain.mid, role: "VIEWER", status: "ACTIVE", verificationApproved: false }),
+    ]));
   });
 });

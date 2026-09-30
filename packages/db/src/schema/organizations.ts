@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { bigint, check, index, integer, jsonb, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import {
-  app, chain, documentStatus, membershipRole, membershipStatus, organizationActor, organizationEventKind, organizationStatus, organizationType,
-  payoutWalletStatus, scanStatus, versionStatus,
+  app, chain, chainFamily, documentStatus, membershipRole, membershipStatus, organizationActor, organizationEventKind, organizationStatus, organizationType,
+  payoutWalletStatus, scanStatus, templateSubject, versionStatus,
 } from "./enums";
 import { authChallenges, users } from "./identity";
 
@@ -38,15 +38,37 @@ export const organizationMemberships = app.table(
   {
     id: id(),
     organizationId: uuid("organization_id").notNull().references(() => organizations.id),
-    userId: uuid("user_id").notNull().references(() => users.id),
+    /** Null while the invite waits for wallet proof, or after such an invite was revoked. */
+    userId: uuid("user_id").references(() => users.id),
     role: membershipRole("role").notNull(),
-    status: membershipStatus("status").notNull().default("active"),
+    status: membershipStatus("status").notNull(),
+    /** A pending upgrade to ADMIN/MANAGER; the current role's permissions apply until ops approve it. */
+    requestedRole: membershipRole("requested_role"),
+    invitedWalletChain: chain("invited_wallet_chain"),
+    invitedWalletFamily: chainFamily("invited_wallet_family"),
+    /** Canonical. An identifier only: it never links anyone without a wallet proof. */
+    invitedWalletAddress: text("invited_wallet_address"),
+    /** Lowercased, unverified, notification only. */
+    invitedEmail: text("invited_email"),
+    invitedByUserId: uuid("invited_by_user_id").references(() => users.id),
+    inviteExpiresAt: ts("invite_expires_at"),
+    removalRequestedByUserId: uuid("removal_requested_by_user_id").references(() => users.id),
+    publicDisplayName: text("public_display_name"),
+    publicTitle: text("public_title"),
+    /** First time the membership became ACTIVE. */
+    activatedAt: ts("activated_at"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id),
     joinedAt: ts("joined_at").notNull().defaultNow(),
     leftAt: ts("left_at"),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("organization_memberships_active").on(t.organizationId, t.userId).where(sql`${t.status} = 'active'`),
+    uniqueIndex("organization_memberships_one_open").on(t.organizationId, t.userId).where(sql`${t.userId} is not null and ${t.status} not in ('REJECTED', 'REVOKED')`),
+    uniqueIndex("organization_memberships_one_open_invite").on(t.organizationId, t.invitedWalletFamily, t.invitedWalletAddress).where(sql`${t.status} in ('PENDING_WALLET_VERIFICATION', 'INVITED')`),
+    uniqueIndex("organization_memberships_one_owner").on(t.organizationId).where(sql`${t.role} = 'OWNER' and ${t.status} = 'ACTIVE'`),
     index("organization_memberships_user_idx").on(t.userId),
+    index("organization_memberships_wallet_idx").on(t.invitedWalletFamily, t.invitedWalletAddress),
+    check("organization_memberships_user_or_pending", sql`${t.userId} is not null or ${t.status} in ('PENDING_WALLET_VERIFICATION', 'REVOKED')`),
   ],
 );
 
@@ -77,6 +99,8 @@ export const organizationDocuments = app.table(
   {
     id: id(),
     organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+    /** Set for a member verification document; organization_id stays so one upload flow serves both. */
+    membershipId: uuid("membership_id").references((): AnyPgColumn => organizationMemberships.id),
     documentType: text("document_type").notNull(),
     r2Key: text("r2_key").notNull(),
     contentType: text("content_type").notNull(),
@@ -107,15 +131,15 @@ export const verificationRequirementTemplates = app.table(
   "verification_requirement_templates",
   {
     id: id(),
-    organizationType: organizationType("organization_type").notNull(),
-    /** Null = default for the type. */
+    subject: templateSubject("subject").notNull(),
+    /** Null = default for the subject. */
     jurisdiction: text("jurisdiction"),
     requiredFields: text("required_fields").array().notNull(),
     requiredDocuments: text("required_documents").array().notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
     retiredAt: ts("retired_at"),
   },
-  (t) => [uniqueIndex("verification_requirement_templates_active").on(t.organizationType, sql`coalesce(${t.jurisdiction}, '')`).where(sql`${t.retiredAt} IS NULL`)],
+  (t) => [uniqueIndex("verification_requirement_templates_active").on(t.subject, sql`coalesce(${t.jurisdiction}, '')`).where(sql`${t.retiredAt} IS NULL`)],
 );
 
 export const organizationPayoutWallets = app.table(

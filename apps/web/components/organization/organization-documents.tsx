@@ -1,7 +1,7 @@
 "use client";
 
-import { ApiError, type ApiClient } from "@repo/api-client";
-import { DOCUMENT_CONTENT_TYPES, MAX_DOCUMENT_BYTES, ORGANIZATION_DOCUMENT_TYPES, type DocumentContentType, type DocumentTypeKey, type OrganizationDetail, type VersionView } from "@repo/validator";
+import { ApiError } from "@repo/api-client";
+import { DOCUMENT_CONTENT_TYPES, MAX_DOCUMENT_BYTES, ORGANIZATION_DOCUMENT_TYPES, type DocumentContentType, type DocumentTypeKey, type DocumentView, type OrganizationDetail, type PresignDocumentRequest, type PresignDocumentResponse } from "@repo/validator";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
@@ -9,11 +9,17 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 
-type Client = Pick<ApiClient, "presignOrganizationDocument" | "confirmOrganizationDocument" | "unlinkOrganizationDocument">;
+/** Organization endpoints by default; member verification passes the member endpoints (same shapes, `id` is the membership id). */
+type Client<T> = {
+  presignOrganizationDocument(id: string, body: PresignDocumentRequest): Promise<PresignDocumentResponse>;
+  confirmOrganizationDocument(id: string, docId: string): Promise<T>;
+  unlinkOrganizationDocument(id: string, docId: string): Promise<T>;
+};
+type Scope = { id: string; template: { requiredDocuments: string[] } };
 type Row = { state: "idle" } | { state: "uploading" } | { state: "rejected"; message: string };
 
-function DocumentRow({ org, version, type, readOnly, required, onChange, client }: {
-  org: OrganizationDetail; version: VersionView; type: DocumentTypeKey; readOnly: boolean; required: boolean; onChange(org: OrganizationDetail): void; client: Client;
+function DocumentRow<T>({ org, version, type, readOnly, required, onChange, client }: {
+  org: Scope; version: { documents: DocumentView[] }; type: DocumentTypeKey; readOnly: boolean; required: boolean; onChange(saved: T): void; client: Client<T>;
 }) {
   const id = useId();
   const [row, setRow] = useState<Row>({ state: "idle" });
@@ -60,9 +66,11 @@ function DocumentRow({ org, version, type, readOnly, required, onChange, client 
   );
 }
 
-export function OrganizationDocuments({ org, version, readOnly, onChange, client = api }: { org: OrganizationDetail; version: VersionView; readOnly: boolean; onChange(org: OrganizationDetail): void; client?: Client }) {
+export function OrganizationDocuments<T = OrganizationDetail>({ org, version, readOnly, onChange, client = api as unknown as Client<T>, optional = ["license_registration"] }: {
+  org: Scope; version: { documents: DocumentView[] }; readOnly: boolean; onChange(saved: T): void; client?: Client<T>; optional?: DocumentTypeKey[];
+}) {
   const required = org.template.requiredDocuments as DocumentTypeKey[];
-  const types = required.includes("license_registration") ? required : [...required, "license_registration" as const];
+  const types = [...required, ...optional.filter((t) => !required.includes(t))];
   return (
     <section aria-labelledby="documents-h" className="space-y-2">
       <h3 id="documents-h" className="font-display text-lg font-semibold text-ivory">Documents</h3>

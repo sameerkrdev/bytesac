@@ -3,7 +3,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { authChallenges, db, organizationEvents, organizationPayoutWallets } from "@repo/db";
 import type { ChallengeResponse, OrganizationDetail, OrganizationStatus } from "@repo/validator";
 import { writeAudit } from "./audit";
-import { getOrganizationForOwner, notifyOwner, requireOwner, type OwnerCtx } from "./organizations";
+import { requirePermission } from "./members";
+import { getOrganizationForMember, notifyOwner, type OwnerCtx } from "./organizations";
 import { claimChallenge, issueChallenge, rejectChallenge } from "./sign-in";
 import { verifySolanaSignature } from "./signatures";
 import { canonicalizeAddress } from "./wallets";
@@ -17,7 +18,7 @@ const signatureInvalid = () => createHttpError("Signature could not be verified"
 export async function enterPayoutWallet(ctx: OwnerCtx, orgId: string, rawAddress: string): Promise<OrganizationDetail> {
   const address = canonicalizeAddress("solana", rawAddress);
   await db.transaction(async (tx) => {
-    const org = await requireOwner(tx, ctx.userId, orgId, true);
+    const { org } = await requirePermission(tx, ctx.userId, orgId, "payout.manage", true);
     if (!WALLET_EDITABLE.includes(org.status)) throw inReview();
     const [pending] = await tx.select({ id: organizationPayoutWallets.id }).from(organizationPayoutWallets)
       .where(and(eq(organizationPayoutWallets.organizationId, orgId), eq(organizationPayoutWallets.status, "REPLACEMENT_PENDING")));
@@ -31,12 +32,12 @@ export async function enterPayoutWallet(ctx: OwnerCtx, orgId: string, rawAddress
       requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { walletId: w!.id, address },
     });
   });
-  return getOrganizationForOwner(ctx, orgId);
+  return getOrganizationForMember(ctx, orgId);
 }
 
 /** Issues the payout challenge for the not-yet-proven wallet, bound to the organization, address and this session. */
 export async function issuePayoutChallenge(ctx: OwnerCtx, orgId: string): Promise<ChallengeResponse> {
-  const org = await requireOwner(db, ctx.userId, orgId);
+  const { org } = await requirePermission(db, ctx.userId, orgId, "payout.manage");
   if (!WALLET_EDITABLE.includes(org.status)) throw inReview();
   const [w] = await db.select().from(organizationPayoutWallets)
     .where(and(eq(organizationPayoutWallets.organizationId, orgId), inArray(organizationPayoutWallets.status, ["UNVERIFIED", "VERIFYING"])));
@@ -55,7 +56,7 @@ export async function issuePayoutChallenge(ctx: OwnerCtx, orgId: string): Promis
  * organization that already has an active wallet, becomes a REPLACEMENT_PENDING request that ops must approve.
  */
 export async function verifyPayoutWallet(ctx: OwnerCtx, orgId: string, i: { challengeId: string; signature: string }): Promise<OrganizationDetail> {
-  await requireOwner(db, ctx.userId, orgId);
+  await requirePermission(db, ctx.userId, orgId, "payout.manage");
   const { ch, claimId } = await claimChallenge(i.challengeId, ["payout_wallet"]);
   const reject = async () => {
     await rejectChallenge(ch, claimId, "SIGNATURE_INVALID", { auth: ctx, meta: ctx.meta });
@@ -65,7 +66,7 @@ export async function verifyPayoutWallet(ctx: OwnerCtx, orgId: string, i: { chal
   if (verifySolanaSignature({ address: ch.address, message: ch.message, signature: i.signature }).kind === "invalid") throw await reject();
 
   const replacementWalletId = await db.transaction(async (tx) => {
-    const org = await requireOwner(tx, ctx.userId, orgId, true);
+    const { org } = await requirePermission(tx, ctx.userId, orgId, "payout.manage", true);
     if (!WALLET_EDITABLE.includes(org.status)) throw inReview();
     const consumed = await tx.update(authChallenges).set({ status: "consumed", resolvedAt: sql`now()`, leaseExpiresAt: null })
       .where(and(eq(authChallenges.id, ch.id), eq(authChallenges.claimId, claimId), eq(authChallenges.status, "processing"))).returning({ id: authChallenges.id });
@@ -92,5 +93,5 @@ export async function verifyPayoutWallet(ctx: OwnerCtx, orgId: string, i: { chal
     return replacement ? w.id : null;
   });
   if (replacementWalletId) await notifyOwner(orgId, "payout_replacement_requested", {}, `payout-replacement-requested/${replacementWalletId}`);
-  return getOrganizationForOwner(ctx, orgId);
+  return getOrganizationForMember(ctx, orgId);
 }

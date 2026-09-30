@@ -29,6 +29,10 @@ class FakeEmail {
   sendOrganization = async (kind: string, to: string, data: { message?: string | null; decision?: string }, idempotencyKey: string): Promise<void> => {
     this.organization.push({ kind, to, data, idempotencyKey });
   };
+  membership: Array<{ kind: string; to: string; data: { organizationName?: string | null; role?: string; message?: string | null }; idempotencyKey: string }> = [];
+  sendMembership = async (kind: string, to: string, data: { organizationName?: string | null; role?: string; message?: string | null }, idempotencyKey: string): Promise<void> => {
+    this.membership.push({ kind, to, data, idempotencyKey });
+  };
   sendOtp = async (to: string, code: string, verificationId: string): Promise<void> => {
     if (this.fail) throw deliveryFailure("resend down");
     this.sent.push({ to, code, verificationId });
@@ -97,7 +101,7 @@ export const fakes = { evm: new FakeEvmRpc(), email: new FakeEmail(), sms: new F
 
 export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [] });
-  Object.assign(fakes.email, { sent: [], application: [], organization: [], fail: false });
+  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], fail: false });
   fakes.r2.objects.clear();
   fakes.r2.signed = [];
   Object.assign(fakes.sms, { started: [], approveCode: "123456", fail: false, checkFail: false });

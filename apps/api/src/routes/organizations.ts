@@ -1,19 +1,23 @@
 import { Router, type Request } from "express";
 import {
-  createOrganizationRequestSchema, enterPayoutWalletRequestSchema, presignDocumentRequestSchema, updateDraftRequestSchema, verifyPayoutWalletRequestSchema, z,
-  type CreateOrganizationRequest, type EnterPayoutWalletRequest, type PresignDocumentRequest, type UpdateDraftRequest, type VerifyPayoutWalletRequest,
+  changeRoleRequestSchema, createOrganizationRequestSchema, enterPayoutWalletRequestSchema, inviteMemberRequestSchema, presignDocumentRequestSchema, updateDraftRequestSchema,
+  verifyPayoutWalletRequestSchema, z,
+  type ChangeRoleRequest, type CreateOrganizationRequest, type EnterPayoutWalletRequest, type InviteMemberRequest, type PresignDocumentRequest, type UpdateDraftRequest,
+  type VerifyPayoutWalletRequest,
 } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
+import { cancelInvite, changeRole, decideRemoval, inviteMember, listMembers, removeMember } from "../services/members";
 import {
-  confirmDocument, createChangeRequest, createOrganization, getOrganizationForOwner, listMyOrganizations, presignDocument, submitChangeRequest, submitOrganization,
+  confirmDocument, createChangeRequest, createOrganization, getOrganizationForMember, listMyOrganizations, presignDocument, submitChangeRequest, submitOrganization,
   unlinkDocument, updateDraft,
 } from "../services/organizations";
 import { enterPayoutWallet, issuePayoutChallenge, verifyPayoutWallet } from "../services/payout-wallets";
 
 const idParam = z.object({ id: z.uuid() });
 const docParams = z.object({ id: z.uuid(), docId: z.uuid() });
+const memberParams = z.object({ id: z.uuid(), mid: z.uuid() });
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const organizationsRouter = Router();
@@ -31,7 +35,7 @@ organizationsRouter.get("/mine", async (req, res) => {
 });
 
 organizationsRouter.get("/:id", validate({ params: idParam }), async (req, res) => {
-  res.json(await getOrganizationForOwner(ctx(req), req.params.id as string));
+  res.json(await getOrganizationForMember(ctx(req), req.params.id as string));
 });
 
 organizationsRouter.patch("/:id/draft", validate({ params: idParam, body: updateDraftRequestSchema }), async (req, res) => {
@@ -68,6 +72,34 @@ organizationsRouter.post("/:id/submit", validate({ params: idParam }), async (re
 
 organizationsRouter.post("/:id/change-request", validate({ params: idParam }), async (req, res) => {
   res.status(201).json(await createChangeRequest(ctx(req), req.params.id as string));
+});
+
+organizationsRouter.get("/:id/members", validate({ params: idParam }), async (req, res) => {
+  res.json(await listMembers(ctx(req), req.params.id as string));
+});
+
+organizationsRouter.post("/:id/members/invitations", validate({ params: idParam, body: inviteMemberRequestSchema }), async (req, res) => {
+  res.status(201).json(await inviteMember(ctx(req), req.params.id as string, req.body as InviteMemberRequest));
+});
+
+organizationsRouter.post("/:id/members/:mid/cancel", validate({ params: memberParams }), async (req, res) => {
+  res.json(await cancelInvite(ctx(req), req.params.id as string, req.params.mid as string));
+});
+
+organizationsRouter.post("/:id/members/:mid/role", validate({ params: memberParams, body: changeRoleRequestSchema }), async (req, res) => {
+  res.json(await changeRole(ctx(req), req.params.id as string, req.params.mid as string, req.body as ChangeRoleRequest));
+});
+
+organizationsRouter.post("/:id/members/:mid/remove", validate({ params: memberParams }), async (req, res) => {
+  res.json(await removeMember(ctx(req), req.params.id as string, req.params.mid as string));
+});
+
+organizationsRouter.post("/:id/members/:mid/removal/confirm", validate({ params: memberParams }), async (req, res) => {
+  res.json(await decideRemoval(ctx(req), req.params.id as string, req.params.mid as string, "confirm"));
+});
+
+organizationsRouter.post("/:id/members/:mid/removal/cancel", validate({ params: memberParams }), async (req, res) => {
+  res.json(await decideRemoval(ctx(req), req.params.id as string, req.params.mid as string, "cancel"));
 });
 
 organizationsRouter.post("/:id/change-request/submit", validate({ params: idParam }), async (req, res) => {

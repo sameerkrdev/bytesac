@@ -30,8 +30,8 @@ export const meResponseSchema = z.object({
   permissions: z.array(z.enum(["create_manager_organization"])),
   /** Active platform roles (ops_reviewer, ops_admin). */
   platformRoles: z.array(platformRoleSchema),
-  /** Active organization memberships. */
-  organizations: z.array(organizationSummarySchema.pick({ id: true, role: true, status: true })),
+  /** Open memberships (not invited, rejected or revoked); `status` is the organization status. */
+  organizations: z.array(organizationSummarySchema.pick({ id: true, displayName: true, role: true, status: true, membershipId: true, membershipStatus: true })),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 

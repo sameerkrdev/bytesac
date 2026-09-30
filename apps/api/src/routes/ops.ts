@@ -1,13 +1,17 @@
 import { Router, type Request } from "express";
 import {
-  applicationNoteRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listOrganizationsQuerySchema, organizationNoteRequestSchema, payoutWalletDecisionRequestSchema,
-  transitionApplicationRequestSchema, transitionOrganizationRequestSchema, versionDecisionRequestSchema, z,
-  type ApplicationNoteRequest, type GrantRoleRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
+  applicationNoteRequestSchema, decideMemberVerificationRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listMemberReviewQuerySchema, listOrganizationsQuerySchema,
+  organizationNoteRequestSchema, payoutWalletDecisionRequestSchema, transferOwnershipRequestSchema, transitionApplicationRequestSchema, transitionOrganizationRequestSchema,
+  versionDecisionRequestSchema, z,
+  type ApplicationNoteRequest, type DecideMemberVerificationRequest, type GrantRoleRequest, type TransferOwnershipRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
   type TransitionApplicationRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
 } from "@repo/validator";
 import { requireRole, requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
+import {
+  decideMemberVerification, getMemberForReview, listMembersForReview, memberDocumentDownloadUrl, transferOwnership,
+} from "../services/member-verifications";
 import { addApplicationNote, getApplicationDetail, listApplications, transitionApplication } from "../services/applications";
 import {
   addOrganizationNote, decidePayoutWallet, decideVersion, documentDownloadUrl, getOrganizationForReview, listOrganizationsForReview, transitionOrganization,
@@ -15,6 +19,7 @@ import {
 import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
 
 const idParam = z.object({ id: z.uuid() });
+const midParam = z.object({ mid: z.uuid() });
 const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 const actor = (req: Request) => ({ userId: req.auth!.userId, requestId: req.ctx.requestId });
 
@@ -66,6 +71,27 @@ opsRouter.post("/organizations/:id/notes", requireRole("ops_reviewer"), validate
 
 opsRouter.get("/organizations/:id/documents/:docId/download", requireRole("ops_reviewer"), validate({ params: z.object({ id: z.uuid(), docId: z.uuid() }) }), async (req, res) => {
   res.set("Cache-Control", "no-store").redirect(302, await documentDownloadUrl(ctx(req), req.params.id as string, req.params.docId as string));
+});
+
+opsRouter.get("/members", requireRole("ops_reviewer"), async (req, res) => {
+  res.json(await listMembersForReview(listMemberReviewQuerySchema.parse(req.query)));
+});
+
+opsRouter.get("/members/:mid", requireRole("ops_reviewer"), validate({ params: midParam }), async (req, res) => {
+  res.json(await getMemberForReview(ctx(req), req.params.mid as string));
+});
+
+opsRouter.post("/members/:mid/decision", requireRole("ops_reviewer"), validate({ params: midParam, body: decideMemberVerificationRequestSchema }), async (req, res) => {
+  res.json(await decideMemberVerification(ctx(req), req.params.mid as string, req.body as DecideMemberVerificationRequest));
+});
+
+opsRouter.get("/members/:mid/documents/:docId/download", requireRole("ops_reviewer"), validate({ params: z.object({ mid: z.uuid(), docId: z.uuid() }) }), async (req, res) => {
+  res.set("Cache-Control", "no-store").redirect(302, await memberDocumentDownloadUrl(ctx(req), req.params.mid as string, req.params.docId as string));
+});
+
+opsRouter.post("/organizations/:id/transfer-ownership", requireRole("ops_admin"), validate({ params: idParam, body: transferOwnershipRequestSchema }), async (req, res) => {
+  await transferOwnership(ctx(req), req.params.id as string, req.body as TransferOwnershipRequest);
+  res.status(204).end();
 });
 
 opsRouter.get("/roles", requireRole("ops_admin"), async (_req, res) => {

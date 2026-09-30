@@ -14,7 +14,7 @@ const detail = (over: Partial<OrganizationReviewDetail> = {}): OrganizationRevie
   versions: [version({ status: "in_review", publicProfile: { displayName: "Ada Capital" }, privateDetails: { legalName: "Ada Lovelace" } })],
   documents: [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e70", documentType: "government_id", contentType: "application/pdf", sizeBytes: 2048, status: "uploaded", uploadedAt: T, versionIds: [] }],
   payoutWallets: [], events: [{ id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e71", actorType: "ops", actorUserId: null, kind: "note", fromStatus: null, toStatus: null, versionId: null, payoutWalletId: null, decision: null, internalNote: "Looks fine", messageToOwner: null, createdAt: T }],
-  template: { requiredFields: [], requiredDocuments: [] }, ...over,
+  template: { requiredFields: [], requiredDocuments: [] }, members: [], ...over,
 });
 const view = (opsGetOrganization: () => Promise<OrganizationReviewDetail>) =>
   render(<QueryClientProvider client={new QueryClient()}><OrganizationReviewView id={ORG_ID} client={{ opsGetOrganization, opsTransitionOrganization: vi.fn(), opsDecideOrganizationVersion: vi.fn(), opsDecidePayoutWallet: vi.fn(), opsAddOrganizationNote: vi.fn() }} /></QueryClientProvider>);
