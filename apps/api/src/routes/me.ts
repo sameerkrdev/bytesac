@@ -50,6 +50,7 @@ meRouter.get("/", async (req, res) => {
 /** Bitcoin is link-only (add-chain): a BIP-322 or BIP-137 proof over the challenge message, with the Spec 1 rules (one address per family, not linked elsewhere, session rotation, audit). */
 meRouter.post("/chain-accounts/bitcoin/challenge", validate({ body: bitcoinChallengeRequestSchema }), async (req, res) => {
   const { address } = req.body as BitcoinChallengeRequest;
+  await consume(limits.bitcoinLinkUser, req.auth!.userId);
   const challenge = await issueChallenge({ purpose: "add_chain_account", chain: "bitcoin", rawAddress: address, sessionId: req.auth!.sessionId, meta: req.ctx });
   res.json({ ...challenge, toSignPsbt: bip322ToSignPsbt(canonicalBitcoinAddress(address), challenge.message) });
 });

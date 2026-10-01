@@ -71,7 +71,7 @@ export function SellDialog({ position }: { position: Position }) {
           {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
             <div className="space-y-4">
               <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying={false} />)}</ol>
-              <p className="text-sm text-ivory">Network fee (paid to Bytesac for gas, taken from your proceeds): {formatUnits(plan.networkFeeUsdc, 6)} USDC</p>
+              <p className="text-sm text-ivory">Network fee (paid to Bytesac for gas, {plan.legs[0]?.kind === "network_fee" ? "paid first from the USDC already in your wallet" : "taken from your proceeds"}): {formatUnits(plan.networkFeeUsdc, 6)} USDC</p>
               <p className="text-sm text-stone">No platform or manager fees are charged yet. Outputs are estimates, protected by a minimum per step ({SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.</p>
               <div className="flex flex-wrap gap-3">
                 <Button className="min-h-11" onClick={() => setSigning(true)}>Continue to signing</Button>

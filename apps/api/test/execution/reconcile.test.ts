@@ -115,6 +115,8 @@ describe("portfolio", () => {
 describe("gas wallet check", () => {
   it("warns for every platform wallet below its floor and stays quiet when funded", async () => {
     const chain = mockChains();
+    chain.balances.clear(); // the mocks fund the platform wallets by default: start from empty ones
+    fakes.evm.balances.clear();
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     const low = () => (warn.mock.calls as unknown as [string, { wallet: string }][]).filter(([m]) => m === "platform gas wallet is low");
     await checkGasWallets();

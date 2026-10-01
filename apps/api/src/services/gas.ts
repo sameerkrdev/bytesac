@@ -138,7 +138,7 @@ export async function sendGasDrop(legId: string, chain: AssetChain, recipient: s
     } catch (err) {
       if ((err as { refused?: boolean }).refused) {
         // The node refused it (insufficient funds, nonce): nothing was sent, so this is a definite failure, not an unknown outcome.
-        [drop] = await db.update(gasDrops).set({ status: "failed", updatedAt: sql`now()` }).where(eq(gasDrops.id, drop.id)).returning();
+        [drop] = await db.update(gasDrops).set({ status: "failed", updatedAt: sql`now()` }).where(eq(gasDrops.id, drop!.id)).returning();
         await writeAudit(db, { actorType: "system", action: "gas_drop.failed", entityType: "gas_drop", entityId: drop!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, refused: true } });
         return { status: "failed", txHash: null };
       }

@@ -165,8 +165,9 @@ export function checkPsbt(psbtBase64: string, expected: { outputs: PsbtOutput[];
   } catch {
     throw createHttpError(409, "The Bitcoin transaction could not be read.", { code: "PSBT_MISMATCH" });
   }
-  const same = <T extends object>(a: T[], b: T[]) => a.length === b.length && a.every((x, n) => JSON.stringify(x) === JSON.stringify(b[n]));
-  if (!same(outputs, expected.outputs) || !same(inputs, expected.inputs)) throw createHttpError(409, "The Bitcoin transaction changed after it was prepared.", { code: "PSBT_MISMATCH" });
+  // Field by field: the expectation comes back from jsonb, which does not keep key order.
+  const same = <T extends PsbtOutput | PsbtInput>(a: T[], b: T[], keys: (keyof T)[]) => a.length === b.length && a.every((x, n) => keys.every((k) => x[k] === b[n]![k]));
+  if (!same(outputs, expected.outputs, ["script", "amount"]) || !same(inputs, expected.inputs, ["txid", "index"])) throw createHttpError(409, "The Bitcoin transaction changed after it was prepared.", { code: "PSBT_MISMATCH" });
 }
 
 /** Finalizes a signed PSBT: the raw transaction hex and its txid. A PSBT that is not fully signed is a 409. */

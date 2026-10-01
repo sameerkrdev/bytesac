@@ -1,6 +1,10 @@
+import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { app } from "../../src/app";
+import { lifi } from "../../src/providers/routes/lifi";
+import { opsUser } from "../managers/helpers";
 import { connection } from "../../src/providers/solana-tx";
-import { trackLeg } from "../../src/services/positions";
+import { trackLeg, trackStaleClaims } from "../../src/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { mockChains, solanaTestWallet } from "./chain-mocks";
@@ -8,15 +12,16 @@ import { seedBasket, seedPosition, seedUser, type SeedAsset } from "./helpers";
 
 const SOL: SeedAsset = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 5000 };
 const TKN: SeedAsset = { symbol: "TKN", chain: "ethereum", tokenStandard: "erc20", bps: 5000 };
+const ETH: SeedAsset = { symbol: "ETH", chain: "ethereum", tokenStandard: "native", bps: 5000 };
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const pad = (address: string) => `0x${"0".repeat(24)}${address.slice(2).toLowerCase()}`;
 
 interface LegSpec { kind?: string; status: string; toIndex?: number; fromChain?: string; toChain?: string; amountIn?: string; sourceTx?: string | null; submittedMinutesAgo?: number; fromIndex?: number }
 
 /** An invest or sell operation with the given legs (sequence by position), inserted directly. */
-async function seed(legSpecs: LegSpec[], over: { kind?: "invest" | "sell_to_usdc"; holding?: bigint } = {}) {
+async function seed(legSpecs: LegSpec[], over: { kind?: "invest" | "sell_to_usdc"; holding?: bigint; native?: boolean } = {}) {
   const chain = mockChains();
-  const basket = await seedBasket({ assets: [SOL, TKN] });
+  const basket = await seedBasket({ assets: [SOL, over.native ? ETH : TKN] });
   const user = await seedUser({ wallet: solanaTestWallet() });
   const positionId = over.holding ? await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: over.holding }]) : null;
   const [op] = await adminSql<{ id: string }[]>`
@@ -61,7 +66,7 @@ describe("track-leg", () => {
     const { chain, user, basket, opId, ids } = await seed([{ kind: "network_fee", status: "SETTLED" }, { kind: "cross_chain", status: "PENDING_CHAIN", toChain: "ethereum", toIndex: 1, sourceTx: "sig-bridge" }]);
     const token = basket.deployments[1]!.address!;
     chain.solanaFinality.set("sig-bridge", "finalized");
-    chain.lifiStatus.set("sig-bridge", { state: "DONE", destinationTx: "0xdest", receivedAmount: 999n });
+    chain.lifiStatus.set("sig-bridge", { state: "DONE", destinationTx: "0xdest" });
     fakes.evm.receipts.set("0xdest", { success: true, blockNumber: 100n, head: 120n, logs: [
       { address: token, topics: [TRANSFER_TOPIC, pad("0x" + "22".repeat(20)), pad(user.evmAddress)], data: "0x" + (5_000_000n).toString(16) },
       { address: token, topics: [TRANSFER_TOPIC, pad("0x" + "22".repeat(20)), pad("0x" + "33".repeat(20))], data: "0x" + (777n).toString(16) }, // someone else's
@@ -74,7 +79,7 @@ describe("track-leg", () => {
   it("waits for destination confirmations (Ethereum 12)", async () => {
     const { chain, user, basket, ids } = await seed([{ kind: "cross_chain", status: "SUBMITTED", toChain: "ethereum", toIndex: 1, sourceTx: "sig-b" }]);
     chain.solanaFinality.set("sig-b", "finalized");
-    chain.lifiStatus.set("sig-b", { state: "DONE", destinationTx: "0xdest", receivedAmount: null });
+    chain.lifiStatus.set("sig-b", { state: "DONE", destinationTx: "0xdest" });
     fakes.evm.receipts.set("0xdest", { success: true, blockNumber: 100n, head: 105n, logs: [{ address: basket.deployments[1]!.address!, topics: [TRANSFER_TOPIC, pad("0x" + "22".repeat(20)), pad(user.evmAddress)], data: "0x01" }] });
     await expect(trackLeg(ids[0]!)).rejects.toThrow("not final");
     expect((await legRow(ids[0]!)).status).toBe("PENDING_CHAIN");
@@ -139,6 +144,7 @@ describe("track-leg", () => {
     await trackLeg(ids[0]!);
     expect((await legRow(ids[0]!)).status).toBe("UNKNOWN");
     expect(await ledger()).toHaveLength(0);
+    expect(fakes.queue.jobs).toContainEqual({ name: "track-leg", data: { legId: ids[0], recheck: 1 } }); // I1: it is re-checked, not forgotten
   });
 
   it("a settled sell leg writes a negative ledger entry on the position's holding and the network fee writes none", async () => {
@@ -153,5 +159,109 @@ describe("track-leg", () => {
     expect(await ledger()).toEqual([expect.objectContaining({ quantity_delta: "1000", reason: "invest" }), { quantity_delta: "-500", reason: "sell", deployment_id: expect.any(String) }]);
     expect((await opStatus(opId)).status).toBe("COMPLETED");
     expect((await legRow(ids[0]!)).amount_received).toBe("77000000");
+  });
+});
+
+describe("review fixes: tracking", () => {
+  it("I1: a dropped Solana transaction (blockhash expired, never landed) fails the leg instead of locking the user out", async () => {
+    const { chain, opId, ids } = await seed([{ kind: "network_fee", status: "SETTLED" }, { status: "UNKNOWN", toIndex: 0, sourceTx: "sig-dropped", submittedMinutesAgo: 90 }]);
+    chain.solanaFinality.set("sig-dropped", "expired");
+    await trackLeg(ids[1]!, 1);
+    expect(await legRow(ids[1]!)).toMatchObject({ status: "FAILED" });
+    expect((await legRow(ids[1]!)).failure_reason).toMatch(/blockhash expired/);
+    expect((await opStatus(opId)).status).toBe("FAILED");
+    expect(fakes.queue.jobs.filter((j) => j.name === "track-leg")).toHaveLength(0);
+  });
+
+  it("I1: a recheck never throws: a provider error still schedules the next recheck and a stale leg still becomes UNKNOWN", async () => {
+    const { chain, ids } = await seed([{ kind: "cross_chain", status: "PENDING_CHAIN", toChain: "ethereum", toIndex: 1, sourceTx: "sig-b", submittedMinutesAgo: 45 }]);
+    chain.solanaFinality.set("sig-b", "finalized");
+    vi.spyOn(lifi, "status").mockRejectedValue(new Error("LI.FI INVALID"));
+    await expect(trackLeg(ids[0]!, 1)).resolves.toBeUndefined();
+    expect(fakes.queue.jobs).toContainEqual({ name: "track-leg", data: { legId: ids[0], recheck: 2 } });
+    expect((await legRow(ids[0]!)).status).toBe("UNKNOWN");
+    await expect(trackLeg(ids[0]!)).rejects.toThrow(); // the first window still throws, so BullMQ backs off
+  });
+
+  it("I7/D7: an ERC-20 delivery whose route status has no destination transaction never writes the provider's amount", async () => {
+    const { chain, ids } = await seed([{ kind: "cross_chain", status: "SUBMITTED", toChain: "ethereum", toIndex: 1, sourceTx: "sig-x" }]);
+    chain.solanaFinality.set("sig-x", "finalized");
+    chain.lifiStatus.set("sig-x", { state: "DONE", destinationTx: null });
+    await expect(trackLeg(ids[0]!)).rejects.toThrow("not final");
+    expect(await ledger()).toHaveLength(0);
+    expect((await legRow(ids[0]!)).amount_received).toBeNull();
+  });
+
+  it("D7: a bridged native EVM asset is credited from the balance change at the destination block, or stays unsettled", async () => {
+    const { chain, user, ids } = await seed([{ kind: "cross_chain", status: "SUBMITTED", toChain: "ethereum", toIndex: 1, sourceTx: "sig-n" }], { native: true });
+    chain.solanaFinality.set("sig-n", "finalized");
+    chain.lifiStatus.set("sig-n", { state: "DONE", destinationTx: "0xnative" });
+    fakes.evm.receipts.set("0xnative", { success: true, blockNumber: 1n, head: 100n, logs: [] });
+    await expect(trackLeg(ids[0]!)).rejects.toThrow("not final"); // no evidence of the amount yet
+    expect(await ledger()).toHaveLength(0);
+    fakes.evm.nativeReceived.set(`0xnative:${user.evmAddress}`, 7_000n);
+    await trackLeg(ids[0]!);
+    expect(await legRow(ids[0]!)).toMatchObject({ status: "SETTLED", amount_received: "7000", destination_tx: "0xnative" });
+  });
+
+  it("minor 3: a LI.FI PARTIAL (a different token was delivered) is UNKNOWN for a person, not FAILED", async () => {
+    const { chain, ids } = await seed([{ kind: "cross_chain", status: "SUBMITTED", toChain: "ethereum", toIndex: 1, sourceTx: "sig-p" }]);
+    chain.solanaFinality.set("sig-p", "finalized");
+    chain.lifiStatus.set("sig-p", { state: "UNKNOWN", reason: "different token" });
+    await trackLeg(ids[0]!);
+    expect((await legRow(ids[0]!)).status).toBe("UNKNOWN");
+    expect(fakes.queue.jobs).toContainEqual({ name: "track-leg", data: { legId: ids[0], recheck: 1 } });
+  });
+
+  it("I2: a claim never confirmed as sent (crash) is handed to the tracker by the sweep and followed like a submitted leg", async () => {
+    const { chain, ids } = await seed([{ status: "SUBMITTING", toIndex: 0, sourceTx: "sig-c", submittedMinutesAgo: 5 }]);
+    await adminSql`UPDATE app.operation_legs SET updated_at = now() - interval '5 minutes'`;
+    await trackStaleClaims();
+    expect(fakes.queue.jobs).toContainEqual({ name: "track-leg", data: { legId: ids[0] } });
+    chain.solanaFinality.set("sig-c", "expired");
+    await trackLeg(ids[0]!);
+    expect((await legRow(ids[0]!)).status).toBe("FAILED");
+  });
+});
+
+describe("ops resolve tool (D2)", () => {
+  const resolve = (h: Record<string, string>, opId: string, legId: string, body: object) => request(app).post(`/v1/ops/operations/${opId}/legs/${legId}/resolve`).set(h).send(body);
+  const base = { txEvidence: "0xevidence000", reason: "Verified on the explorer by ops." };
+
+  it("is for ops_admin only", async () => {
+    const { opId, ids } = await seed([{ status: "UNKNOWN", toIndex: 0, sourceTx: "sig-1" }]);
+    const reviewer = await opsUser(app, "ops_reviewer");
+    expect((await resolve(reviewer.h, opId, ids[0]!, { ...base, status: "FAILED" })).status).toBe(403);
+  });
+
+  it("settles from chain evidence the server reads itself, writes the ledger and audits it; the supplied amount must match the chain", async () => {
+    const { chain, user, opId, ids } = await seed([{ kind: "cross_chain", status: "UNKNOWN", toChain: "ethereum", toIndex: 1, sourceTx: "0xreplaced" }]);
+    const admin = await opsUser(app, "ops_admin");
+    const token = (await adminSql<{ address: string }[]>`SELECT address FROM app.instrument_deployments WHERE chain = 'ethereum'`)[0]!.address;
+    fakes.evm.receipts.set("0xnewhash", { success: true, blockNumber: 1n, head: 100n, logs: [{ address: token, topics: [TRANSFER_TOPIC, pad("0x" + "22".repeat(20)), pad(user.evmAddress)], data: "0x" + (9_000n).toString(16) }] });
+    const wrong = await resolve(admin.h, opId, ids[0]!, { ...base, txEvidence: "0xnewhash", status: "SETTLED", amountReceived: "1" });
+    expect(wrong.status).toBe(409);
+    expect(await ledger()).toHaveLength(0);
+    const ok = await resolve(admin.h, opId, ids[0]!, { ...base, txEvidence: "0xnewhash", status: "SETTLED", amountReceived: "9000" });
+    expect(ok.status).toBe(200);
+    expect(await legRow(ids[0]!)).toMatchObject({ status: "SETTLED", amount_received: "9000", destination_tx: "0xnewhash" });
+    expect(await ledger()).toEqual([expect.objectContaining({ quantity_delta: "9000", reason: "invest" })]);
+    expect((await opStatus(opId)).status).toBe("COMPLETED");
+    expect(await adminSql`SELECT metadata FROM app.audit_events WHERE action = 'leg.resolved_by_ops'`).toEqual([{ metadata: expect.objectContaining({ status: "SETTLED", verifiedOnChain: true, txEvidence: "0xnewhash" }) }]);
+    expect((await resolve(admin.h, opId, ids[0]!, { ...base, status: "FAILED" })).status).toBe(409); // no longer UNKNOWN
+    void chain;
+  });
+
+  it("refuses SETTLED without final on-chain evidence, and FAILED against a finalized same-chain transaction", async () => {
+    const { chain, opId, ids } = await seed([{ status: "UNKNOWN", toIndex: 0, sourceTx: "sig-fin" }]);
+    const admin = await opsUser(app, "ops_admin");
+    expect((await resolve(admin.h, opId, ids[0]!, { ...base, txEvidence: "sig-nothing", status: "SETTLED", amountReceived: "5" })).status).toBe(409);
+    chain.solanaFinality.set("sig-fin", "finalized");
+    expect((await resolve(admin.h, opId, ids[0]!, { ...base, status: "FAILED" })).status).toBe(409);
+    chain.solanaFinality.set("sig-fin", "pending");
+    const failed = await resolve(admin.h, opId, ids[0]!, { ...base, status: "FAILED" });
+    expect(failed.status).toBe(200);
+    expect((await legRow(ids[0]!)).failure_reason).toMatch(/Resolved by ops/);
+    expect(await ledger()).toHaveLength(0);
   });
 });

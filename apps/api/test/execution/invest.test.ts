@@ -57,7 +57,9 @@ describe("invest plan", () => {
     expect(chain.quotes.every((q) => q.fromChain === "solana" && q.svmSponsor)).toBe(true);
     expect(chain.quotes.map((q) => q.toAddress)).toContain(user.btcAddress);
     const [usage] = await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} AND chain = 'solana'`;
-    expect(BigInt(usage!.amount_native)).toBe(10_000n + 3n * 5_000n);
+    // fee transfer 10,000 + 3 legs x (2 signatures x 5,000): the decoded fee-payer exposure, not LI.FI's smaller 5,000 figure
+    expect(BigInt(usage!.amount_native)).toBe(10_000n + 3n * 10_000n);
+    expect((await adminSql<{ gas_reserved: Record<string, string> }[]>`SELECT gas_reserved FROM app.operations`)[0]!.gas_reserved).toEqual({ solana: "40000" });
     expect(await adminSql`SELECT 1 FROM app.audit_events WHERE action = 'operation.planned'`).toHaveLength(1);
   });
 
@@ -154,7 +156,7 @@ describe("quote and submit a Solana leg", () => {
     expect(fakes.queue.jobs).toContainEqual({ name: "track-leg", data: { legId: feeLeg.id } });
     expect(chain.broadcasts).toHaveLength(0);
     // every transition is audited
-    expect((await adminSql`SELECT action FROM app.audit_events WHERE entity_id = ${feeLeg.id}`).map((r) => r.action)).toEqual(["leg.submitted"]);
+    expect((await adminSql`SELECT action FROM app.audit_events WHERE entity_id = ${feeLeg.id}`).map((r) => r.action)).toEqual(["leg.submitting", "leg.submitted"]);
   });
 
   it("refuses a swap leg until the fee leg is on-chain, then quotes it with the sponsor and the user's own addresses", async () => {
@@ -259,3 +261,127 @@ describe("cancel and stop", () => {
   });
 });
 
+
+describe("review fixes", () => {
+  async function ready() {
+    const ctx = await arrange();
+    const op = (await invest(ctx.user.h, ctx.basket.basketId)).body;
+    return { ...ctx, op, feeLeg: op.legs[0], solLeg: op.legs[1] };
+  }
+  const quote = (h: H, opId: string, legId: string) => post(h, `/v1/operations/${opId}/legs/${legId}/quote`);
+  const submit = (h: H, opId: string, legId: string, body: object) => post(h, `/v1/operations/${opId}/legs/${legId}/submit`, body);
+  const cancel = (h: H, id: string) => post(h, `/v1/operations/${id}/cancel`);
+  const usage = async () => BigInt((await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE chain = 'solana'`)[0]?.amount_native ?? "0");
+
+  it("I2: the leg is claimed before anything is sent, so a quote or cancel during the send is refused and the tx is sent once", async () => {
+    const { user, wallet, op, feeLeg } = await ready();
+    const q = await quote(user.h, op.id, feeLeg.id);
+    const signedTx = walletSign(q.body.transaction.serializedBase64, wallet);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.mocked(connection.sendRawTransaction).mockImplementationOnce(async (raw) => { await gate; return bs58.encode(VersionedTransaction.deserialize(raw as Uint8Array).signatures[0]!); });
+    const first = Promise.resolve(submit(user.h, op.id, feeLeg.id, { signedTx })); // supertest only starts on then()
+    await vi.waitFor(() => expect(sends()).toBe(1));
+    expect((await legs(op.id))[0]!.status).toBe("SUBMITTING");
+    expect((await legs(op.id))[0]!.source_tx).toBeTruthy(); // the deterministic id is recorded before the send finished
+    expect((await quote(user.h, op.id, feeLeg.id)).status).toBe(409); // cannot swap in a new transaction
+    expect((await cancel(user.h, op.id)).status).toBe(409); // cannot cancel under a signed transaction in flight
+    expect((await submit(user.h, op.id, feeLeg.id, { signedTx })).status).toBe(409); // a second tab cannot send it again
+    release();
+    expect((await first).body.legs[0].status).toBe("SUBMITTED");
+    expect(sends()).toBe(1);
+    expect((await opRow(op.id)).status).toBe("IN_PROGRESS");
+  });
+
+  it("I2: a transaction id belongs to one leg", async () => {
+    const { op } = await ready();
+    const [a, b] = await adminSql<{ id: string }[]>`SELECT id FROM app.operation_legs WHERE operation_id = ${op.id} ORDER BY sequence LIMIT 2`;
+    await adminSql`UPDATE app.operation_legs SET source_tx = 'same-sig' WHERE id = ${a!.id}`;
+    await expect(adminSql`UPDATE app.operation_legs SET source_tx = 'same-sig' WHERE id = ${b!.id}`).rejects.toThrow(/operation_legs_source_tx/);
+  });
+
+  it("I2: a plan with a claimed leg does not expire out from under it", async () => {
+    const { user, basket, op } = await ready();
+    await adminSql`UPDATE app.operation_legs SET status = 'SUBMITTING', source_tx = 'sig-claimed' WHERE id = ${op.legs[0].id}`;
+    await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;
+    expect((await invest(user.h, basket.basketId, { idempotencyKey: "key-zzzzzzzz" })).body.error.code).toBe("OPERATION_IN_PROGRESS");
+    expect((await opRow(op.id)).status).toBe("PLANNED");
+  });
+
+  it("D3: cancelling a plan releases its unspent gas reservation, so going Back repeatedly does not burn the day's budget", async () => {
+    const { user, basket } = await arrange();
+    for (const key of ["key-back0001", "key-back0002", "key-back0003", "key-back0004"]) {
+      const op = (await invest(user.h, basket.basketId, { idempotencyKey: key })).body;
+      expect(await usage()).toBe(40_000n);
+      expect((await cancel(user.h, op.id)).body.status).toBe("CANCELLED");
+      expect(await usage()).toBe(0n);
+    }
+    expect((await adminSql<{ gas_reserved: object }[]>`SELECT gas_reserved FROM app.operations LIMIT 1`)[0]!.gas_reserved).toEqual({});
+  });
+
+  it("D3: an expired plan releases its reservation when it is next touched", async () => {
+    const { user, basket } = await arrange();
+    const op = (await invest(user.h, basket.basketId)).body;
+    await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;
+    expect((await invest(user.h, basket.basketId, { idempotencyKey: "key-after001" })).status).toBe(201);
+    expect(await usage()).toBe(40_000n); // only the new plan's
+  });
+
+  it("I6/D6: a fresh quote below the plan's minimum is a 409 PRICE_MOVED and nothing is stored; a better one passes", async () => {
+    const { user, op, feeLeg, solLeg, chain } = await ready();
+    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${feeLeg.id}`;
+    chain.quoteOut = { numerator: 99n, denominator: 100n }; // 1% worse
+    const res = await quote(user.h, op.id, solLeg.id);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("PRICE_MOVED");
+    expect((await legs(op.id))[1]!.built_message_hash).toBeNull();
+    chain.quoteOut = { numerator: 101n, denominator: 100n };
+    const better = await quote(user.h, op.id, solLeg.id);
+    expect(better.status).toBe(200);
+    expect(BigInt(better.body.minOut)).toBeGreaterThan(BigInt(op.legs[1].minOut)); // the user is shown the fresh figures
+    expect((await legs(op.id))[1]!.min_out).toBe(op.legs[1].minOut); // the plan's own minimum is not loosened by quoting
+  });
+
+  it("I4: a provider transaction in which the fee payer would pay for anything but fees and token-account rent is refused at quote time", async () => {
+    const { user, op, feeLeg, solLeg, chain } = await ready();
+    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${feeLeg.id}`;
+    const { lifi } = await import("../../src/providers/routes/lifi");
+    const { feePayer } = await import("../../src/providers/solana-tx");
+    const { PublicKey, SystemProgram, TransactionMessage } = await import("@solana/web3.js");
+    const good = lifi.quote as unknown as (i: unknown) => Promise<{ transaction: { kind: string } }>;
+    const original = vi.mocked(lifi.quote).getMockImplementation()!;
+    vi.mocked(lifi.quote).mockImplementation(async (i) => {
+      const q = await original(i);
+      const drain = new VersionedTransaction(new TransactionMessage({ payerKey: feePayer().publicKey, recentBlockhash: bs58.encode(Buffer.alloc(32, 9)), instructions: [SystemProgram.transfer({ fromPubkey: feePayer().publicKey, toPubkey: new PublicKey(Buffer.alloc(32, 4)), lamports: 1_000_000n })] }).compileToV0Message());
+      return { ...q, transaction: { kind: "solana", serializedBase64: Buffer.from(drain.serialize()).toString("base64") } };
+    });
+    void good; void chain;
+    const res = await quote(user.h, op.id, solLeg.id);
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
+    expect((await legs(op.id))[1]!.built_message_hash).toBeNull();
+  });
+
+  it("spec 7: a plan is refused while the platform fee payer cannot fund it, before any row exists", async () => {
+    const { user, basket, chain } = await arrange();
+    const { feePayer } = await import("../../src/providers/solana-tx");
+    chain.balances.set(balanceKey(feePayer().publicKey.toBase58(), null), 1_000n);
+    const res = await invest(user.h, basket.basketId);
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
+    expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(0);
+    expect(await usage()).toBe(0n);
+  });
+
+  it("D2: the user may stop while a leg is UNKNOWN: PARTIAL, which frees the slot", async () => {
+    const { user, basket } = await arrange();
+    const op = (await invest(user.h, basket.basketId)).body;
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${op.legs[0].id}`;
+    await adminSql`UPDATE app.operation_legs SET status = 'UNKNOWN', source_tx = 'sig-u' WHERE id = ${op.legs[1].id}`;
+    const res = await cancel(user.h, op.id);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("PARTIAL");
+    expect((await invest(user.h, basket.basketId, { idempotencyKey: "key-new00001" })).status).toBe(201);
+  });
+});

@@ -40,6 +40,7 @@ async function dbNow(): Promise<Date> {
 
 /** `organizationId` is for payout-wallet proofs: the row is bound to the organization and the signed text is a plain custom message (not SIWS), naming it. */
 export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; meta: RequestMeta }): Promise<ChallengeResponse> {
+  if (familyOf(i.chain) === "bitcoin" && i.purpose === "sign_in") throw createHttpError("Bitcoin can be linked but not used to sign in.", { code: "UNSUPPORTED_CHAIN" });
   const address = canonicalizeAddress(i.chain, i.rawAddress);
   await consume(limits.challengeIp, i.meta.ip);
   await consume(limits.challengeAddress, address);

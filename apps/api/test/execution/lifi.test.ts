@@ -79,6 +79,27 @@ describe("lifi quote", () => {
   });
 });
 
+describe("lifi quote with a realistic LI.FI body (C1 regression)", () => {
+  /** estimate.gasCosts entries as LI.FI returns them: amount in the native token's base units, amountUSD, and the native token. */
+  const gasCosts = [
+    { type: "SEND", price: "0.0000001", estimate: "5000", limit: "6000", amount: "21000000000", amountUSD: "0.0315", token: { address: "11111111111111111111111111111111", chainId: SOLANA, symbol: "SOL", decimals: 9, priceUSD: "150.5" } },
+    { type: "SEND", amount: "5000", amountUSD: "0.0007", token: { address: "11111111111111111111111111111111", chainId: SOLANA, symbol: "SOL", decimals: 9, priceUSD: "150.5" } },
+  ];
+  it("parses estimate.gasCosts[].amount (the pattern once matched only the letter d, so every real quote was rejected) and sums gasNative", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ...quoteBody(), estimate: { ...quoteBody().estimate, gasCosts } }));
+    const q = await lifi.quote(input);
+    expect(q.gasNative).toBe(21_000_005_000n);
+    expect(q.gasEstimateUsd).toBeCloseTo(0.0322);
+    expect(q.nativePriceUsd).toBe(150.5);
+  });
+  it("refuses a gas amount that is not an integer string, and an amountUSD that is not a decimal", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ...quoteBody(), estimate: { ...quoteBody().estimate, gasCosts: [{ amount: "2.1e10", amountUSD: "0.03" }] } }));
+    await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ...quoteBody(), estimate: { ...quoteBody().estimate, gasCosts: [{ amount: "5", amountUSD: "NaN" }] } }));
+    await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
+  });
+});
+
 describe("lifi status", () => {
   const status = (body: unknown) => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(body));
@@ -87,7 +108,9 @@ describe("lifi status", () => {
   it("maps LI.FI statuses", async () => {
     expect(await status({ status: "PENDING" })).toEqual({ state: "PENDING" });
     expect(await status({ status: "NOT_FOUND" })).toEqual({ state: "PENDING" });
-    expect(await status({ status: "DONE", substatus: "COMPLETED", receiving: { txHash: "0xdest", amount: "123" } })).toEqual({ state: "DONE", destinationTx: "0xdest", receivedAmount: 123n });
+    // the amount LI.FI reports is deliberately not surfaced: what arrived is read from the chain
+    expect(await status({ status: "DONE", substatus: "COMPLETED", receiving: { txHash: "0xdest", amount: "123" } })).toEqual({ state: "DONE", destinationTx: "0xdest" });
+    expect(await status({ status: "DONE", substatus: "PARTIAL" })).toEqual({ state: "UNKNOWN", reason: expect.any(String) }); // a different token was delivered: funds moved, never written off
     expect(await status({ status: "DONE", substatus: "REFUNDED" })).toEqual({ state: "FAILED", reason: "REFUNDED" });
     expect(await status({ status: "FAILED", substatus: "OUT_OF_GAS" })).toEqual({ state: "FAILED", reason: "OUT_OF_GAS" });
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ status: "INVALID" }));

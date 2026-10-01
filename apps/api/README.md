@@ -46,7 +46,7 @@ pnpm --filter api build && pnpm --filter api start:worker   # production: node d
 
 ## First investment and exit (Spec 8, ADR-014)
 
-Operations run on the same worker as discovery: `track-leg` (after each submission: 12 attempts with 15 s exponential backoff, then `UNKNOWN`, re-checked hourly for up to 7 days; never resubmits), `reconcile-positions` (nightly at 02:30 UTC; also on `GET /v1/portfolio`, at most once a minute per user) and `gas-wallet-check` (every 15 minutes, warning logs only). Migration `0010_positions.sql` adds the position, ledger, operation, leg, gas drop, platform wallet, sponsor usage and reconciliation tables (ledger and reconciliation history are SELECT and INSERT only for the runtime role).
+Operations run on the same worker as discovery: `track-leg` (after each submission: 12 attempts with 15 s exponential backoff, then `UNKNOWN`, re-checked hourly for up to 7 days; a recheck never throws, a dropped Solana transaction fails once its blockhash expired, and a 5-minute sweep picks up legs claimed but never confirmed as sent; never resubmits), `reconcile-positions` (nightly at 02:30 UTC; also on `GET /v1/portfolio`, at most once a minute per user) and `gas-wallet-check` (every 15 minutes, warning logs; plans are also refused while a platform wallet cannot fund them). Ops resolve a leg stuck `UNKNOWN` with `POST /v1/ops/operations/:id/legs/:legId/resolve` (`ops_admin`; body `status` SETTLED or FAILED, `txEvidence`, `reason`, optional `amountReceived`; the server reads the chain and refuses what it cannot match). Migrations `0010_positions.sql` and `0011_positions_review_fixes.sql` adds the position, ledger, operation, leg, gas drop, platform wallet, sponsor usage and reconciliation tables (ledger and reconciliation history are SELECT and INSERT only for the runtime role).
 
 **Environment** (all optional; empty disables the feature that needs it, see `.env.example`):
 
@@ -59,7 +59,7 @@ Operations run on the same worker as discovery: `track-leg` (after each submissi
 | `GAS_TREASURY_SOLANA_ADDRESS` | Owner address of the platform USDC token account that receives network fees (created by the first fee transfer if missing; the platform pays the rent once). Empty disables the network fee leg. |
 | `ALCHEMY_API_KEY` | Also builds the Alchemy Bitcoin host (balance, transaction, broadcast) and the Polygon host; enable Bitcoin and Polygon for the key. |
 
-**Caps** are constants in native units in `src/services/gas.ts` (no env override yet): per user per day Solana 0.02 SOL and about $5 on each EVM chain; global per day about $200 per chain, assuming SOL $150, ETH $2,500, BNB $600, POL $0.20. Re-tune them there, and review them when prices move.
+**Gas lifecycle:** reservations are released when an operation is cancelled or expires; at most 5 EVM gas drops per user per chain per day; token-account rent paid by the fee payer is counted in the reservation (a basket with many new Solana token accounts can reach the 0.02 SOL per-user cap). **Caps** are constants in native units in `src/services/gas.ts` (no env override yet): per user per day Solana 0.02 SOL and about $5 on each EVM chain; global per day about $200 per chain, assuming SOL $150, ETH $2,500, BNB $600, POL $0.20. Re-tune them there, and review them when prices move.
 
 **Wallet funding and keys:** the Solana fee payer pays transaction fees (and the one-time treasury token account rent) for sponsored legs; the EVM gas wallet needs native gas on each EVM chain (Ethereum, Base, BNB Chain, Arbitrum, Polygon); `gas-wallet-check` warns when a balance falls below its floor (Solana 0.5 SOL, EVM 0.01 ETH, BNB 0.05, POL 10). The keys are plain env secrets here: put them in a KMS or HSM before launch, keep them out of logs (the modules never log them), and never reuse them elsewhere. These wallets must hold platform funds only.
 
@@ -72,7 +72,8 @@ Operations run on the same worker as discovery: `track-leg` (after each submissi
 3. Invest a small amount in a Solana-only basket, then a mixed one, with Phantom and Solflare: confirm a wallet that adds guard instructions is refused with `TX_MISMATCH` and nothing is sent.
 4. Confirm the Alchemy Bitcoin `/tx` and `/sendtx` shapes (a Bitcoin sell leg).
 5. Sell part of a position, stop an operation midway, leave a basket and sell the former assets; check `track-leg` reaches `SETTLED` and the ledger and portfolio match the wallets.
-6. Fund the platform wallets, confirm the caps and `gas-wallet-check` warnings behave, and have the network fee and self-custody flows legally reviewed.
+6. Also try: a sell with the wallet holding USDC (fee first) and without (fee last); a stuck leg and the ops resolve call; a plan refused when a gas wallet is empty.
+7. Fund the platform wallets, confirm the caps and `gas-wallet-check` warnings behave, and have the network fee and self-custody flows legally reviewed.
 
 ## Cloudflare R2 (organization documents)
 

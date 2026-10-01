@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { signInChainSchema } from "./chains";
+import { chainSchema, signInChainSchema } from "./chains";
 
 export const APPLICATION_STATUSES = ["EMAIL_PENDING", "SUBMITTED", "SCREENING", "CONTACTED", "ADDITIONAL_INFORMATION_REQUIRED", "SCREENING_APPROVED", "SCREENING_REJECTED"] as const;
 export const applicationStatusSchema = z.enum(APPLICATION_STATUSES);
@@ -89,7 +89,7 @@ export const applicationSummarySchema = z.object({
   firmName: z.string().nullable(),
   email: z.string(),
   country: z.string(),
-  walletChain: signInChainSchema,
+  walletChain: chainSchema,
   walletAddress: z.string(),
   walletProvenAt: z.iso.datetime({ offset: true }).nullable(),
   submittedAt: z.iso.datetime({ offset: true }).nullable(),

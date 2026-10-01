@@ -1,27 +1,33 @@
+import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, operations, positionLedgerEntries, positionReconciliations, type Tx,
 } from "@repo/db";
 import { logger } from "@repo/logger";
-import { CONFIRMATIONS, USDC_SOLANA_MINT, type AssetChain, type Portfolio } from "@repo/validator";
+import { CONFIRMATIONS, USDC_SOLANA_MINT, type AssetChain, type OperationView, type Portfolio, type ResolveLegRequest } from "@repo/validator";
 import { env } from "../env";
 import { bitcoinTx } from "../providers/bitcoin";
-import { evmBalance, evmReceipt, gasWalletAddress } from "../providers/evm-rpc";
+import { evmBalance, evmNativeReceived, evmReceipt, gasWalletAddress } from "../providers/evm-rpc";
 import { routeProviderById } from "../providers/routes";
 import { feePayer, solanaBalance, solanaFinality, solanaReceived } from "../providers/solana-tx";
 import { redis } from "../middleware/rate-limit";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { addressOn, lockOperation, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
+import { addressOn, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
 import { getPrices } from "./pricing";
 
 const TRACK_WINDOW_MS = 30 * 60_000;
 const MAX_RECHECKS = 168; // hourly, seven days
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+type Leg = typeof operationLegs.$inferSelect;
+type Op = typeof operations.$inferSelect;
 
-/** `finalized` (enough confirmations), `failed` (the transaction reverted or errored) or `pending` (not seen or not final yet). */
-async function finality(chain: AssetChain, tx: string): Promise<"finalized" | "failed" | "pending"> {
-  if (chain === "solana") return solanaFinality(tx);
+/**
+ * `finalized` (enough confirmations), `failed` (the transaction reverted or errored), `expired` (Solana: never landed and its blockhash is gone, so it
+ * never can) or `pending` (not seen or not final yet). Bitcoin and EVM cannot report "dropped": a replaced transaction stays pending until ops resolve it.
+ */
+async function finality(chain: AssetChain, tx: string, recentBlockhash?: string): Promise<"finalized" | "failed" | "expired" | "pending"> {
+  if (chain === "solana") return solanaFinality(tx, recentBlockhash);
   if (chain === "bitcoin") return ((await bitcoinTx(tx))?.confirmations ?? 0) >= CONFIRMATIONS.bitcoin ? "finalized" : "pending";
   const receipt = await evmReceipt(chain, tx);
   if (!receipt) return "pending";
@@ -29,38 +35,105 @@ async function finality(chain: AssetChain, tx: string): Promise<"finalized" | "f
   return receipt.head - receipt.blockNumber + 1n >= BigInt(CONFIRMATIONS[chain]) ? "finalized" : "pending";
 }
 
+/** What `owner` received in `destinationTx`, from chain evidence only (Solana balance change, ERC-20 Transfer logs, native EVM balance delta at the block, Bitcoin outputs); null = not visible. */
+async function receivedOnChain(chain: AssetChain, owner: string, token: string | null, destinationTx: string): Promise<bigint | null> {
+  if (chain === "solana") return solanaReceived(destinationTx, owner, token);
+  if (chain === "bitcoin") return (await bitcoinTx(destinationTx))?.outputs.filter((o) => o.address === owner).reduce((s, o) => s + o.value, 0n) ?? null;
+  if (!token) return evmNativeReceived(chain, owner, destinationTx);
+  const receipt = await evmReceipt(chain, destinationTx);
+  if (!receipt) return null;
+  const topic = `0x${"0".repeat(24)}${owner.slice(2).toLowerCase()}`;
+  return receipt.logs.filter((l) => l.address === token.toLowerCase() && l.topics[0] === TRANSFER_TOPIC && l.topics[2]?.toLowerCase() === topic).reduce((s, l) => s + BigInt(l.data), 0n);
+}
+
+const destinationToken = async (leg: Leg): Promise<string | null> =>
+  leg.toDeploymentId ? (await db.select({ a: instrumentDeployments.address }).from(instrumentDeployments).where(eq(instrumentDeployments.id, leg.toDeploymentId)))[0]!.a : USDC_SOLANA_MINT;
+
+/** Marks the leg SETTLED and, for asset legs, writes the ledger entry and recomputes the operation, in the caller's transaction (which holds the operation lock). */
+async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinationTx: string | null, received: bigint | null): Promise<void> {
+  await setLegStatus(tx, ctx, leg, "SETTLED", { destinationTx, amountReceived: received?.toString() ?? null });
+  if (leg.kind !== "network_fee") {
+    const positionId = op.positionId ?? (await openPosition(tx, op));
+    await tx.insert(positionLedgerEntries).values(op.kind === "invest"
+      ? { positionId, deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest" as const, legId: leg.id }
+      : { positionId, deploymentId: leg.fromDeploymentId!, quantityDelta: (-BigInt(leg.amountIn)).toString(), reason: "sell" as const, legId: leg.id });
+  }
+  await refreshOperationStatus(tx, ctx, op.id);
+}
+
 /**
- * Follows one submitted leg to its end, never submitting anything. Not final yet: throws, so BullMQ backs off; after 30 minutes the leg becomes
- * UNKNOWN and is re-checked hourly (`recheck` 1..168) until it settles, fails, or the week is up and ops take over.
+ * Follows one submitted leg to its end, never submitting anything. The first run (12 attempts, backing off) throws while the leg is not final; after
+ * 30 minutes the leg becomes UNKNOWN. Hourly rechecks (1..168) then run until it settles or fails: a recheck never throws, so an RPC or provider
+ * error cannot end the chain, and every recheck that leaves the leg open schedules the next one.
  */
 export async function trackLeg(legId: string, recheck = 0): Promise<void> {
+  let open = true;
+  try {
+    open = await trackOnce(legId, recheck);
+  } catch (err) {
+    if (!recheck) throw err;
+    logger.warn("leg recheck failed; the next one is scheduled", { legId, recheck, errMessage: err instanceof Error ? err.message : "unknown" });
+    await markStaleUnknown(legId);
+  }
+  if (recheck > 0 && open && recheck < MAX_RECHECKS) await enqueue("track-leg", { legId, recheck: recheck + 1 });
+}
+
+/** A leg that errored past the 30-minute window still becomes UNKNOWN, so the user can see and stop it. */
+async function markStaleUnknown(legId: string): Promise<void> {
+  const [row] = await db.select({ leg: operationLegs }).from(operationLegs).where(eq(operationLegs.id, legId));
+  if (!row || !["SUBMITTED", "PENDING_CHAIN"].includes(row.leg.status) || Date.now() - (row.leg.submittedAt?.getTime() ?? Date.now()) < TRACK_WINDOW_MS) return;
+  await db.transaction(async (tx) => {
+    await lockOperation(tx, row.leg.operationId);
+    const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, legId));
+    if (current && ["SUBMITTED", "PENDING_CHAIN"].includes(current.status)) await setLegStatus(tx, null, current, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date });
+  });
+}
+
+/** Legs claimed (SUBMITTING) but never confirmed as sent, for example after a crash between the claim and the send, are handed to the tracker. */
+export async function trackStaleClaims(): Promise<void> {
+  const stale = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
+  for (const l of stale) await enqueue("track-leg", { legId: l.id });
+}
+
+/** Returns whether the leg is still open (needs another check). */
+async function trackOnce(legId: string, recheck: number): Promise<boolean> {
   const [row] = await db.select({ leg: operationLegs, op: operations }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
-  if (!row || !["SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(row.leg.status) || !row.leg.sourceTx) return;
+  if (!row || !["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(row.leg.status) || !row.leg.sourceTx) return false;
   const { op } = row;
   const sourceTx = row.leg.sourceTx;
   let { leg } = row;
+  if (leg.status === "SUBMITTING") {
+    // Claimed but never confirmed as sent (see `trackStaleClaims`): the outcome is unknown, so it is followed like any submitted leg.
+    await markSubmitted(null, op.id, leg.id);
+    leg = { ...leg, status: "SUBMITTED" };
+  }
   const fail = async (reason: string) => {
     await db.transaction(async (tx) => {
       await lockOperation(tx, op.id);
       await setLegStatus(tx, null, leg, "FAILED", { failureReason: reason });
       await refreshOperationStatus(tx, null, op.id);
     });
+    return false;
+  };
+  const goUnknown = async () => {
+    if (leg.status !== "UNKNOWN") {
+      await db.transaction(async (tx) => { await lockOperation(tx, op.id); await setLegStatus(tx, null, leg, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date }); });
+      leg = { ...leg, status: "UNKNOWN" };
+    }
+    if (!recheck) await enqueue("track-leg", { legId, recheck: 1 });
+    return true;
   };
   const notFinal = async () => {
-    if (leg.status === "UNKNOWN") {
-      if (recheck < MAX_RECHECKS) await enqueue("track-leg", { legId, recheck: recheck + 1 });
-      return;
-    }
-    if (Date.now() - (leg.submittedAt?.getTime() ?? Date.now()) < TRACK_WINDOW_MS) throw new Error("leg is not final yet");
-    await db.transaction(async (tx) => {
-      await lockOperation(tx, op.id);
-      await setLegStatus(tx, null, leg, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date });
-    });
-    await enqueue("track-leg", { legId, recheck: 1 });
+    if (leg.status === "UNKNOWN") return true;
+    if (Date.now() - (leg.submittedAt?.getTime() ?? Date.now()) >= TRACK_WINDOW_MS) return goUnknown();
+    if (!recheck) throw new Error("leg is not final yet");
+    return true;
   };
 
-  const source = await finality(leg.fromChain, sourceTx);
+  const recentBlockhash = (leg.expectedTx as { recentBlockhash?: string } | null)?.recentBlockhash;
+  const source = await finality(leg.fromChain, sourceTx, recentBlockhash);
   if (source === "failed") return fail("The source transaction failed.");
+  if (source === "expired") return fail("The transaction never landed and its blockhash expired, so it can no longer execute.");
   if (source === "pending") return notFinal();
   if (leg.status === "SUBMITTED") {
     await db.transaction(async (tx) => { await lockOperation(tx, op.id); await setLegStatus(tx, null, leg, "PENDING_CHAIN"); });
@@ -69,53 +142,77 @@ export async function trackLeg(legId: string, recheck = 0): Promise<void> {
 
   // Destination: the same transaction for a one-chain leg; otherwise the route provider's status, then the destination transaction itself.
   let destinationTx = sourceTx;
-  let providerAmount: bigint | null = null;
   if (leg.fromChain !== leg.toChain) {
     const status = await routeProviderById(leg.provider ?? "")!.status({ txHash: sourceTx, fromChain: leg.fromChain, toChain: leg.toChain });
     if (status.state === "FAILED") return fail(`The route failed: ${status.reason}.`);
+    if (status.state === "UNKNOWN") return goUnknown();
     if (status.state === "PENDING") return notFinal();
-    destinationTx = status.destinationTx ?? "";
-    providerAmount = status.receivedAmount;
-    if (destinationTx) {
-      const dest = await finality(leg.toChain, destinationTx);
-      if (dest === "failed") return fail("The destination transaction failed.");
-      if (dest === "pending") return notFinal();
-    }
+    // Every ledger amount rests on a destination transaction we can read: without its hash the leg waits (and becomes UNKNOWN), never guesses.
+    if (!status.destinationTx) return notFinal();
+    destinationTx = status.destinationTx;
+    const dest = await finality(leg.toChain, destinationTx);
+    if (dest === "failed") return fail("The destination transaction failed.");
+    if (dest !== "finalized") return notFinal();
   }
 
-  // What actually arrived: from chain evidence (Solana token balance change, ERC-20 Transfer logs, Bitcoin outputs). A bridged native EVM
-  // asset has no log to read, so the provider's reported amount is used and the nightly reconciliation checks it against the wallet.
   let received: bigint | null = null;
-  const addresses = await userAddresses(db, op.userId);
   if (leg.kind !== "network_fee") {
-    const owner = addressOn(addresses, leg.toChain);
-    const token = leg.toDeploymentId ? (await db.select({ a: instrumentDeployments.address }).from(instrumentDeployments).where(eq(instrumentDeployments.id, leg.toDeploymentId)))[0]!.a : USDC_SOLANA_MINT;
-    if (leg.toChain === "solana") received = await solanaReceived(destinationTx, owner, token);
-    else if (leg.toChain === "bitcoin") received = (await bitcoinTx(destinationTx))?.outputs.filter((o) => o.address === owner).reduce((s, o) => s + o.value, 0n) ?? null;
-    else if (token && destinationTx) {
-      const logs = (await evmReceipt(leg.toChain, destinationTx))?.logs ?? [];
-      const topic = `0x${"0".repeat(24)}${owner.slice(2).toLowerCase()}`;
-      received = logs.filter((l) => l.address === token.toLowerCase() && l.topics[0] === TRANSFER_TOPIC && l.topics[2]?.toLowerCase() === topic).reduce((s, l) => s + BigInt(l.data), 0n);
-    } else received = providerAmount;
+    received = await receivedOnChain(leg.toChain, addressOn(await userAddresses(db, op.userId), leg.toChain), await destinationToken(leg), destinationTx);
     if (received === null) return notFinal();
-    if (received <= 0n) {
-      // Delivered per the provider but nothing is visible for the user: an unclear outcome, reconciled by hand, never retried.
-      if (leg.status !== "UNKNOWN") await db.transaction(async (tx) => { await lockOperation(tx, op.id); await setLegStatus(tx, null, leg, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date }); });
-      return;
-    }
+    // Delivered per the provider but nothing is visible for the user: an unclear outcome, reconciled by hand, never retried.
+    if (received <= 0n) return goUnknown();
   }
 
   await db.transaction(async (tx) => {
     await lockOperation(tx, op.id);
-    await setLegStatus(tx, null, leg, "SETTLED", { destinationTx: destinationTx || null, amountReceived: received?.toString() ?? null });
-    if (leg.kind !== "network_fee") {
-      const positionId = op.positionId ?? (await openPosition(tx, op));
-      await tx.insert(positionLedgerEntries).values(op.kind === "invest"
-        ? { positionId, deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest" as const, legId: leg.id }
-        : { positionId, deploymentId: leg.fromDeploymentId!, quantityDelta: (-BigInt(leg.amountIn)).toString(), reason: "sell" as const, legId: leg.id });
-    }
-    await refreshOperationStatus(tx, null, op.id);
+    await settleLeg(tx, null, op, leg, destinationTx, received);
   });
+  return false;
+}
+
+/**
+ * Ops resolution of a leg stuck UNKNOWN (a dropped EVM or Bitcoin transaction, a delivery that cannot be read). SETTLED is only written from chain
+ * evidence this server reads itself: the destination transaction must be final and the amount received must match what the chain shows; only where the
+ * chain cannot show it (a native EVM balance the node cannot serve) does the supplied amount stand, and the audit says so. FAILED cannot contradict a
+ * finalized same-chain transaction.
+ */
+export async function resolveLeg(ctx: OpCtx, opId: string, legId: string, body: ResolveLegRequest): Promise<OperationView> {
+  const [row] = await db.select({ leg: operationLegs, op: operations }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(and(eq(operationLegs.id, legId), eq(operations.id, opId)));
+  if (!row) throw createHttpError("Leg not found", { code: "NOT_FOUND" });
+  const { leg, op } = row;
+  if (leg.status !== "UNKNOWN") throw createHttpError(409, "Only a leg whose outcome is unknown can be resolved.", { code: "INVALID_TRANSITION" });
+  const conflict = (message: string) => createHttpError(409, message, { code: "INVALID_TRANSITION" });
+  let received: bigint | null = null;
+  let verified = true;
+  if (body.status === "FAILED") {
+    if (leg.fromChain === leg.toChain && leg.sourceTx && (await finality(leg.fromChain, leg.sourceTx)) === "finalized") throw conflict("The transaction finalized on-chain: it did not fail.");
+  } else if (leg.kind === "network_fee") {
+    if (!leg.sourceTx || (await finality(leg.fromChain, leg.sourceTx)) !== "finalized") throw conflict("The fee transaction is not final on-chain.");
+  } else {
+    if ((await finality(leg.toChain, body.txEvidence)) !== "finalized") throw conflict("The destination transaction is not final on-chain.");
+    received = await receivedOnChain(leg.toChain, addressOn(await userAddresses(db, op.userId), leg.toChain), await destinationToken(leg), body.txEvidence);
+    if (received === null) {
+      if (!body.amountReceived) throw conflict("The chain does not show the amount: supply amountReceived.");
+      [received, verified] = [BigInt(body.amountReceived), false];
+    } else if (body.amountReceived && BigInt(body.amountReceived) !== received) throw conflict(`The chain shows ${received} received, not ${body.amountReceived}.`);
+    if (received <= 0n) throw conflict("Nothing was received in that transaction.");
+  }
+  await db.transaction(async (tx) => {
+    await lockOperation(tx, op.id);
+    const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, leg.id));
+    if (current!.status !== "UNKNOWN") throw conflict("This leg changed. Reload and try again.");
+    if (body.status === "SETTLED") await settleLeg(tx, ctx, op, current!, leg.kind === "network_fee" ? null : body.txEvidence, received);
+    else {
+      await setLegStatus(tx, ctx, current!, "FAILED", { failureReason: `Resolved by ops: ${body.reason}` });
+      await refreshOperationStatus(tx, ctx, op.id);
+    }
+    await writeAudit(tx, {
+      actorType: "user", actorUserId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, action: "leg.resolved_by_ops", entityType: "operation_leg", entityId: leg.id,
+      metadata: { status: body.status, txEvidence: body.txEvidence, reason: body.reason, amountReceived: received?.toString() ?? null, verifiedOnChain: verified },
+    });
+  });
+  const [fresh] = await db.select().from(operations).where(eq(operations.id, op.id));
+  return operationView(db, fresh!);
 }
 
 /** The user's OPEN position in the basket (created by the first settled invest leg) and the operation's link to it. */

@@ -1,11 +1,12 @@
 import { Transaction } from "@scure/btc-signer";
+import createHttpError from "http-errors";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../../src/app";
 import { seedPlatformWallets } from "../../src/services/gas";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
-import { balanceKey, btcInputKey, mockChains, solanaTestWallet } from "./chain-mocks";
+import { balanceKey, btcInputKey, btcPsbt, mockChains, solanaTestWallet } from "./chain-mocks";
 import { USDC_MINT, seedBasket, seedPosition, seedUser, type SeedAsset } from "./helpers";
 
 const SOL: SeedAsset = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 5000 };
@@ -19,7 +20,7 @@ const quote = (h: H, opId: string, legId: string) => post(h, `/v1/operations/${o
 const submit = (h: H, opId: string, legId: string, body: object) => post(h, `/v1/operations/${opId}/legs/${legId}/submit`, body);
 const setLeg = (id: string, status: string) => adminSql`UPDATE app.operation_legs SET status = ${status} WHERE id = ${id}`;
 
-async function arrange() {
+async function arrange(over: { usdc?: bigint } = {}) {
   const chain = mockChains();
   await seedPlatformWallets();
   const wallet = solanaTestWallet();
@@ -29,7 +30,7 @@ async function arrange() {
   const positionId = await seedPosition(user.userId, basket, [{ deploymentId: sol!.deploymentId, quantity: 4_000_000_000n }, { deploymentId: eth!.deploymentId, quantity: 2n * 10n ** 18n }, { deploymentId: btc!.deploymentId, quantity: 100_000_000n }]);
   chain.balances.set(balanceKey(user.solanaAddress, null), 4_000_000_000n);
   chain.balances.set(balanceKey(user.btcAddress, null), 100_000_000n);
-  chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 50_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.usdc ?? 0n); // no USDC to prepay the fee unless a test says so
   // The user moved some ETH elsewhere: the wallet holds 0.5 ETH although the ledger says 2.
   fakes.evm.balances.set(`ethereum:${user.evmAddress}`, 5n * 10n ** 17n);
   return { chain, wallet, basket, user, positionId, deployments: { sol: sol!, eth: eth!, btc: btc! } };
@@ -54,7 +55,7 @@ describe("sell plan", () => {
     expect(res.body.legs.at(-1).sequence).toBe(4);
     expect(res.body.legs.every((l: { toChain: string }) => l.toChain === "solana")).toBe(true);
     const usage = await adminSql<{ chain: string; amount_native: string }[]>`SELECT chain, amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} ORDER BY chain`;
-    expect(Object.fromEntries(usage.map((u) => [u.chain, u.amount_native]))).toEqual({ solana: String(10_000 + 5_000), ethereum: "150000000000000" });
+    expect(Object.fromEntries(usage.map((u) => [u.chain, u.amount_native]))).toEqual({ solana: String(10_000 + 10_000), ethereum: "150000000000000" });
   });
 
   it("skips deployments the wallet no longer holds and refuses when nothing is left", async () => {
@@ -176,5 +177,127 @@ describe("leave and sell former assets", () => {
     const stranger = await seedUser();
     expect((await post(stranger.h, `/v1/positions/${positionId}/leave`)).status).toBe(404);
     expect((await sell(stranger.h, positionId)).status).toBe(404);
+  });
+});
+
+describe("review fixes", () => {
+  const nativeEthBalance = (user: { evmAddress: string }, wei: bigint) => fakes.evm.balances.set(`ethereum:${user.evmAddress}`, wei);
+
+  it("D1: with enough USDC on Solana the network fee is the FIRST leg; the EVM gas drop waits until it has settled", async () => {
+    const { user, positionId, chain } = await arrange({ usdc: 50_000_000n });
+    const op = (await sell(user.h, positionId)).body;
+    expect(op.legs.map((l: { kind: string; sequence: number }) => [l.sequence, l.kind])).toEqual([[1, "network_fee"], [2, "swap"], [3, "cross_chain"], [4, "cross_chain"]]);
+    const ethLeg = op.legs[2];
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    await setLeg(op.legs[0].id, "PENDING_CHAIN");
+    await setLeg(op.legs[1].id, "SETTLED");
+    fakes.evm.balances.delete(`ethereum:${user.evmAddress}`);
+    const waiting = await quote(user.h, op.id, ethLeg.id);
+    expect(waiting.body).toMatchObject({ transaction: null, gasDrop: { status: "pending", txHash: null } });
+    expect(fakes.evm.sentNative).toHaveLength(0); // fee not settled: no platform gas yet
+    await setLeg(op.legs[0].id, "SETTLED");
+    const sent = await quote(user.h, op.id, ethLeg.id);
+    expect(sent.body.gasDrop).toMatchObject({ status: "pending", txHash: "0xdrop1" });
+    void chain;
+  });
+
+  it("D1: without USDC the fee stays last and EVM gas is dropped anyway (an accepted loss within the caps)", async () => {
+    const { user, positionId } = await arrange();
+    const op = (await sell(user.h, positionId)).body;
+    expect(op.legs.at(-1).kind).toBe("network_fee");
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    await setLeg(op.legs[0].id, "SETTLED");
+    fakes.evm.balances.delete(`ethereum:${user.evmAddress}`);
+    expect((await quote(user.h, op.id, op.legs[1].id)).body.gasDrop).toMatchObject({ status: "pending", txHash: "0xdrop1" });
+  });
+
+  it("I8: selling ALL of a native EVM asset still gets a gas drop (the wallet needs the amount plus gas)", async () => {
+    const { user, positionId } = await arrange();
+    nativeEthBalance(user, 2n * 10n ** 18n); // the whole ledger holding
+    const op = (await sell(user.h, positionId, { percent: 100 })).body;
+    const ethLeg = op.legs.find((l: { fromChain: string }) => l.fromChain === "ethereum");
+    expect(ethLeg.amountIn).toBe((2n * 10n ** 18n).toString());
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    for (const l of op.legs.filter((x: { sequence: number }) => x.sequence < ethLeg.sequence)) await setLeg(l.id, "SETTLED");
+    const q = await quote(user.h, op.id, ethLeg.id);
+    expect(q.body.gasDrop.status).toBe("pending");
+    expect(fakes.evm.sentNative).toHaveLength(1); // balance (2 ETH) covers the gas alone but not value + gas
+  });
+
+  it("I8: selling all Bitcoin keeps the miner-fee ceiling back so the PSBT can be built", async () => {
+    const { user, positionId } = await arrange();
+    const op = (await sell(user.h, positionId, { percent: 100 })).body;
+    expect(op.legs.find((l: { fromChain: string }) => l.fromChain === "bitcoin").amountIn).toBe("99900000"); // 1 BTC - 100,000 sats
+  });
+
+  it("I8: an ERC-20 sell's gas drop covers the approval transaction too (2x the estimate instead of 1.5x)", async () => {
+    const chain = mockChains();
+    await seedPlatformWallets();
+    const wallet = solanaTestWallet();
+    const basket = await seedBasket({ assets: [{ symbol: "TKN", chain: "ethereum", tokenStandard: "erc20", bps: 10_000 }] });
+    const user = await seedUser({ wallet });
+    const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 1000n }]);
+    fakes.evm.balances.set(`ethereum:${user.evmAddress}:${basket.deployments[0]!.address}`, 1000n);
+    const op = (await sell(user.h, positionId)).body;
+    expect((await adminSql`SELECT expected_tx FROM app.operation_legs WHERE id = ${op.legs[0].id}`)[0]!.expected_tx).toMatchObject({ gasDropNative: "200000000000000" }); // 100,000 gwei x 2
+    void chain;
+  });
+
+  it("spec 7: a sell is refused while the EVM gas wallet cannot fund the planned drop", async () => {
+    const { user, positionId } = await arrange();
+    fakes.evm.balances.delete(`ethereum:${fakes.evm.gasWalletAddress()}`);
+    const res = await sell(user.h, positionId);
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
+    expect(await adminSql`SELECT 1 FROM app.operations WHERE status = 'PLANNED'`).toHaveLength(0);
+  });
+
+  describe("Bitcoin PSBT checks (I5)", () => {
+    async function btcLegWith(psbt: (refund: string, sats: bigint) => string) {
+      const ctx = await arrange();
+      const { lifi } = await import("../../src/providers/routes/lifi");
+      const original = vi.mocked(lifi.quote).getMockImplementation()!;
+      vi.mocked(lifi.quote).mockImplementation(async (i) => {
+        const q = await original(i);
+        return i.fromChain === "bitcoin" ? { ...q, transaction: { kind: "bitcoin" as const, psbtBase64: psbt(i.fromAddress, i.fromAmount) } } : q;
+      });
+      const op = (await sell(ctx.user.h, ctx.positionId)).body;
+      await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+      for (const l of op.legs.slice(0, 2)) await setLeg(l.id, "SETTLED");
+      return { ...ctx, op, btcLeg: op.legs[2] };
+    }
+    const refused = async (psbt: (refund: string, sats: bigint) => string) => {
+      const { user, op, btcLeg } = await btcLegWith(psbt);
+      const res = await quote(user.h, op.id, btcLeg.id);
+      expect(res.status).toBe(503);
+      expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
+    };
+    it("refuses a deposit that is not the leg's amount", () => refused((r, s) => btcPsbt(r, s, { depositSats: s - 1n })));
+    it("refuses a PSBT with no refund output to the user", () => refused((r, s) => btcPsbt(r, s, { changeSats: null })));
+    it("refuses a miner fee above min(2% of the sale, 100,000 sats)", () => refused((r, s) => btcPsbt(r, s, { inputSats: s + 340_000n })));
+    it("refuses a user-signed PSBT that spends different inputs than the quote", async () => {
+      const { user, op, btcLeg, chain } = await btcLegWith((r, s) => btcPsbt(r, s));
+      const q = await quote(user.h, op.id, btcLeg.id);
+      const other = btcPsbt(user.btcAddress, 50_000_000n); // same outputs shape, a different (random) input
+      const tx = Transaction.fromPSBT(Buffer.from(q.body.transaction.psbtBase64, "base64"), { allowUnknownOutputs: true });
+      const swapped = Transaction.fromPSBT(Buffer.from(other, "base64"), { allowUnknownOutputs: true });
+      for (let n = 0; n < tx.outputsLength; n++) swapped.updateOutput(n, { amount: tx.getOutput(n).amount });
+      swapped.sign(btcInputKey.priv);
+      const res = await submit(user.h, op.id, btcLeg.id, { signedPsbt: Buffer.from(swapped.toPSBT()).toString("base64") });
+      expect(res.body.error.code).toBe("PSBT_MISMATCH");
+      expect(chain.broadcasts).toHaveLength(0);
+    });
+    it("an unsigned PSBT is a 409, and a node rejection is BROADCAST_REJECTED with the claim released", async () => {
+      const { user, op, btcLeg, chain } = await btcLegWith((r, s) => btcPsbt(r, s));
+      const q = await quote(user.h, op.id, btcLeg.id);
+      expect((await submit(user.h, op.id, btcLeg.id, { signedPsbt: q.body.transaction.psbtBase64 })).body.error.code).toBe("PSBT_MISMATCH");
+      const signed = (() => { const t = Transaction.fromPSBT(Buffer.from(q.body.transaction.psbtBase64, "base64"), { allowUnknownOutputs: true }); t.sign(btcInputKey.priv); return Buffer.from(t.toPSBT()).toString("base64"); })();
+      const bitcoin = await import("../../src/providers/bitcoin");
+      vi.mocked(bitcoin.broadcastBitcoin).mockRejectedValueOnce(createHttpError(409, "rejected", { code: "BROADCAST_REJECTED" }));
+      expect((await submit(user.h, op.id, btcLeg.id, { signedPsbt: signed })).body.error.code).toBe("BROADCAST_REJECTED");
+      expect((await adminSql<{ status: string; source_tx: string | null }[]>`SELECT status, source_tx FROM app.operation_legs WHERE id = ${btcLeg.id}`)[0]).toEqual({ status: "PLANNED", source_tx: null });
+      expect((await submit(user.h, op.id, btcLeg.id, { signedPsbt: signed })).status).toBe(200);
+      expect(chain.broadcasts).toHaveLength(1);
+    });
   });
 });

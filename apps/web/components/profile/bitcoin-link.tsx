@@ -32,13 +32,13 @@ export function BitcoinLink({ me }: { me: MeResponse }) {
       let method: "bip322" | "bip137" = "bip322";
       try {
         const signed = await walletProvider.signPSBT({
-          psbt: challenge.toSignPsbt, signInputs: [{ address, index: 0, sighashTypes: [address.startsWith("bc1p") ? 0 : 1] }], broadcast: false,
+          psbt: challenge.toSignPsbt, signInputs: [{ address, index: 0, sighashTypes: [address.toLowerCase().startsWith("bc1p") ? 0 : 1] }], broadcast: false,
         });
         signature = signed.psbt;
       } catch (err) {
         if (isUserRejection(err)) throw new WalletRejectedError();
         // BIP-137 covers legacy and SegWit addresses; Taproot has no BIP-137.
-        if (address.startsWith("bc1p")) throw err;
+        if (address.toLowerCase().startsWith("bc1p")) throw err;
         method = "bip137";
         try {
           signature = toBase64(await walletProvider.signMessage({ message: challenge.message, address, protocol: "ecdsa" }));

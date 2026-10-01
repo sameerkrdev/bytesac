@@ -94,6 +94,36 @@ describe("EVM gas drops", () => {
     expect(fakes.evm.sentNative).toHaveLength(0);
   });
 
+  it("a node's definitive refusal is a failed drop, not an unknown outcome; the next call reports it and sends nothing", async () => {
+    const { user, legId } = await setup();
+    fakes.evm.sendRefused = true;
+    expect(await sendGasDrop(legId, "ethereum", user.evmAddress, 900_000n)).toEqual({ status: "failed", txHash: null });
+    fakes.evm.sendRefused = false;
+    expect(await sendGasDrop(legId, "ethereum", user.evmAddress, 900_000n)).toEqual({ status: "failed", txHash: null });
+    expect(await drops()).toEqual([{ status: "failed", tx_hash: null, amount_native: "900000" }]);
+  });
+
+  it("D3: at most 5 drops per user per chain per day, even when each is within the budget", async () => {
+    const basket = await seedBasket({ assets: [{ symbol: "ETH", chain: "ethereum", tokenStandard: "native", bps: 10_000 }] });
+    const user = await seedUser();
+    for (let n = 0; n < 5; n++) {
+      const { legId } = await seedLeg(user.userId, basket);
+      await adminSql`UPDATE app.operations SET status = 'CANCELLED' WHERE user_id = ${user.userId}`; // free the one-active slot for the next seeded operation
+      await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${legId}`;
+      await adminSql`INSERT INTO app.gas_drops (id, leg_id, chain, recipient, amount_native, status) VALUES (gen_random_uuid(), ${legId}, 'ethereum', ${user.evmAddress}, 1, 'confirmed')`;
+    }
+    const { legId } = await seedLeg(user.userId, basket);
+    await expect(sendGasDrop(legId, "ethereum", user.evmAddress, 1_000n)).rejects.toMatchObject({ code: "GAS_BUDGET_EXHAUSTED" });
+    expect(fakes.evm.sentNative).toHaveLength(0);
+    await expect(sendGasDrop(legId, "base", user.evmAddress, 1_000n)).resolves.toMatchObject({ status: "pending" }); // another chain has its own count
+  });
+
+  it("I8: skips only when the balance covers the gas AND the amount the leg itself sends (selling the native asset)", async () => {
+    const { user, legId } = await setup();
+    fakes.evm.balances.set(`ethereum:${user.evmAddress}`, 1_000_000n);
+    expect(await sendGasDrop(legId, "ethereum", user.evmAddress, 900_000n, 500_000n)).toMatchObject({ status: "pending", txHash: "0xdrop1" });
+  });
+
   it("never sends again when the first send's outcome is unknown", async () => {
     const { user, legId } = await setup();
     fakes.evm.sendFails = true;

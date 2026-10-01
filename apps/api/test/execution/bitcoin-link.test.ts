@@ -124,3 +124,19 @@ describe("linking a Bitcoin address", () => {
     expect(limited.body.error.code).toBe("RATE_LIMITED");
   });
 });
+
+describe("sign-in guard (minor 2)", () => {
+  it("the service itself refuses a Bitcoin sign-in challenge, not only the request schema", async () => {
+    const { issueChallenge } = await import("../../src/services/sign-in");
+    await expect(issueChallenge({ purpose: "sign_in", chain: "bitcoin", rawAddress: bitcoinWallet("p2wpkh").address, sessionId: null, meta: { ip: "127.0.0.1", requestId: "r" } as never })).rejects.toMatchObject({ code: "UNSUPPORTED_CHAIN" });
+  });
+
+  it("the challenge endpoint shares the Bitcoin link rate limit (10 per hour)", async () => {
+    const { h } = await seedUser();
+    const w = bitcoinWallet("p2wpkh");
+    const statuses: number[] = [];
+    for (let n = 0; n < 11; n++) statuses.push((await request(app).post("/v1/me/chain-accounts/bitcoin/challenge").set(h).send({ address: w.address })).status);
+    expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+});

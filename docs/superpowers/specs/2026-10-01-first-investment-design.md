@@ -11,7 +11,7 @@
 A verified user invests **USDC on Solana** into an investable crypto basket (Solana, EVM and native Bitcoin constituents). The platform builds a **plan of legs** routed by **LI.FI**, the user signs every leg in their own wallets, the platform pays network gas from its own gas wallets and recovers it through a user-signed **network fee** leg, tracks each leg to settlement, and records what actually arrived as the user's basket position. The user can **leave** the basket or **sell back to USDC** at any time. No platform or manager fees are charged yet.
 
 **Success criteria**
-1. Funds only move by transactions the user signs; the platform only co-signs as Solana fee payer on byte-identical planner-built transactions and sends gas drops from its own wallets.
+1. Funds only move by transactions the user signs; the platform only co-signs as Solana fee payer on Solana transactions byte-identical to the provider-built message the user saw (decoded and validated, ADR-014) and sends gas drops from its own wallets.
 2. Every leg is tracked to `SETTLED`, `FAILED` or `UNKNOWN`; unknown outcomes are reconciled, never resubmitted.
 3. Positions equal amounts actually received (append-only ledger), reconciled against chain balances.
 4. Exit (leave, sell, sell former assets) works from day one with no manager approval.
@@ -125,7 +125,7 @@ Errors (new): `NOT_INVESTABLE`, `NOT_ELIGIBLE`, `OPERATION_IN_PROGRESS`, `QUOTE_
 
 ## 13. Security & safety
 
-- User signs every value-moving transaction; the platform's fee payer only co-signs byte-identical planner-built Solana transactions; gas drops come only from platform gas wallets, capped, audited, for planner-built legs.
+- User signs every value-moving transaction; the platform's fee payer only co-signs Solana transactions byte-identical to the provider-built message the user saw, after fee-payer validation (ADR-014); gas drops come only from platform gas wallets, capped, audited, for planner-built legs.
 - Quote checks: tokens, chains, `toAddress` = user's own address, minimum output enforced by the route transaction; PSBT output checks; EVM transaction checks.
 - Exact-amount approvals; idempotency keys; one active operation per user; no automatic retry; unknown outcomes reconciled.
 - Platform keys never logged; KMS before launch. Provider responses untrusted (zod). Tests mock LI.FI, RPC, Alchemy and wallets; no real funds. Mainnet small-amount manual checks are a user action before launch.

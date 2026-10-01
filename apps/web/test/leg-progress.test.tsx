@@ -29,12 +29,34 @@ describe("LegProgress", () => {
     signer.signSolana.mockResolvedValue("c2lnbmVk");
     api.submitLeg.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xTx" }), buyLeg()] }));
     show();
-    await user().click(await screen.findByRole("button", { name: "Sign step 1 in your wallet" }));
+    await user().click(await screen.findByRole("button", { name: "Review step 1" }));
+    expect(await screen.findByText("Fresh quote for step 1")).toBeInTheDocument();
+    expect(signer.signSolana).not.toHaveBeenCalled(); // the wallet only opens after the user has seen the fresh figures
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
     await waitFor(() => expect(api.submitLeg).toHaveBeenCalledWith(ID(20), ID(10), { signedTx: "c2lnbmVk" }));
     expect(signer.signSolana).toHaveBeenCalledWith("AAEC");
     expect(await screen.findByText(/Waiting for the network to confirm/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Source transaction/ })).toHaveAttribute("href", "https://solscan.io/tx/5xTx");
-    expect(screen.queryByRole("button", { name: /Sign step/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Review step|Approve step/ })).toBeNull();
+  });
+
+  it("shows the fresh estimate and minimum before the wallet opens", async () => {
+    const swap = buyLeg({ routeSummary: { symbol: "SOL", decimals: 9, estimatedOut: "1000000000" }, minOut: "990000000" });
+    api.getOperation.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SETTLED" }), swap] }));
+    api.quoteLeg.mockResolvedValue({ ...solanaQuote, legId: swap.id, estimatedOut: "1020000000", minOut: "1009800000" });
+    show();
+    await user().click(await screen.findByRole("button", { name: "Review step 2" }));
+    expect(await screen.findByText(/about 1.02 SOL \(at least 1.0098 SOL\)/)).toBeInTheDocument();
+    expect(signer.signSolana).not.toHaveBeenCalled();
+  });
+
+  it("a price move refused by the server says so and nothing is signed", async () => {
+    api.getOperation.mockResolvedValue(operation());
+    api.quoteLeg.mockRejectedValue(new ApiError("PRICE_MOVED", 409, "moved"));
+    show();
+    await user().click(await screen.findByRole("button", { name: "Review step 1" }));
+    expect(await screen.findByText("The price moved")).toBeInTheDocument();
+    expect(signer.signSolana).not.toHaveBeenCalled();
   });
 
   it("an expired quote says so and offers a new quote, which signs again", async () => {
@@ -43,10 +65,12 @@ describe("LegProgress", () => {
     signer.signSolana.mockResolvedValue("c2lnbmVk");
     api.submitLeg.mockRejectedValueOnce(new ApiError("QUOTE_EXPIRED", 409, "expired")).mockResolvedValueOnce(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED" }), buyLeg()] }));
     show();
-    await user().click(await screen.findByRole("button", { name: "Sign step 1 in your wallet" }));
+    await user().click(await screen.findByRole("button", { name: "Review step 1" }));
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
     expect(await screen.findByText("Quote expired")).toBeInTheDocument();
     await user().click(screen.getByRole("button", { name: "Get a new quote" }));
     await waitFor(() => expect(api.quoteLeg).toHaveBeenCalledTimes(2));
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
     await waitFor(() => expect(api.submitLeg).toHaveBeenCalledTimes(2));
   });
 
@@ -57,10 +81,11 @@ describe("LegProgress", () => {
     signer.sendEvm.mockResolvedValue("0xhash");
     api.submitLeg.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [sellLeg({ status: "SUBMITTED" }), feeLeg({ id: ID(13), sequence: 2 })] }));
     show();
-    await user().click(await screen.findByRole("button", { name: "Sign step 1 in your wallet" }));
+    await user().click(await screen.findByRole("button", { name: "Review step 1" }));
     expect(await screen.findByText(/Waiting for the gas top-up to confirm/)).toBeInTheDocument();
     expect(signer.sendEvm).not.toHaveBeenCalled();
     await act(() => vi.advanceTimersByTimeAsync(3100));
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
     await waitFor(() => expect(signer.sendEvm).toHaveBeenCalledWith(evmQuote.transaction, evmQuote.approval));
     await waitFor(() => expect(api.submitLeg).toHaveBeenCalledWith(ID(20), ID(12), { txHash: "0xhash" }));
   });
@@ -71,7 +96,8 @@ describe("LegProgress", () => {
     api.quoteLeg.mockResolvedValue(solanaQuote);
     signer.signSolana.mockRejectedValue(new WalletRejectedError());
     show();
-    await user().click(await screen.findByRole("button", { name: "Sign step 1 in your wallet" }));
+    await user().click(await screen.findByRole("button", { name: "Review step 1" }));
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
     expect(await screen.findByText("Signature cancelled")).toBeInTheDocument();
     expect(api.submitLeg).not.toHaveBeenCalled();
   });
@@ -89,12 +115,13 @@ describe("LegProgress", () => {
     expect(screen.getByText("Partly completed")).toBeInTheDocument();
   });
 
-  it("an unknown outcome can be neither signed again nor stopped, and Bitcoin legs show the confirmation time", async () => {
+  it("an unknown outcome cannot be signed again but the user may stop (the check continues), and Bitcoin legs show the confirmation time", async () => {
     const btc = buyLeg({ id: ID(14), sequence: 2, toChain: "bitcoin", status: "UNKNOWN", routeSummary: { symbol: "BTC", decimals: 8 } });
     api.getOperation.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SETTLED" }), btc] }));
     show();
     expect(await screen.findByText(/Do not sign it again/)).toBeInTheDocument();
     expect(screen.getByText("Bitcoin needs 2 confirmations, about 20 minutes.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Sign step|Stop here|Cancel/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Review step|Approve step/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop here" })).toBeInTheDocument();
   });
 });

@@ -41,6 +41,7 @@ operationsRouter.post("/:id/legs/:legId/quote", validate({ params: legParams }),
 });
 
 operationsRouter.post("/:id/legs/:legId/submit", validate({ params: legParams, body: legSubmitSchema }), async (req, res) => {
+  await consume(limits.submitsUser, req.auth!.userId);
   res.json(await submitLeg(ctx(req), req.params.id as string, req.params.legId as string, req.body as LegSubmit));
 });
 

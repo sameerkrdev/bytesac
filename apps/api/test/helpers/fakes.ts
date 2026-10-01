@@ -23,6 +23,8 @@ class FakeEvmRpc {
   receipts = new Map<string, { success: boolean; blockNumber: bigint; head: bigint; logs: Array<{ address: string; topics: string[]; data: string }> }>();
   sentNative: Array<{ chain: string; to: string; value: bigint }> = [];
   sendFails = false;
+  /** The node definitively refuses the send (insufficient funds, nonce). */
+  sendRefused = false;
   evmBalance = async (chain: string, owner: string, token: string | null): Promise<bigint> => this.balances.get(`${chain}:${owner.toLowerCase()}${token ? ":" + token.toLowerCase() : ""}`) ?? 0n;
   /** Native amounts received per `hash:owner`; unlisted = receipt not found. */
   nativeReceived = new Map<string, bigint>();
@@ -32,6 +34,7 @@ class FakeEvmRpc {
   gasWalletAddress = (): string => "0x00000000000000000000000000000000000000aa";
   sendNativeFromGasWallet = async (i: { chain: string; to: string; value: bigint }): Promise<string> => {
     if (this.sendFails) throw new Error("rpc down");
+    if (this.sendRefused) throw Object.assign(new Error("insufficient funds"), { refused: true });
     this.sentNative.push(i);
     return `0xdrop${this.sentNative.length}`;
   };
@@ -181,7 +184,7 @@ class FakeQueue {
 export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
-  Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [], balances: new Map(), transactions: new Map(), receipts: new Map(), nativeReceived: new Map(), sentNative: [], sendFails: false });
+  Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [], balances: new Map(), transactions: new Map(), receipts: new Map(), nativeReceived: new Map(), sentNative: [], sendFails: false, sendRefused: false });
   Object.assign(fakes.solana, { behavior: "ok", decimals: 6, calls: [] });
   fakes.queue.jobs = [];
   Object.assign(fakes.gemini, { search: async () => null, embedFails: false, vector: unitVector(0), searchCalls: [], embedCalls: [] });

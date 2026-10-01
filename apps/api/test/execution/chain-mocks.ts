@@ -6,6 +6,7 @@ import { vi } from "vitest";
 import * as bitcoin from "../../src/providers/bitcoin";
 import { lifi } from "../../src/providers/routes/lifi";
 import * as solanaTx from "../../src/providers/solana-tx";
+import { fakes } from "../helpers/fakes";
 import { bitcoinWallet } from "./helpers";
 
 // Chain, LI.FI and Alchemy doubles for the operation tests: nothing here touches a network.
@@ -21,13 +22,15 @@ export interface ChainState {
   /** Wallet balances by `balanceKey(owner, token)`; Solana and Bitcoin owners by address. Unlisted = 0. */
   balances: Map<string, bigint>;
   /** Solana status per signature; unlisted = pending. */
-  solanaFinality: Map<string, "finalized" | "failed" | "pending">;
+  solanaFinality: Map<string, "finalized" | "failed" | "pending" | "expired">;
   /** What `owner` received in a Solana transaction (`signature:owner`); unlisted = transaction not found. */
   solanaReceived: Map<string, bigint>;
   bitcoinTxs: Map<string, { confirmations: number; outputs: { address: string | null; value: bigint }[] }>;
   /** LI.FI status answers per source tx hash; unlisted = PENDING. */
-  lifiStatus: Map<string, { state: "PENDING" } | { state: "DONE"; destinationTx: string | null; receivedAmount: bigint | null } | { state: "FAILED"; reason: string }>;
+  lifiStatus: Map<string, { state: "PENDING" } | { state: "DONE"; destinationTx: string | null } | { state: "FAILED"; reason: string } | { state: "UNKNOWN"; reason: string }>;
   quotes: Array<{ fromChain: string; toChain: string; fromAmount: bigint; toAddress: string; svmSponsor?: string }>;
+  /** Overrides applied to the next fresh quotes: scale the output (price move) or add gas. */
+  quoteOut: { numerator: bigint; denominator: bigint };
   broadcasts: string[];
 }
 
@@ -39,21 +42,25 @@ const enc = new TextEncoder();
 export const btcInputKey = bitcoinWallet("p2wpkh");
 
 /** A LI.FI-style Bitcoin PSBT: one input of `btcInputKey`, then the vault deposit, the OP_RETURN memo and the refund to `refund`. */
-export function btcPsbt(refund: string, sats: bigint, over: { depositSats?: bigint } = {}): string {
+export function btcPsbt(refund: string, sats: bigint, over: { depositSats?: bigint; changeSats?: bigint | null; inputSats?: bigint } = {}): string {
   const tx = new Transaction({ allowUnknownOutputs: true });
-  tx.addInput({ txid: randomBytes(32), index: 0, witnessUtxo: { script: btcInputKey.pay.script, amount: sats + 50_000n } });
+  tx.addInput({ txid: randomBytes(32), index: 0, witnessUtxo: { script: btcInputKey.pay.script, amount: over.inputSats ?? sats + 50_000n } });
   tx.addOutput({ script: bitcoinWallet("p2wpkh").pay.script, amount: over.depositSats ?? sats });
   tx.addOutput({ script: Script.encode(["RETURN", enc.encode("=:ETH.USDC:0xabc")]), amount: 0n });
-  tx.addOutputAddress(refund, 40_000n);
+  if (over.changeSats !== null) tx.addOutputAddress(refund, over.changeSats ?? 40_000n);
   return Buffer.from(tx.toPSBT()).toString("base64");
 }
 
 /** Installs spies on every network-facing function the operations use. Call in `beforeEach`; `vi.restoreAllMocks()` undoes it. */
 export function mockChains(): ChainState {
-  const state: ChainState = { balances: new Map(), solanaFinality: new Map(), solanaReceived: new Map(), bitcoinTxs: new Map(), lifiStatus: new Map(), quotes: [], broadcasts: [] };
+  const state: ChainState = { balances: new Map(), solanaFinality: new Map(), solanaReceived: new Map(), bitcoinTxs: new Map(), lifiStatus: new Map(), quotes: [], broadcasts: [], quoteOut: { numerator: 1n, denominator: 1n } };
+  // The platform wallets are funded unless a test says otherwise.
+  state.balances.set(balanceKey(solanaTx.feePayer().publicKey.toBase58(), null), 10n ** 12n);
+  fakes.evm.balances.set(`ethereum:${fakes.evm.gasWalletAddress()}`, 10n ** 20n);
   vi.spyOn(solanaTx, "solanaBalance").mockImplementation(async (owner, mint) => state.balances.get(balanceKey(owner, mint)) ?? 0n);
   vi.spyOn(solanaTx, "solanaFinality").mockImplementation(async (sig) => state.solanaFinality.get(sig) ?? "pending");
   vi.spyOn(solanaTx, "solanaReceived").mockImplementation(async (sig, owner) => state.solanaReceived.get(`${sig}:${owner}`) ?? null);
+  vi.spyOn(solanaTx.connection, "isBlockhashValid").mockResolvedValue({ context: { slot: 1 }, value: true });
   vi.spyOn(solanaTx.connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
   vi.spyOn(solanaTx.connection, "sendRawTransaction").mockImplementation(async (raw) => bs58.encode(VersionedTransaction.deserialize(raw as Uint8Array).signatures[0]!));
   vi.spyOn(bitcoin, "bitcoinBalance").mockImplementation(async (address) => state.balances.get(balanceKey(address, null)) ?? 0n);
@@ -63,7 +70,8 @@ export function mockChains(): ChainState {
   vi.spyOn(lifi, "status").mockImplementation(async ({ txHash }) => state.lifiStatus.get(txHash) ?? { state: "PENDING" });
   vi.spyOn(lifi, "quote").mockImplementation(async (i) => {
     state.quotes.push({ fromChain: i.fromChain, toChain: i.toChain, fromAmount: i.fromAmount, toAddress: i.toAddress, svmSponsor: i.svmSponsor });
-    const base = { estimatedOut: i.fromAmount, minOut: (i.fromAmount * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", gasEstimateUsd: 0.05, expiresAt: new Date(Date.now() + 60_000), approvalAddress: null };
+    const out = (i.fromAmount * state.quoteOut.numerator) / state.quoteOut.denominator;
+    const base = { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", gasEstimateUsd: 0.05, nativePriceUsd: null, expiresAt: new Date(Date.now() + 60_000), approvalAddress: null };
     if (i.fromChain === "solana") {
       const tx = new VersionedTransaction(new TransactionMessage({
         payerKey: solanaTx.feePayer().publicKey, recentBlockhash: BLOCKHASH,
