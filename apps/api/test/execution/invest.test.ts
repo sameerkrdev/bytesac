@@ -223,6 +223,7 @@ describe("cancel and stop", () => {
     const op = (await invest(user.h, basket.basketId)).body;
     const res = await cancel(user.h, op.id);
     expect(res.body.status).toBe("CANCELLED");
+    expect((await request(app).get("/v1/portfolio").set(user.h)).body.history.map((o: { id: string }) => o.id)).toEqual([op.id]);
     expect((await invest(user.h, basket.basketId, { idempotencyKey: "key-eeeeeeee" })).status).toBe(201);
   });
 

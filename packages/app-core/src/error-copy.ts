@@ -46,7 +46,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   GAS_BUDGET_EXHAUSTED: { title: "Network gas budget reached", message: "Today's sponsored gas budget is used up. Try again later.", recovery: "wait" },
   ROUTE_UNAVAILABLE: { title: "Route unavailable", message: "No route is available right now. Try again later.", recovery: "retry" },
   BTC_ADDRESS_REQUIRED: { title: "Link a Bitcoin wallet", message: "This basket holds Bitcoin. Link a Bitcoin address in your profile first.", recovery: "fix-input" },
-  INSUFFICIENT_BALANCE: { title: "Not enough USDC", message: "Your Solana wallet doesn't hold enough USDC for this amount and the network fee.", recovery: "fix-input" },
+  INSUFFICIENT_BALANCE: { title: "Not enough USDC", message: "Your Solana wallet doesn't hold enough USDC for this amount.", recovery: "fix-input" },
   DOCUMENT_REJECTED: { title: "File not accepted", message: "Upload a PDF, JPEG or PNG up to 10 MB.", recovery: "fix-input" },
   INTERNAL: { title: "Something went wrong", message: "Try again. If it keeps happening, contact support.", recovery: "retry" },
   NETWORK_ERROR: { title: "No connection", message: "Check your connection and try again.", recovery: "retry" },

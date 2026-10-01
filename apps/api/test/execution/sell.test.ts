@@ -50,6 +50,7 @@ describe("sell plan", () => {
       ["cross_chain", "bitcoin", "50000000", "user_btc_inputs"],
       ["network_fee", "solana", "182400", "platform_fee_payer"],
     ]);
+    expect(res.body.legs[1].routeSummary).toMatchObject({ symbol: expect.any(String), decimals: 18 }); // the client formats raw amounts with these
     expect(res.body.legs.at(-1).sequence).toBe(4);
     expect(res.body.legs.every((l: { toChain: string }) => l.toChain === "solana")).toBe(true);
     const usage = await adminSql<{ chain: string; amount_native: string }[]>`SELECT chain, amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} ORDER BY chain`;
@@ -113,6 +114,7 @@ describe("sell plan", () => {
     for (const l of op.legs.slice(0, 2)) await setLeg(l.id, "SETTLED");
     const q = await quote(user.h, op.id, btcLeg.id);
     expect(q.body.transaction.kind).toBe("bitcoin");
+    expect(q.body.transaction.inputCount).toBeGreaterThanOrEqual(1); // the wallet signs every input
 
     const sign = (psbt: string, mutate?: (tx: Transaction) => void) => {
       const tx = Transaction.fromPSBT(Buffer.from(psbt, "base64"), { allowUnknownOutputs: true });
