@@ -4,6 +4,7 @@ type Label = { label: string; tone: "success" | "warning" | "danger" | "neutral"
 
 export const LEG_STATUS_LABEL: Record<LegState, Label> = {
   PLANNED: { label: "Waiting", tone: "neutral" },
+  SUBMITTING: { label: "Sending", tone: "neutral" },
   SUBMITTED: { label: "Submitted", tone: "neutral" },
   PENDING_CHAIN: { label: "Pending on chain", tone: "warning" },
   SETTLED: { label: "Settled", tone: "success" },

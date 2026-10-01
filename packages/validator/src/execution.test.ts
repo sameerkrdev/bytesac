@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LEG_STATES, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
+import { LEG_STATES, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
 
 describe("splitInvestment", () => {
   it("splits deployable by bps and gives the remainder to the largest weight", () => {
@@ -33,12 +33,30 @@ describe("networkFeeMicro", () => {
   });
 });
 
+describe("networkFeeMicro inputs", () => {
+  it("refuses NaN gas and a non-positive price instead of crashing later", () => {
+    expect(() => networkFeeMicro([Number.NaN], "1")).toThrow(RangeError);
+    expect(() => networkFeeMicro([1], "0")).toThrow(RangeError);
+  });
+});
+
+describe("resolveLegRequestSchema", () => {
+  it("needs evidence and a reason", () => {
+    const ok = { status: "SETTLED", amountReceived: "42", txEvidence: "0xabcdef12", reason: "Verified on the explorer." };
+    expect(resolveLegRequestSchema.safeParse(ok).success).toBe(true);
+    expect(resolveLegRequestSchema.safeParse({ ...ok, reason: "" }).success).toBe(false);
+    expect(resolveLegRequestSchema.safeParse({ ...ok, status: "UNKNOWN" }).success).toBe(false);
+  });
+});
+
 describe("state machines", () => {
   it("maps every state and ends terminals", () => {
     for (const s of LEG_STATES) expect(LEG_TRANSITIONS).toHaveProperty(s);
     for (const s of OPERATION_STATES) expect(OPERATION_TRANSITIONS).toHaveProperty(s);
     expect(LEG_TRANSITIONS.SETTLED).toEqual([]);
     expect(LEG_TRANSITIONS.UNKNOWN).toEqual(["SETTLED", "FAILED"]);
+    expect(LEG_TRANSITIONS.PLANNED).toEqual(["SUBMITTING"]); // the claim comes before any send
+    expect(LEG_TRANSITIONS.SUBMITTING).toContain("PLANNED"); // a refused send releases it
     expect(OPERATION_TRANSITIONS.PLANNED).toEqual(["IN_PROGRESS", "CANCELLED"]);
     expect(OPERATION_TRANSITIONS.PARTIAL).toEqual([]);
   });

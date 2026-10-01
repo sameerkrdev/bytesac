@@ -4,7 +4,7 @@ import { challengeResponseSchema } from "./auth";
 import { decimalStringSchema } from "./baskets";
 import { chainFamilySchema } from "./chains";
 
-export const LEG_STATES = ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"] as const;
+export const LEG_STATES = ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"] as const;
 export const OPERATION_STATES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"] as const;
 export const LEG_KINDS = ["network_fee", "swap", "cross_chain"] as const;
 export const GAS_PAYERS = ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"] as const;
@@ -12,7 +12,11 @@ export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former"] as cons
 export type LegState = (typeof LEG_STATES)[number];
 export type OperationState = (typeof OPERATION_STATES)[number];
 
-export const LEG_TRANSITIONS = { PLANNED: ["SUBMITTED"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"], PENDING_CHAIN: ["SETTLED", "FAILED", "UNKNOWN"], UNKNOWN: ["SETTLED", "FAILED"], SETTLED: [], FAILED: [] } as const;
+/** SUBMITTING is the claim taken before anything is sent: a refused send returns to PLANNED, a sent (or unknown) one is SUBMITTED. */
+export const LEG_TRANSITIONS = {
+  PLANNED: ["SUBMITTING"], SUBMITTING: ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "FAILED", "UNKNOWN"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"],
+  PENDING_CHAIN: ["SETTLED", "FAILED", "UNKNOWN"], UNKNOWN: ["SETTLED", "FAILED"], SETTLED: [], FAILED: [],
+} as const;
 export const OPERATION_TRANSITIONS = { PLANNED: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["COMPLETED", "PARTIAL", "FAILED"], PARTIAL: [], COMPLETED: [], FAILED: [], CANCELLED: [] } as const;
 
 export const canTransition = <S extends string>(map: Readonly<Record<S, readonly S[]>>, from: S, to: S): boolean => map[from].includes(to);
@@ -39,6 +43,7 @@ export const minOut = (quotedOut: bigint, slippageBps: number): bigint => (quote
 
 /** Estimated gas in USD per leg, plus 20%, converted with the USDC price to micro-USDC (floats are scaled once with Math.round, then BigInt); at least 0.01 USDC. */
 export function networkFeeMicro(gasUsd: number[], usdcPrice: string): bigint {
+  if (!gasUsd.every(Number.isFinite) || !(Number(usdcPrice) > 0)) throw new RangeError("network fee inputs must be finite and the price positive");
   const totalUsdMicro = BigInt(Math.round(gasUsd.reduce((s, x) => s + x, 0) * 1e6));
   const priceMicro = BigInt(Math.round(Number(usdcPrice) * 1e6));
   const fee = (totalUsdMicro * 12n * 1_000_000n) / (10n * priceMicro);
@@ -64,6 +69,15 @@ export const legSubmitSchema = z.strictObject({
   signedPsbt: z.string().min(1).max(50_000).optional(),
 }).refine((b) => [b.signedTx, b.txHash, b.signedPsbt].filter((x) => x !== undefined).length === 1, { message: "Send exactly one of signedTx, txHash, signedPsbt." });
 export type LegSubmit = z.infer<typeof legSubmitSchema>;
+
+/** Ops resolution of a leg stuck UNKNOWN: the evidence is a transaction id/hash; SETTLED asset legs also need the amount received (verified on-chain where possible). */
+export const resolveLegRequestSchema = z.strictObject({
+  status: z.enum(["SETTLED", "FAILED"]),
+  amountReceived: z.string().regex(/^\d+$/).optional(),
+  txEvidence: z.string().trim().min(8).max(200),
+  reason: z.string().trim().min(10).max(1000),
+});
+export type ResolveLegRequest = z.infer<typeof resolveLegRequestSchema>;
 
 /** The challenge plus the BIP-322 `to_sign` PSBT (base64) the wallet signs. */
 export const bitcoinChallengeResponseSchema = challengeResponseSchema.extend({ toSignPsbt: z.string() });

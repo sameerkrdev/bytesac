@@ -106,51 +106,78 @@ export function verifyBitcoinProof(i: { address: string; message: string; signat
 }
 
 export interface PsbtOutput { script: string; amount: string }
+export interface PsbtInput { txid: string; index: number }
+
+const readPsbt = (psbtBase64: string) => Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
 
 /** The outputs of a PSBT as `{ script hex, sats }`, in order. */
 export function psbtOutputs(psbtBase64: string): PsbtOutput[] {
-  const tx = Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
+  const tx = readPsbt(psbtBase64);
   return Array.from({ length: tx.outputsLength }, (_, n) => {
     const o = tx.getOutput(n);
     return { script: Buffer.from(o.script!).toString("hex"), amount: String(o.amount) };
   });
 }
 
-/** How many inputs the wallet must sign (all are the user's UTXOs). */
-export const psbtInputCount = (psbtBase64: string): number => Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS).inputsLength;
+/** The inputs a PSBT spends, in order. */
+export function psbtInputs(psbtBase64: string): PsbtInput[] {
+  const tx = readPsbt(psbtBase64);
+  return Array.from({ length: tx.inputsLength }, (_, n) => {
+    const i = tx.getInput(n);
+    return { txid: Buffer.from(i.txid!).toString("hex"), index: i.index! };
+  });
+}
+
+/** Miner fee ceiling for a sell: 2% of the amount sold, and never more than 100,000 sats. */
+export const maxBtcMinerFee = (sellSats: bigint): bigint => (sellSats / 50n < 100_000n ? sellSats / 50n : 100_000n);
 
 /**
- * The outputs of a LI.FI Bitcoin PSBT, after checking its shape: the vault deposit, the OP_RETURN memo, and optionally a refund output that must pay
- * `userAddress`. These are what the user-signed PSBT is later held to.
+ * The LI.FI Bitcoin PSBT after checking its shape: the vault deposit of exactly `sellSats`, the OP_RETURN memo, and a refund (change) output that
+ * must pay `userAddress`; the miner fee (inputs minus outputs, from the PSBT's own UTXO data) must be within `maxBtcMinerFee`. These outputs and the
+ * quoted inputs are what the user-signed PSBT is later held to.
  */
-export function expectedBtcOutputs(psbtBase64: string, userAddress: string): PsbtOutput[] {
+export function expectedBtcTx(psbtBase64: string, userAddress: string, sellSats: bigint): { outputs: PsbtOutput[]; inputs: PsbtInput[] } {
+  const refuse = (why: string) => createHttpError(`The route provider returned an unexpected Bitcoin transaction (${why}).`, { code: "ROUTE_UNAVAILABLE" });
+  const tx = readPsbt(psbtBase64);
   const outputs = psbtOutputs(psbtBase64);
   const opReturn = (o: PsbtOutput) => o.script.startsWith("6a");
   const refund = Buffer.from(OutScript.encode(Address().decode(userAddress))).toString("hex");
-  if (outputs.length < 2 || outputs.length > 3 || opReturn(outputs[0]!) || !opReturn(outputs[1]!) || (outputs[2] && outputs[2].script !== refund)) {
-    throw createHttpError("The route provider returned an unexpected Bitcoin transaction.", { code: "ROUTE_UNAVAILABLE" });
+  if (outputs.length !== 3 || opReturn(outputs[0]!) || !opReturn(outputs[1]!) || outputs[2]!.script !== refund) throw refuse("outputs");
+  if (BigInt(outputs[0]!.amount) !== sellSats) throw refuse("deposit amount");
+  let inputTotal = 0n;
+  for (let n = 0; n < tx.inputsLength; n++) {
+    const i = tx.getInput(n);
+    const prev = i.witnessUtxo?.amount ?? (i.nonWitnessUtxo && !(i.nonWitnessUtxo instanceof Uint8Array) ? i.nonWitnessUtxo.outputs[i.index!]?.amount : undefined);
+    if (prev === undefined) throw refuse("input amount unknown");
+    inputTotal += prev;
   }
-  return outputs;
+  const fee = inputTotal - outputs.reduce((sum, o) => sum + BigInt(o.amount), 0n);
+  if (fee < 0n || fee > maxBtcMinerFee(sellSats)) throw refuse("miner fee");
+  return { outputs, inputs: psbtInputs(psbtBase64) };
 }
 
-/** The user-signed PSBT must pay exactly the outputs the planner stored (deposit, OP_RETURN memo, refund), in order, and nothing else. */
-export function checkPsbtOutputs(psbtBase64: string, expected: PsbtOutput[]): void {
-  let actual: PsbtOutput[];
+/** The user-signed PSBT must spend exactly the quoted inputs and pay exactly the quoted outputs (deposit, OP_RETURN memo, refund), in order, and nothing else. */
+export function checkPsbt(psbtBase64: string, expected: { outputs: PsbtOutput[]; inputs: PsbtInput[] }): void {
+  let outputs: PsbtOutput[];
+  let inputs: PsbtInput[];
   try {
-    actual = psbtOutputs(psbtBase64);
+    [outputs, inputs] = [psbtOutputs(psbtBase64), psbtInputs(psbtBase64)];
   } catch {
     throw createHttpError(409, "The Bitcoin transaction could not be read.", { code: "PSBT_MISMATCH" });
   }
-  if (actual.length !== expected.length || actual.some((o, n) => o.script !== expected[n]!.script || o.amount !== expected[n]!.amount)) {
-    throw createHttpError(409, "The Bitcoin transaction changed after it was prepared.", { code: "PSBT_MISMATCH" });
-  }
+  const same = <T extends object>(a: T[], b: T[]) => a.length === b.length && a.every((x, n) => JSON.stringify(x) === JSON.stringify(b[n]));
+  if (!same(outputs, expected.outputs) || !same(inputs, expected.inputs)) throw createHttpError(409, "The Bitcoin transaction changed after it was prepared.", { code: "PSBT_MISMATCH" });
 }
 
-/** Finalizes a signed PSBT: the raw transaction hex and its txid. */
+/** Finalizes a signed PSBT: the raw transaction hex and its txid. A PSBT that is not fully signed is a 409. */
 export function finalizePsbt(psbtBase64: string): { rawHex: string; txid: string } {
-  const tx = Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
-  if (!tx.isFinal) tx.finalize();
-  return { rawHex: tx.hex, txid: tx.id };
+  try {
+    const tx = readPsbt(psbtBase64);
+    if (!tx.isFinal) tx.finalize();
+    return { rawHex: tx.hex, txid: tx.id };
+  } catch (err) {
+    throw createHttpError(409, "The Bitcoin transaction isn't fully signed.", { code: "PSBT_MISMATCH", cause: err });
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -196,7 +223,7 @@ export async function broadcastBitcoin(rawHex: string): Promise<string> {
   const { status, body } = await call("/sendtx/", { method: "POST", headers: { "Content-Type": "text/plain" }, body: rawHex });
   const parsed = z.object({ result: z.string() }).safeParse(body);
   if (status === 200 && parsed.success) return parsed.data.result;
-  throw createHttpError(409, "The Bitcoin network rejected the transaction.", { code: "PSBT_MISMATCH", cause: body });
+  throw createHttpError(409, "The Bitcoin network rejected the transaction.", { code: "BROADCAST_REJECTED", cause: body });
 }
 
 

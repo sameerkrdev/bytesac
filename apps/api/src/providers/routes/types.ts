@@ -28,6 +28,8 @@ export interface LegQuote {
   gasEstimateUsd: number;
   /** Estimated gas in the source chain's native base units (lamports, wei). */
   gasNative: bigint;
+  /** USD price of the source chain's native token as LI.FI reports it with the gas costs, when present. */
+  nativePriceUsd: number | null;
   /** EVM ERC-20 sources: the contract the user approves (exact amount) before the transaction. */
   approvalAddress: string | null;
   expiresAt: Date;
@@ -35,8 +37,10 @@ export interface LegQuote {
 
 export type LegStatus =
   | { state: "PENDING" }
-  | { state: "DONE"; destinationTx: string | null; receivedAmount: bigint | null }
-  | { state: "FAILED"; reason: string };
+  | { state: "DONE"; destinationTx: string | null }
+  | { state: "FAILED"; reason: string }
+  /** Funds may have moved but not as quoted (LI.FI PARTIAL): a person resolves it. */
+  | { state: "UNKNOWN"; reason: string };
 
 /** Route providers sit behind this interface; selection follows `ROUTE_PROVIDER_ORDER`. A provider error is a 503 `ROUTE_UNAVAILABLE`. */
 export interface RouteProvider {

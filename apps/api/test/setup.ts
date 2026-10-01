@@ -14,6 +14,7 @@ vi.mock("../src/providers/evm-rpc", async () => {
   return {
     verifyContractSignature: fakes.evm.verifyContractSignature, readTokenMetadata: fakes.evm.readTokenMetadata, evmBalance: fakes.evm.evmBalance, evmTransaction: fakes.evm.evmTransaction,
     evmReceipt: fakes.evm.evmReceipt, gasWalletAddress: fakes.evm.gasWalletAddress, sendNativeFromGasWallet: fakes.evm.sendNativeFromGasWallet,
+    evmNativeReceived: fakes.evm.evmNativeReceived,
   };
 });
 vi.mock("../src/providers/solana-rpc", async () => {

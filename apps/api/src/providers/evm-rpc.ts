@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { createPublicClient, createWalletClient, erc20Abi, http, RpcRequestError, TransactionNotFoundError, TransactionReceiptNotFoundError, type Transport } from "viem";
+import { BaseError, InsufficientFundsError, NonceTooHighError, NonceTooLowError, createPublicClient, createWalletClient, erc20Abi, http, RpcRequestError, TransactionNotFoundError, TransactionReceiptNotFoundError, type Transport } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrum, base, bsc, mainnet, polygon } from "viem/chains";
 import type { AssetChain, Chain } from "@repo/validator";
@@ -140,6 +140,21 @@ export const evmReceipt = (chain: AssetChain, hash: string) =>
     }
   });
 
+/**
+ * What `owner` received natively in `txHash`, as the balance change across the block it was mined in (a native bridge delivery has no log to read).
+ * Null when the receipt is missing; a node that cannot serve historical balances is an unavailable error, never a guess.
+ */
+export const evmNativeReceived = (chain: AssetChain, owner: string, txHash: string): Promise<bigint | null> =>
+  read(chain, async (c) => {
+    const receipt = await c.getTransactionReceipt({ hash: txHash as `0x${string}` }).catch((err: unknown) => {
+      if (err instanceof TransactionReceiptNotFoundError) return null;
+      throw err;
+    });
+    if (!receipt) return null;
+    const address = owner as `0x${string}`;
+    return (await c.getBalance({ address, blockNumber: receipt.blockNumber })) - (await c.getBalance({ address, blockNumber: receipt.blockNumber - 1n }));
+  });
+
 const GAS_CHAINS = { ethereum: mainnet, base, bnb: bsc, arbitrum, polygon } as const;
 
 /** The platform EVM gas wallet; the key stays in this module. Empty `EVM_GAS_WALLET_SECRET` disables drops. */
@@ -149,11 +164,19 @@ const gasAccount = () => {
 };
 export const gasWalletAddress = (): string => gasAccount().address.toLowerCase();
 
-/** Sends `value` native units from the gas wallet exactly once; the hash is returned, confirmation is checked separately with `evmReceipt`. */
+/**
+ * Sends `value` native units from the gas wallet exactly once; the hash is returned, confirmation is checked separately with `evmReceipt`. A node's
+ * definitive refusal (insufficient funds, bad nonce) is thrown with `refused: true`: nothing was sent. Any other failure is an unknown outcome.
+ */
 export async function sendNativeFromGasWallet(i: { chain: AssetChain; to: string; value: bigint }): Promise<string> {
   const host = ALCHEMY_HOST[i.chain];
   const chain = GAS_CHAINS[i.chain as keyof typeof GAS_CHAINS];
   if (!host || !chain) throw new Error("not an EVM chain");
   const client = createWalletClient({ account: gasAccount(), chain, transport: http(`https://${host}.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`, { timeout: 10_000, retryCount: 0 }) });
-  return client.sendTransaction({ to: i.to as `0x${string}`, value: i.value });
+  try {
+    return await client.sendTransaction({ to: i.to as `0x${string}`, value: i.value });
+  } catch (err) {
+    const refused = err instanceof BaseError && err.walk((e) => e instanceof InsufficientFundsError || e instanceof NonceTooLowError || e instanceof NonceTooHighError) !== null;
+    throw refused ? Object.assign(err, { refused: true }) : err;
+  }
 }

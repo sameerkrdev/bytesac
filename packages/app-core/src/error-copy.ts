@@ -47,6 +47,8 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   ROUTE_UNAVAILABLE: { title: "Route unavailable", message: "No route is available right now. Try again later.", recovery: "retry" },
   BTC_ADDRESS_REQUIRED: { title: "Link a Bitcoin wallet", message: "This basket holds Bitcoin. Link a Bitcoin address in your profile first.", recovery: "fix-input" },
   INSUFFICIENT_BALANCE: { title: "Not enough USDC", message: "Your Solana wallet doesn't hold enough USDC for this amount.", recovery: "fix-input" },
+  PRICE_MOVED: { title: "The price moved", message: "The route now returns less than the plan promised, so nothing was sent. Cancel and plan again to see the new figures.", recovery: "retry" },
+  BROADCAST_REJECTED: { title: "Bitcoin network refused it", message: "The Bitcoin network refused the transaction. Nothing was sent. Get a new quote.", recovery: "retry" },
   DOCUMENT_REJECTED: { title: "File not accepted", message: "Upload a PDF, JPEG or PNG up to 10 MB.", recovery: "fix-input" },
   INTERNAL: { title: "Something went wrong", message: "Try again. If it keeps happening, contact support.", recovery: "retry" },
   NETWORK_ERROR: { title: "No connection", message: "Check your connection and try again.", recovery: "retry" },

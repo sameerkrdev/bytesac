@@ -11,7 +11,7 @@ export const ledgerReason = app.enum("ledger_reason", ["invest", "sell"]);
 export const operationKind = app.enum("operation_kind", ["invest", "sell_to_usdc", "sell_former"]);
 export const operationStatus = app.enum("operation_status", ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"]);
 export const legKind = app.enum("leg_kind", ["network_fee", "swap", "cross_chain"]);
-export const legStatus = app.enum("leg_status", ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"]);
+export const legStatus = app.enum("leg_status", ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"]);
 export const gasPayer = app.enum("gas_payer", ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"]);
 export const platformWalletPurpose = app.enum("platform_wallet_purpose", ["solana_fee_payer", "evm_gas", "gas_treasury"]);
 export const gasDropStatus = app.enum("gas_drop_status", ["pending", "confirmed", "failed"]);
@@ -57,6 +57,8 @@ export const operations = app.table(
     versionId: uuid("version_id").notNull().references(() => basketVersions.id),
     idempotencyKey: text("idempotency_key").notNull(),
     expiresAt: ts("expires_at").notNull(),
+    /** Platform gas reserved with the plan, per chain in native base units (the budget day is `created_at` in UTC); emptied when the unspent part is released on CANCELLED. */
+    gasReserved: jsonb("gas_reserved").$type<Record<string, string>>().notNull().default({}),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
@@ -101,6 +103,8 @@ export const operationLegs = app.table(
   },
   (t) => [
     uniqueIndex("operation_legs_sequence").on(t.operationId, t.sequence),
+    // A transaction is one leg's: the claim (SUBMITTING) records the deterministic id before anything is sent.
+    uniqueIndex("operation_legs_source_tx").on(t.fromChain, t.sourceTx).where(sql`${t.sourceTx} is not null`),
     check("operation_legs_amount_positive", sql`${t.amountIn} > 0`),
   ],
 );

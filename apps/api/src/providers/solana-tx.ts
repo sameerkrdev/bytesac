@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
 import createHttpError from "http-errors";
-import { Connection, Keypair, PublicKey, SendTransactionError, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "../env";
 
@@ -55,30 +55,78 @@ export async function buildFeeTransfer(i: { owner: string; amountMicro: bigint }
   return describeUnsigned(Buffer.from(new VersionedTransaction(message).serialize()).toString("base64"));
 }
 
-/** Verifies the user-signed transaction is byte-identical to the message we built, then adds the platform fee-payer signature and submits. */
-export async function cosignAndSubmit(signedBase64: string, storedMessageHash: string): Promise<string> {
+/** Token-program account rent (165 bytes): what the fee payer funds for each `CreateIdempotent` that creates an account. */
+export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
+const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
+const LAMPORTS_PER_SIGNATURE = 5_000n;
+/** Priority fee the platform will pay for one transaction (price x limit), the instruction and static-account counts it accepts. */
+const MAX_PRIORITY_LAMPORTS = 1_000_000n;
+const MAX_INSTRUCTIONS = 24;
+const MAX_STATIC_ACCOUNTS = 64;
+
+/**
+ * What the platform fee payer is exposed to in a provider-built (or server-built) transaction, or a 503 ROUTE_UNAVAILABLE when it may pay for more
+ * than fees: the fee payer must be the payer at index 0 and appear nowhere else in the static accounts (lookup tables cannot resolve to a key already
+ * present: the runtime rejects an account loaded twice), it may be referenced by no instruction except as the funder of an ATA `CreateIdempotent`
+ * (rent, counted), the priority fee (price x limit) is capped, and the instruction and account counts are bounded.
+ */
+export function sponsorExposure(serializedBase64: string): { lamports: bigint; rentLamports: bigint } {
+  const refuse = (why: string) => createHttpError(`The route returned a transaction the platform won't sponsor (${why}).`, { code: "ROUTE_UNAVAILABLE" });
+  const message = VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64")).message;
+  const keys = message.staticAccountKeys;
+  const payer = feePayer().publicKey;
+  if (!keys[0]!.equals(payer) || keys.filter((k) => k.equals(payer)).length !== 1) throw refuse("fee payer");
+  if (keys.length > MAX_STATIC_ACCOUNTS || message.compiledInstructions.length > MAX_INSTRUCTIONS) throw refuse("size");
+  let creates = 0n;
+  let price = 0n;
+  let limit: bigint | null = null;
+  for (const ix of message.compiledInstructions) {
+    const program = keys[ix.programIdIndex]!.toBase58();
+    if (ix.programIdIndex === 0) throw refuse("fee payer as program");
+    if (program === COMPUTE_BUDGET) {
+      const data = Buffer.from(ix.data);
+      if (data[0] === 2) limit = BigInt(data.readUInt32LE(1));
+      if (data[0] === 3) price = data.readBigUInt64LE(1);
+    }
+    const uses = ix.accountKeyIndexes.filter((i) => i === 0).length;
+    if (uses === 0) continue;
+    // Only the first account (the funder) of ATA CreateIdempotent may be the fee payer.
+    if (program !== ATA_PROGRAM.toBase58() || ix.data[0] !== 1 || ix.accountKeyIndexes[0] !== 0 || uses !== 1) throw refuse("fee payer used by an instruction");
+    creates += 1n;
+  }
+  const priority = (price * (limit ?? 1_400_000n) + 999_999n) / 1_000_000n; // micro-lamports per unit; no limit set means the 1.4M maximum
+  if (priority > MAX_PRIORITY_LAMPORTS) throw refuse("priority fee");
+  const rentLamports = creates * TOKEN_ACCOUNT_RENT_LAMPORTS;
+  return { lamports: BigInt(message.header.numRequiredSignatures) * LAMPORTS_PER_SIGNATURE + priority + rentLamports, rentLamports };
+}
+
+/**
+ * Verifies the user-signed transaction is byte-identical to the message we stored a hash for and still safe to sponsor, then adds the platform
+ * fee-payer signature. Nothing is sent: the caller claims the leg under `signature` first, then sends `raw` with `sendSolana`.
+ */
+export function cosign(signedBase64: string, storedMessageHash: string): { raw: Uint8Array; signature: string; recentBlockhash: string } {
   const tx = VersionedTransaction.deserialize(Buffer.from(signedBase64, "base64"));
   if (messageHash(tx) !== storedMessageHash) throw createHttpError(409, "The transaction changed after it was prepared.", { code: "TX_MISMATCH" });
   if (!tx.message.staticAccountKeys[0]!.equals(feePayer().publicKey)) throw createHttpError(409, "Unexpected fee payer.", { code: "TX_MISMATCH" });
+  sponsorExposure(signedBase64);
   tx.sign([feePayer()]); // adds only the fee-payer signature; user signatures already present stay valid because the message is unchanged
-  // One attempt, never retried. A preflight rejection is definitive (rethrown as is); anything else is an unknown outcome, so the error carries the
-  // transaction signature (deterministic, the fee-payer's) for the caller to record and the tracker to look up.
-  try {
-    return await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 0 });
-  } catch (err) {
-    if (err instanceof SendTransactionError) throw err;
-    throw Object.assign(err instanceof Error ? err : new Error("send failed"), { unknownOutcomeSignature: bs58.encode(tx.signatures[0]!) });
-  }
+  return { raw: tx.serialize(), signature: bs58.encode(tx.signatures[0]!), recentBlockhash: tx.message.recentBlockhash };
 }
 
-/** `finalized` and `failed` are terminal; `pending` covers not-yet-seen and not-yet-finalized. */
-export async function solanaFinality(signature: string): Promise<"finalized" | "failed" | "pending"> {
+/** One attempt, never retried. A `SendTransactionError` is a definitive refusal; any other failure leaves the outcome unknown. */
+export const sendSolana = (raw: Uint8Array): Promise<string> => connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 0 });
+
+/**
+ * `finalized` and `failed` are terminal; `pending` covers not-yet-seen and not-yet-finalized. With `recentBlockhash`: a signature that is still not
+ * found after that blockhash expired can never land, so it is `expired` (checked in this order: the expiry first, then the lookup).
+ */
+export async function solanaFinality(signature: string, recentBlockhash?: string): Promise<"finalized" | "failed" | "pending" | "expired"> {
+  const expired = recentBlockhash ? !(await connection.isBlockhashValid(recentBlockhash, { commitment: "confirmed" })).value : false;
   const { value } = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
-  if (!value) return "pending";
+  if (!value) return expired ? "expired" : "pending";
   if (value.err) return "failed";
   return value.confirmationStatus === "finalized" ? "finalized" : "pending";
 }
-
 
 /** Balance in base units (lamports, or the token's raw amount summed over the owner's token accounts). */
 export async function solanaBalance(owner: string, mint: string | null): Promise<bigint> {

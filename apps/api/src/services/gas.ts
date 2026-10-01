@@ -5,7 +5,7 @@ import { logger } from "@repo/logger";
 import { ASSET_CHAINS, type AssetChain } from "@repo/validator";
 import { env } from "../env";
 import { evmBalance, evmReceipt, gasWalletAddress, sendNativeFromGasWallet } from "../providers/evm-rpc";
-import { feePayer } from "../providers/solana-tx";
+import { feePayer, solanaBalance } from "../providers/solana-tx";
 import { writeAudit } from "./audit";
 
 type Purpose = typeof platformWallets.$inferSelect["purpose"];
@@ -63,6 +63,39 @@ export async function reserveGas(tx: Tx, i: { userId: string; chain: AssetChain;
     .where(and(eq(sponsorUsage.userId, i.userId), eq(sponsorUsage.chain, i.chain), sql`${sponsorUsage.day} = ${today}`));
 }
 
+/** Gas drops a user may receive per chain per UTC day (a second limit next to the budget, so repeated small drops cannot be farmed). */
+const MAX_DROPS_PER_DAY = 5;
+
+/**
+ * Gives back what a CANCELLED operation reserved but did not spend: the reservation per chain minus the drops actually sent for its legs (a Solana
+ * fee is only ever spent after the first submission, which is after the last chance to cancel). Runs in the cancelling transaction; idempotent.
+ */
+export async function releaseUnspentGas(tx: Tx, opId: string): Promise<void> {
+  const [op] = await tx.select({ userId: operations.userId, reserved: operations.gasReserved, day: sql<string>`(${operations.createdAt} at time zone 'utc')::date` }).from(operations).where(eq(operations.id, opId));
+  const sent = await tx.select({ chain: gasDrops.chain, total: sql<string>`sum(${gasDrops.amountNative})` }).from(gasDrops).innerJoin(operationLegs, eq(operationLegs.id, gasDrops.legId))
+    .where(eq(operationLegs.operationId, opId)).groupBy(gasDrops.chain);
+  for (const [chain, reserved] of Object.entries(op!.reserved)) {
+    const unspent = BigInt(reserved) - BigInt(sent.find((s) => s.chain === chain)?.total ?? 0);
+    if (unspent > 0n) {
+      await tx.update(sponsorUsage).set({ amountNative: sql`greatest(${sponsorUsage.amountNative} - ${unspent.toString()}::numeric, 0)` })
+        .where(and(eq(sponsorUsage.userId, op!.userId), eq(sponsorUsage.chain, chain as AssetChain), sql`${sponsorUsage.day} = ${op!.day}`));
+    }
+  }
+  await tx.update(operations).set({ gasReserved: {} }).where(eq(operations.id, opId));
+}
+
+/** A plan is refused (503) while a platform wallet cannot fund the gas it needs: the Solana fee payer in lamports, the EVM gas wallet in wei per chain. */
+export async function assertWalletsCanFund(needs: Map<AssetChain, bigint>): Promise<void> {
+  for (const [chain, amount] of needs) {
+    if (amount <= 0n) continue;
+    const balance = chain === "solana" ? await solanaBalance(await platformAddress("solana", "solana_fee_payer"), null) : await evmBalance(chain, gasWalletAddress(), null);
+    if (balance < amount) {
+      logger.error("platform gas wallet cannot fund a plan", { chain, balance: balance.toString(), needed: amount.toString() });
+      throw createHttpError("Network gas is temporarily unavailable. Try again later.", { code: "ROUTE_UNAVAILABLE" });
+    }
+  }
+}
+
 export interface GasDropResult { status: "pending" | "confirmed" | "failed" | "skipped"; txHash: string | null }
 
 /**
@@ -70,15 +103,19 @@ export interface GasDropResult { status: "pending" | "confirmed" | "failed" | "s
  * otherwise the budget is reserved and the drop row recorded before anything is sent. A repeat call only reports (and, with a hash, confirms) the
  * existing drop; a drop whose send outcome is unknown stays `pending` and is never sent again.
  */
-export async function sendGasDrop(legId: string, chain: AssetChain, recipient: string, amountNative: bigint): Promise<GasDropResult> {
+export async function sendGasDrop(legId: string, chain: AssetChain, recipient: string, amountNative: bigint, alsoSpends = 0n): Promise<GasDropResult> {
   const existing = async () => (await db.select().from(gasDrops).where(eq(gasDrops.legId, legId)))[0];
   let drop = await existing();
   if (!drop) {
-    if ((await evmBalance(chain, recipient, null)) >= amountNative) return { status: "skipped", txHash: null };
+    // `alsoSpends`: the amount the leg itself sends when the asset sold is the native one (a 100% sell needs value + gas).
+    if ((await evmBalance(chain, recipient, null)) >= amountNative + alsoSpends) return { status: "skipped", txHash: null };
     try {
       drop = await db.transaction(async (tx) => {
         const [leg] = await tx.select({ userId: operations.userId, expectedTx: operationLegs.expectedTx }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
         if (!leg) throw createHttpError("Leg not found", { code: "NOT_FOUND" });
+        const [{ n }] = (await tx.select({ n: sql<number>`count(*)::int` }).from(gasDrops).innerJoin(operationLegs, eq(operationLegs.id, gasDrops.legId)).innerJoin(operations, eq(operations.id, operationLegs.operationId))
+          .where(and(eq(operations.userId, leg.userId), eq(gasDrops.chain, chain), sql`(${gasDrops.createdAt} at time zone 'utc')::date = (now() at time zone 'utc')::date`))) as [{ n: number }];
+        if (n >= MAX_DROPS_PER_DAY) throw createHttpError(409, "Today's gas top-ups for this network are used up. Try again tomorrow.", { code: "GAS_BUDGET_EXHAUSTED" });
         // A planned leg's drop was reserved with its plan (so a refused budget refuses the plan); only an unplanned drop reserves here.
         if (!(leg.expectedTx as { gasReserved?: boolean } | null)?.gasReserved) await reserveGas(tx, { userId: leg.userId, chain, amountNative });
         const [row] = await tx.insert(gasDrops).values({ legId, chain, recipient, amountNative: amountNative.toString() }).returning();
@@ -91,10 +128,20 @@ export async function sendGasDrop(legId: string, chain: AssetChain, recipient: s
       return { status: drop.status, txHash: drop.txHash };
     }
     try {
-      const txHash = await sendNativeFromGasWallet({ chain, to: recipient, value: amountNative });
+      // One send at a time per chain from the single gas wallet, so concurrent drops cannot collide on a nonce.
+      const txHash = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`gas-send:${chain}`}))`);
+        return sendNativeFromGasWallet({ chain, to: recipient, value: amountNative });
+      });
       [drop] = await db.update(gasDrops).set({ txHash, updatedAt: sql`now()` }).where(eq(gasDrops.id, drop.id)).returning();
       await writeAudit(db, { actorType: "system", action: "gas_drop.sent", entityType: "gas_drop", entityId: drop!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, txHash } });
     } catch (err) {
+      if ((err as { refused?: boolean }).refused) {
+        // The node refused it (insufficient funds, nonce): nothing was sent, so this is a definite failure, not an unknown outcome.
+        [drop] = await db.update(gasDrops).set({ status: "failed", updatedAt: sql`now()` }).where(eq(gasDrops.id, drop.id)).returning();
+        await writeAudit(db, { actorType: "system", action: "gas_drop.failed", entityType: "gas_drop", entityId: drop!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, refused: true } });
+        return { status: "failed", txHash: null };
+      }
       logger.error("gas drop send outcome unknown", { legId, chain, errMessage: err instanceof Error ? err.message : "unknown" });
     }
     return { status: "pending", txHash: drop?.txHash ?? null };

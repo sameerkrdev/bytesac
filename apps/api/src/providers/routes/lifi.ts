@@ -44,16 +44,22 @@ const parse = <T extends z.ZodType>(schema: T, body: unknown): z.infer<T> => {
 
 const token = z.object({ address: z.string(), chainId: z.number() });
 const connectionsSchema = z.object({ connections: z.array(z.object({ fromTokens: z.array(token), toTokens: z.array(token) })) });
+/** `estimate.gasCosts[]` as LI.FI returns it: decimal strings (`amount` in the native token's base units), plus the native token with its USD price. */
+const gasCost = z.object({
+  amountUSD: z.string().regex(/^\d+(\.\d+)?$/).nullish(),
+  amount: z.string().regex(/^\d+$/).nullish(),
+  token: z.object({ priceUSD: z.string().regex(/^\d+(\.\d+)?$/).nullish() }).nullish(),
+});
 const quoteSchema = z.object({
   tool: z.string(),
   action: z.object({ fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: token, fromAmount: z.string(), toAddress: z.string() }),
-  estimate: z.object({ toAmount: z.string(), toAmountMin: z.string(), approvalAddress: z.string().nullish(), gasCosts: z.array(z.object({ amountUSD: z.string().nullish(), amount: z.string().regex(/^d+$/).nullish() })).optional() }),
+  estimate: z.object({ toAmount: z.string(), toAmountMin: z.string(), approvalAddress: z.string().nullish(), gasCosts: z.array(gasCost).optional() }),
   transactionRequest: z.object({ to: z.string().optional(), data: z.string(), value: z.string().nullish(), chainId: z.number().optional() }),
 });
 const statusSchema = z.object({
   status: z.enum(["NOT_FOUND", "INVALID", "PENDING", "DONE", "FAILED"]),
   substatus: z.string().optional(),
-  receiving: z.object({ txHash: z.string().optional(), amount: z.string().optional() }).optional(),
+  receiving: z.object({ txHash: z.string().optional() }).optional(),
 });
 
 const PSBT_HEX_MAGIC = "70736274ff";
@@ -104,6 +110,7 @@ export const lifi: RouteProvider = {
       gasEstimateUsd: (q.estimate.gasCosts ?? []).reduce((s, g) => s + Number(g.amountUSD ?? 0), 0),
       approvalAddress: q.estimate.approvalAddress ?? null,
       gasNative: (q.estimate.gasCosts ?? []).reduce((s, g) => s + BigInt(g.amount ?? 0), 0n),
+      nativePriceUsd: Number((q.estimate.gasCosts ?? []).find((g) => g.token?.priceUSD)?.token?.priceUSD) || null,
       expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     };
   },
@@ -113,8 +120,10 @@ export const lifi: RouteProvider = {
     if (s.status === "INVALID") throw unavailable("The route provider rejected the status request.");
     if (s.status === "FAILED") return { state: "FAILED", reason: s.substatus ?? "FAILED" };
     if (s.status !== "DONE") return { state: "PENDING" };
-    // DONE with REFUNDED or PARTIAL means the destination token was not delivered.
-    if (s.substatus === "REFUNDED" || s.substatus === "PARTIAL") return { state: "FAILED", reason: s.substatus };
-    return { state: "DONE", destinationTx: s.receiving?.txHash ?? null, receivedAmount: s.receiving?.amount ? BigInt(s.receiving.amount) : null };
+    // REFUNDED: the destination token was not delivered. PARTIAL: a different token was (funds did move): left for a person, never written off.
+    if (s.substatus === "REFUNDED") return { state: "FAILED", reason: s.substatus };
+    if (s.substatus === "PARTIAL") return { state: "UNKNOWN", reason: "The route delivered a different token than quoted." };
+    // The amount LI.FI reports is not used: what arrived is read from the chain.
+    return { state: "DONE", destinationTx: s.receiving?.txHash ?? null };
   },
 };
