@@ -51,6 +51,8 @@ async function fresh() {
   expect((await give(co.lifecycle, ["lifecycle"])).status).toBe(201);
   return basket;
 }
+/** The holder-notice jobs queued for a basket, as kinds. */
+const noticesOf = (bid: string) => fakes.queue.jobs.filter((j) => j.name === "notifications" && j.data.job === "basket-notice" && j.data.basketId === bid).map((j) => j.data.kind);
 const live = async () => { const bk = await fresh(); await forceStatus(bk.id, "published"); return bk; };
 const ready = async () => { const bk = await fresh(); await saveOpen(lead.h, bk.id, validContent(a, b)); return bk; };
 const submitted = async () => { const bk = await ready(); await submitBasket(lead.h, bk.id); return bk; };
@@ -101,6 +103,25 @@ describe("manager pause, resume and retirement", () => {
     expect(back.body).toMatchObject({ status: "ACTIVE", pauseKind: null, pauseReason: null });
     expect(await eventKinds(bk.id)).toEqual(expect.arrayContaining(["paused", "resumed"]));
     expect((await post(lead.h, `/v1/baskets/${bk.id}/resume`)).status).toBe(409);
+  });
+
+  it("queues a holder notice for each status change: pause, resume, retirement requested and approved, platform pause, resume and retire", async () => {
+    const mine = await live();
+    await post(lead.h, `/v1/baskets/${mine.id}/pause`, { reason: "Reviewing" });
+    await post(lead.h, `/v1/baskets/${mine.id}/resume`);
+    await post(lead.h, `/v1/baskets/${mine.id}/retirement-request`, { reason: "Winding down" });
+    await post(admin.h, `/v1/ops/baskets/${mine.id}/retirement/decision`, { decision: "approved" });
+    expect(noticesOf(mine.id)).toEqual(["basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired"]);
+    const platform = await live();
+    await post(reviewer.h, `/v1/ops/baskets/${platform.id}/pause`, { reason: "Issuer notice" });
+    await post(admin.h, `/v1/ops/baskets/${platform.id}/resume`);
+    await post(admin.h, `/v1/ops/baskets/${platform.id}/retire`, { reason: "Policy" });
+    expect(noticesOf(platform.id)).toEqual(["basket_paused", "basket_unpaused", "basket_retired"]);
+    const declined = await live();
+    await post(lead.h, `/v1/baskets/${declined.id}/retirement-request`, { reason: "Maybe" });
+    await post(admin.h, `/v1/ops/baskets/${declined.id}/retirement/decision`, { decision: "rejected", reason: "No" });
+    expect(noticesOf(declined.id)).toEqual(["basket_retirement_pending"]); // a declined request tells nobody it is retired
+    fakes.email.basket.length = 0; // the emails of this test are not the next test's to count
   });
 
   it("refuses to submit or publish while paused, but drafting is allowed", async () => {
@@ -199,6 +220,7 @@ describe("lead change and reassignment", () => {
     expect((await assignmentsOf(bk.id)).map((r) => [r.role, r.status])).toEqual([["lead", "ENDED"], ["lead", "ACTIVE"]]);
     expect((await getBasket(next.h, bk.id)).body.myPermissions).toHaveLength(5);
     expect(fakes.email.basket.map((e) => e.kind)).toContain("lead_approved");
+    expect(noticesOf(bk.id)).toEqual(["lead_changed"]);
     expect((await post(admin.h, `/v1/ops/baskets/${bk.id}/assignments/${pending.id}/decision`, { decision: "approved" })).status).toBe(409);
   });
 

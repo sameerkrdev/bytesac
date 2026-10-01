@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { AssetChain } from "./assets";
 import { basketDiffSchema } from "./baskets";
-import { operationSchema } from "./execution";
 
 export const MIN_TRADE_BPS_DEFAULT = 50;
 export const MIN_TRADE_USDC_DEFAULT = "5";
@@ -135,8 +134,6 @@ export const syncRequestSchema = z.strictObject({
 });
 export type SyncRequest = z.infer<typeof syncRequestSchema>;
 
-/** A rebalance plan, or "already aligned" (the version was recorded and no operation made). */
-export const rebalanceResponseSchema = z.union([operationSchema, z.strictObject({ aligned: z.literal(true) })]);
 export const syncResultSchema = z.object({ synced: z.array(z.object({ positionId: z.uuid(), quantity: z.string() })) });
 export type SyncResult = z.infer<typeof syncResultSchema>;
 
@@ -157,6 +154,7 @@ export type NotificationsPage = z.infer<typeof notificationsPageSchema>;
 export const listNotificationsQuerySchema = z.strictObject({ cursor: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(50).default(20) });
 export const markReadSchema = z.union([z.strictObject({ ids: z.array(z.uuid()).min(1).max(100) }), z.strictObject({ all: z.literal(true) })]);
 export const pushTokenSchema = z.strictObject({ token: z.string().min(1).max(4096), userAgent: z.string().max(300).optional() });
+export type PushToken = z.infer<typeof pushTokenSchema>;
 
 const count = z.union([z.number().int(), z.literal("<5")]);
 export const adoptionSchema = z.object({

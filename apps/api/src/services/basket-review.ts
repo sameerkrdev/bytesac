@@ -111,7 +111,7 @@ export async function withdrawVersion(ctx: OwnerCtx, bid: string): Promise<Baske
 
 /** Publishes the approved version. Idempotent: an already published current version returns as is. The content must still match what ops approved; a disclosure change since submit only re-pins. */
 export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<BasketDetail> {
-  const eventId = await db.transaction(async (tx) => {
+  const published = await db.transaction(async (tx) => {
     const { basket } = await requireBasketAction(tx, ctx.userId, bid, "publish", true);
     const [v] = await tx.select().from(basketVersions).where(and(eq(basketVersions.basketId, bid), inArray(basketVersions.status, ["approved", "published"]))).orderBy(desc(basketVersions.versionNumber)).limit(1);
     if (v?.status === "published" && basket.currentVersionId === v.id) return null;
@@ -131,12 +131,15 @@ export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<Basket
     const hash = await contentHash(tx, v.id);
     await moveVersion(tx, v, "published", { contentHash: hash, publishedByUserId: ctx.userId, publishedAt: sql`now()` });
     if (repinned) await tx.insert(basketEvents).values({ basketId: bid, versionId: v.id, kind: "disclosures_repinned", actorType: "member", actorUserId: ctx.userId, requestId: ctx.meta.requestId });
-    return moveBasket(tx, basket, basket.status === "DRAFT" ? "ACTIVE" : basket.status, {
+    const eventId = await moveBasket(tx, basket, basket.status === "DRAFT" ? "ACTIVE" : basket.status, {
       keepStatus: true, kind: "published", actorType: "member", userId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, action: "basket.version_published", versionId: v.id,
       set: { currentVersionId: v.id, slug }, metadata: { versionId: v.id, hash, repinned },
     });
+    return { eventId, versionId: v.id, replaced: basket.currentVersionId !== null };
   });
-  if (eventId) await notifyBasket(bid, "published", {}, eventId);
+  if (published) await notifyBasket(bid, "published", {}, published.eventId);
+  // Holders only hear about a version that replaced one they could be on; the first publish has no holders.
+  if (published?.replaced) await enqueue("notifications", { job: "version-published", basketId: bid, versionId: published.versionId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
@@ -148,32 +151,35 @@ export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<Basket
 const managerMove = (ctx: OwnerCtx) => ({ actorType: "member", userId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId }) as const;
 
 export async function pauseBasket(ctx: OwnerCtx, bid: string, reason: BasketReasonRequest["reason"]): Promise<BasketDetail> {
-  await db.transaction(async (tx) => {
+  const eventId = await db.transaction(async (tx) => {
     const { basket } = await requireBasketAction(tx, ctx.userId, bid, "lifecycle", true);
     if (basket.status !== "ACTIVE") throw invalid("Only an active basket can be paused.");
-    await moveBasket(tx, basket, "PAUSED", { ...managerMove(ctx), kind: "paused", action: "basket.paused", reason, set: { pauseKind: "manager", pauseReason: reason } });
+    return moveBasket(tx, basket, "PAUSED", { ...managerMove(ctx), kind: "paused", action: "basket.paused", reason, set: { pauseKind: "manager", pauseReason: reason } });
   });
+  await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_paused", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
 export async function resumeBasket(ctx: OwnerCtx, bid: string): Promise<BasketDetail> {
-  await db.transaction(async (tx) => {
+  const eventId = await db.transaction(async (tx) => {
     const { basket } = await requireBasketAction(tx, ctx.userId, bid, "lifecycle", true);
     if (basket.status !== "PAUSED") throw invalid("Only a paused basket can be resumed.");
     if (basket.pauseKind === "platform") throw createHttpError("Only the Bytesac team can lift this pause.", { code: "FORBIDDEN" });
-    await moveBasket(tx, basket, "ACTIVE", { ...managerMove(ctx), kind: "resumed", action: "basket.resumed", set: { pauseKind: null, pauseReason: null } });
+    return moveBasket(tx, basket, "ACTIVE", { ...managerMove(ctx), kind: "resumed", action: "basket.resumed", set: { pauseKind: null, pauseReason: null } });
   });
+  await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_unpaused", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
 export async function requestRetirement(ctx: OwnerCtx, bid: string, reason: BasketReasonRequest["reason"]): Promise<BasketDetail> {
-  await db.transaction(async (tx) => {
+  const eventId = await db.transaction(async (tx) => {
     const { basket } = await requireBasketAction(tx, ctx.userId, bid, "lifecycle", true);
     if (basket.status !== "ACTIVE" && basket.status !== "PAUSED") throw invalid("Only an active or paused basket can be retired.");
-    await moveBasket(tx, basket, "RETIREMENT_PENDING", { ...managerMove(ctx), kind: "retirement_requested", action: "basket.retirement_requested", reason, set: { previousStatus: basket.status } });
+    return moveBasket(tx, basket, "RETIREMENT_PENDING", { ...managerMove(ctx), kind: "retirement_requested", action: "basket.retirement_requested", reason, set: { previousStatus: basket.status } });
   });
+  await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_retirement_pending", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
@@ -316,6 +322,7 @@ export async function decideLead(ctx: OpsCtx, bid: string, aid: string, i: Baske
     return e!.id;
   });
   await notifyBasket(bid, i.decision === "approved" ? "lead_approved" : "lead_rejected", { message: i.reason }, eventId);
+  if (i.decision === "approved") await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "lead_changed", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
@@ -329,6 +336,7 @@ export async function platformPause(ctx: OpsCtx, bid: string, reason: BasketReas
     return moveBasket(tx, basket, "PAUSED", { ...opsMove(ctx), keepStatus: true, kind: "paused", action: "basket.platform_paused", reason, set: { pauseKind: "platform", pauseReason: reason } });
   });
   await notifyBasket(bid, "platform_paused", { message: reason }, eventId);
+  await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_paused", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
@@ -340,6 +348,7 @@ export async function platformResume(ctx: OpsCtx, bid: string): Promise<OpsBaske
     return moveBasket(tx, basket, "ACTIVE", { ...opsMove(ctx), kind: "resumed", action: "basket.platform_resumed", set: { pauseKind: null, pauseReason: null } });
   });
   await notifyBasket(bid, "platform_resumed", {}, eventId);
+  await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_unpaused", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
@@ -347,6 +356,7 @@ export async function platformResume(ctx: OpsCtx, bid: string): Promise<OpsBaske
 export async function platformRetire(ctx: OpsCtx, bid: string, reason: BasketReasonRequest["reason"]): Promise<OpsBasketDetail> {
   const eventId = await db.transaction(async (tx) => moveBasket(tx, await lockBasket(tx, ctx, bid), "RETIRED", { ...opsMove(ctx), kind: "retired", action: "basket.retired", reason, set: { pauseKind: null, pauseReason: null, previousStatus: null } }));
   await notifyBasket(bid, "retired", { message: reason }, eventId);
+  await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_retired", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
@@ -365,6 +375,7 @@ export async function decideRetirement(ctx: OpsCtx, bid: string, i: BasketApprov
   });
   await notifyReassignmentRequired(ctx.meta.requestId);
   await notifyBasket(bid, "retirement_decided", { decision: i.decision, message: i.reason }, eventId);
+  if (i.decision === "approved") await enqueue("notifications", { job: "basket-notice", basketId: bid, kind: "basket_retired", eventId });
   await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }

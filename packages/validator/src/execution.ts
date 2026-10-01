@@ -3,6 +3,7 @@ import { assetChainSchema } from "./assets";
 import { challengeResponseSchema } from "./auth";
 import { decimalStringSchema } from "./baskets";
 import { chainFamilySchema } from "./chains";
+import { positionExtrasSchema, repairSchema } from "./rebalance";
 
 export const LEG_STATES = ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"] as const;
 export const OPERATION_STATES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"] as const;
@@ -150,6 +151,8 @@ export const operationSchema = z.object({
   legs: z.array(legSchema),
 });
 export type OperationView = z.infer<typeof operationSchema>;
+/** A rebalance plan, or "already aligned" (the version was recorded and no operation made). */
+export const rebalanceResponseSchema = z.union([operationSchema, z.strictObject({ aligned: z.literal(true) })]);
 
 export const holdingSchema = z.object({
   deploymentId: z.uuid(),
@@ -172,10 +175,12 @@ export const positionSchema = z.object({
   openedAt: z.iso.datetime({ offset: true }),
   closedAt: z.iso.datetime({ offset: true }).nullable(),
   holdings: z.array(holdingSchema),
-});
+}).extend(positionExtrasSchema.shape);
 
 export const portfolioSchema = z.object({
   positions: z.array(positionSchema),
+  /** One entry per short deployment (or basket cash): the buy-back / sync target. */
+  repairs: z.array(repairSchema),
   openOperations: z.array(operationSchema),
   /** The 20 most recent finished operations (completed, partial, failed, cancelled), newest first. */
   history: z.array(operationSchema),

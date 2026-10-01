@@ -3,6 +3,8 @@ import { logger } from "@repo/logger";
 import { env } from "./env";
 import { enqueue, queues } from "./queues";
 import { seedPlatformWallets } from "./services/gas";
+import { deliverNotification, fanOutToHolders } from "./services/notifications";
+import { onVersionPublished } from "./services/rebalance";
 import { checkGasWallets, expireStalePlans, reconcilePositions, trackLeg, trackStaleClaims } from "./services/positions";
 import { runBasketPerformance, runPriceSnapshot } from "./services/performance";
 import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "./services/search-index";
@@ -26,6 +28,10 @@ export async function startWorker(): Promise<Worker[]> {
     new Worker("track-leg", (job) => (job.name === "sweep" ? sweepOperations() : trackLeg(job.data.legId, job.data.recheck)), { connection }),
     new Worker("reconcile-positions", (job) => reconcilePositions(job.data.userId), { connection }),
     new Worker("gas-wallet-check", () => checkGasWallets(), { connection }),
+    new Worker("notifications", (job) => {
+      const d = job.data as Parameters<typeof enqueue<"notifications">>[1];
+      return d.job === "deliver" ? deliverNotification(d.notificationId) : d.job === "version-published" ? onVersionPublished(d.basketId, d.versionId) : fanOutToHolders(d.basketId, d.kind, {}, `${d.kind}:${d.eventId}`);
+    }, { connection }),
   ];
   workers[4]!.on("failed", async (job) => {
     if (job?.name === "track-leg" && !job.data.recheck && job.attemptsMade >= (job.opts.attempts ?? 1)) await enqueue("track-leg", { legId: job.data.legId, recheck: 1 });

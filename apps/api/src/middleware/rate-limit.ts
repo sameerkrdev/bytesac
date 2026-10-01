@@ -33,6 +33,7 @@ export const limits = {
   publicBasketIp: limiter("public:basket:ip", 60, 60),
   discoveryIp: limiter("public:discovery:ip", 60, 60),
   operationsUser: limiter("ops:plan:user", 10, 3600),
+  notificationsUser: limiter("notifications:user", 120, 60),
   syncUser: limiter("sync:user", 10, 3600),
   quotesUser: limiter("ops:quote:user", 60, 60),
   submitsUser: limiter("ops:submit:user", 60, 60),

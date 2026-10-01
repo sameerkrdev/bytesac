@@ -8,8 +8,9 @@ import { optionalSession, requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import { getInvestability } from "../services/investability";
+import { getAdoption } from "../services/notifications";
 import {
-  addAssignment, createNextVersion, endAssignment, getBasketForMember, getVersionDiff, listVersions, previewOpenVersion, saveDraft, updateAssignment, validateOpenVersion,
+  addAssignment, createNextVersion, endAssignment, getBasketForMember, requireBasketAction, getVersionDiff, listVersions, previewOpenVersion, saveDraft, updateAssignment, validateOpenVersion,
 } from "../services/baskets";
 import { pauseBasket, publishVersion, requestRetirement, resumeBasket, submitVersion, withdrawVersion } from "../services/basket-review";
 
@@ -35,6 +36,12 @@ basketsRouter.use(requireSession, async (req, _res, next) => {
 
 basketsRouter.get("/:bid", validate({ params: bidParam }), async (req, res) => {
   res.json(await getBasketForMember(ctx(req), req.params.bid as string));
+});
+
+/** Aggregate adoption of the published versions: counts only, for members with basket read access. */
+basketsRouter.get("/:bid/adoption", validate({ params: bidParam }), async (req, res) => {
+  await requireBasketAction(db, req.auth!.userId, req.params.bid as string, "read");
+  res.json(await getAdoption(req.params.bid as string));
 });
 
 basketsRouter.patch("/:bid/draft", validate({ params: bidParam, body: saveBasketDraftRequestSchema }), async (req, res) => {

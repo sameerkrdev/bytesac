@@ -9,6 +9,7 @@ import { fakes } from "../helpers/fakes";
 import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";
 import { orgWithOwner } from "../members/helpers";
 
+const FEES = { entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 0 }, rebalance: { type: "percent", bps: 0 }, subscription: null };
 export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 export interface SeedAsset {
@@ -34,7 +35,7 @@ export async function seedBasket(over: { assets: SeedAsset[]; status?: string; m
     VALUES (gen_random_uuid(), ${owner.id}, ${over.slug ?? "basket-" + randomBytes(3).toString("hex")}, ${over.status ?? "ACTIVE"}, ${owner.userId}) RETURNING id, slug`;
   const [version] = await adminSql<{ id: string }[]>`
     INSERT INTO app.basket_versions (id, basket_id, version_number, status, name, category, fees, minimum_investment_usdc, assets_revision, created_by_user_id, published_at)
-    VALUES (gen_random_uuid(), ${basket!.id}, 1, 'published', 'Test basket', 'multi_asset', ${adminSql.json({})}, ${over.minimum ?? "100"}, 1, ${owner.userId}, now()) RETURNING id`;
+    VALUES (gen_random_uuid(), ${basket!.id}, 1, 'published', 'Test basket', 'multi_asset', ${adminSql.json(FEES)}, ${over.minimum ?? "100"}, 1, ${owner.userId}, now()) RETURNING id`;
   await adminSql`UPDATE app.baskets SET current_version_id = ${version!.id} WHERE id = ${basket!.id}`;
   const deployments: { instrumentId: string; deploymentId: string; chain: string; address: string | null; decimals: number; bps: number; symbol: string }[] = [];
   for (const a of over.assets) {
@@ -58,7 +59,7 @@ export async function seedBasket(over: { assets: SeedAsset[]; status?: string; m
     await adminSql`INSERT INTO app.basket_version_assets (id, version_id, revision, instrument_id, target_weight_bps) VALUES (gen_random_uuid(), ${version!.id}, 1, ${i!.id}, ${a.bps})`;
     deployments.push({ instrumentId: i!.id, deploymentId: d!.id, chain: a.chain, address, decimals, bps: a.bps, symbol: a.symbol });
   }
-  return { basketId: basket!.id, slug: basket!.slug, versionId: version!.id, deployments, ownerId: owner.userId };
+  return { basketId: basket!.id, slug: basket!.slug, versionId: version!.id, deployments, ownerId: owner.userId, owner };
 }
 
 /** A signed-in user (Solana investment wallet) with optional verified contacts and extra linked families, inserted directly. */
@@ -163,7 +164,7 @@ export async function seedPrices(deployments: { instrumentId: string }[], usd: (
 export async function seedVersion(basket: { basketId: string; deployments: { instrumentId: string }[]; ownerId: string }, versionNumber: number, bps: number[], rebalance: object = {}) {
   const [v] = await adminSql<{ id: string }[]>`
     INSERT INTO app.basket_versions (id, basket_id, version_number, status, name, category, fees, rebalance, minimum_investment_usdc, assets_revision, created_by_user_id, published_at)
-    VALUES (gen_random_uuid(), ${basket.basketId}, ${versionNumber}, 'published', 'Test basket', 'multi_asset', ${adminSql.json({})}, ${adminSql.json({ reviewFrequency: "none", ...rebalance })}, '100', 1, ${basket.ownerId}, now()) RETURNING id`;
+    VALUES (gen_random_uuid(), ${basket.basketId}, ${versionNumber}, 'published', 'Test basket', 'multi_asset', ${adminSql.json(FEES)}, ${adminSql.json({ reviewFrequency: "none", ...rebalance })}, '100', 1, ${basket.ownerId}, now()) RETURNING id`;
   for (const [n, d] of basket.deployments.entries()) {
     await adminSql`INSERT INTO app.basket_version_assets (id, version_id, revision, instrument_id, target_weight_bps) VALUES (gen_random_uuid(), ${v!.id}, 1, ${d.instrumentId}, ${bps[n]!})`;
   }

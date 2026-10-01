@@ -1,5 +1,5 @@
 import {
-  bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
+  bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, adoptionSchema, notificationsPageSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type Adoption, type NotificationsPage, type PushToken, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
   aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
@@ -285,6 +285,11 @@ export function createApiClient(options: ApiClientOptions) {
     keepCustom: (positionId: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(positionId)}/custom`, null),
     revertCustom: (positionId: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(positionId)}/custom/revert`, null),
     sync: (b: SyncRequest): Promise<SyncResult> => request("POST", "/v1/portfolio/sync", syncResultSchema, b),
+    notifications: (q: { cursor?: string; limit?: number } = {}): Promise<NotificationsPage> => request("GET", `/v1/me/notifications?${qs({ cursor: q.cursor, limit: q.limit?.toString() })}`, notificationsPageSchema),
+    markNotificationsRead: (b: { ids: string[] } | { all: true }): Promise<void> => request<z.ZodVoid>("POST", "/v1/me/notifications/read", null, b),
+    registerPushToken: (b: PushToken): Promise<void> => request<z.ZodVoid>("POST", "/v1/me/push-tokens", null, b),
+    revokePushToken: (token: string): Promise<void> => request<z.ZodVoid>("POST", "/v1/me/push-tokens/revoke", null, { token }),
+    basketAdoption: (basketId: string): Promise<Adoption> => request("GET", `/v1/baskets/${e(basketId)}/adoption`, adoptionSchema),
     getOperation: (id: string): Promise<OperationView> => request("GET", `/v1/operations/${e(id)}`, operationSchema),
     quoteLeg: (id: string, legId: string): Promise<LegQuoteResponse> => request("POST", `/v1/operations/${e(id)}/legs/${e(legId)}/quote`, legQuoteResponseSchema),
     submitLeg: (id: string, legId: string, b: LegSubmit): Promise<OperationView> => request("POST", `/v1/operations/${e(id)}/legs/${e(legId)}/submit`, operationSchema, b),

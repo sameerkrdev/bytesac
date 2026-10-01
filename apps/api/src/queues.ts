@@ -1,5 +1,6 @@
 import { Queue } from "bullmq";
 import { logger } from "@repo/logger";
+import type { NotificationKind } from "@repo/validator";
 import { env } from "./env";
 
 /** `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. */
@@ -16,6 +17,7 @@ export const queues = {
   "track-leg": queue("track-leg"),
   "reconcile-positions": queue("reconcile-positions"),
   "gas-wallet-check": queue("gas-wallet-check"),
+  notifications: queue("notifications"),
 };
 
 interface JobData {
@@ -28,6 +30,11 @@ interface JobData {
   "track-leg": { legId: string; recheck?: number };
   "reconcile-positions": { userId?: string };
   "gas-wallet-check": Record<string, never>;
+  /** `deliver`: email and push for one inbox row. `version-published`: cancel open plans and notify holders. `basket-notice`: tell holders of a status change. */
+  notifications:
+    | { job: "deliver"; notificationId: string }
+    | { job: "version-published"; basketId: string; versionId: string }
+    | { job: "basket-notice"; basketId: string; kind: NotificationKind; eventId: string };
 }
 
 /**
@@ -49,6 +56,10 @@ export async function enqueue<N extends keyof JobData>(name: N, data: JobData[N]
       await queues[name].add(name, data, recheck
         ? { jobId: `leg_${legId}_recheck_${recheck}`, delay: 3_600_000, attempts: 1 }
         : { jobId: `leg_${legId}`, attempts: 12, backoff: { type: "exponential", delay: 15_000 } });
+    } else if (name === "notifications") {
+      const d = data as JobData["notifications"];
+      const jobId = d.job === "deliver" ? `deliver_${d.notificationId}` : d.job === "version-published" ? `published_${d.versionId}` : `notice_${d.kind}_${d.eventId}`;
+      await queues[name].add(d.job, d, { jobId });
     } else await queues[name].add(name, data);
   } catch (err) {
     // A committed change is not undone by a queue outage; the next change or the sweep catches up.

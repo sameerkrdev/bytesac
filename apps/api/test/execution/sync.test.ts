@@ -5,7 +5,7 @@ import { reconcilePositions } from "../../src/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "./chain-mocks";
-import { seedBasket, seedCash, seedPosition, seedPrices, seedUser, type SeedAsset } from "./helpers";
+import { USDC_MINT, seedBasket, seedCash, seedPosition, seedPrices, seedUser, type SeedAsset } from "./helpers";
 
 // One ERC-20 held by two baskets of one user: A records 10, B records 15, the wallet holds 10 (shortfall 6 and 9).
 const ERC20 = { symbol: "TKN", chain: "ethereum", tokenStandard: "erc20", decimals: 6, bps: 10_000 } as const;
@@ -13,7 +13,7 @@ type H = Record<string, string>;
 const sync = (h: H, body: object) => request(app).post("/v1/portfolio/sync").set(h).send({ idempotencyKey: "sync-aaaaaaaa", ...body });
 
 async function arrange() {
-  mockChains();
+  const chain = mockChains();
   const [basketA, basketB] = [await seedBasket({ assets: [ERC20] }), await seedBasket({ assets: [ERC20] })];
   const user = await seedUser({ wallet: solanaTestWallet() });
   const shared = basketA.deployments[0]!;
@@ -22,7 +22,7 @@ async function arrange() {
   const setWallet = (n: bigint) => fakes.evm.balances.set(`ethereum:${user.evmAddress}:${shared.address}`, n);
   setWallet(10n);
   await reconcilePositions(user.userId); // what the portfolio showed when the user opened the form
-  return { user, shared, pA, pB, setWallet, basketA, basketB };
+  return { chain, user, shared, pA, pB, setWallet, basketA, basketB };
 }
 const latest = async (positionId: string) => (await adminSql<{ status: string; ledger_quantity: string }[]>`SELECT status, ledger_quantity FROM app.position_reconciliations WHERE position_id = ${positionId} AND deployment_id IS NOT NULL ORDER BY checked_at DESC, id DESC LIMIT 1`)[0]!;
 const decisions = (kind: string) => adminSql<{ position_id: string; data: Record<string, unknown> }[]>`SELECT position_id, data FROM app.position_decisions WHERE kind = ${kind} ORDER BY created_at, id`;
@@ -85,13 +85,11 @@ describe("sync", () => {
   });
 
   it("basket cash that left the wallet is synced with negative cash entries", async () => {
-    const { user, shared, pA, pB, basketA, basketB } = await arrange();
+    const { chain, user, shared, pA, pB, basketA, basketB } = await arrange();
     await seedCash(user.userId, basketA, pA, 100_000_000n);
     await seedCash(user.userId, basketB, pB, 50_000_000n);
-    // The cash rows of a reconciliation (wallet USDC 60 of the 150 recorded), as the portfolio would show them.
-    for (const [positionId, ledger, allocated] of [[pA, 100_000_000n, 40_000_000n], [pB, 50_000_000n, 20_000_000n]] as const) {
-      await adminSql`INSERT INTO app.position_reconciliations (id, position_id, deployment_id, ledger_quantity, allocated_quantity, wallet_balance, status) VALUES (gen_random_uuid(), ${positionId}, NULL, ${ledger.toString()}, ${allocated.toString()}, '60000000', 'SHORT')`;
-    }
+    chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 60_000_000n); // 60 USDC left of the 150 the baskets record: 90 short, 60 and 30 pro-rata
+    await reconcilePositions(user.userId); // what the portfolio showed when the user opened the form
     const res = await sync(user.h, { asset: "cash", split: [{ positionId: pA, quantity: "60000000" }, { positionId: pB, quantity: "30000000" }] });
     expect(res.status).toBe(200);
     const rows = await adminSql<{ position_id: string; amount_micro: string; reason: string }[]>`SELECT position_id, amount_micro, reason FROM app.position_cash_entries WHERE reason = 'sync' ORDER BY amount_micro`;

@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import {
-  basketPositions, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations,
+  basketPositions, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations,
   type DbOrTx,
 } from "@repo/db";
 import { logger } from "@repo/logger";
@@ -15,8 +15,9 @@ import { writeAudit } from "./audit";
 import { getInvestability } from "./investability";
 import {
   FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, addressOn, applyVersion, assertEligible, auditBase, basketCashMicro, findByKey, freeUsdcMicro, getOperation, insertPlan, operationView,
-  planQuote, reused, sellLeg, sponsoredCost, usdcPrice, userAddresses, type LegDraft, type OpCtx,
+  lockOperation, planQuote, reused, sellLeg, setOperationStatus, sponsoredCost, usdcPrice, userAddresses, type LegDraft, type OpCtx,
 } from "./operations";
+import { fanOutToHolders } from "./notifications";
 import { getPrices } from "./pricing";
 import { reconcilePositions } from "./positions";
 
@@ -329,4 +330,22 @@ export async function revertCustom(ctx: OpCtx, positionId: string): Promise<void
     await tx.update(basketPositions).set({ allocationStatus: "ALIGNED", allocationCheckedAt: sql`now()` }).where(eq(basketPositions.id, positionId));
     await writeAudit(tx, { ...auditBase(ctx, positionId), action: "position.custom_reverted", entityType: "basket_position", entityId: positionId, metadata: {} });
   });
+}
+
+/**
+ * A new version became current: open plans of the basket that nothing was sent for are cancelled (their gas reservation is released) because they target
+ * an out-of-date version; a plan that is already running continues to its own target. Holders of open positions then get one notice each.
+ */
+export async function onVersionPublished(basketId: string, versionId: string): Promise<void> {
+  const planned = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.basketId, basketId), eq(operations.kind, "rebalance"), eq(operations.status, "PLANNED")));
+  for (const { id } of planned) {
+    await db.transaction(async (tx) => {
+      const op = await lockOperation(tx, id);
+      const [claimed] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, id), ne(operationLegs.status, "PLANNED"))).limit(1);
+      if (op.status !== "PLANNED" || claimed) return; // a signed transaction is being sent: it runs on
+      await setOperationStatus(tx, null, op, "CANCELLED");
+      await writeAudit(tx, { ...auditBase(null, id), action: "operation.superseded", entityType: "operation", entityId: id, metadata: { newVersionId: versionId } });
+    });
+  }
+  await fanOutToHolders(basketId, "rebalance_available", { versionId }, `rebalance:${versionId}`);
 }

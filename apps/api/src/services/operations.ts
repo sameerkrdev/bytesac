@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
-  basketPositions, basketVersions, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations,
+  basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations,
   positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
@@ -21,6 +21,7 @@ import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
 import { assertWalletsCanFund, platformAddress, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
 import { getInvestability } from "./investability";
+import { notify } from "./notifications";
 import { getPrices } from "./pricing";
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
@@ -133,6 +134,13 @@ export async function lockOperation(tx: Tx, id: string): Promise<Op> {
   return op;
 }
 
+/** An unfinished rebalance is told to the user once (the id is enqueued right away: delivery retries until the row is committed). */
+async function tellIncomplete(tx: Tx, op: Op): Promise<void> {
+  const [b] = await tx.select({ slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, op.basketId!));
+  const id = await notify(tx, { userId: op.userId, kind: "execution_incomplete", basketId: op.basketId!, positionId: op.positionId!, data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id }, dedupeKey: `incomplete:${op.id}` });
+  if (id) await enqueue("notifications", { job: "deliver", notificationId: id });
+}
+
 /** After a leg ends: COMPLETED when every leg settled; PARTIAL when an asset leg settled and another failed; FAILED when a leg failed and no asset leg settled. */
 export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: string): Promise<void> {
   const op = await lockOperation(tx, opId);
@@ -143,7 +151,10 @@ export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: st
     if (op.kind === "rebalance") await applyVersion(tx, ctx, { positionId: op.positionId!, userId: op.userId, versionId: op.versionId });
     return;
   }
-  if (legs.some((l) => l.status === "FAILED")) return setOperationStatus(tx, ctx, op, legs.some((l) => l.kind !== "network_fee" && l.status === "SETTLED") ? "PARTIAL" : "FAILED");
+  if (legs.some((l) => l.status === "FAILED")) {
+    await setOperationStatus(tx, ctx, op, legs.some((l) => l.kind !== "network_fee" && l.status === "SETTLED") ? "PARTIAL" : "FAILED");
+    if (op.kind === "rebalance") await tellIncomplete(tx, op);
+  }
 }
 
 /** Expired plans (nothing submitted within 30 minutes) are cancelled when next touched, which frees the user's one active-operation slot. */

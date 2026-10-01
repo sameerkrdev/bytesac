@@ -1,10 +1,12 @@
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import {
-  basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionLedgerEntries, positionReconciliations, type Tx,
+  basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, notifications, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations, type Tx,
 } from "@repo/db";
 import { logger } from "@repo/logger";
-import { CONFIRMATIONS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type Portfolio, type ResolveLegRequest } from "@repo/validator";
+import {
+  CONFIRMATIONS, DRIFT_THRESHOLD_BPS_DEFAULT, USDC_SOLANA_MINT, headlineOf, splitRepair, type AssetChain, type OperationView, type Portfolio, type PositionStates, type Repair, type ResolveLegRequest,
+} from "@repo/validator";
 import { env } from "../env";
 import { bitcoinTx } from "../providers/bitcoin";
 import { evmBalance, evmNativeReceived, evmReceipt, gasWalletAddress } from "../providers/evm-rpc";
@@ -13,8 +15,11 @@ import { feePayer, solanaBalance, solanaFinality, solanaReceived } from "../prov
 import { redis } from "../middleware/rate-limit";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { addressOn, cancelIfExpired, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
+import { activeCustom, addressOn, cancelIfExpired, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
+import { versionDiff } from "./baskets";
+import { notify } from "./notifications";
 import { getPrices } from "./pricing";
+import { latestRecon, valuePosition } from "./rebalance";
 
 const TRACK_WINDOW_MS = 30 * 60_000;
 const MAX_RECHECKS = 168; // hourly, seven days
@@ -250,10 +255,49 @@ async function openPosition(tx: Tx, op: typeof operations.$inferSelect): Promise
 }
 
 /**
- * Compares what each user's open positions record with what their wallets hold, per deployment, and appends the result. Surplus stays outside
- * baskets; a shortfall is shared pro-rata by recorded quantity (the remainder to the largest position, the oldest on a tie).
+ * The shortfall of a wallet balance against what positions record, shared pro-rata by recorded amount; the remainder goes to the largest position
+ * (the first listed on a tie, so callers order by `openedAt`). Surplus is not allocated.
+ */
+function shareShortfall(recorded: bigint[], wallet: bigint): { shares: bigint[]; shortfall: bigint; total: bigint } {
+  const total = recorded.reduce((a, b) => a + b, 0n);
+  const shortfall = wallet < total ? total - wallet : 0n;
+  const shares = recorded.map((l) => (total > 0n ? (shortfall * l) / total : 0n));
+  if (shortfall > 0n) shares[recorded.indexOf(recorded.reduce((m, l) => (l > m ? l : m), 0n))]! += shortfall - shares.reduce((a, b) => a + b, 0n);
+  return { shares, shortfall, total };
+}
+
+/**
+ * Compares what each user's open positions record with what their wallets hold, per deployment and for basket cash (USDC on Solana), and appends the
+ * result. Surplus stays outside baskets; a shortfall is shared pro-rata by recorded quantity (the remainder to the largest position, the oldest on a
+ * tie). Then each open position's weights are checked against its target (drift). A new shortfall and drift raise inbox notices, deduplicated; their
+ * `deliver` jobs are enqueued once everything is written.
  */
 export async function reconcilePositions(userId?: string): Promise<void> {
+  const open = await db.select({
+    id: basketPositions.id, userId: basketPositions.userId, basketId: basketPositions.basketId, openedAt: basketPositions.openedAt, appliedVersionId: basketPositions.appliedVersionId,
+    slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)`,
+  }).from(basketPositions).innerJoin(baskets, eq(baskets.id, basketPositions.basketId)).where(and(eq(basketPositions.status, "OPEN"), userId ? eq(basketPositions.userId, userId) : undefined))
+    .orderBy(asc(basketPositions.openedAt), asc(basketPositions.id));
+  const info = new Map(open.map((p) => [p.id, p]));
+  const toDeliver: string[] = [];
+
+  /** Appends reconciliation rows; a row that is SHORT where the previous one was not raises `repair_required` (one per row). */
+  const record = async (items: { positionId: string; deploymentId: string | null; ledger: bigint; allocated: bigint; wallet: bigint; status: "OK" | "SHORT" | "SURPLUS" }[]) => {
+    const previous = await Promise.all(items.map(async (i) => (await db.select({ status: positionReconciliations.status }).from(positionReconciliations)
+      .where(and(eq(positionReconciliations.positionId, i.positionId), i.deploymentId ? eq(positionReconciliations.deploymentId, i.deploymentId) : isNull(positionReconciliations.deploymentId)))
+      .orderBy(desc(positionReconciliations.checkedAt), desc(positionReconciliations.id)).limit(1))[0]?.status));
+    const inserted = await db.insert(positionReconciliations).values(items.map((i) => ({
+      positionId: i.positionId, deploymentId: i.deploymentId, ledgerQuantity: i.ledger.toString(), allocatedQuantity: i.allocated.toString(), walletBalance: i.wallet.toString(), status: i.status,
+    }))).returning({ id: positionReconciliations.id });
+    for (const [n, i] of items.entries()) {
+      if (i.status !== "SHORT" || previous[n] === "SHORT") continue;
+      const p = info.get(i.positionId)!;
+      const asset = i.deploymentId ?? "cash";
+      const id = await notify(db, { userId: p.userId, kind: "repair_required", basketId: p.basketId, positionId: p.id, data: { basketName: p.name, basketSlug: p.slug, asset }, dedupeKey: `short:${p.id}:${asset}:${inserted[n]!.id}` });
+      if (id) toDeliver.push(id);
+    }
+  };
+
   const rows = await db.select({
     userId: basketPositions.userId, positionId: positionLedgerEntries.positionId, deploymentId: positionLedgerEntries.deploymentId, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`,
     chain: instrumentDeployments.chain, address: instrumentDeployments.address, opened: basketPositions.openedAt,
@@ -266,7 +310,6 @@ export async function reconcilePositions(userId?: string): Promise<void> {
   for (const group of groups.values()) {
     const first = group[0]!;
     const ledger = group.map((g) => BigInt(g.quantity));
-    const total = ledger.reduce((a, b) => a + b, 0n);
     let wallet: bigint;
     try {
       wallet = await walletBalance(await userAddresses(db, first.userId), first.chain, first.address);
@@ -274,23 +317,74 @@ export async function reconcilePositions(userId?: string): Promise<void> {
       logger.warn("reconciliation skipped: balance unavailable", { deploymentId: first.deploymentId, errMessage: err instanceof Error ? err.message : "unknown" });
       continue;
     }
-    const shortfall = wallet < total ? total - wallet : 0n;
-    const shares = ledger.map((l) => (total > 0n ? (shortfall * l) / total : 0n));
-    if (shortfall > 0n) shares[ledger.indexOf(ledger.reduce((m, l) => (l > m ? l : m), 0n))]! += shortfall - shares.reduce((a, b) => a + b, 0n);
-    await db.insert(positionReconciliations).values(group.map((g, n) => ({
-      positionId: g.positionId, deploymentId: g.deploymentId, ledgerQuantity: ledger[n]!.toString(), allocatedQuantity: (ledger[n]! - shares[n]!).toString(), walletBalance: wallet.toString(),
+    const { shares, shortfall, total } = shareShortfall(ledger, wallet);
+    await record(group.map((g, n) => ({
+      positionId: g.positionId, deploymentId: g.deploymentId, ledger: ledger[n]!, allocated: ledger[n]! - shares[n]!, wallet,
       status: shortfall > 0n ? (shares[n]! > 0n ? ("SHORT" as const) : ("OK" as const)) : wallet > total ? ("SURPLUS" as const) : ("OK" as const),
     })));
   }
+
+  // Basket cash is USDC the wallet must still hold: the same comparison, against the cash entries of the user's open positions.
+  const cash = !open.length ? [] : await db.select({ positionId: positionCashEntries.positionId, amount: sql<string>`sum(${positionCashEntries.amountMicro})` }).from(positionCashEntries)
+    .where(inArray(positionCashEntries.positionId, open.map((p) => p.id))).groupBy(positionCashEntries.positionId);
+  const cashByUser = new Map<string, { positionId: string; amount: bigint }[]>();
+  for (const p of open) {
+    const amount = BigInt(cash.find((c) => c.positionId === p.id)?.amount ?? "0");
+    if (amount > 0n) cashByUser.set(p.userId, [...(cashByUser.get(p.userId) ?? []), { positionId: p.id, amount }]);
+  }
+  for (const [owner, list] of cashByUser) {
+    let wallet: bigint;
+    try {
+      wallet = await walletBalance(await userAddresses(db, owner), "solana", USDC_SOLANA_MINT);
+    } catch (err) {
+      logger.warn("cash reconciliation skipped: balance unavailable", { errMessage: err instanceof Error ? err.message : "unknown" });
+      continue;
+    }
+    const { shares, shortfall, total } = shareShortfall(list.map((c) => c.amount), wallet);
+    await record(list.map((c, n) => ({
+      positionId: c.positionId, deploymentId: null, ledger: c.amount, allocated: c.amount - shares[n]!, wallet,
+      status: shortfall > 0n ? (shares[n]! > 0n ? ("SHORT" as const) : ("OK" as const)) : wallet > total ? ("SURPLUS" as const) : ("OK" as const),
+    })));
+  }
+
+  // Drift. ponytail: one valuation (and price lookup) per open position; batch the prices if the nightly run gets slow.
+  for (const p of open) {
+    const val = await valuePosition(db, p.id);
+    if (!val.fresh || val.holdings.length === 0) continue; // without every price the stored state is left as it was
+    const [version] = await db.select({ assetsRevision: basketVersions.assetsRevision, rebalance: basketVersions.rebalance }).from(basketVersions).where(eq(basketVersions.id, p.appliedVersionId));
+    const threshold = version!.rebalance.driftThresholdBps ?? DRIFT_THRESHOLD_BPS_DEFAULT;
+    const custom = await activeCustom(db, p.id);
+    const target = custom
+      ? (custom.data.weights as Record<string, number>)
+      : Object.fromEntries((await db.select({ instrumentId: basketVersionAssets.instrumentId, bps: basketVersionAssets.targetWeightBps }).from(basketVersionAssets)
+        .where(and(eq(basketVersionAssets.versionId, p.appliedVersionId), eq(basketVersionAssets.revision, version!.assetsRevision)))).map((a) => [a.instrumentId, a.bps]));
+    const actual = new Map(val.holdings.map((h) => [h.instrumentId, h.weightBps]));
+    const moved = [...new Set([...actual.keys(), ...Object.keys(target)])].some((i) => Math.abs((actual.get(i) ?? 0) - (target[i] ?? 0)) >= threshold);
+    const next = moved ? ("WEIGHT_DRIFT" as const) : custom ? ("CUSTOMIZED" as const) : ("ALIGNED" as const);
+    const id = await db.transaction(async (tx) => {
+      await tx.update(basketPositions).set({ allocationStatus: next, allocationCheckedAt: sql`now()` }).where(eq(basketPositions.id, p.id));
+      if (custom && moved) await tx.insert(positionDecisions).values({ positionId: p.id, kind: "revert_custom", data: { reason: "moved" }, actorUserId: p.userId });
+      if (next !== "WEIGHT_DRIFT") return null;
+      // A prompt at most once a week while the position stays drifted; the dedupe key also makes a repeated run on one day a no-op.
+      const [recent] = await tx.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.positionId, p.id), eq(notifications.kind, "drifted"), sql`${notifications.createdAt} > now() - interval '7 days'`)).limit(1);
+      return recent ? null : notify(tx, { userId: p.userId, kind: "drifted", basketId: p.basketId, positionId: p.id, data: { basketName: p.name, basketSlug: p.slug }, dedupeKey: `drifted:${p.id}:${new Date().toISOString().slice(0, 10)}` });
+    });
+    if (id) toDeliver.push(id);
+  }
+  for (const id of toDeliver) await enqueue("notifications", { job: "deliver", notificationId: id });
 }
 
-/** Positions with holdings (ledger sums), values, weights and the latest reconciliation; open operations; former (closed) positions. */
+const STALE_AFTER_MS = 26 * 3_600_000;
+
+/** Positions with holdings (ledger sums), values, weights, states and the latest reconciliation; shortfalls to repair; open operations; former (closed) positions. */
 export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
   // At most one on-demand reconciliation a minute per user; a provider outage never breaks the portfolio.
   if (await redis.set(`reconcile:user:${ctx.userId}`, "1", "EX", 60, "NX").catch(() => null)) {
     await reconcilePositions(ctx.userId).catch((err) => logger.warn("reconciliation failed", { errMessage: err instanceof Error ? err.message : "unknown" }));
   }
-  const positions = await db.select({ p: basketPositions, slug: baskets.slug, assetsRevision: basketVersions.assetsRevision }).from(basketPositions)
+  const positions = await db.select({
+    p: basketPositions, slug: baskets.slug, currentVersionId: baskets.currentVersionId, assetsRevision: basketVersions.assetsRevision, appliedNumber: basketVersions.versionNumber, rebalance: basketVersions.rebalance,
+  }).from(basketPositions)
     .innerJoin(baskets, eq(baskets.id, basketPositions.basketId)).innerJoin(basketVersions, eq(basketVersions.id, basketPositions.appliedVersionId))
     .where(eq(basketPositions.userId, ctx.userId)).orderBy(desc(basketPositions.openedAt));
   const ids = positions.map((x) => x.p.id);
@@ -299,33 +393,61 @@ export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
     chain: instrumentDeployments.chain, decimals: instrumentDeployments.decimals,
   }).from(positionLedgerEntries).innerJoin(instrumentDeployments, eq(instrumentDeployments.id, positionLedgerEntries.deploymentId)).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId))
     .where(inArray(positionLedgerEntries.positionId, ids)).groupBy(positionLedgerEntries.positionId, positionLedgerEntries.deploymentId, instruments.id, instruments.symbol, instrumentDeployments.chain, instrumentDeployments.decimals) : [];
-  const recon = ids.length ? await db.selectDistinctOn([positionReconciliations.positionId, positionReconciliations.deploymentId], { positionId: positionReconciliations.positionId, deploymentId: positionReconciliations.deploymentId, status: positionReconciliations.status })
-    .from(positionReconciliations).where(inArray(positionReconciliations.positionId, ids)).orderBy(positionReconciliations.positionId, positionReconciliations.deploymentId, desc(positionReconciliations.checkedAt)) : [];
+  const recon = await latestRecon(db, { userId: ctx.userId });
   const targets = ids.length ? await db.select({ versionId: basketVersionAssets.versionId, revision: basketVersionAssets.revision, instrumentId: basketVersionAssets.instrumentId, bps: basketVersionAssets.targetWeightBps })
     .from(basketVersionAssets).where(inArray(basketVersionAssets.versionId, positions.map((x) => x.p.appliedVersionId))) : [];
   const prices = await getPrices([...new Set(holdings.map((h) => h.instrumentId))]);
+  const cash = ids.length ? await db.select({ positionId: positionCashEntries.positionId, amount: sql<string>`sum(${positionCashEntries.amountMicro})` }).from(positionCashEntries).where(inArray(positionCashEntries.positionId, ids)).groupBy(positionCashEntries.positionId) : [];
+  const skips = ids.length ? await db.select({ positionId: positionDecisions.positionId, versionId: positionDecisions.versionId }).from(positionDecisions).where(and(inArray(positionDecisions.positionId, ids), eq(positionDecisions.kind, "skip"))) : [];
+  const latestRebalance = ids.length ? await db.selectDistinctOn([operations.positionId], { positionId: operations.positionId, status: operations.status }).from(operations)
+    .where(and(inArray(operations.positionId, ids), eq(operations.kind, "rebalance"))).orderBy(operations.positionId, desc(operations.createdAt)) : [];
+  const newerIds = [...new Set(positions.filter((x) => x.p.status === "OPEN" && x.currentVersionId && x.currentVersionId !== x.p.appliedVersionId).map((x) => x.currentVersionId!))];
+  const newer = newerIds.length ? await db.select().from(basketVersions).where(inArray(basketVersions.id, newerIds)) : [];
+  const diffs = new Map(await Promise.all(newer.map(async (v) => [v.id, await versionDiff(db, v)] as const)));
+  const open = await db.select().from(operations).where(and(eq(operations.userId, ctx.userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"])));
 
-  const view = positions.map(({ p, slug, assetsRevision }) => {
+  const view = positions.map(({ p, slug, currentVersionId, assetsRevision, appliedNumber, rebalance }) => {
     // Display only: values are decimal approximations of quantity x market price.
     const mine = holdings.filter((h) => h.positionId === p.id && BigInt(h.quantity) > 0n).map((h) => {
       const price = prices.find((x) => x.instrumentId === h.instrumentId && x.kind === "market" && x.status === "ok");
       return { h, usd: price?.value ? (Number(h.quantity) / 10 ** h.decimals) * Number(price.value) : null };
     });
     const total = mine.every((m) => m.usd !== null) ? mine.reduce((s, m) => s + m.usd!, 0) : null;
+    const rows = recon.filter((r) => r.positionId === p.id);
+    const latest = newer.find((v) => v.id === currentVersionId && v.id !== p.appliedVersionId);
+    const states: PositionStates = {
+      version: !latest ? "CURRENT" : skips.some((s) => s.positionId === p.id && s.versionId === latest.id) ? "SKIPPED" : "OUT_OF_DATE",
+      backing: rows.some((r) => r.status === "SHORT") ? "REPAIR_REQUIRED"
+        : rows.length === 0 || Date.now() - Math.max(...rows.map((r) => r.checkedAt.getTime())) > STALE_AFTER_MS || mine.some((m) => m.usd === null) ? "DATA_STALE" : "VERIFIED",
+      allocation: p.allocationStatus,
+      execution: open.some((o) => o.positionId === p.id) ? "PENDING" : ["PARTIAL", "FAILED"].includes(latestRebalance.find((o) => o.positionId === p.id)?.status ?? "") ? "INCOMPLETE" : "NONE",
+    };
     return {
       id: p.id, basketId: p.basketId, basketSlug: slug, status: p.status, openedAt: p.openedAt.toISOString(), closedAt: p.closedAt?.toISOString() ?? null,
       holdings: mine.map(({ h, usd }) => ({
         deploymentId: h.deploymentId, instrumentId: h.instrumentId, symbol: h.symbol, chain: h.chain, quantity: h.quantity, decimals: h.decimals, valueUsd: usd === null ? null : usd.toFixed(2),
         actualBps: total && usd !== null ? Math.round((usd / total) * 10_000) : null,
         targetBps: targets.find((t) => t.versionId === p.appliedVersionId && t.revision === assetsRevision && t.instrumentId === h.instrumentId)?.bps ?? null,
-        reconciliation: recon.find((r) => r.positionId === p.id && r.deploymentId === h.deploymentId)?.status ?? null,
+        reconciliation: rows.find((r) => r.deploymentId === h.deploymentId)?.status ?? null,
       })),
+      states, headline: headlineOf(states), cashMicro: cash.find((c) => c.positionId === p.id)?.amount ?? "0",
+      latestVersion: latest ? { id: latest.id, number: latest.versionNumber, rationale: latest.rationale, diff: diffs.get(latest.id)! } : null,
+      appliedVersionNumber: appliedNumber, driftThresholdBps: rebalance.driftThresholdBps ?? DRIFT_THRESHOLD_BPS_DEFAULT,
     };
   });
-  const open = await db.select().from(operations).where(and(eq(operations.userId, ctx.userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"])));
+  const openView = view.filter((p) => p.status === "OPEN");
+
+  // One repair per short deployment (or basket cash) across every basket, never one per basket.
+  const repairs: Repair[] = [];
+  for (const r of recon.filter((x) => x.status === "SHORT")) {
+    const asset = r.deploymentId ?? "cash";
+    const entry = repairs.find((x) => x.asset === asset) ?? repairs[repairs.push({ asset, symbol: r.deploymentId ? (holdings.find((h) => h.deploymentId === r.deploymentId)?.symbol ?? "") : "USDC", totalShortfall: "0", positions: [] }) - 1]!;
+    entry.totalShortfall = (BigInt(entry.totalShortfall) + r.ledger - r.allocated).toString();
+    entry.positions.push({ positionId: r.positionId, basketSlug: positions.find((x) => x.p.id === r.positionId)?.slug ?? "", ledger: r.ledger.toString(), shortfall: (r.ledger - r.allocated).toString() });
+  }
   const past = await db.select().from(operations).where(and(eq(operations.userId, ctx.userId), notInArray(operations.status, ["PLANNED", "IN_PROGRESS"]))).orderBy(desc(operations.createdAt)).limit(20);
   return {
-    positions: view.filter((p) => p.status === "OPEN"), formerPositions: view.filter((p) => p.status === "CLOSED"),
+    positions: openView, repairs, formerPositions: view.filter((p) => p.status === "CLOSED"),
     openOperations: await Promise.all(open.map((o) => operationView(db, o))), history: await Promise.all(past.map((o) => operationView(db, o))),
   };
 }
