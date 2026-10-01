@@ -14,7 +14,6 @@ export interface AllocationRow {
 }
 
 const fee = (f: Fee) => (f.type === "percent" ? formatBps(f.bps) : `${f.amountUsdc} USDC`);
-const FREQUENCY = { none: "No scheduled review", monthly: "Reviewed monthly", quarterly: "Reviewed quarterly" } as const;
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section aria-label={title} className="space-y-3">

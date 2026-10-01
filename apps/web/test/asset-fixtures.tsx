@@ -32,6 +32,7 @@ const provider: AssetProviderView = { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4f11"
 
 /** Lookup lists the editor sections load; tests override the calls they care about. */
 export const lookups = () => ({
+  opsListAssetTags: vi.fn().mockResolvedValue({ tags: [] }),
   opsListAssetIssuers: vi.fn().mockResolvedValue([issuer]),
   opsCreateAssetIssuer: vi.fn(),
   opsListAssetProviders: vi.fn().mockResolvedValue([provider]),

@@ -1,8 +1,8 @@
 "use client";
 
 import type { ApiClient } from "@repo/api-client";
-import { ASSET_TYPE_LABEL } from "@repo/app-core";
-import { assetTypeSchema, createInstrumentRequestSchema, type AssetType, type CreateInstrumentRequest, type OpsAssetDetail } from "@repo/validator";
+import { ASSET_TYPE_LABEL, SECTOR_LABEL } from "@repo/app-core";
+import { INSTRUMENT_SECTORS, assetTypeSchema, createInstrumentRequestSchema, instrumentSectorSchema, type AssetType, type CreateInstrumentRequest, type OpsAssetDetail } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -133,6 +133,43 @@ export function AssetDetailsForm({ a, locked, onChange, client = api }: { a: Ops
           <Textarea id={`${id}-links`} value={f.links} disabled={locked} onChange={(e) => setF({ ...f, links: e.target.value })} />
         </div>
         {!locked && <Button type="submit" className="min-h-11 w-fit" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save details</Button>}
+      </form>
+      {save.isError && <AssetError error={save.error} />}
+    </section>
+  );
+}
+
+/** Sector and tags are descriptive (they only feed discovery), so they stay editable on a live asset. Retired tags can be kept or removed, not added. */
+export function AssetClassification({ a, locked, onChange, client = api }: { a: OpsAssetDetail; locked: boolean; onChange(d: OpsAssetDetail): void; client?: Pick<ApiClient, "opsListAssetTags" | "opsUpdateAsset"> }) {
+  const id = useId();
+  const [sector, setSector] = useState(a.sector);
+  const [picked, setPicked] = useState(() => new Set(a.tags.map((t) => t.id)));
+  const tags = useQuery({ queryKey: ["ops", "asset-tags"], queryFn: () => client.opsListAssetTags(), retry: false });
+  const save = useMutation({ mutationFn: () => client.opsUpdateAsset(a.id, { sector, tagIds: [...picked] }), onSuccess: onChange });
+  const options = (tags.data?.tags ?? []).filter((t) => t.status === "active" || picked.has(t.id));
+  const toggle = (tid: string) => setPicked((s) => { const n = new Set(s); if (!n.delete(tid)) n.add(tid); return n; });
+
+  return (
+    <section aria-labelledby={`${id}-h`} className="space-y-4">
+      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Sector and tags</h2>
+      <form className="grid max-w-xl gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <div className="space-y-2">
+          <Label htmlFor={`${id}-sector`} className="text-xs font-medium text-ivory">Sector</Label>
+          <Select id={`${id}-sector`} value={sector} disabled={locked} onChange={(e) => setSector(instrumentSectorSchema.parse(e.target.value))}>
+            {INSTRUMENT_SECTORS.map((s) => <option key={s} value={s}>{SECTOR_LABEL[s]}</option>)}
+          </Select>
+        </div>
+        <fieldset className="space-y-1" disabled={locked}>
+          <legend className="text-xs font-medium text-ivory">Tags</legend>
+          {tags.isError && <AssetError error={tags.error} />}
+          {options.map((t) => (
+            <label key={t.id} className="flex min-h-11 items-center gap-2 text-sm text-ivory">
+              <input type="checkbox" checked={picked.has(t.id)} onChange={() => toggle(t.id)} />{t.label}{t.status === "retired" && <span className="text-xs text-stone">(retired)</span>}
+            </label>
+          ))}
+          {tags.data && options.length === 0 && <p className="text-sm text-stone">No tags yet.</p>}
+        </fieldset>
+        {!locked && <Button type="submit" className="min-h-11 w-fit" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save sector and tags</Button>}
       </form>
       {save.isError && <AssetError error={save.error} />}
     </section>
