@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Screen } from "@/components/ui/screen";
 import { StatusBadge } from "@/components/ui/status-badge";
 
-const METHOD = { eoa_ecdsa: "Key signature", erc1271: "Smart wallet", erc6492: "Smart wallet (not yet deployed)", ed25519: "Key signature" } as const;
+const METHOD = { eoa_ecdsa: "Key signature", erc1271: "Smart wallet", erc6492: "Smart wallet (not yet deployed)", ed25519: "Key signature", bip322: "Bitcoin signature", bip137: "Bitcoin signature" } as const;
 
 export function WalletSection({ me }: { me: MeResponse }) {
   const qc = useQueryClient();

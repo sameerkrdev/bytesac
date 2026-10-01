@@ -2,7 +2,7 @@
 
 import { ApiError, type ApiClient } from "@repo/api-client";
 import { useCountdown } from "@repo/app-core";
-import { CHAINS, chainSchema, createApplicationRequestSchema } from "@repo/validator";
+import { CHAINS, signInChainSchema, createApplicationRequestSchema } from "@repo/validator";
 import { Loader2 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { OtpInput } from "@/components/contacts/otp-input";
@@ -158,7 +158,7 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
       {LONG.map((t) => field(t.name, t.label, t.hint, (p) => <Textarea {...p} value={v[t.name]} onChange={(e) => set(t.name, e.target.value)} />))}
       {field("walletChain", "Wallet network", undefined, (p) => (
         <Select {...p} value={v.walletChain} onChange={(e) => set("walletChain", e.target.value)}>
-          {chainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
+          {signInChainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
         </Select>
       ))}
       {field("walletAddress", "Wallet address", "We'll ask you to sign in with this wallet after approval. Entering it here doesn't prove ownership.", (p) => (

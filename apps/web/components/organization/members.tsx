@@ -2,7 +2,7 @@
 
 import type { ApiClient } from "@repo/api-client";
 import { MEMBERSHIP_ROLE_LABEL, MEMBERSHIP_STATUS_LABEL, MEMBER_VERIFICATION_STATUS_LABEL, shortAddress } from "@repo/app-core";
-import { CHAINS, chainSchema, inviteMemberRequestSchema, type ListMembersResponse, type MemberView, type MembershipRole, type OrganizationDetail } from "@repo/validator";
+import { CHAINS, signInChainSchema, inviteMemberRequestSchema, type ListMembersResponse, type MemberView, type MembershipRole, type OrganizationDetail } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
@@ -134,7 +134,7 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
           <div className="space-y-2">
             <Label htmlFor={`${id}-chain`} className="text-xs font-medium text-ivory">Wallet network</Label>
             <Select id={`${id}-chain`} value={form.walletChain} onChange={(e) => setForm((f) => ({ ...f, walletChain: e.target.value }))}>
-              {chainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
+              {signInChainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
             </Select>
           </div>
           <div className="space-y-2">

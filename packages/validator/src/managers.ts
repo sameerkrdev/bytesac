@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chainSchema } from "./chains";
+import { chainSchema, signInChainSchema } from "./chains";
 
 export const APPLICATION_STATUSES = ["EMAIL_PENDING", "SUBMITTED", "SCREENING", "CONTACTED", "ADDITIONAL_INFORMATION_REQUIRED", "SCREENING_APPROVED", "SCREENING_REJECTED"] as const;
 export const applicationStatusSchema = z.enum(APPLICATION_STATUSES);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chainSchema } from "./chains";
+import { chainSchema, signInChainSchema } from "./chains";
 import { documentViewSchema, draftPart, membershipRoleSchema, organizationStatusSchema, type MembershipRole, type OrganizationPermission } from "./organizations";
 
 export const MEMBERSHIP_STATUSES = [

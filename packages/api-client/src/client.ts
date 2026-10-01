@@ -1,4 +1,5 @@
 import {
+  investabilitySchema, type Investability,
   aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
@@ -272,6 +273,8 @@ export function createApiClient(options: ApiClientOptions) {
 
     listPublicBaskets: (cursor?: string): Promise<PublicBasketListResponse> => request("GET", `/v1/public/baskets?${qs({ cursor })}`, publicBasketListResponseSchema),
     getPublicBasket: (slug: string): Promise<PublicBasketResponse> => request("GET", `/v1/public/baskets/${e(slug)}`, publicBasketResponseSchema),
+
+    getInvestability: (slug: string): Promise<Investability> => request("GET", `/v1/baskets/${e(slug)}/investability`, investabilitySchema),
 
     /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */
     discoverBaskets: ({ cursor, ...filters }: DiscoveryFilters = {}): Promise<DiscoverySearchResponse> =>
