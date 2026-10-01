@@ -1,5 +1,6 @@
 "use client";
 import { ContactsSection } from "@/components/profile/contacts-section";
+import { ManagerProfileEditor } from "@/components/profile/manager-profile-editor";
 import { NotificationsSection } from "@/components/profile/notifications-section";
 import { SessionsSection } from "@/components/profile/sessions-section";
 import { WalletSection } from "@/components/profile/wallet-section";
@@ -13,6 +14,7 @@ export default function ProfilePage() {
       <h1 className="font-display text-3xl font-bold text-ivory md:text-4xl">Profile</h1>
       <WalletSection me={me} />
       <ContactsSection me={me} />
+      <ManagerProfileEditor />
       <NotificationsSection />
       <SessionsSection />
     </div>

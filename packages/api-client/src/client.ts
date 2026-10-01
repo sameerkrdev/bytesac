@@ -1,5 +1,5 @@
 import {
-  aiSearchResponseSchema, assetTagViewSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
+  aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
   listDisclosureTemplatesResponseSchema, opsBasketDetailSchema, opsBasketListResponseSchema, publicBasketListResponseSchema, publicBasketResponseSchema,
@@ -37,6 +37,21 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 const e = encodeURIComponent;
 const qs = (q: object) => new URLSearchParams(Object.entries(q).filter((x): x is [string, string] => x[1] !== undefined));
+
+/** Encodes filters (without the cursor) as base64url JSON. */
+export const encodeDiscoveryFilters = (f: DiscoveryFilters): string =>
+  btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(f)))).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+
+/** Decodes an `f` param; anything malformed or invalid is ignored (no filters). */
+export function decodeDiscoveryFilters(f: string | undefined): DiscoveryFilters {
+  try {
+    const bin = atob((f ?? "").replaceAll("-", "+").replaceAll("_", "/"));
+    const parsed = discoveryFiltersSchema.safeParse(JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+}
 
 export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -260,7 +275,7 @@ export function createApiClient(options: ApiClientOptions) {
 
     /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */
     discoverBaskets: ({ cursor, ...filters }: DiscoveryFilters = {}): Promise<DiscoverySearchResponse> =>
-      request("GET", `/v1/public/discovery/baskets?${qs({ f: btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(filters)))).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, ""), cursor })}`, discoverySearchResponseSchema),
+      request("GET", `/v1/public/discovery/baskets?${qs({ f: encodeDiscoveryFilters(filters), cursor })}`, discoverySearchResponseSchema),
     aiSearchBaskets: (query: string): Promise<AiSearchResponse> => request("POST", "/v1/public/discovery/ai-search", aiSearchResponseSchema, { query }),
     getPublicManager: (handle: string): Promise<PublicManager> => request("GET", `/v1/public/managers/${e(handle)}`, publicManagerSchema),
     getMyManagerProfile: (): Promise<OwnManagerProfileResponse> => request("GET", "/v1/me/manager-profile", ownManagerProfileResponseSchema),

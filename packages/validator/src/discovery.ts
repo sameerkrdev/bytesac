@@ -47,7 +47,8 @@ export function effectiveFeeBps(fee: Fee | { amountUsdc: string }, minimumUsdc: 
 
 const plain = (min: number, max: number) => z.string().trim().min(min).max(max);
 export const managerProfileRequestSchema = z.strictObject({
-  handle: z.string().regex(/^[a-z0-9-]{3,30}$/),
+  // "apply" and "status" are static routes under /managers, so a profile with that handle could never be reached.
+  handle: z.string().regex(/^[a-z0-9-]{3,30}$/).refine((h) => h !== "apply" && h !== "status", "That handle is reserved."),
   displayName: plain(2, 80),
   headline: plain(1, 120).nullable().optional(),
   bio: plain(1, 2000).nullable().optional(),

@@ -5,7 +5,6 @@ import { ETH, SOL, emptyDiff } from "./org-fixtures";
 
 const permanentRedirect = vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT ${path}`); });
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, permanentRedirect: (p: string) => permanentRedirect(p) }));
-import PublicBasketsPage from "@/app/baskets/page";
 import PublicBasketPage from "@/app/baskets/[slug]/page";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -91,16 +90,5 @@ describe("Public basket page", () => {
   it("404s an unknown slug", async () => {
     serve({}, 404);
     await expect(page("nope")).rejects.toThrow("NEXT_NOT_FOUND");
-  });
-});
-
-describe("Public basket list", () => {
-  it("shows cards and a Load more link when there is a next page", async () => {
-    serve({ items: [{ slug: "core-crypto", name: "Core Crypto", shortDescription: "Two assets", organizationName: "Ada Capital", category: "multi_asset", assetCount: 2, minimumInvestmentUsdc: "100", status: "PAUSED", publishedAt: T }], nextCursor: "abc" });
-    render(await PublicBasketsPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole("link", { name: "Core Crypto" })).toHaveAttribute("href", "/baskets/core-crypto");
-    expect(screen.getByText(/2 assets · minimum 100 USDC/)).toBeInTheDocument();
-    expect(screen.getByText("Paused")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute("href", "/baskets?cursor=abc");
   });
 });

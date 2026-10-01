@@ -30,6 +30,8 @@ describe("managerProfileRequestSchema", () => {
   it("requires https links and a valid handle", () => {
     expect(managerProfileRequestSchema.safeParse({ handle: "ada-l", displayName: "Ada", links: [{ label: "Site", url: "https://x.dev" }] }).success).toBe(true);
     expect(managerProfileRequestSchema.safeParse({ handle: "Ada", displayName: "Ada" }).success).toBe(false);
+    // /managers/apply and /managers/status are static routes
+    expect(managerProfileRequestSchema.safeParse({ handle: "apply", displayName: "Ada" }).success).toBe(false);
     expect(managerProfileRequestSchema.safeParse({ handle: "ada-l", displayName: "Ada", links: [{ label: "Site", url: "http://x.dev" }] }).success).toBe(false);
   });
 });
