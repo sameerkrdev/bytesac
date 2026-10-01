@@ -79,6 +79,8 @@ export type BasketConstraints = z.infer<typeof basketConstraintsSchema>;
 export const basketRebalanceSchema = z.strictObject({
   reviewFrequency: z.enum(["none", "monthly", "quarterly"]),
   driftThresholdBps: z.number().int().min(50).max(5000).optional(),
+  minTradeBps: z.number().int().min(10).max(1000).optional(),
+  minTradeUsdc: decimalStringSchema.refine((v) => Number(v) >= 1 && Number(v) <= 100, "Between 1 and 100 USDC").optional(),
 });
 export type BasketRebalance = z.infer<typeof basketRebalanceSchema>;
 

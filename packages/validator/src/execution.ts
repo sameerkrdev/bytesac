@@ -8,7 +8,7 @@ export const LEG_STATES = ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN"
 export const OPERATION_STATES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"] as const;
 export const LEG_KINDS = ["network_fee", "swap", "cross_chain"] as const;
 export const GAS_PAYERS = ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"] as const;
-export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former"] as const;
+export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former", "rebalance", "repair"] as const;
 export type LegState = (typeof LEG_STATES)[number];
 export type OperationState = (typeof OPERATION_STATES)[number];
 
@@ -61,6 +61,10 @@ export const investRequestSchema = z.strictObject({ basketId: z.uuid(), amountUs
 export type InvestRequest = z.infer<typeof investRequestSchema>;
 export const sellRequestSchema = z.strictObject({ positionId: z.uuid(), percent: z.number().int().min(1).max(100), slippageBps: slippage, idempotencyKey });
 export type SellRequest = z.infer<typeof sellRequestSchema>;
+export const rebalanceRequestSchema = z.strictObject({ positionId: z.uuid(), target: z.enum(["latest", "applied"]), slippageBps: slippage, idempotencyKey });
+export type RebalanceRequest = z.infer<typeof rebalanceRequestSchema>;
+export const repairRequestSchema = z.strictObject({ deploymentId: z.uuid(), slippageBps: slippage, idempotencyKey });
+export type RepairRequest = z.infer<typeof repairRequestSchema>;
 
 /** Exactly one proof of submission: a signed Solana transaction, an EVM transaction hash, or a signed Bitcoin PSBT. */
 export const legSubmitSchema = z.strictObject({
@@ -135,7 +139,7 @@ export const operationSchema = z.object({
   id: z.uuid(),
   kind: z.enum(OPERATION_KINDS),
   status: z.enum(OPERATION_STATES),
-  basketId: z.uuid(),
+  basketId: z.uuid().nullable(),
   positionId: z.uuid().nullable(),
   amountUsdc: z.string().nullable(),
   sellPercent: z.number().int().nullable(),

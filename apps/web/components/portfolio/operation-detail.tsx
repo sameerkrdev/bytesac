@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-const KIND = { invest: "Investment", sell_to_usdc: "Sale to USDC", sell_former: "Sale of former assets" } as const;
+const KIND = { invest: "Investment", sell_to_usdc: "Sale to USDC", sell_former: "Sale of former assets", rebalance: "Rebalance", repair: "Buy back" } as const;
 
 /** One operation with its legs and explorer links; an open one can be continued (sign the next leg) or stopped. */
 export function OperationDetail({ operation: o, open }: { operation: OperationView; open?: boolean }) {

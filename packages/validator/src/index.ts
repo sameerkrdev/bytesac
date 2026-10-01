@@ -19,3 +19,4 @@ export * from "./http";
 export * from "./discovery";
 export * from "./performance";
 export * from "./execution";
+export * from "./rebalance";

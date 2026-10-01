@@ -229,10 +229,11 @@ export async function resolveLeg(ctx: OpCtx, opId: string, legId: string, body: 
 
 /** The user's OPEN position in the basket (created by the first settled invest leg) and the operation's link to it. */
 async function openPosition(tx: Tx, op: typeof operations.$inferSelect): Promise<string> {
-  await tx.insert(basketPositions).values({ userId: op.userId, basketId: op.basketId, appliedVersionId: op.versionId }).onConflictDoNothing();
-  const [p] = await tx.select({ id: basketPositions.id }).from(basketPositions).where(and(eq(basketPositions.userId, op.userId), eq(basketPositions.basketId, op.basketId), eq(basketPositions.status, "OPEN")));
+  const basketId = op.basketId!; // invest operations always have a basket (only repairs do not)
+  await tx.insert(basketPositions).values({ userId: op.userId, basketId, appliedVersionId: op.versionId }).onConflictDoNothing();
+  const [p] = await tx.select({ id: basketPositions.id }).from(basketPositions).where(and(eq(basketPositions.userId, op.userId), eq(basketPositions.basketId, basketId), eq(basketPositions.status, "OPEN")));
   await tx.update(operations).set({ positionId: p!.id }).where(eq(operations.id, op.id));
-  await writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "position.opened", entityType: "basket_position", entityId: p!.id, requestId: `track-${op.id}`, metadata: { basketId: op.basketId } });
+  await writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "position.opened", entityType: "basket_position", entityId: p!.id, requestId: `track-${op.id}`, metadata: { basketId } });
   return p!.id;
 }
 
