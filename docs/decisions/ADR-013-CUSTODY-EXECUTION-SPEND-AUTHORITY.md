@@ -1,9 +1,9 @@
 # ADR-013: Custody, Execution and Spend Authority (Release 1)
 
-- **Status:** APPROVED (user, 2026-10-01)
+- **Status:** APPROVED (user, 2026-10-01); amended in place for Spec 8 (native BTC, platform gas and network fee leg, LI.FI: ADR-014)
 - **Date:** 2026-10-01
 - **Owners:** Product + platform engineering
-- **Related:** D-002, D-009, D-013, D-022, D-023, D-024, D-028, D-030, D-033; ADR-004, ADR-010, ADR-011; `docs/source/User-Detailed-Features.txt` §9–§17; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
+- **Related:** D-002, D-009, D-013, D-022, D-023, D-024, D-028, D-030, D-033, D-067, D-068; ADR-004, ADR-010, ADR-011, ADR-014; `docs/source/User-Detailed-Features.txt` §9–§17; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
 
 ## Context
 
@@ -13,16 +13,16 @@ Investment, rebalance, fix and withdrawal cannot be specified until the platform
 
 ### 1. Custody — self-custody in the user's own wallets (D-022)
 
-- Assets always sit in the user's own wallets: the Solana investment wallet (D-002) and the user's linked EVM addresses (Spec 1 chain accounts, ADR-004). The platform never holds private keys, user funds or assets in transit, and operates no vaults or smart contracts in release 1.
+- Assets always sit in the user's own wallets: the Solana investment wallet (D-002), the user's linked EVM addresses (Spec 1 chain accounts, ADR-004) and, for native BTC, a linked Bitcoin address (added after sign-in with a BIP-322 proof; never a sign-in method). The platform never holds private keys, user funds or assets in transit, and operates no vaults or smart contracts in release 1.
 - A basket position is a **logical sub-ledger** row: user × basket × deployment → quantity in raw base units (with token decimals preserved). Positions are reconciled against on-chain balances; the chain is the source of truth for what the user holds.
 
 ### 2. Execution topology
 
 - Every investment is funded with **USDC on Solana**.
-- Constituents may live on any registry chain with an `ACTIVE` deployment and an `ACTIVE` execution route. Native Bitcoin is excluded in release 1; BTC exposure uses wrapped deployments, disclosed as such.
+- Constituents may live on any registry chain with an `ACTIVE` deployment and an `ACTIVE` execution route. Native BTC is included (a `native` deployment on `bitcoin`); wrapped or tokenized BTC remain distinct instruments and are disclosed as such.
 - "ETFs" in baskets means tokenized instruments in the registry (`TOKENIZED_FUND`, `TOKENIZED_EQUITY`). Conventional ETFs remain future scope (D-009).
-- Cross-chain legs use **one route aggregator behind an adapter** (provider chosen from current documentation in the execution spec; 0x is the D-013 candidate). Each leg delivers to the user's **own linked address** on the destination chain.
-- Destination gas uses the route's gas top-up option where available; otherwise the plan is blocked with an explicit "fund gas on <chain>" requirement.
+- Cross-chain legs use **one route aggregator behind an adapter**: **LI.FI** (ADR-014, D-013). Each leg delivers to the user's **own linked address** on the destination chain.
+- **Gas is paid by platform gas wallets and recovered through a user-signed network fee leg** (ADR-014, D-067, D-068): Solana legs use a platform fee payer that co-signs only byte-identical planner-built transactions; EVM source legs get a capped native gas drop from the platform gas wallet before the user signs; Bitcoin miner fees come from the user's own BTC inside the PSBT. The network fee is the first leg of an invest plan (estimated gas x 1.2, minimum 0.01 USDC, no markup) and the last leg of a sale (paid from the proceeds).
 - A basket with constituents on a chain family where the user has no linked address cannot be invested in until the user links one.
 - Rebalance and fix use the same routes (sell on chain A → buy on chain B); each leg is signed on its source chain.
 
@@ -80,11 +80,11 @@ Investment, rebalance, fix and withdrawal cannot be specified until the platform
 ### Security, financial and operational impact
 - Planner, route adapter and reconciliation become the critical financial components: idempotency, quote expiry, minimum-output enforcement and chain-specific finality are mandatory.
 - Never retry an unknown outcome; reconcile first.
-- Fees must be visible legs inside the signed plan (proposal below); nothing is pulled from a user's wallet.
+- Fees must be visible legs inside the signed plan; nothing is pulled from a user's wallet. The network fee leg (ADR-014) is the first such leg; platform and manager fees follow the proposal below.
 
 ## Migration / rollout
 
-No existing data changes: no positions or operations exist yet. The first-investment spec introduces positions (sub-ledger), operations, legs, reconciliation runs and the route adapter on top of this ADR. Baskets show "Investing opens soon" until then.
+No existing data changes. Spec 8 (first investment and exit, ADR-014) introduced positions (sub-ledger), operations, legs, reconciliation rows, platform wallets and the LI.FI route adapter on top of this ADR (migration `0010_positions.sql`); basket pages show the Invest button when a basket is investable.
 
 ## Validation
 
@@ -94,8 +94,8 @@ No existing data changes: no positions or operations exist yet. The first-invest
 
 ## Open questions
 
-1. **Route provider** — which aggregator (0x or another) covers the needed chains and assets, with what fees, limits and terms. Decided in the execution spec from current documentation.
-2. **Gas top-up** — which routes can deliver destination gas; where none can, the exact user flow for funding gas.
+1. ~~Route provider~~ — decided: LI.FI only, behind `RouteProvider` (ADR-014). Real-key checks of coverage, terms and rate limits are pre-launch items there.
+2. ~~Gas top-up~~ — decided: platform gas wallets plus the network fee leg (ADR-014). LI.Fuel route gas top-up is future scope (`FUTURE-PLANS.md`).
 3. **Fee collection under self-custody** — proposal: platform and manager fees are explicit transfer legs inside the signed plan, paid to the platform wallet and to the organization's verified payout wallet (D-006); never pulled. To be decided in the subscriptions & fees spec.
 4. **RWA access rules** — issuer KYC, allowlists and transfer restrictions per RWA route (eligibility engine, D-025).
 5. **Legal review** — self-custody model, fee model and RWA distribution per jurisdiction.

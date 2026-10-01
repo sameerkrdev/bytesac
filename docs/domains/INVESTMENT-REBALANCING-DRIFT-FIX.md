@@ -46,11 +46,19 @@ Before execution:
 7. Reconcile final state.
 
 ## Custody, authority and attribution (decided, ADR-013)
-- Self-custody: assets stay in the user's own Solana wallet and linked EVM addresses; the platform holds no keys or funds. Investments are funded with USDC on Solana; constituents may sit on any supported chain (native BTC excluded in release 1; "ETFs" means tokenized funds/equities).
+- Self-custody: assets stay in the user's own Solana wallet, linked EVM addresses and linked Bitcoin address; the platform holds no keys or funds. Investments are funded with USDC on Solana; constituents may sit on any supported chain, including native BTC ("ETFs" means tokenized funds/equities).
 - Every operation (`invest`, `rebalance`, `fix`, `sell_to_usdc`, `sell_former_assets`) is a plan of legs with 60 s quotes, on-chain minimum output and user slippage (default 1%, max 3%); the user signs every leg on its source chain; EVM approvals are exact-amount. No delegation.
 - Leg states `PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`; operations can be `PARTIAL`; unknown outcomes are reconciled, never blindly retried.
 - Shortfalls are allocated pro-rata across baskets holding the deployment (`SHORT`); the user chooses Fix or Accept. Surplus is outside baskets and never touched.
 - Leave basket keeps assets (no transaction) and a former-basket record; Sell to USDC sells all or part of a basket; Sell former basket assets sells `min(recorded, on-chain)`.
 
+## Implemented first investment and exit (Spec 8, ADR-014)
+- **Invest:** the user enters a USDC amount (minimum and increment of the published version; the network fee is taken from it) and slippage (default 1%, max 3%). The server plans legs: a user-signed `network_fee` transfer first, then one `swap` or `cross_chain` leg per constituent, routed by LI.FI to the user's own addresses. The preview shows each leg's estimated and minimum output, the network fee and "No platform or manager fees are charged yet".
+- **Signing:** strictly one leg at a time; fresh 60 s quote per leg; Solana legs are co-signed by the platform fee payer only if the signed message is byte-identical (`TX_MISMATCH` otherwise); EVM sells wait for a confirmed platform gas drop and use exact-amount approvals; Bitcoin legs are signed PSBTs checked against the quoted outputs (`PSBT_MISMATCH`). An expired quote needs a new quote and signature.
+- **Tracking:** each leg is tracked to `SETTLED`, `FAILED` or `UNKNOWN` (re-checked hourly for 7 days); a settled invest leg adds the amount actually received to the position ledger. `PARTIAL` (some asset legs settled, then a failure or "Stop here") and `FAILED` are terminal; continuing needs a new plan. Nothing is retried.
+- **Portfolio:** positions with value, actual against target weights, `SHORT` and outside-baskets notices (display only), open operations that can be continued, history with explorer links, former positions.
+- **Exit:** Leave basket (no transaction, ledger kept), Sell to USDC (percentage; quantity `min(ledger x percent, wallet balance)`; network fee paid from the proceeds as the last leg), Sell former assets. No manager approval is needed, and exits work even when the basket or its routes were retired.
+- Not built (Spec 9 and later): rebalance, skip and catch-up, drift, Fix and `SHORT` repair, subscriptions and fees, RWAs.
+
 ## Open decisions
-Route aggregator and gas top-up, fee collection legs, fix policy details, rebalance thresholds, price hierarchy and RWA settlement behavior.
+Fee collection legs for platform and manager fees, fix policy details, rebalance thresholds, price hierarchy and RWA settlement behavior.
