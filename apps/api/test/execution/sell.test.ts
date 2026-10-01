@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { RawTx, Script, Transaction } from "@scure/btc-signer";
+import { randomBytes } from "node:crypto";
+import { RawTx, Script, Transaction, p2pkh } from "@scure/btc-signer";
 import createHttpError from "http-errors";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -328,6 +329,15 @@ describe("review fixes", () => {
       const prev = RawTx.encode({ version: 1, lockTime: 0, segwitFlag: false, witnesses: [], inputs: [{ txid: new Uint8Array(32), index: 0, finalScriptSig: new Uint8Array(), sequence: 0xffffffff }], outputs: [{ amount: s + 50_000n, script: key.pay.script }] });
       const tx = new Transaction({ allowUnknownOutputs: true, allowLegacyWitnessUtxo: true });
       tx.addInput({ txid: sha256(sha256(prev)).reverse(), index: 0, nonWitnessUtxo: prev });
+      tx.addOutput({ script: bitcoinWallet("p2wpkh").pay.script, amount: s });
+      tx.addOutput({ script: Script.encode(["RETURN", new TextEncoder().encode("=:ETH.USDC:0xabc")]), amount: 0n });
+      tx.addOutputAddress(r, 40_000n);
+      return Buffer.from(tx.toPSBT()).toString("base64");
+    }));
+    it("N5: refuses a legacy P2PKH input that carries a fake witnessUtxo", () => refused((r, s) => {
+      const legacy = p2pkh(bitcoinWallet("p2wpkh").pub);
+      const tx = new Transaction({ allowUnknownOutputs: true, allowLegacyWitnessUtxo: true });
+      tx.addInput({ txid: randomBytes(32), index: 0, witnessUtxo: { script: legacy.script, amount: s + 50_000n } }); // a plausible 10,000 sat fee: only the script type can reject it
       tx.addOutput({ script: bitcoinWallet("p2wpkh").pay.script, amount: s });
       tx.addOutput({ script: Script.encode(["RETURN", new TextEncoder().encode("=:ETH.USDC:0xabc")]), amount: 0n });
       tx.addOutputAddress(r, 40_000n);

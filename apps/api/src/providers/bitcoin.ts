@@ -128,6 +128,17 @@ export function psbtInputs(psbtBase64: string): PsbtInput[] {
   });
 }
 
+function isSegwitScript(script: Uint8Array | undefined, redeem: Uint8Array | undefined): boolean {
+  try {
+    const out = OutScript.decode(script!);
+    if (out.type === "wpkh" || out.type === "wsh" || out.type === "tr") return true;
+    if (out.type !== "sh" || !redeem || !eq(out.hash, hash160(redeem))) return false;
+    return ["wpkh", "wsh"].includes(OutScript.decode(redeem).type);
+  } catch {
+    return false;
+  }
+}
+
 /** Miner fee ceiling for a sell: 2% of the amount sold, and never more than 100,000 sats. */
 export const maxBtcMinerFee = (sellSats: bigint): bigint => (sellSats / 50n < 100_000n ? sellSats / 50n : 100_000n);
 
@@ -149,7 +160,9 @@ export function expectedBtcTx(psbtBase64: string, userAddress: string, sellSats:
     const i = tx.getInput(n);
     // Only segwit and Taproot inputs: their signatures commit to the input amount, so the fee computed here cannot be understated. A legacy input's
     // amount is not committed by its signature, so it is refused rather than trusted.
-    if (!i.witnessUtxo) throw refuse("legacy inputs are not supported");
+    // A witnessUtxo alone proves nothing (a provider can attach one to a legacy input), so the previous output's script must itself be segwit or Taproot:
+    // p2wpkh, p2wsh, p2tr, or p2sh whose redeem script (hash-checked) is p2wpkh or p2wsh.
+    if (!i.witnessUtxo || !isSegwitScript(i.witnessUtxo.script, i.redeemScript)) throw refuse("legacy inputs are not supported");
     inputTotal += i.witnessUtxo.amount;
   }
   const fee = inputTotal - outputs.reduce((sum, o) => sum + BigInt(o.amount), 0n);
