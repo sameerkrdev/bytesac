@@ -12,9 +12,9 @@ export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former", "rebala
 export type LegState = (typeof LEG_STATES)[number];
 export type OperationState = (typeof OPERATION_STATES)[number];
 
-/** SUBMITTING is the claim taken before anything is sent: a refused send returns to PLANNED, a sent (or unknown) one is SUBMITTED. */
+/** PLANNED may fail without ever being sent (a rebalance buy left with no cash). SUBMITTING is the claim taken before anything is sent: a refused send returns to PLANNED, a sent (or unknown) one is SUBMITTED. */
 export const LEG_TRANSITIONS = {
-  PLANNED: ["SUBMITTING"], SUBMITTING: ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "FAILED", "UNKNOWN"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"],
+  PLANNED: ["SUBMITTING", "FAILED"], SUBMITTING: ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "FAILED", "UNKNOWN"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"],
   PENDING_CHAIN: ["SETTLED", "FAILED", "UNKNOWN"], UNKNOWN: ["SETTLED", "FAILED"], SETTLED: [], FAILED: [],
 } as const;
 export const OPERATION_TRANSITIONS = { PLANNED: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["COMPLETED", "PARTIAL", "FAILED"], PARTIAL: [], COMPLETED: [], FAILED: [], CANCELLED: [] } as const;

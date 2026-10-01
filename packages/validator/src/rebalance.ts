@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AssetChain } from "./assets";
 import { basketDiffSchema } from "./baskets";
+import { operationSchema } from "./execution";
 
 export const MIN_TRADE_BPS_DEFAULT = 50;
 export const MIN_TRADE_USDC_DEFAULT = "5";
@@ -133,6 +134,11 @@ export const syncRequestSchema = z.strictObject({
   idempotencyKey: z.string().trim().min(8).max(128),
 });
 export type SyncRequest = z.infer<typeof syncRequestSchema>;
+
+/** A rebalance plan, or "already aligned" (the version was recorded and no operation made). */
+export const rebalanceResponseSchema = z.union([operationSchema, z.strictObject({ aligned: z.literal(true) })]);
+export const syncResultSchema = z.object({ synced: z.array(z.object({ positionId: z.uuid(), quantity: z.string() })) });
+export type SyncResult = z.infer<typeof syncResultSchema>;
 
 export const notificationSchema = z.object({
   id: z.uuid(),

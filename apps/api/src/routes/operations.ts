@@ -2,10 +2,11 @@ import createHttpError from "http-errors";
 import { Router, type Request } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import { contacts, db } from "@repo/db";
-import { investRequestSchema, legSubmitSchema, sellRequestSchema, z, type InvestRequest, type LegSubmit, type SellRequest } from "@repo/validator";
+import { investRequestSchema, legSubmitSchema, rebalanceRequestSchema, repairRequestSchema, sellRequestSchema, z, type InvestRequest, type LegSubmit, type RebalanceRequest, type RepairRequest, type SellRequest } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
+import { createRebalancePlan, createRepairPlan } from "../services/rebalance";
 import { cancelOperation, createInvestPlan, createSellPlan, getOperation, quoteLeg, submitLeg } from "../services/operations";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
@@ -29,6 +30,17 @@ operationsRouter.post("/invest", validate({ body: investRequestSchema }), async 
 operationsRouter.post("/sell", validate({ body: sellRequestSchema }), async (req, res) => {
   await consume(limits.operationsUser, req.auth!.userId);
   res.status(201).json(await createSellPlan(ctx(req), req.body as SellRequest));
+});
+
+operationsRouter.post("/rebalance", validate({ body: rebalanceRequestSchema }), async (req, res) => {
+  await consume(limits.operationsUser, req.auth!.userId);
+  const plan = await createRebalancePlan(ctx(req), req.body as RebalanceRequest);
+  res.status("aligned" in plan ? 200 : 201).json(plan);
+});
+
+operationsRouter.post("/repair", validate({ body: repairRequestSchema }), async (req, res) => {
+  await consume(limits.operationsUser, req.auth!.userId);
+  res.status(201).json(await createRepairPlan(ctx(req), req.body as RepairRequest));
 });
 
 operationsRouter.get("/:id", validate({ params: idParam }), async (req, res) => {

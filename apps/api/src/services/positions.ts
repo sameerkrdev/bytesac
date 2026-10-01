@@ -1,10 +1,10 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
-  basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, operations, positionLedgerEntries, positionReconciliations, type Tx,
+  basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionLedgerEntries, positionReconciliations, type Tx,
 } from "@repo/db";
 import { logger } from "@repo/logger";
-import { CONFIRMATIONS, USDC_SOLANA_MINT, type AssetChain, type OperationView, type Portfolio, type ResolveLegRequest } from "@repo/validator";
+import { CONFIRMATIONS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type Portfolio, type ResolveLegRequest } from "@repo/validator";
 import { env } from "../env";
 import { bitcoinTx } from "../providers/bitcoin";
 import { evmBalance, evmNativeReceived, evmReceipt, gasWalletAddress } from "../providers/evm-rpc";
@@ -52,11 +52,23 @@ const destinationToken = async (leg: Leg): Promise<string | null> =>
 /** Marks the leg SETTLED and, for asset legs, writes the ledger entry and recomputes the operation, in the caller's transaction (which holds the operation lock). */
 async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinationTx: string | null, received: bigint | null): Promise<void> {
   await setLegStatus(tx, ctx, leg, "SETTLED", { destinationTx, amountReceived: received?.toString() ?? null });
-  if (leg.kind !== "network_fee") {
-    const positionId = op.positionId ?? (await openPosition(tx, op));
-    await tx.insert(positionLedgerEntries).values(op.kind === "invest"
-      ? { positionId, deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest" as const, legId: leg.id }
-      : { positionId, deploymentId: leg.fromDeploymentId!, quantityDelta: (-BigInt(leg.amountIn)).toString(), reason: "sell" as const, legId: leg.id });
+  if (leg.kind === "network_fee") {
+    if (op.kind === "rebalance" && leg.routeSummary?.fromCash) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "network_fee", legId: leg.id });
+  } else if (op.kind === "invest") {
+    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId ?? (await openPosition(tx, op)), deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest", legId: leg.id });
+  } else if (op.kind === "repair") {
+    // What arrived is shared by shortfall; the excess stays outside baskets and any deficit stays SHORT.
+    const shares = Object.entries(op.repairShares!).map(([positionId, s]) => ({ positionId, shortfall: BigInt(s) }));
+    const parts = [...splitRepair(received!, shares)].filter(([, q]) => q > 0n);
+    if (parts.length) await tx.insert(positionLedgerEntries).values(parts.map(([positionId, q]) => ({ positionId, deploymentId: leg.toDeploymentId!, quantityDelta: q.toString(), reason: "repair" as const, legId: leg.id })));
+  } else if (leg.fromDeploymentId) {
+    // Sell side (sell_to_usdc, sell_former, rebalance sell).
+    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId!, deploymentId: leg.fromDeploymentId, quantityDelta: (-BigInt(leg.amountIn)).toString(), reason: op.kind === "rebalance" ? "rebalance" : "sell", legId: leg.id });
+    if (op.kind === "rebalance") await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: received!.toString(), reason: "rebalance_sell", legId: leg.id });
+  } else {
+    // Rebalance buy.
+    await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "rebalance_buy", legId: leg.id });
+    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId!, deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "rebalance", legId: leg.id });
   }
   await refreshOperationStatus(tx, ctx, op.id);
 }

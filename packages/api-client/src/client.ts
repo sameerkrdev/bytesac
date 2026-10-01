@@ -1,5 +1,5 @@
 import {
-  bitcoinChallengeResponseSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
+  bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
   aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
@@ -278,6 +278,13 @@ export function createApiClient(options: ApiClientOptions) {
     verifyBitcoin: (b: BitcoinVerify): Promise<VerifyResponse> => request("POST", "/v1/me/chain-accounts/bitcoin/verify", verifyResponseSchema, b),
     investPlan: (b: InvestRequest): Promise<OperationView> => request("POST", "/v1/operations/invest", operationSchema, b),
     sellPlan: (b: SellRequest): Promise<OperationView> => request("POST", "/v1/operations/sell", operationSchema, b),
+    /** A plan to sign, or `{ aligned: true }` when nothing needs trading (the version was recorded). */
+    rebalance: (b: RebalanceRequest): Promise<OperationView | { aligned: true }> => request("POST", "/v1/operations/rebalance", rebalanceResponseSchema, b),
+    repair: (b: RepairRequest): Promise<OperationView> => request("POST", "/v1/operations/repair", operationSchema, b),
+    skipVersion: (positionId: string, b: SkipRequest): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(positionId)}/skip`, null, b),
+    keepCustom: (positionId: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(positionId)}/custom`, null),
+    revertCustom: (positionId: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(positionId)}/custom/revert`, null),
+    sync: (b: SyncRequest): Promise<SyncResult> => request("POST", "/v1/portfolio/sync", syncResultSchema, b),
     getOperation: (id: string): Promise<OperationView> => request("GET", `/v1/operations/${e(id)}`, operationSchema),
     quoteLeg: (id: string, legId: string): Promise<LegQuoteResponse> => request("POST", `/v1/operations/${e(id)}/legs/${e(legId)}/quote`, legQuoteResponseSchema),
     submitLeg: (id: string, legId: string, b: LegSubmit): Promise<OperationView> => request("POST", `/v1/operations/${e(id)}/legs/${e(legId)}/submit`, operationSchema, b),
