@@ -84,5 +84,6 @@ export const basketClient = (over: Record<string, Mock> = {}) => ({
   listAssets: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
   listOrganizationMembers: vi.fn().mockResolvedValue({ members: [] }),
   addBasketAssignment: vi.fn(), updateBasketAssignment: vi.fn(), endBasketAssignment: vi.fn(),
+  basketAdoption: vi.fn().mockResolvedValue({ versions: [] }),
   ...over,
 });

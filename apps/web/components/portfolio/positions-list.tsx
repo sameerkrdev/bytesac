@@ -3,6 +3,7 @@
 import { formatBps, formatUnits } from "@repo/app-core";
 import { ASSET_CHAINS, type Portfolio } from "@repo/validator";
 import Link from "next/link";
+import { PositionActions } from "@/components/portfolio/position-actions";
 import { LeaveDialog, SellDialog } from "@/components/portfolio/exit-dialogs";
 import { StatusBadge } from "@/components/status-badge";
 
@@ -17,7 +18,7 @@ const Bar = ({ label, bps, tone }: { label: string; bps: number | null; tone: st
 );
 
 /** Open positions (value, actual against target weights, reconciliation notices, exit actions) or former ones (sell what is left). */
-export function PositionsList({ positions, former }: { positions: Position[]; former?: boolean }) {
+export function PositionsList({ positions, former, repairs = [] }: { positions: Position[]; former?: boolean; repairs?: Portfolio["repairs"] }) {
   return (
     <ul className="space-y-4">
       {positions.map((p) => {
@@ -34,6 +35,7 @@ export function PositionsList({ positions, former }: { positions: Position[]; fo
               </div>
               <p className="text-lg text-ivory">{total === null ? "Value unavailable" : `$${total}`}</p>
             </div>
+            {!former && <PositionActions position={p} repairAsset={repairs.find((r) => r.positions.some((x) => x.positionId === p.id))?.asset} />}
             {short.length > 0 && <p role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-3 text-sm text-ivory">Your wallet holds less {short.map((h) => h.symbol).join(", ")} than Bytesac recorded for this basket, so part of it may have been moved. Shortfalls are shared across your baskets in proportion. Nothing is bought or sold automatically.</p>}
             {surplus.length > 0 && <p role="status" className="rounded-xl border border-border-dark p-3 text-sm text-stone">Extra {surplus.map((h) => h.symbol).join(", ")} in your wallet is outside your baskets.</p>}
             <ul className="divide-y divide-border-dark">
@@ -48,6 +50,9 @@ export function PositionsList({ positions, former }: { positions: Position[]; fo
                   {h.reconciliation === "SURPLUS" && <StatusBadge tone="neutral" label="Extra outside baskets" />}
                 </li>
               ))}
+              {BigInt(p.cashMicro) > 0n && (
+                <li className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span className="text-ivory">Cash (USDC)</span><span className="text-ivory">{formatUnits(p.cashMicro, 6)} USDC</span></li>
+              )}
             </ul>
             <div className="flex flex-wrap gap-3">
               {!former && <LeaveDialog position={p} />}

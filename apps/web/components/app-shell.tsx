@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/brand/logo";
+import { NotificationsBell } from "@/components/notifications/bell";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               </li>
             ))}
           </ul>
-          <Button variant="ghost" className="ml-auto min-h-11" onClick={async () => { await api.logout().catch(() => undefined); queryClient.clear(); await wallet.disconnect().catch(() => undefined); window.location.replace("/sign-in"); }}>
+          <div className="ml-auto"><NotificationsBell /></div>
+          <Button variant="ghost" className="min-h-11" onClick={async () => { await api.logout().catch(() => undefined); queryClient.clear(); await wallet.disconnect().catch(() => undefined); window.location.replace("/sign-in"); }}>
             Log out
           </Button>
         </nav>
