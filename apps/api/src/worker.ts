@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { logger } from "@repo/logger";
 import { env } from "./env";
 import { queues } from "./queues";
+import { seedPlatformWallets } from "./services/gas";
 import { runBasketPerformance, runPriceSnapshot } from "./services/performance";
 import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "./services/search-index";
 
@@ -11,6 +12,7 @@ import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "./services/sea
  */
 export async function startWorker(): Promise<Worker[]> {
   const connection = { url: env.REDIS_URL };
+  await seedPlatformWallets();
   const workers = [
     new Worker("price-snapshot", () => runPriceSnapshot(), { connection }),
     new Worker("basket-performance", (job) => runBasketPerformance(job.data.basketId), { connection }),

@@ -2,9 +2,12 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { Router } from "express";
 import { contacts, db, investmentWallets, sessions, userPermissions, users } from "@repo/db";
-import { familyOf, managerProfileRequestSchema, z, type ManagerProfileRequest, type MeResponse, type SessionsResponse } from "@repo/validator";
+import { bitcoinChallengeRequestSchema, bitcoinVerifySchema, familyOf, managerProfileRequestSchema, z, type BitcoinChallengeRequest, type BitcoinVerify, type ManagerProfileRequest, type MeResponse, type SessionsResponse } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
+import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
+import { respondVerified } from "./auth";
+import { issueChallenge, verifyChallenge } from "../services/sign-in";
 import { writeAudit } from "../services/audit";
 import { contactView } from "../services/contacts";
 import { activeRoles } from "../services/platform-roles";
@@ -12,7 +15,7 @@ import { listMyInvitations } from "../services/members";
 import { getOwnProfile, saveOwnProfile, setOwnProfilePublished } from "../services/manager-profiles";
 import { listMyOrganizations } from "../services/organizations";
 import { listActiveSessions, revokeSession } from "../services/sessions";
-import { addressesForWallet } from "../services/wallets";
+import { addressesForWallet, canonicalBitcoinAddress } from "../services/wallets";
 
 export const meRouter = Router();
 meRouter.use(requireSession);
@@ -41,6 +44,21 @@ meRouter.get("/", async (req, res) => {
     organizations: (await listMyOrganizations(userId)).organizations.map((o) => ({ id: o.id, displayName: o.displayName, role: o.role, status: o.status, membershipId: o.membershipId, membershipStatus: o.membershipStatus })),
   };
   res.json(body);
+});
+
+/** Bitcoin is link-only (add-chain): a BIP-322 or BIP-137 proof over the challenge message, with the Spec 1 rules (one address per family, not linked elsewhere, session rotation, audit). */
+meRouter.post("/chain-accounts/bitcoin/challenge", validate({ body: bitcoinChallengeRequestSchema }), async (req, res) => {
+  const { address } = req.body as BitcoinChallengeRequest;
+  res.json(await issueChallenge({ purpose: "add_chain_account", chain: "bitcoin", rawAddress: address, sessionId: req.auth!.sessionId, meta: req.ctx }));
+});
+
+meRouter.post("/chain-accounts/bitcoin/verify", validate({ body: bitcoinVerifySchema }), async (req, res) => {
+  const body = req.body as BitcoinVerify;
+  await consume(limits.bitcoinLinkUser, req.auth!.userId);
+  respondVerified(res, await verifyChallenge({
+    challengeId: body.challengeId, signature: body.signature, client: req.auth!.client, auth: req.auth, meta: req.ctx,
+    bitcoin: { method: body.method, address: canonicalBitcoinAddress(body.address) },
+  }));
 });
 
 meRouter.get("/invitations", async (req, res) => {

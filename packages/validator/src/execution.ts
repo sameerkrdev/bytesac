@@ -62,6 +62,9 @@ export const legSubmitSchema = z.strictObject({
 }).refine((b) => [b.signedTx, b.txHash, b.signedPsbt].filter((x) => x !== undefined).length === 1, { message: "Send exactly one of signedTx, txHash, signedPsbt." });
 export type LegSubmit = z.infer<typeof legSubmitSchema>;
 
+export const bitcoinChallengeRequestSchema = z.strictObject({ address: z.string().trim().min(1).max(128) });
+export type BitcoinChallengeRequest = z.infer<typeof bitcoinChallengeRequestSchema>;
+
 /** `signature`: BIP-322 signed `to_sign` PSBT (base64) or a BIP-137 compact signature (base64). */
 export const bitcoinVerifySchema = z.strictObject({
   challengeId: z.uuid(),

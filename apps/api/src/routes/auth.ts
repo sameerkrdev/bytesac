@@ -11,10 +11,23 @@ import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import { writeAudit } from "../services/audit";
 import { revokeAllSessions, revokeSession } from "../services/sessions";
-import { issueChallenge, verifyChallenge } from "../services/sign-in";
+import { issueChallenge, verifyChallenge, type VerifyResult } from "../services/sign-in";
 
 const cookieOptions = { httpOnly: true, secure: env.COOKIE_SECURE, sameSite: "lax", path: "/" } as const;
 const clearSessionCookie = (res: Response) => res.clearCookie(SESSION_COOKIE, cookieOptions);
+
+/**
+ * sign_in issues a session for the requested client; add_chain_account rotates within the caller's own client.
+ * Web gets an httpOnly cookie, mobile the token in the body; no new session means keep the current one.
+ */
+export function respondVerified(res: Response, result: VerifyResult): void {
+  const out: VerifyResponse = { userId: result.userId, isNewUser: result.isNewUser };
+  if (result.issued) {
+    if (result.issued.client === "web") res.cookie(SESSION_COOKIE, result.issued.token, { ...cookieOptions, expires: result.issued.absoluteExpiresAt });
+    else out.token = result.issued.token;
+  }
+  res.json(out);
+}
 
 export const authRouter = Router();
 
@@ -34,14 +47,7 @@ authRouter.post("/verify", optionalSession, validate({ body: verifyRequestSchema
     challengeId: body.challengeId, signature: body.signature, walletProvider: body.walletProvider,
     client: body.client, auth: req.auth, meta: req.ctx,
   });
-  // sign_in issues a session for body.client; add_chain_account rotates within the caller's own client.
-  // Web gets an httpOnly cookie, mobile the token in the body; no new session means keep the current one.
-  const out: VerifyResponse = { userId: result.userId, isNewUser: result.isNewUser };
-  if (result.issued) {
-    if (result.issued.client === "web") res.cookie(SESSION_COOKIE, result.issued.token, { ...cookieOptions, expires: result.issued.absoluteExpiresAt });
-    else out.token = result.issued.token;
-  }
-  res.json(out);
+  respondVerified(res, result);
 });
 
 authRouter.post("/logout", requireSession, async (req, res) => {

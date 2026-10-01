@@ -72,5 +72,10 @@ export const env = cleanEnv(process.env, {
   /** Empty disables routing: quotes and connection checks fail with ROUTE_UNAVAILABLE. */
   LIFI_API_KEY: str({ default: "" }),
   LIFI_INTEGRATOR: str({ default: "bytesac" }),
+  /** Platform keys (KMS before launch): never logged. Empty disables Solana fee sponsoring / EVM gas drops. Solana: base58 of the 64-byte secret key. EVM: 0x-prefixed private key. */
+  SOLANA_FEE_PAYER_SECRET: str({ default: "" }),
+  EVM_GAS_WALLET_SECRET: str({ default: "" }),
+  /** Owner (public address) of the platform's USDC token account that receives network fees. */
+  GAS_TREASURY_SOLANA_ADDRESS: str({ default: "" }),
   ROUTE_PROVIDER_ORDER: routeProviders({ default: ["lifi"] }),
 });

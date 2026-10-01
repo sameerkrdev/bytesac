@@ -4,15 +4,28 @@ import { and, eq } from "drizzle-orm";
 import { investmentWallets, notificationPreferences, users, walletAddresses, type DbOrTx, type Tx } from "@repo/db";
 import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type VerificationMethod } from "@repo/validator";
 import { isAddress } from "viem";
+import { Address } from "@scure/btc-signer";
 
 export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
 
 const invalid = (message: string) => createHttpError(message, { code: "VALIDATION_FAILED" });
 
+/** A mainnet P2WPKH, P2TR, P2SH or P2PKH address in canonical form (bech32 lowercase); anything else is a 400. (No env: the ops CLI imports this.) */
+export function canonicalBitcoinAddress(raw: string): string {
+  const value = raw.trim();
+  try {
+    const { type } = Address().decode(value);
+    if (type === "wpkh" || type === "tr" || type === "sh" || type === "pkh") return value.toLowerCase().startsWith("bc1") ? value.toLowerCase() : value;
+  } catch {
+    // falls through
+  }
+  throw invalid("Invalid Bitcoin address");
+}
+
 export function canonicalizeAddress(chain: AssetChain, raw: string): string {
   const value = raw.trim();
   const family = ASSET_CHAINS[chain].family;
-  if (family === "bitcoin") throw invalid("Bitcoin deployments are native only.");
+  if (family === "bitcoin") return canonicalBitcoinAddress(value);
   if (family === "evm") {
     if (!/^0x[0-9a-fA-F]{40}$/.test(value) || !isAddress(value, { strict: true })) throw invalid("Invalid EVM address");
     return value.toLowerCase();

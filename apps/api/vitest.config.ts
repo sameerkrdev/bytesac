@@ -1,9 +1,17 @@
+import { generateKeyPairSync, randomBytes } from "node:crypto";
+import bs58 from "bs58";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 
 // TEST_* connection strings come from apps/api/.env (or the CI environment).
 const local = loadEnv("test", process.cwd(), "TEST_");
 const fromEnv = (key: string) => process.env[key] ?? local[key];
+
+// Throwaway platform keys for every test run: nothing here is a real key and nothing is committed.
+const solanaKey = () => {
+  const jwk = generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" });
+  return { secret: bs58.encode(Buffer.concat([Buffer.from(jwk.d!, "base64url"), Buffer.from(jwk.x!, "base64url")])), pub: bs58.encode(Buffer.from(jwk.x!, "base64url")) };
+};
 
 export default defineConfig({
   test: {
@@ -24,6 +32,9 @@ export default defineConfig({
       ALCHEMY_API_KEY: "x",
       COINMARKETCAP_API_KEY: "test-cmc-key",
       LIFI_API_KEY: "test-lifi-key",
+      SOLANA_FEE_PAYER_SECRET: solanaKey().secret,
+      EVM_GAS_WALLET_SECRET: `0x${randomBytes(32).toString("hex")}`,
+      GAS_TREASURY_SOLANA_ADDRESS: solanaKey().pub,
       GEMINI_API_KEY: "test-gemini-key",
       RESEND_API_KEY: "x",
       EMAIL_FROM: "Bytesac <no-reply@test.dev>",
