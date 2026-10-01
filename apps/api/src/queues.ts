@@ -1,4 +1,5 @@
 import { Queue } from "bullmq";
+import { logger } from "@repo/logger";
 import { env } from "./env";
 
 /** `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. */
@@ -27,12 +28,17 @@ interface JobData {
  * sees all of them; embed jobs are one per basket version and attempt.
  */
 export async function enqueue<N extends keyof JobData>(name: N, data: JobData[N]): Promise<void> {
-  if (name === "search-index-refresh") {
-    const { basketId } = data as JobData["search-index-refresh"];
-    const windowEnd = (Math.floor(Date.now() / 10_000) + 1) * 10_000;
-    await queues[name].add(name, data, { jobId: `search_${basketId}_${windowEnd}`, delay: windowEnd - Date.now() });
-  } else if (name === "embed-basket") {
-    const { basketId, versionId, attempt = 0 } = data as JobData["embed-basket"];
-    await queues[name].add(name, data, { jobId: `embed_${basketId}_${versionId}_${attempt}` });
-  } else await queues[name].add(name, data);
+  try {
+    if (name === "search-index-refresh") {
+      const { basketId } = data as JobData["search-index-refresh"];
+      const windowEnd = (Math.floor(Date.now() / 10_000) + 1) * 10_000;
+      await queues[name].add(name, data, { jobId: `search_${basketId}_${windowEnd}`, delay: windowEnd - Date.now() });
+    } else if (name === "embed-basket") {
+      const { basketId, versionId, attempt = 0 } = data as JobData["embed-basket"];
+      await queues[name].add(name, data, { jobId: `embed_${basketId}_${versionId}_${attempt}` });
+    } else await queues[name].add(name, data);
+  } catch (err) {
+    // A committed change is not undone by a queue outage; the next change or the sweep catches up.
+    logger.warn("enqueue failed", { name, errMessage: err instanceof Error ? err.message : "unknown" });
+  }
 }

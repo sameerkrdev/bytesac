@@ -36,6 +36,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   DEPLOYMENT_EXISTS: { title: "Token already registered", message: "This token is already registered.", recovery: "fix-input" },
   BASKET_VALIDATION_FAILED: { title: "Basket not ready", message: "Fix the listed issues before submitting this basket.", recovery: "fix-input" },
   VERSION_CONFLICT: { title: "Draft changed", message: "This draft changed since you opened it. Reload to continue.", recovery: "retry" },
+  HANDLE_TAKEN: { title: "Handle taken", message: "That handle is already in use. Choose another.", recovery: "fix-input" },
   DOCUMENT_REJECTED: { title: "File not accepted", message: "Upload a PDF, JPEG or PNG up to 10 MB.", recovery: "fix-input" },
   INTERNAL: { title: "Something went wrong", message: "Try again. If it keeps happening, contact support.", recovery: "retry" },
   NETWORK_ERROR: { title: "No connection", message: "Check your connection and try again.", recovery: "retry" },

@@ -1,4 +1,7 @@
 import {
+  aiSearchResponseSchema, assetTagViewSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
+  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
+  type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
   listDisclosureTemplatesResponseSchema, opsBasketDetailSchema, opsBasketListResponseSchema, publicBasketListResponseSchema, publicBasketResponseSchema,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest, type ListDisclosureTemplatesResponse, type ListOpsBasketsQuery,
   type OpsBasketDetail, type OpsBasketListResponse, type PublicBasketListResponse, type PublicBasketResponse,
@@ -254,6 +257,22 @@ export function createApiClient(options: ApiClientOptions) {
 
     listPublicBaskets: (cursor?: string): Promise<PublicBasketListResponse> => request("GET", `/v1/public/baskets?${qs({ cursor })}`, publicBasketListResponseSchema),
     getPublicBasket: (slug: string): Promise<PublicBasketResponse> => request("GET", `/v1/public/baskets/${e(slug)}`, publicBasketResponseSchema),
+
+    /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */
+    discoverBaskets: ({ cursor, ...filters }: DiscoveryFilters = {}): Promise<DiscoverySearchResponse> =>
+      request("GET", `/v1/public/discovery/baskets?${qs({ f: btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(filters)))).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, ""), cursor })}`, discoverySearchResponseSchema),
+    aiSearchBaskets: (query: string): Promise<AiSearchResponse> => request("POST", "/v1/public/discovery/ai-search", aiSearchResponseSchema, { query }),
+    getPublicManager: (handle: string): Promise<PublicManager> => request("GET", `/v1/public/managers/${e(handle)}`, publicManagerSchema),
+    getMyManagerProfile: (): Promise<OwnManagerProfileResponse> => request("GET", "/v1/me/manager-profile", ownManagerProfileResponseSchema),
+    saveMyManagerProfile: (b: ManagerProfileRequest): Promise<OwnManagerProfileResponse> => request("PUT", "/v1/me/manager-profile", ownManagerProfileResponseSchema, b),
+    publishMyManagerProfile: (): Promise<OwnManagerProfileResponse> => request("POST", "/v1/me/manager-profile/publish", ownManagerProfileResponseSchema),
+    unpublishMyManagerProfile: (): Promise<OwnManagerProfileResponse> => request("POST", "/v1/me/manager-profile/unpublish", ownManagerProfileResponseSchema),
+    opsListAssetTags: (): Promise<ListAssetTagsResponse> => request("GET", "/v1/ops/asset-tags", listAssetTagsResponseSchema),
+    opsCreateAssetTag: (b: CreateAssetTagRequest): Promise<AssetTagView> => request("POST", "/v1/ops/asset-tags", assetTagViewSchema, b),
+    opsRetireAssetTag: (id: string): Promise<AssetTagView> => request("POST", `/v1/ops/asset-tags/${e(id)}/retire`, assetTagViewSchema),
+    opsListManagerProfiles: (q: Partial<ListOpsManagerProfilesQuery> = {}): Promise<ListOpsManagerProfilesResponse> => request("GET", `/v1/ops/manager-profiles?${qs(q)}`, listOpsManagerProfilesResponseSchema),
+    opsHideManagerProfile: (id: string, b: HideManagerProfileRequest): Promise<ManagerProfileView> => request("POST", `/v1/ops/manager-profiles/${e(id)}/hide`, managerProfileViewSchema, b),
+    opsUnhideManagerProfile: (id: string): Promise<ManagerProfileView> => request("POST", `/v1/ops/manager-profiles/${e(id)}/unhide`, managerProfileViewSchema),
 
     opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
     opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),

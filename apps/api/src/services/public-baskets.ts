@@ -1,7 +1,9 @@
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { basketAssignments, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instruments, organizationMemberships, organizations } from "@repo/db";
-import { basketConstraintsSchema, basketFeesSchema, type BasketStatus, type PublicBasketListResponse, type PublicBasketResponse } from "@repo/validator";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+  assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations,
+} from "@repo/db";
+import { basketConstraintsSchema, basketFeesSchema, PERFORMANCE_LABEL, performanceMetrics, type BasketStatus, type PublicBasketListResponse, type PublicBasketResponse } from "@repo/validator";
 import { cursorSchema } from "./applications";
 import { currentDisclosures, versionDiff } from "./baskets";
 import { orgDisplayName } from "./members";
@@ -51,7 +53,7 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
   if (!b.currentVersionId) throw notFound();
   const [v] = await db.select().from(basketVersions).where(eq(basketVersions.id, b.currentVersionId));
   const assets = await db.select({
-    instrumentId: instruments.id, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, instrumentStatus: instruments.status,
+    instrumentId: instruments.id, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, instrumentStatus: instruments.status, sector: instruments.sector,
     targetWeightBps: basketVersionAssets.targetWeightBps, minWeightBps: basketVersionAssets.minWeightBps, maxWeightBps: basketVersionAssets.maxWeightBps,
     chains: sql<string[]>`coalesce((select array_agg(distinct d.chain::text order by d.chain::text) from app.instrument_deployments d where d.instrument_id = ${instruments.id} and d.status = 'ACTIVE'), '{}')`,
   }).from(basketVersionAssets).innerJoin(instruments, eq(instruments.id, basketVersionAssets.instrumentId))
@@ -59,10 +61,23 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
   const prices = await getPrices(assets.map((a) => a.instrumentId));
   const history = await db.select().from(basketVersions).where(and(eq(basketVersions.basketId, b.id), inArray(basketVersions.status, ["published", "superseded"]))).orderBy(desc(basketVersions.versionNumber));
   // Opted-in public names only; a member who did not opt in is "Team member". Assignments that never became ACTIVE are not history.
-  const managers = await db.select({ name: organizationMemberships.publicDisplayName, role: basketAssignments.role, from: basketAssignments.startedAt, to: basketAssignments.endedAt })
+  // A published manager profile supplies the name and handle; a hidden or unpublished one falls back to the opt-in name.
+  const managers = await db.select({ name: sql<string | null>`coalesce(${managerProfiles.displayName}, ${organizationMemberships.publicDisplayName})`, handle: managerProfiles.handle, role: basketAssignments.role, from: basketAssignments.startedAt, to: basketAssignments.endedAt })
     .from(basketAssignments).innerJoin(organizationMemberships, eq(organizationMemberships.id, basketAssignments.membershipId))
+    .leftJoin(managerProfiles, and(eq(managerProfiles.userId, basketAssignments.userId), eq(managerProfiles.status, "published")))
     .where(and(eq(basketAssignments.basketId, b.id), isNotNull(basketAssignments.startedAt))).orderBy(basketAssignments.startedAt, basketAssignments.id);
+  const days = await db.select({ day: basketPerformanceDays.day, indexGross: basketPerformanceDays.indexGross, indexNet: basketPerformanceDays.indexNet, holdings: basketPerformanceDays.holdings })
+    .from(basketPerformanceDays).where(eq(basketPerformanceDays.basketId, b.id)).orderBy(asc(basketPerformanceDays.day));
+  const metrics = performanceMetrics(days.map((d) => ({ day: d.day, indexGross: d.indexGross, indexNet: d.indexNet, gapRun: d.holdings.gapRun })), new Date().toISOString().slice(0, 10));
+  const step = Math.ceil(days.length / 399) || 1;
+  const series = days.filter((_, i) => i % step === 0 || i === days.length - 1).map((d) => ({ day: d.day, net: d.indexNet, gross: d.indexGross }));
+  const sectors = new Map<string, number>();
+  for (const a of assets) sectors.set(a.sector, (sectors.get(a.sector) ?? 0) + a.targetWeightBps);
+  const tags = await db.selectDistinct({ key: assetTags.key, label: assetTags.label }).from(instrumentTags).innerJoin(assetTags, eq(assetTags.id, instrumentTags.tagId))
+    .where(and(inArray(instrumentTags.instrumentId, assets.map((a) => a.instrumentId)), isNull(instrumentTags.removedAt), eq(assetTags.status, "active"))).orderBy(assetTags.key);
   return {
+    performance: { available: metrics.available, dataDays: metrics.dataDays, series }, metrics, label: PERFORMANCE_LABEL, tags,
+    sectors: [...sectors].map(([sector, bps]) => ({ sector: sector as (typeof assets)[number]["sector"], bps })),
     slug: b.slug, status: b.status, hasAssetWarning: assets.some((a) => a.instrumentStatus === "PAUSED" || a.instrumentStatus === "DEPRECATED"),
     organization: { id: b.organizationId, displayName: b.orgName },
     version: {
@@ -71,10 +86,10 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
       knownLimitations: v!.knownLimitations, strategyRisks: v!.strategyRisks, liquidityNotes: v!.liquidityNotes, conflictsOfInterest: v!.conflictsOfInterest,
       constraints: basketConstraintsSchema.parse(v!.constraints), rebalance: v!.rebalance, fees: basketFeesSchema.parse(v!.fees), minimumInvestmentUsdc: v!.minimumInvestmentUsdc, minimumIncrementUsdc: v!.minimumIncrementUsdc,
     },
-    allocation: assets.map(({ instrumentStatus: _status, ...a }) => ({ ...a, prices: prices.filter((p) => p.instrumentId === a.instrumentId) })),
+    allocation: assets.map(({ instrumentStatus: _status, sector: _sector, ...a }) => ({ ...a, prices: prices.filter((p) => p.instrumentId === a.instrumentId) })),
     disclosures: (await currentDisclosures(db, v!)).map((d) => ({ title: d.title, body: d.body })),
   // ponytail: one diff query set per published version on every page view; cache or precompute at publish if histories grow.
     versionHistory: await Promise.all(history.map(async (h) => ({ versionNumber: h.versionNumber, publishedAt: h.publishedAt!.toISOString(), rationale: h.rationale, diff: await versionDiff(db, h) }))),
-    managers: managers.map((m) => ({ displayName: m.name ?? "Team member", role: m.role, from: m.from!.toISOString(), to: m.to?.toISOString() ?? null })),
+    managers: managers.map((m) => ({ displayName: m.name ?? "Team member", handle: m.handle, role: m.role, from: m.from!.toISOString(), to: m.to?.toISOString() ?? null })),
   };
 }

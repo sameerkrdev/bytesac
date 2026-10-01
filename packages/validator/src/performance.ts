@@ -1,4 +1,10 @@
+import { z } from "zod";
+import { instrumentSectorSchema } from "./assets";
 import type { BasketFees, Fee } from "./baskets";
+
+export const PERFORMANCE_LABEL =
+  "Simulated model performance — not actual investor results. Net figures assume an investment equal to the basket minimum and include the basket's fees; network and swap costs are excluded.";
+
 
 // BigInt fixed point, 18 fractional digits. Never a JS number for index values or fee factors.
 const S = 10n ** 18n;
@@ -142,7 +148,7 @@ const fraction = (a: string, b: string): string => {
  * (stdev of daily net returns × √365) and max drawdown of the net index need 30 data days. Stale data (last day more than 3 days before `today`)
  * or any constituent with a gap run above 3 days means `available: false`.
  */
-export function performanceMetrics(days: PerformanceDay[], today: string): PerformanceMetrics {
+export function performanceMetrics(days: Pick<PerformanceDay, "day" | "indexGross" | "indexNet" | "gapRun">[], today: string): PerformanceMetrics {
   const last = days.at(-1);
   const empty = { sinceLaunch: null, d30: null, d90: null, y1: null };
   if (!last) return { available: false, dataDays: 0, net: empty, gross: empty, volatility: null, maxDrawdown: null };
@@ -166,3 +172,17 @@ export function performanceMetrics(days: PerformanceDay[], today: string): Perfo
   }
   return { available, dataDays: days.length, net: window("indexNet"), gross: window("indexGross"), volatility, maxDrawdown };
 }
+
+const performanceWindow = z.object({ sinceLaunch: z.string().nullable(), d30: z.string().nullable(), d90: z.string().nullable(), y1: z.string().nullable() });
+export const basketMetricsSchema = z.object({
+  available: z.boolean(), dataDays: z.number(), net: performanceWindow, gross: performanceWindow, volatility: z.string().nullable(), maxDrawdown: z.string().nullable(),
+});
+
+/** Added to the public basket detail. `series` is downsampled to at most 400 points. */
+export const publicBasketResearchSchema = z.object({
+  performance: z.object({ available: z.boolean(), dataDays: z.number(), series: z.array(z.object({ day: z.string(), net: z.string(), gross: z.string() })) }),
+  metrics: basketMetricsSchema,
+  sectors: z.array(z.object({ sector: instrumentSectorSchema, bps: z.number() })),
+  tags: z.array(z.object({ key: z.string(), label: z.string() })),
+  label: z.literal(PERFORMANCE_LABEL),
+});

@@ -70,9 +70,29 @@ class FakeEmail {
   sendBasket = async (kind: string, to: string, data: { basketName?: string | null; message?: string | null; decision?: string }, idempotencyKey: string): Promise<void> => {
     this.basket.push({ kind, to, data, idempotencyKey });
   };
+  profile: Array<{ kind: string; to: string; data: { message?: string | null }; idempotencyKey: string }> = [];
+  sendProfile = async (kind: string, to: string, data: { message?: string | null }, idempotencyKey: string): Promise<void> => { this.profile.push({ kind, to, data, idempotencyKey }); };
   sendOtp = async (to: string, code: string, verificationId: string): Promise<void> => {
     if (this.fail) throw deliveryFailure("resend down");
     this.sent.push({ to, code, verificationId });
+  };
+}
+
+/** A 768-d unit vector along axis `i`: cosine distance 0 to itself, 1 to any other axis. */
+export const unitVector = (i: number): number[] => Array.from({ length: 768 }, (_, k) => (k === i ? 1 : 0));
+
+class FakeGemini {
+  /** What geminiSearchCall does: drive runTool like the real call (default: the model returns no call). */
+  search: (query: string, runTool: (args: unknown) => Promise<Record<string, unknown>>) => Promise<unknown> = async () => null;
+  embedFails = false;
+  vector: number[] = unitVector(0);
+  searchCalls: string[] = [];
+  embedCalls: string[] = [];
+  geminiSearchCall = async (query: string, runTool: (args: unknown) => Promise<Record<string, unknown>>) => { this.searchCalls.push(query); return this.search(query, runTool); };
+  embedText = async (text: string): Promise<number[]> => {
+    this.embedCalls.push(text);
+    if (this.embedFails) throw new Error("embedding down");
+    return this.vector;
   };
 }
 
@@ -140,14 +160,15 @@ class FakeQueue {
   enqueue = async (name: string, data: Record<string, unknown>): Promise<void> => { this.jobs.push({ name, data }); };
 }
 
-export const fakes = { queue: new FakeQueue(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
+export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [] });
   Object.assign(fakes.solana, { behavior: "ok", decimals: 6, calls: [] });
   fakes.queue.jobs = [];
+  Object.assign(fakes.gemini, { search: async () => null, embedFails: false, vector: unitVector(0), searchCalls: [], embedCalls: [] });
   Object.assign(fakes.cmc, { quotes: new Map(), calls: [], fail: false });
-  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], fail: false });
+  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], profile: [], fail: false });
   fakes.r2.objects.clear();
   fakes.r2.signed = [];
   Object.assign(fakes.sms, { started: [], approveCode: "123456", fail: false, checkFail: false });

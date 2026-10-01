@@ -1,15 +1,7 @@
 import { z } from "zod";
-import { assetTypeSchema } from "./assets";
-import { basketCategorySchema, decimalStringSchema, micro, type Fee } from "./baskets";
+import { assetTypeSchema, instrumentSectorSchema } from "./assets";
+import { basketCategorySchema, basketStatusSchema, decimalStringSchema, micro, type Fee } from "./baskets";
 
-export const PERFORMANCE_LABEL =
-  "Simulated model performance — not actual investor results. Net figures assume an investment equal to the basket minimum and include the basket's fees; network and swap costs are excluded.";
-
-export const INSTRUMENT_SECTORS = [
-  "store_of_value", "smart_contract_platform", "layer2", "defi", "stablecoin", "oracle_infra", "gaming_metaverse", "ai_data", "meme", "rwa_treasury", "rwa_credit", "rwa_commodity", "rwa_equity", "other",
-] as const;
-export const instrumentSectorSchema = z.enum(INSTRUMENT_SECTORS);
-export type InstrumentSector = z.infer<typeof instrumentSectorSchema>;
 
 const bps = z.number().int().min(0).max(10_000);
 /** Fractions such as `0.12` (12%) or `-0.3`. */
@@ -65,3 +57,60 @@ export const managerProfileRequestSchema = z.strictObject({
   links: z.array(z.strictObject({ label: plain(1, 40), url: z.url({ protocol: /^https$/ }).max(500) })).max(5).optional(),
 });
 export type ManagerProfileRequest = z.infer<typeof managerProfileRequestSchema>;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Responses and requests
+// ---------------------------------------------------------------------------------------------------------------------
+
+const iso = z.iso.datetime({ offset: true });
+export const discoverySearchItemSchema = z.object({
+  slug: z.string(), name: z.string(), shortDescription: z.string().nullable(), organizationName: z.string(), category: basketCategorySchema, status: basketStatusSchema,
+  topAssets: z.array(z.object({ symbol: z.string(), bps: z.number() })), minimumInvestmentUsdc: z.string(), managementFeeBps: z.number(), netReturn1y: z.string().nullable(), available: z.boolean(),
+});
+export type DiscoverySearchItem = z.infer<typeof discoverySearchItemSchema>;
+export const discoverySearchResponseSchema = z.object({ items: z.array(discoverySearchItemSchema), nextCursor: z.string().nullable() });
+export type DiscoverySearchResponse = z.infer<typeof discoverySearchResponseSchema>;
+
+export const aiSearchRequestSchema = z.strictObject({ query: z.string().trim().min(1).max(500) });
+export type AiSearchRequest = z.infer<typeof aiSearchRequestSchema>;
+export const aiSearchResponseSchema = z.object({
+  mode: z.enum(["tool", "semantic", "keyword"]), filters: discoveryFiltersSchema.omit({ cursor: true }).nullable(), results: z.array(discoverySearchItemSchema),
+});
+export type AiSearchResponse = z.infer<typeof aiSearchResponseSchema>;
+
+export const managerHandleParamSchema = z.object({ handle: z.string().regex(/^[a-z0-9-]{3,30}$/) });
+
+const profileFields = {
+  handle: z.string(), displayName: z.string(), headline: z.string().nullable(), bio: z.string().nullable(), experienceYears: z.number().nullable(), background: z.string().nullable(),
+  qualifications: z.array(z.string()), links: z.array(z.object({ label: z.string(), url: z.string() })),
+};
+export const managerProfileViewSchema = z.object({ ...profileFields, status: z.enum(["draft", "published", "hidden"]), hiddenReason: z.string().nullable(), publishedAt: iso.nullable(), updatedAt: iso });
+export type ManagerProfileView = z.infer<typeof managerProfileViewSchema>;
+export const ownManagerProfileResponseSchema = z.object({ profile: managerProfileViewSchema.nullable() });
+export type OwnManagerProfileResponse = z.infer<typeof ownManagerProfileResponseSchema>;
+
+export const publicManagerSchema = z.object({
+  ...profileFields,
+  selfReported: z.array(z.enum(["experienceYears", "qualifications"])),
+  verified: z.boolean(),
+  baskets: z.array(z.object({ slug: z.string(), name: z.string(), status: basketStatusSchema, role: z.enum(["lead", "co_manager"]), from: iso, to: iso.nullable() })),
+  organizations: z.array(z.object({ organizationId: z.string(), organizationName: z.string().nullable(), role: z.string(), title: z.string().nullable(), current: z.boolean(), from: iso, to: iso.nullable() })),
+});
+export type PublicManager = z.infer<typeof publicManagerSchema>;
+
+export const opsManagerProfileSchema = z.object({
+  id: z.string(), handle: z.string(), displayName: z.string(), status: z.enum(["draft", "published", "hidden"]), hiddenReason: z.string().nullable(), publishedAt: iso.nullable(), updatedAt: iso,
+});
+export const listOpsManagerProfilesQuerySchema = z.object({ status: z.enum(["draft", "published", "hidden"]).optional(), cursor: z.string().max(200).optional() });
+export type ListOpsManagerProfilesQuery = z.infer<typeof listOpsManagerProfilesQuerySchema>;
+export const listOpsManagerProfilesResponseSchema = z.object({ items: z.array(opsManagerProfileSchema), nextCursor: z.string().nullable() });
+export type ListOpsManagerProfilesResponse = z.infer<typeof listOpsManagerProfilesResponseSchema>;
+export const hideManagerProfileRequestSchema = z.strictObject({ reason: z.string().trim().min(1).max(500) });
+export type HideManagerProfileRequest = z.infer<typeof hideManagerProfileRequestSchema>;
+
+export const assetTagViewSchema = z.object({ id: z.string(), key: z.string(), label: z.string(), status: z.enum(["active", "retired"]), createdAt: iso, retiredAt: iso.nullable() });
+export type AssetTagView = z.infer<typeof assetTagViewSchema>;
+export const listAssetTagsResponseSchema = z.object({ tags: z.array(assetTagViewSchema) });
+export type ListAssetTagsResponse = z.infer<typeof listAssetTagsResponseSchema>;
+export const createAssetTagRequestSchema = z.strictObject({ key: z.string().regex(/^[a-z0-9-]{2,32}$/), label: z.string().trim().min(1).max(40) });
+export type CreateAssetTagRequest = z.infer<typeof createAssetTagRequestSchema>;

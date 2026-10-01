@@ -19,6 +19,7 @@ import {
 import { PAGE_SIZE, assertNotMember } from "./organization-review";
 import type { OwnerCtx } from "./organizations";
 import { activeRoles } from "./platform-roles";
+import { enqueue } from "../queues";
 
 type BasketRow = typeof baskets.$inferSelect;
 type VersionRow = typeof basketVersions.$inferSelect;
@@ -136,6 +137,7 @@ export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<Basket
     });
   });
   if (eventId) await notifyBasket(bid, "published", {}, eventId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
@@ -151,6 +153,7 @@ export async function pauseBasket(ctx: OwnerCtx, bid: string, reason: BasketReas
     if (basket.status !== "ACTIVE") throw invalid("Only an active basket can be paused.");
     await moveBasket(tx, basket, "PAUSED", { ...managerMove(ctx), kind: "paused", action: "basket.paused", reason, set: { pauseKind: "manager", pauseReason: reason } });
   });
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
@@ -161,6 +164,7 @@ export async function resumeBasket(ctx: OwnerCtx, bid: string): Promise<BasketDe
     if (basket.pauseKind === "platform") throw createHttpError("Only the Bytesac team can lift this pause.", { code: "FORBIDDEN" });
     await moveBasket(tx, basket, "ACTIVE", { ...managerMove(ctx), kind: "resumed", action: "basket.resumed", set: { pauseKind: null, pauseReason: null } });
   });
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
@@ -170,6 +174,7 @@ export async function requestRetirement(ctx: OwnerCtx, bid: string, reason: Bask
     if (basket.status !== "ACTIVE" && basket.status !== "PAUSED") throw invalid("Only an active or paused basket can be retired.");
     await moveBasket(tx, basket, "RETIREMENT_PENDING", { ...managerMove(ctx), kind: "retirement_requested", action: "basket.retirement_requested", reason, set: { previousStatus: basket.status } });
   });
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
@@ -311,6 +316,7 @@ export async function decideLead(ctx: OpsCtx, bid: string, aid: string, i: Baske
     return e!.id;
   });
   await notifyBasket(bid, i.decision === "approved" ? "lead_approved" : "lead_rejected", { message: i.reason }, eventId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
 
@@ -323,6 +329,7 @@ export async function platformPause(ctx: OpsCtx, bid: string, reason: BasketReas
     return moveBasket(tx, basket, "PAUSED", { ...opsMove(ctx), keepStatus: true, kind: "paused", action: "basket.platform_paused", reason, set: { pauseKind: "platform", pauseReason: reason } });
   });
   await notifyBasket(bid, "platform_paused", { message: reason }, eventId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
 
@@ -333,12 +340,14 @@ export async function platformResume(ctx: OpsCtx, bid: string): Promise<OpsBaske
     return moveBasket(tx, basket, "ACTIVE", { ...opsMove(ctx), kind: "resumed", action: "basket.platform_resumed", set: { pauseKind: null, pauseReason: null } });
   });
   await notifyBasket(bid, "platform_resumed", {}, eventId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
 
 export async function platformRetire(ctx: OpsCtx, bid: string, reason: BasketReasonRequest["reason"]): Promise<OpsBasketDetail> {
   const eventId = await db.transaction(async (tx) => moveBasket(tx, await lockBasket(tx, ctx, bid), "RETIRED", { ...opsMove(ctx), kind: "retired", action: "basket.retired", reason, set: { pauseKind: null, pauseReason: null, previousStatus: null } }));
   await notifyBasket(bid, "retired", { message: reason }, eventId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
 
@@ -356,6 +365,7 @@ export async function decideRetirement(ctx: OpsCtx, bid: string, i: BasketApprov
   });
   await notifyReassignmentRequired(ctx.meta.requestId);
   await notifyBasket(bid, "retirement_decided", { decision: i.decision, message: i.reason }, eventId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForOps(bid);
 }
 

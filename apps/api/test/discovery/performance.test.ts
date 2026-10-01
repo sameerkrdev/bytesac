@@ -1,3 +1,5 @@
+import request from "supertest";
+import { PERFORMANCE_LABEL } from "@repo/validator";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/app";
 import { runBasketPerformance } from "../../src/services/performance";
@@ -96,5 +98,21 @@ describe("runBasketPerformance", () => {
     expect(rows.map((x) => x.gap)).toEqual([false, true, false]);
     expect(rows[1]!.index_gross).toBe("100.000000000000000000");
     expect(rows[2]!.index_gross).toBe("160.000000000000000000");
+  });
+
+  it("the public basket page carries the series, metrics, sectors and the simulated-performance label", async () => {
+    const r = await live();
+    await prices(["10", "20", "20"], ["5", "5", "5"]);
+    await runBasketPerformance();
+    const slug = (await adminSql<{ slug: string }[]>`SELECT slug FROM app.baskets WHERE id = ${r.id}`)[0]!.slug;
+    const res = await request(app).get(`/v1/public/baskets/${slug}`);
+    expect(res.status).toBe(200);
+    expect(res.body.label).toBe(PERFORMANCE_LABEL);
+    expect(res.body.performance.series.map((p: { day: string; net: string; gross: string }) => p.day)).toEqual(["2026-03-01", "2026-03-02", "2026-03-03"]);
+    expect(res.body.performance).toMatchObject({ available: false, dataDays: 3 }); // the series ends long before today
+    expect(res.body.metrics.net.sinceLaunch).toBe("0.600000");
+    expect(res.body.sectors.reduce((sum: number, x: { bps: number }) => sum + x.bps, 0)).toBe(10_000);
+    expect(res.body.tags).toEqual([]);
+    expect(JSON.stringify(res.body)).not.toMatch(/holdings|gapRun/);
   });
 });

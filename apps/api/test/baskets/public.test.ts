@@ -48,6 +48,8 @@ const ALLOWED = new Set([
   "period", "minimumInvestmentUsdc", "minimumIncrementUsdc", "allocation", "instrumentId", "symbol", "assetType", "chains", "targetWeightBps", "minWeightBps", "maxWeightBps", "prices",
   "kind", "value", "currency", "source", "observedAt", "stale", "disclosures", "title", "body", "versionHistory", "rationale", "diff", "added", "removed", "changed", "weightBps", "fromBps",
   "toBps", "bandChanged", "constraints", "rebalance", "minimums", "managers", "role", "from", "to",
+  // Spec 7: handle (published profile), performance series and metrics, sectors, tags and the label.
+  "handle", "performance", "available", "dataDays", "series", "day", "net", "gross", "metrics", "sinceLaunch", "d30", "d90", "y1", "volatility", "maxDrawdown", "sectors", "sector", "key", "label",
 ]);
 const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.flatMap(keysOf) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => [k, ...keysOf(x)]) : []);
 

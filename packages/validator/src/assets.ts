@@ -17,6 +17,12 @@ export const ASSET_CHAINS: Readonly<Record<AssetChain, { label: string; family: 
   bitcoin: { label: "Bitcoin", family: "bitcoin", verification: "manual" },
 };
 
+export const INSTRUMENT_SECTORS = [
+  "store_of_value", "smart_contract_platform", "layer2", "defi", "stablecoin", "oracle_infra", "gaming_metaverse", "ai_data", "meme", "rwa_treasury", "rwa_credit", "rwa_commodity", "rwa_equity", "other",
+] as const;
+export const instrumentSectorSchema = z.enum(INSTRUMENT_SECTORS);
+export type InstrumentSector = z.infer<typeof instrumentSectorSchema>;
+
 export const assetTypeSchema = z.enum([
   "CRYPTO", "STABLECOIN", "TOKENIZED_TREASURY", "TOKENIZED_EQUITY", "TOKENIZED_FUND", "TOKENIZED_BOND", "TOKENIZED_COMMODITY", "TOKENIZED_PRIVATE_CREDIT", "TOKENIZED_OTHER",
 ]);
@@ -84,7 +90,8 @@ const instrumentFields = {
 };
 export const createInstrumentRequestSchema = z.object({ ...instrumentFields, description: instrumentFields.description.optional(), issuerId: uuid.nullable().optional(), riskNotes: instrumentFields.riskNotes.optional(), links: instrumentFields.links.optional() });
 export type CreateInstrumentRequest = z.infer<typeof createInstrumentRequestSchema>;
-export const updateInstrumentRequestSchema = z.object(instrumentFields).partial();
+/** Sector and tags are descriptive: ops may change them on a live instrument. */
+export const updateInstrumentRequestSchema = z.object({ ...instrumentFields, sector: instrumentSectorSchema, tagIds: z.array(uuid).max(20) }).partial();
 export type UpdateInstrumentRequest = z.infer<typeof updateInstrumentRequestSchema>;
 
 const deploymentFields = {
@@ -200,6 +207,7 @@ export type OpsAssetListResponse = z.infer<typeof opsAssetListResponseSchema>;
 
 export const opsAssetDetailSchema = z.object({
   id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, description: z.string().nullable(), issuerId: uuid.nullable(), riskNotes: z.string().nullable(), links,
+  sector: instrumentSectorSchema, tags: z.array(z.object({ id: uuid, key: z.string(), label: z.string() })),
   status: instrumentStatusSchema, createdByUserId: uuid, submittedByUserId: uuid.nullable(), decidedByUserId: uuid.nullable(), createdAt: isoTime, updatedAt: isoTime,
   deployments: z.array(z.object({
     id: uuid, chain: assetChainSchema, tokenStandard: tokenStandardSchema, address: z.string().nullable(), decimals: z.number().int(), verification: z.enum(["onchain", "manual"]),

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { assetTypeSchema, instrumentStatusSchema } from "./assets";
+import { publicBasketResearchSchema } from "./performance";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Enums and lifecycle
@@ -419,7 +420,7 @@ export type PublicBasketListResponse = z.infer<typeof publicBasketListResponseSc
 const publicPriceSchema = z.object({
   instrumentId: z.string(), kind: z.enum(["market", "nav"]), status: z.enum(["ok", "unavailable"]), value: z.string().nullable(), currency: z.string(), source: z.string(), observedAt: z.string().nullable(), stale: z.boolean(),
 });
-export const publicBasketDetailSchema = z.object({
+export const publicBasketDetailSchema = publicBasketResearchSchema.extend({
   slug: z.string(), status: basketStatusSchema, hasAssetWarning: z.boolean(),
   organization: z.object({ id: z.string(), displayName: z.string().nullable() }),
   version: z.object({
@@ -434,7 +435,7 @@ export const publicBasketDetailSchema = z.object({
   })),
   disclosures: z.array(z.object({ title: z.string(), body: z.string() })),
   versionHistory: z.array(z.object({ versionNumber: z.number(), publishedAt: iso, rationale: z.string().nullable(), diff: basketDiffSchema })),
-  managers: z.array(z.object({ displayName: z.string(), role: basketAssignmentRoleSchema, from: iso, to: iso.nullable() })),
+  managers: z.array(z.object({ displayName: z.string(), handle: z.string().nullable(), role: basketAssignmentRoleSchema, from: iso, to: iso.nullable() })),
 });
 export type PublicBasketDetail = z.infer<typeof publicBasketDetailSchema>;
 export const publicBasketResponseSchema = z.union([publicBasketDetailSchema, z.object({ redirectTo: z.string() })]);

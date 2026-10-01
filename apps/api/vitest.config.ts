@@ -23,6 +23,7 @@ export default defineConfig({
       OTP_HMAC_SECRET: "test-otp-secret-test-otp-secret-000",
       ALCHEMY_API_KEY: "x",
       COINMARKETCAP_API_KEY: "test-cmc-key",
+      GEMINI_API_KEY: "test-gemini-key",
       RESEND_API_KEY: "x",
       EMAIL_FROM: "Bytesac <no-reply@test.dev>",
       TWILIO_ACCOUNT_SID: "AC",

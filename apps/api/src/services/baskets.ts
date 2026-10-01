@@ -12,6 +12,7 @@ import {
   type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
 } from "@repo/validator";
 import { logger } from "@repo/logger";
+import { enqueue } from "../queues";
 import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "../providers/resend";
 import { writeAudit } from "./audit";
 import { requirePermission, type MembershipRow } from "./members";
@@ -368,6 +369,7 @@ export async function addAssignment(ctx: OwnerCtx, bid: string, body: CreateAssi
     await tx.insert(basketEvents).values({ basketId: bid, assignmentId: a!.id, kind: "assignment_added", toStatus: pending ? "PENDING_APPROVAL" : "ACTIVE", actorType: "member", actorUserId: ctx.userId, requestId: ctx.meta.requestId });
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "basket.assignment_added", entityType: "basket_assignment", entityId: a!.id, requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { basketId: bid, role: body.role } });
   });
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
@@ -410,6 +412,7 @@ export async function endAssignment(ctx: OwnerCtx, bid: string, aid: string, bod
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "basket.assignment_ended", entityType: "basket_assignment", entityId: a.id, requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { basketId: bid } });
   });
   await notifyReassignmentRequired(ctx.meta.requestId);
+  await enqueue("search-index-refresh", { basketId: bid });
   return getBasketForMember(ctx, bid);
 }
 
@@ -454,7 +457,10 @@ export async function notifyBasket(basketId: string, kind: BasketEmailKind, data
 export async function notifyReassignmentRequired(requestId: string): Promise<void> {
   try {
     const events = await db.select({ id: basketEvents.id, basketId: basketEvents.basketId }).from(basketEvents).where(and(eq(basketEvents.kind, "reassignment_required"), eq(basketEvents.requestId, requestId)));
-    for (const e of events) await notifyBasket(e.basketId, "reassignment_required", {}, e.id);
+    for (const e of events) {
+      await enqueue("search-index-refresh", { basketId: e.basketId });
+      await notifyBasket(e.basketId, "reassignment_required", {}, e.id);
+    }
   } catch (err) {
     logger.warn("basket email failed", { kind: "reassignment_required", error: err instanceof Error ? err.name : "unknown" });
   }
