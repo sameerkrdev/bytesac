@@ -123,7 +123,7 @@ Maintain separate representations for:
 - pending/in-flight amounts,
 - reserved amounts and applicable liabilities.
 
-If the product selects shared physical holdings with logical basket sub-ledgers, aggregate targets and net changes must be calculated across baskets. Never spend the same physical quantity twice. The custody and attribution model is an open decision and must be locked before implementing final accounting semantics.
+Custody and attribution are decided (ADR-013): assets stay in the user's own wallets; each basket position is a logical sub-ledger (user × basket × deployment, raw base units) reconciled against on-chain balances. A shortfall is allocated pro-rata across the baskets holding that deployment and marked `SHORT` until the user chooses Fix or Accept; wallet surplus is outside baskets and never touched. Never spend the same physical quantity twice. Leaving a basket keeps a former-basket record so the user can later sell `min(recorded, on-chain)` back to USDC.
 
 ### Transition planner
 Inputs include current reconciled state, selected basket version, user intent, pricing, eligible routes, balances, reserved amounts, fees, slippage, minimums and pending operations.
@@ -131,7 +131,7 @@ Inputs include current reconciled state, selected basket version, user intent, p
 The planner:
 - calculates target quantities/values from weights and approved valuation;
 - compares targets with actual/allocated state;
-- nets changes where safe and consistent with the chosen custody model;
+- nets changes within the user's own wallets only (no netting across users; ADR-013);
 - accounts for fees, dust, fractional precision, minimum notionals and cash residuals;
 - emits a deterministic plan with explicit steps and assumptions;
 - invalidates or recomputes plans when relevant state changes.
@@ -168,7 +168,7 @@ Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind 
 3. User connects a wallet and authenticates.
 4. Backend checks eligibility for the selected instrument/routes and action.
 5. User reviews investment amount, target allocation, expected assets, fees, route, risks and estimated outcomes.
-6. User explicitly authorizes the operation under the supported authority model.
+6. User signs every transaction of the plan in their own wallet(s); nothing is delegated (ADR-013).
 7. Planner creates operation steps; orchestrator executes them.
 8. Indexing and reconciliation verify settlement and update actual portfolio state.
 9. UI reports pending, partial, completed or failed status accurately.
@@ -209,7 +209,7 @@ A basket references instruments, not arbitrary chain addresses. At execution tim
 5. Select route(s) and create explicit execution steps.
 6. Apply chain-specific signing, submission, confirmation and finality handling.
 
-Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC, wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
+Investments are funded with USDC on Solana; cross-chain legs come from one route aggregator behind an adapter and deliver to the user's own linked address on the destination chain (destination gas via route top-up or an explicit funding step). Every leg has its own state (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`); unknown outcomes are reconciled, never retried blindly (ADR-013). Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC, wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
 
 ## 7. Suggested persistence model
 
@@ -288,9 +288,9 @@ Current provider capabilities, supported chains, plan limits and commercial term
 
 ## 10. Open decisions that must not be silently assumed
 
-1. Custody/execution model: user signs each action, limited delegation, per-user vault, or shared vault.
-2. If shared holdings are used, basket allocation and shortage attribution policy.
-3. Exact cross-chain routes and whether bridging is permitted for each instrument.
+1. Route aggregator choice, coverage per chain/asset and destination gas top-up (custody, attribution and spend authority are decided in ADR-013).
+2. Fee collection under self-custody (proposal: explicit fee legs in the signed plan; ADR-013).
+3. Whether bridging is permitted for each RWA instrument.
 4. RWA acquisition, transfer, redemption and settlement method per issuer/instrument.
 5. Price-source hierarchy, freshness limits and fallback behavior.
 6. Rebalance thresholds, tolerances, dust handling and residual-cash policy.

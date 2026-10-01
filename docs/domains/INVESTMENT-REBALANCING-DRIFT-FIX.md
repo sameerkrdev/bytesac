@@ -45,5 +45,12 @@ Before execution:
 6. Execute idempotently with per-step state.
 7. Reconcile final state.
 
+## Custody, authority and attribution (decided, ADR-013)
+- Self-custody: assets stay in the user's own Solana wallet and linked EVM addresses; the platform holds no keys or funds. Investments are funded with USDC on Solana; constituents may sit on any supported chain (native BTC excluded in release 1; "ETFs" means tokenized funds/equities).
+- Every operation (`invest`, `rebalance`, `fix`, `sell_to_usdc`, `sell_former_assets`) is a plan of legs with 60 s quotes, on-chain minimum output and user slippage (default 1%, max 3%); the user signs every leg on its source chain; EVM approvals are exact-amount. No delegation.
+- Leg states `PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`; operations can be `PARTIAL`; unknown outcomes are reconciled, never blindly retried.
+- Shortfalls are allocated pro-rata across baskets holding the deployment (`SHORT`); the user chooses Fix or Accept. Surplus is outside baskets and never touched.
+- Leave basket keeps assets (no transaction) and a former-basket record; Sell to USDC sells all or part of a basket; Sell former basket assets sells `min(recorded, on-chain)`.
+
 ## Open decisions
-Custody model, shared-asset attribution, exact delegation/authority semantics, fix policy, rebalance thresholds, price hierarchy and RWA settlement behavior must be explicitly locked.
+Route aggregator and gas top-up, fee collection legs, fix policy details, rebalance thresholds, price hierarchy and RWA settlement behavior.
