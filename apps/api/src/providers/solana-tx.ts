@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
 import createHttpError from "http-errors";
-import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SendTransactionError, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "../env";
 
@@ -61,8 +61,14 @@ export async function cosignAndSubmit(signedBase64: string, storedMessageHash: s
   if (messageHash(tx) !== storedMessageHash) throw createHttpError(409, "The transaction changed after it was prepared.", { code: "TX_MISMATCH" });
   if (!tx.message.staticAccountKeys[0]!.equals(feePayer().publicKey)) throw createHttpError(409, "Unexpected fee payer.", { code: "TX_MISMATCH" });
   tx.sign([feePayer()]); // adds only the fee-payer signature; user signatures already present stay valid because the message is unchanged
-  // One attempt, never retried: a failure here is either a definitive rejection (preflight) or an unknown outcome the caller records.
-  return connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 0 });
+  // One attempt, never retried. A preflight rejection is definitive (rethrown as is); anything else is an unknown outcome, so the error carries the
+  // transaction signature (deterministic, the fee-payer's) for the caller to record and the tracker to look up.
+  try {
+    return await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 0 });
+  } catch (err) {
+    if (err instanceof SendTransactionError) throw err;
+    throw Object.assign(err instanceof Error ? err : new Error("send failed"), { unknownOutcomeSignature: bs58.encode(tx.signatures[0]!) });
+  }
 }
 
 /** `finalized` and `failed` are terminal; `pending` covers not-yet-seen and not-yet-finalized. */
@@ -73,3 +79,23 @@ export async function solanaFinality(signature: string): Promise<"finalized" | "
   return value.confirmationStatus === "finalized" ? "finalized" : "pending";
 }
 
+
+/** Balance in base units (lamports, or the token's raw amount summed over the owner's token accounts). */
+export async function solanaBalance(owner: string, mint: string | null): Promise<bigint> {
+  const ownerKey = new PublicKey(owner);
+  if (!mint) return BigInt(await connection.getBalance(ownerKey, "finalized"));
+  const { value } = await connection.getParsedTokenAccountsByOwner(ownerKey, { mint: new PublicKey(mint) }, "finalized");
+  return value.reduce((sum, a) => sum + BigInt((a.account.data.parsed as { info: { tokenAmount: { amount: string } } }).info.tokenAmount.amount), 0n);
+}
+
+/** What `owner` received in a finalized transaction, from its balance change (token: pre/post token balances; native: lamports). Null when the transaction is not found. */
+export async function solanaReceived(signature: string, owner: string, mint: string | null): Promise<bigint | null> {
+  const tx = await connection.getParsedTransaction(signature, { commitment: "finalized", maxSupportedTransactionVersion: 0 });
+  if (!tx?.meta || tx.meta.err) return null;
+  if (mint) {
+    const sum = (rows: typeof tx.meta.postTokenBalances) => (rows ?? []).filter((b) => b.owner === owner && b.mint === mint).reduce((s, b) => s + BigInt(b.uiTokenAmount.amount), 0n);
+    return sum(tx.meta.postTokenBalances) - sum(tx.meta.preTokenBalances);
+  }
+  const index = tx.transaction.message.accountKeys.findIndex((k) => k.pubkey.toBase58() === owner);
+  return index < 0 ? 0n : BigInt(tx.meta.postBalances[index]!) - BigInt(tx.meta.preBalances[index]!);
+}

@@ -12,6 +12,8 @@ const sha256d = (b: Uint8Array) => sha256(sha256(b));
 const eq = (a: Uint8Array, b: Uint8Array) => Buffer.from(a).equals(Buffer.from(b));
 const concat = (...parts: Uint8Array[]) => Uint8Array.from(parts.flatMap((p) => [...p]));
 
+/** LI.FI's PSBTs carry an OP_RETURN memo output (a script type the signer treats as unknown). */
+const PSBT_OPTS = { allowUnknownOutputs: true, allowUnknownInputs: true } as const;
 const PSBT_MAGIC = Buffer.from("70736274ff", "hex");
 const BIP322_TAG = sha256(enc.encode("BIP0322-signed-message"));
 
@@ -99,11 +101,25 @@ export interface PsbtOutput { script: string; amount: string }
 
 /** The outputs of a PSBT as `{ script hex, sats }`, in order. */
 export function psbtOutputs(psbtBase64: string): PsbtOutput[] {
-  const tx = Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"));
+  const tx = Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
   return Array.from({ length: tx.outputsLength }, (_, n) => {
     const o = tx.getOutput(n);
     return { script: Buffer.from(o.script!).toString("hex"), amount: String(o.amount) };
   });
+}
+
+/**
+ * The outputs of a LI.FI Bitcoin PSBT, after checking its shape: the vault deposit, the OP_RETURN memo, and optionally a refund output that must pay
+ * `userAddress`. These are what the user-signed PSBT is later held to.
+ */
+export function expectedBtcOutputs(psbtBase64: string, userAddress: string): PsbtOutput[] {
+  const outputs = psbtOutputs(psbtBase64);
+  const opReturn = (o: PsbtOutput) => o.script.startsWith("6a");
+  const refund = Buffer.from(OutScript.encode(Address().decode(userAddress))).toString("hex");
+  if (outputs.length < 2 || outputs.length > 3 || opReturn(outputs[0]!) || !opReturn(outputs[1]!) || (outputs[2] && outputs[2].script !== refund)) {
+    throw createHttpError("The route provider returned an unexpected Bitcoin transaction.", { code: "ROUTE_UNAVAILABLE" });
+  }
+  return outputs;
 }
 
 /** The user-signed PSBT must pay exactly the outputs the planner stored (deposit, OP_RETURN memo, refund), in order, and nothing else. */
@@ -121,7 +137,7 @@ export function checkPsbtOutputs(psbtBase64: string, expected: PsbtOutput[]): vo
 
 /** Finalizes a signed PSBT: the raw transaction hex and its txid. */
 export function finalizePsbt(psbtBase64: string): { rawHex: string; txid: string } {
-  const tx = Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"));
+  const tx = Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
   if (!tx.isFinal) tx.finalize();
   return { rawHex: tx.hex, txid: tx.id };
 }

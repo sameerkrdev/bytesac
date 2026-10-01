@@ -90,7 +90,7 @@ async function eligibilityOf(db: DbOrTx, userId: string, required: readonly Chai
   for (const f of required) {
     if (!linked.has(f)) reasons.push({ code: f === "bitcoin" ? "BTC_ADDRESS_REQUIRED" : `${f.toUpperCase()}_ADDRESS_REQUIRED`, message: `Link a${f === "evm" ? "n EVM" : f === "bitcoin" ? " Bitcoin" : " Solana"} wallet.` });
   }
-  const [active] = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.userId, userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"]))).limit(1);
+  const [active] = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.userId, userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"]), sql`(${operations.status} = 'IN_PROGRESS' or ${operations.expiresAt} > now())`)).limit(1);
   if (active) reasons.push({ code: "OPERATION_IN_PROGRESS", message: "Finish or cancel your current operation first." });
   return { eligible: reasons.length === 0, reasons };
 }

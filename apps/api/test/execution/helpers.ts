@@ -61,12 +61,12 @@ export async function seedBasket(over: { assets: SeedAsset[]; status?: string; m
 }
 
 /** A signed-in user (Solana investment wallet) with optional verified contacts and extra linked families, inserted directly. */
-export async function seedUser(over: { email?: boolean; phone?: boolean; evm?: boolean; bitcoin?: boolean } = {}) {
-  const solana = newSolanaWallet();
+export async function seedUser(over: { email?: boolean; phone?: boolean; evm?: boolean; bitcoin?: boolean; wallet?: { address: string; sign(message: string): string | Promise<string> } } = {}) {
+  const solana = over.wallet ?? newSolanaWallet();
   const s = await signIn(app, solana, "solana");
   const [w] = await adminSql<{ id: string }[]>`SELECT id FROM app.investment_wallets WHERE user_id = ${s.userId}`;
   const evmAddress = newEvmWallet().address.toLowerCase();
-  const btcAddress = "bc1q" + randomBytes(16).toString("hex").slice(0, 38);
+  const btcAddress = bitcoinWallet("p2wpkh").address;
   if (over.email ?? true) await adminSql`INSERT INTO app.contacts (id, user_id, type, value, status, verified_at) VALUES (gen_random_uuid(), ${s.userId}, 'email', ${`u-${s.userId.slice(0, 8)}@example.com`}, 'verified', now())`;
   if (over.phone ?? true) await adminSql`INSERT INTO app.contacts (id, user_id, type, value, status, verified_at) VALUES (gen_random_uuid(), ${s.userId}, 'phone', ${"+4477009" + Math.floor(Math.random() * 90000 + 10000)}, 'verified', now())`;
   if (over.evm ?? true) {
@@ -122,6 +122,19 @@ export function bip137Signature(w: ReturnType<typeof bitcoinWallet>, message: st
   const rec = secp256k1.sign(digest, w.priv, { prehash: false, format: "recovered" }); // [recovery, r, s]
   const header = (w.kind === "p2sh-p2wpkh" ? 35 : 39) + rec[0]!;
   return Buffer.from(concatBytes(Uint8Array.of(header), rec.subarray(1))).toString("base64");
+}
+
+/** A position in `basket` holding `holdings` (raw base units per deployment), inserted directly with its ledger. */
+export async function seedPosition(userId: string, basket: { basketId: string; versionId: string }, holdings: { deploymentId: string; quantity: bigint }[], status: "OPEN" | "CLOSED" = "OPEN") {
+  const [p] = await adminSql<{ id: string }[]>`
+    INSERT INTO app.basket_positions (id, user_id, basket_id, status, applied_version_id, closed_at)
+    VALUES (gen_random_uuid(), ${userId}, ${basket.basketId}, ${status}, ${basket.versionId}, ${status === "CLOSED" ? adminSql`now()` : null}) RETURNING id`;
+  for (const h of holdings) {
+    const { legId, operationId } = await seedLeg(userId, basket, { kind: "swap", fromChain: "solana", toChain: "solana" });
+    await adminSql`INSERT INTO app.position_ledger_entries (id, position_id, deployment_id, quantity_delta, reason, leg_id) VALUES (gen_random_uuid(), ${p!.id}, ${h.deploymentId}, ${h.quantity.toString()}, 'invest', ${legId})`;
+    await adminSql`UPDATE app.operations SET status = 'COMPLETED' WHERE id = ${operationId}`;
+  }
+  return p!.id;
 }
 
 /** An operation (PLANNED) with one network-fee-style leg for `userId`, inserted directly; returns the ids. */

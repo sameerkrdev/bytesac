@@ -14,6 +14,8 @@ export type OperationState = (typeof OPERATION_STATES)[number];
 export const LEG_TRANSITIONS = { PLANNED: ["SUBMITTED"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"], PENDING_CHAIN: ["SETTLED", "FAILED", "UNKNOWN"], UNKNOWN: ["SETTLED", "FAILED"], SETTLED: [], FAILED: [] } as const;
 export const OPERATION_TRANSITIONS = { PLANNED: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["COMPLETED", "PARTIAL", "FAILED"], PARTIAL: [], COMPLETED: [], FAILED: [], CANCELLED: [] } as const;
 
+export const canTransition = <S extends string>(map: Readonly<Record<S, readonly S[]>>, from: S, to: S): boolean => map[from].includes(to);
+
 /** USDC on Solana, the settlement asset of every operation. */
 export const USDC_SOLANA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const USDC_DECIMALS = 6;
@@ -160,12 +162,15 @@ export const legQuoteResponseSchema = z.object({
   legId: z.uuid(),
   estimatedOut: z.string().nullable(),
   minOut: z.string().nullable(),
-  quoteExpiresAt: z.iso.datetime({ offset: true }),
+  quoteExpiresAt: z.iso.datetime({ offset: true }).nullable(),
+  /** Null while an EVM gas drop is still confirming: no quote is fetched until it is. */
   transaction: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("solana"), serializedBase64: z.string() }),
     z.object({ kind: z.literal("evm"), to: z.string(), data: z.string(), value: z.string(), chainId: z.number().int() }),
     z.object({ kind: z.literal("bitcoin"), psbtBase64: z.string() }),
-  ]),
+  ]).nullable(),
+  /** ERC-20 sells: the exact-amount approval the wallet must sign first (never unlimited). */
+  approval: z.object({ token: z.string(), spender: z.string(), amount: z.string() }).nullable(),
   /** EVM source legs: the platform gas drop must be `confirmed` before the user signs. */
   gasDrop: z.object({ status: z.enum(["pending", "confirmed", "failed", "skipped"]), txHash: z.string().nullable() }).nullable(),
 });

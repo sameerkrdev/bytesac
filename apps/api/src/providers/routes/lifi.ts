@@ -47,7 +47,7 @@ const connectionsSchema = z.object({ connections: z.array(z.object({ fromTokens:
 const quoteSchema = z.object({
   tool: z.string(),
   action: z.object({ fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: token, fromAmount: z.string(), toAddress: z.string() }),
-  estimate: z.object({ toAmount: z.string(), toAmountMin: z.string(), gasCosts: z.array(z.object({ amountUSD: z.string().nullish() })).optional() }),
+  estimate: z.object({ toAmount: z.string(), toAmountMin: z.string(), approvalAddress: z.string().nullish(), gasCosts: z.array(z.object({ amountUSD: z.string().nullish(), amount: z.string().regex(/^d+$/).nullish() })).optional() }),
   transactionRequest: z.object({ to: z.string().optional(), data: z.string(), value: z.string().nullish(), chainId: z.number().optional() }),
 });
 const statusSchema = z.object({
@@ -102,6 +102,8 @@ export const lifi: RouteProvider = {
     return {
       estimatedOut, minOut, toolSummary: q.tool, transaction,
       gasEstimateUsd: (q.estimate.gasCosts ?? []).reduce((s, g) => s + Number(g.amountUSD ?? 0), 0),
+      approvalAddress: q.estimate.approvalAddress ?? null,
+      gasNative: (q.estimate.gasCosts ?? []).reduce((s, g) => s + BigInt(g.amount ?? 0), 0n),
       expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     };
   },

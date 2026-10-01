@@ -26,6 +26,10 @@ export interface LegQuote {
   toolSummary: string;
   transaction: LegTransaction;
   gasEstimateUsd: number;
+  /** Estimated gas in the source chain's native base units (lamports, wei). */
+  gasNative: bigint;
+  /** EVM ERC-20 sources: the contract the user approves (exact amount) before the transaction. */
+  approvalAddress: string | null;
   expiresAt: Date;
 }
 

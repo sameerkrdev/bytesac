@@ -32,6 +32,8 @@ export const limits = {
   basketMutationUser: limiter("basket:mutate:user", 60, 60),
   publicBasketIp: limiter("public:basket:ip", 60, 60),
   discoveryIp: limiter("public:discovery:ip", 60, 60),
+  operationsUser: limiter("ops:plan:user", 10, 3600),
+  quotesUser: limiter("ops:quote:user", 60, 60),
   bitcoinLinkUser: limiter("btc:link:user", 10, 3600),
   aiSearchIp: limiter("ai:search:ip", 10, 60),
   aiSearchIpDay: limiter("ai:search:ip:d", 100, 86_400),

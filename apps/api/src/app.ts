@@ -14,8 +14,10 @@ import { healthRouter } from "./routes/health";
 import { managerApplicationsRouter } from "./routes/manager-applications";
 import { meRouter } from "./routes/me";
 import { membershipsRouter } from "./routes/memberships";
+import { operationsRouter } from "./routes/operations";
 import { opsRouter } from "./routes/ops";
 import { organizationsRouter } from "./routes/organizations";
+import { portfolioRouter, positionsRouter } from "./routes/portfolio";
 import { preferencesRouter } from "./routes/preferences";
 import { publicRouter } from "./routes/public";
 
@@ -43,6 +45,9 @@ app.use("/v1/organizations", organizationsRouter);
 app.use("/v1/memberships", membershipsRouter);
 app.use("/v1/assets", assetsRouter);
 app.use("/v1/baskets", basketsRouter);
+app.use("/v1/operations", operationsRouter);
+app.use("/v1/portfolio", portfolioRouter);
+app.use("/v1/positions", positionsRouter);
 app.use("/v1/public", publicRouter);
 app.use("/v1/ops", opsRouter);
 

@@ -77,9 +77,10 @@ export async function sendGasDrop(legId: string, chain: AssetChain, recipient: s
     if ((await evmBalance(chain, recipient, null)) >= amountNative) return { status: "skipped", txHash: null };
     try {
       drop = await db.transaction(async (tx) => {
-        const [leg] = await tx.select({ userId: operations.userId }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
+        const [leg] = await tx.select({ userId: operations.userId, expectedTx: operationLegs.expectedTx }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
         if (!leg) throw createHttpError("Leg not found", { code: "NOT_FOUND" });
-        await reserveGas(tx, { userId: leg.userId, chain, amountNative });
+        // A planned leg's drop was reserved with its plan (so a refused budget refuses the plan); only an unplanned drop reserves here.
+        if (!(leg.expectedTx as { gasReserved?: boolean } | null)?.gasReserved) await reserveGas(tx, { userId: leg.userId, chain, amountNative });
         const [row] = await tx.insert(gasDrops).values({ legId, chain, recipient, amountNative: amountNative.toString() }).returning();
         await writeAudit(tx, { actorType: "system", action: "gas_drop.reserved", entityType: "gas_drop", entityId: row!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, recipient, amountNative: amountNative.toString() } });
         return row!;

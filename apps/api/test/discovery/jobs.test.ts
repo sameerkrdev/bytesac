@@ -16,7 +16,7 @@ vi.mock("bullmq", () => ({
   },
 }));
 vi.mock("../../src/queues", () => ({
-  queues: Object.fromEntries(["price-snapshot", "embed-basket"].map((name) => [name, { upsertJobScheduler: async (id: string, repeat: unknown, template: unknown) => { bull.schedulers.set(id, { repeat, template }); }, close: async () => undefined }])),
+  queues: Object.fromEntries(["price-snapshot", "embed-basket", "reconcile-positions", "gas-wallet-check"].map((name) => [name, { upsertJobScheduler: async (id: string, repeat: unknown, template: unknown) => { bull.schedulers.set(id, { repeat, template }); }, close: async () => undefined }])),
   enqueue: async (name: string, data: Record<string, unknown>) => { fakes.queue.jobs.push({ name, data }); },
 }));
 
@@ -33,10 +33,12 @@ describe("worker start", () => {
   it("registers the repeatable job under one fixed id, even when started twice", async () => {
     await startWorker();
     await startWorker();
-    expect([...bull.schedulers.keys()].sort()).toEqual(["embed-sweep", "price-snapshot-daily"]);
+    expect([...bull.schedulers.keys()].sort()).toEqual(["embed-sweep", "gas-wallet-check-15m", "price-snapshot-daily", "reconcile-positions-nightly"]);
     expect(bull.schedulers.get("price-snapshot-daily")).toMatchObject({ repeat: { pattern: "5 0 * * *", tz: "UTC" } });
     expect(bull.schedulers.get("embed-sweep")).toMatchObject({ repeat: { every: 900_000 }, template: { name: "sweep" } });
-    expect(bull.workers.map((w) => w.name).slice(0, 4)).toEqual(["price-snapshot", "basket-performance", "search-index-refresh", "embed-basket"]);
+    expect(bull.schedulers.get("reconcile-positions-nightly")).toMatchObject({ repeat: { pattern: "30 2 * * *", tz: "UTC" } });
+    expect(bull.schedulers.get("gas-wallet-check-15m")).toMatchObject({ repeat: { every: 900_000 } });
+    expect(bull.workers.map((w) => w.name).slice(0, 7)).toEqual(["price-snapshot", "basket-performance", "search-index-refresh", "embed-basket", "track-leg", "reconcile-positions", "gas-wallet-check"]);
   });
 });
 
