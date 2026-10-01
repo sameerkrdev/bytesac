@@ -6,7 +6,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 
 ## 0. Paste-ready starter prompt (for a fresh Claude Code session)
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–7 are merged to `main` (Spec 4 `33c2ab3` members/roles — ADR-009; Spec 5 `8c02722` asset registry — ADR-010, ADR-002; Spec 6 `e0ed413` baskets — ADR-011; Spec 7 `9d56ef2` discovery, model performance, AI search, BullMQ worker — ADR-012). The next phase is the blocking custody/execution decision (§6, roadmap item 4): resolve D-022/D-023/D-024 with an ADR before any money movement.
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–7 are merged to `main` (Spec 4 `33c2ab3` members/roles — ADR-009; Spec 5 `8c02722` asset registry — ADR-010, ADR-002; Spec 6 `e0ed413` baskets — ADR-011; Spec 7 `9d56ef2` discovery, model performance, AI search, BullMQ worker — ADR-012). Custody/execution/spend authority is decided in ADR-013 (self-custody, user signs every leg, USDC-on-Solana funding with cross-chain legs to the user's own addresses, pro-rata shortfalls). The next phase is the first-investment spec (§6, roadmap item 5) — start it only after the user's explicit approval.
 >
 > **1. Load context (mandatory, in order):** `docs/superpowers/HANDOFF.md` (follow it exactly — §3 rules, §4 working method), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ relevant ADRs), `docs/engineering/CODING-STANDARDS.md`, the domain doc and `docs/source/*` file for the phase. Check memory files for user preferences.
 >
@@ -16,7 +16,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 > 1. ✅ **Asset registry** (`docs/source/Assets-Registry.txt`, `docs/domains/ASSET-REGISTRY.md`): instrument/deployment/route model, platform approval + lifecycle, eligibility policy, CoinMarketCap pricing adapter (D-015, ADR-002).
 > 2. ✅ **Basket creation & review** (`Basket-Creation.txt`): org-owned versioned baskets, wizard, validation, platform review, publication, pause/retire, **plus the deferred Spec 4 items**: basket manager assignments + history, basket state when a manager leaves, investor notifications (onboarding source §31–§38).
 > 3. ✅ **Public discovery & research** (`User-Detailed-Features.txt` §2–§5).
-> 4. **Custody/execution decision (blocking)**: resolve D-022/D-023/D-024 with an ADR before any money movement.
+> 4. ✅ **Custody/execution decision (blocking)** — ADR-013: resolve D-022/D-023/D-024 with an ADR before any money movement.
 > 5. **First investment**, then **rebalance/skip/drift/fix**, **subscriptions & fees/payouts**, **future plans** — only after explicit approval; introduce a job queue only when an execution spec needs it.
 > Brainstorming style the user wants: `superpowers:brainstorming`, one multiple-choice question at a time with a recommended option, then the whole design in **one consolidated message**; ~4 large plan tasks; full code only for subtle logic. Sonnet 5.5 for all code-writing sub-agents; Opus only for the final review. Caveman-terse chat, ponytail for code. Never move assets, sign/broadcast transactions or touch production data.
 >
@@ -40,6 +40,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Spec 5 — asset registry | ✅ merged to `main` (`8c02722`): ops `/ops/assets` (draft, on-chain deployment verification, review, lifecycle, routes, rules, price references, NAV), CoinMarketCap prices, session read API `/v1/assets` (ADR-010, ADR-002, D-053..D-056). |
 | Spec 6 — baskets | ✅ merged to `main` (`e0ed413`) (ADR-011, D-007/D-008/D-028 rewritten, D-057..D-061): versioned baskets, ops review, publish after approval, assignments with flags, disclosure templates, public `/baskets`. |
 | Spec 7 — discovery, performance, AI search | ✅ merged to `main` (`9d56ef2`): BullMQ worker, daily price snapshots, simulated net/gross model performance, search index with structured filters in the URL, Gemini tool-calling search with semantic and keyword fallbacks, research chart, opt-in manager profiles, instrument sector and tags, ops tags and profile moderation (ADR-012, ADR-006 rewritten, D-015/D-018/D-027 rewritten, D-062..D-066). Pre-launch checks in §5. |
+| Custody / execution / spend authority | ✅ decided (ADR-013, D-022/D-023/D-024 APPROVED, D-013 refined): self-custody in the user's own wallets, logical per-basket sub-ledger, user-signed plans of legs (no delegation), cross-chain legs via one aggregator to the user's own addresses, pro-rata `SHORT` handling, leave/sell flows. Open: route provider, gas top-up, fee legs, RWA access rules, legal review. |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
 ### Monorepo layout (after restructure)

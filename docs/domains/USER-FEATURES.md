@@ -13,7 +13,7 @@ Users connect supported chain wallets, authenticate, manage contact verification
 ## Investment and ownership
 Users can review a basket, eligibility, investment preview, expected acquisition and fees before investing. The intended product principle is that users own underlying assets rather than merely receiving an off-chain representation, subject to the selected custody/execution model and asset-specific issuer terms.
 
-Users can withdraw/cancel according to available routes and product rules; do not imply every RWA is instantly redeemable or transferable.
+Decided (ADR-013): assets stay in the user's own wallets and every transaction is user-signed. Users can **Leave basket (keep assets)** without any transaction, **Sell to USDC** (all or part, back to USDC on Solana), and later **Sell former basket assets** (up to `min(recorded, on-chain)`); none needs manager approval and there is no lock-in. Do not imply every RWA is instantly redeemable or transferable.
 
 ## Basket updates
 Users receive manager version updates and can choose to participate or skip. No silent asset movement. Rebalance preview should show changes, costs and impact. Skips and customizations must be represented distinctly.
