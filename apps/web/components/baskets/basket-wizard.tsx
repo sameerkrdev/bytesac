@@ -201,7 +201,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
         <PercentInput id="r-drift" label="Drift threshold (optional)" optional value={d.rebalance.driftThresholdBps ?? null} disabled={dis}
           onChange={(x) => setRebalance({ driftThresholdBps: x ?? undefined })} />
         <Threshold id="r-min-bps" label="Minimum trade (bps)" help="Assets whose weight is closer to target than this are left alone in a rebalance. Whole number, 10 to 1000. Default 50." error="Enter a whole number from 10 to 1000."
-          value={d.rebalance.minTradeBps} disabled={dis} check={(t) => basketRebalanceSchema.shape.minTradeBps.safeParse(/^d+$/.test(t) ? Number(t) : NaN)} onChange={(x) => setRebalance({ minTradeBps: x === undefined ? undefined : Number(x) })} />
+          value={d.rebalance.minTradeBps} disabled={dis} check={(t) => basketRebalanceSchema.shape.minTradeBps.safeParse(/^\d+$/.test(t) ? Number(t) : NaN)} onChange={(x) => setRebalance({ minTradeBps: x === undefined ? undefined : Number(x) })} />
         <Threshold id="r-min-usdc" label="Minimum trade (USDC)" help="Trades smaller than this are skipped in a rebalance. Between 1 and 100 USDC. Default 5." error="Enter an amount between 1 and 100 USDC, with up to 6 decimals."
           value={d.rebalance.minTradeUsdc} disabled={dis} check={(t) => basketRebalanceSchema.shape.minTradeUsdc.safeParse(t)} onChange={(x) => setRebalance({ minTradeUsdc: x })} />
         <p className="rounded-xl border border-border-dark p-4 text-sm text-stone">These are disclosures, not automatic rules. A rebalance is always a new version you propose and Bytesac reviews. Investors always give explicit consent before a rebalance touches their holdings.</p>
