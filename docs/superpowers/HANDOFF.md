@@ -39,6 +39,7 @@ Read this first, then follow it. It captures the project state, the rules the us
 | Spec 4 — members/roles | ✅ merged to `main` (`33c2ab3`): permission matrix, wallet invitations linked by wallet proof, member verification + ops review, withdraw/remove/leave, ops-only ownership transfer, org switcher (`?org=`), opt-in public team (ADR-009, D-048..D-052). |
 | Spec 5 — asset registry | ✅ merged to `main` (`8c02722`): ops `/ops/assets` (draft, on-chain deployment verification, review, lifecycle, routes, rules, price references, NAV), CoinMarketCap prices, session read API `/v1/assets` (ADR-010, ADR-002, D-053..D-056). |
 | Spec 6 — baskets | ✅ merged to `main` (`e0ed413`) (ADR-011, D-007/D-008/D-028 rewritten, D-057..D-061): versioned baskets, ops review, publish after approval, assignments with flags, disclosure templates, public `/baskets`. |
+| Spec 7 — discovery, performance, AI search | On branch `feat/spec7-discovery` (not yet merged; confirm with `git log`): BullMQ worker, daily price snapshots, simulated net/gross model performance, search index with structured filters in the URL, Gemini tool-calling search with semantic and keyword fallbacks, research chart, opt-in manager profiles, instrument sector and tags, ops tags and profile moderation (ADR-012, ADR-006 rewritten, D-015/D-018/D-027 rewritten, D-062..D-066). Pre-launch checks in §5. |
 | Manual device/browser wallet E2E for Spec 1 | **Pending user** (needs Reown project ID, MetaMask/Phantom, Android/iOS dev build). |
 
 ### Monorepo layout (after restructure)
@@ -62,7 +63,7 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - EVM: ECDSA-recovered EOA proof registers ethereum/base/bnb/arbitrum; ERC-1271/6492 only the verified chain. Solana ed25519 (node:crypto).
 - CSRF: no CORS; Origin + `X-Requested-With: bytesac` on cookie mutations and web auth entry; mobile sends `X-Client: mobile`.
 - Contacts OTP (email via Resend with idempotency key; SMS via Twilio Verify with mapped error codes), strict abuse limits (rate-limiter-flexible on Redis).
-- Retention via **pg_cron** calling `app.purge_expired()` (SECURITY DEFINER). No BullMQ.
+- Retention via **pg_cron** calling `app.purge_expired()` (SECURITY DEFINER). Since Spec 7 a **BullMQ worker** (`pnpm --filter api dev:worker`) runs price snapshots, performance, search-index refresh and embeddings (ADR-006, ADR-012); it needs Redis without eviction.
 - DB access: backend only, schema `app`, role `bytesac_api` (no DELETE), RLS role-scoped policies, Supabase anon/authenticated revoked.
 - Error body `{ error: { code, message, details? } }`, codes from `@repo/validator` (`http-errors` with `code`).
 
@@ -93,7 +94,12 @@ Packages export **TS source** (`exports: ./src/index.ts`); API bundles with tsup
 - **Gate commands:** `pnpm db:up` (Docker Postgres 17 + Redis 7), `pnpm turbo run lint check-types test build`, mobile: `pnpm --filter mobile test`, `pnpm --filter mobile check-types`, `cd apps/mobile && npx expo lint && npx expo export --platform android --output-dir <tmp>`.
 - **Record rulings:** when you decide something on the user's behalf, log it and list every ruling (with "cost if wrong") in the final report.
 
-## 5. Spec 6 — merged; leftovers (Specs 4–6)
+## 5. Spec 7 — discovery; Spec 6 — merged; leftovers (Specs 4–7)
+
+- **Spec 7** (spec `docs/superpowers/specs/2026-10-01-discovery-design.md`, plan `docs/superpowers/plans/2026-10-01-spec7-discovery.md`, ADR-012, D-062..D-066; migration `0009_discovery.sql`: run `pnpm --filter @repo/db db:migrate` after `docker compose down -v` once so the local image has pgvector). New pinned dependencies: `bullmq` 6.3.10 and `@google/genai` 2.24.0 (newest allowed by the minimum release age; install scripts disabled in `allowBuilds`; no `minimumReleaseAgeExclude`). Start the worker beside the API (`dev:worker`); `apps/api/README.md` has jobs, env and deployment notes.
+- **Spec 7 pre-launch checks (not machine-verified):** (1) Gemini: the defaults `GEMINI_MODEL=gemini-3.1-flash-lite` and `GEMINI_EMBEDDING_MODEL=gemini-embedding-2` and the forced tool-calling behaviour were chosen from the docs and never run against the real API (tests mock the provider); run with a real `GEMINI_API_KEY` and confirm Google's plan, quotas and data-use terms (query text is sent to Google). (2) Supabase: enable the `vector` extension before migrating; choose an ivfflat or hnsw index at scale. (3) CoinMarketCap plan for daily snapshots (history starts at the first snapshot; no backfill). (4) Compliance review of the simulated-performance label and fee assumptions. (5) Run the worker in production with non-evicting Redis.
+- **Spec 7 rulings to know:** `enqueue` swallows and logs queue errors (a committed change never fails; a lost refresh is repaired by the next change or the nightly run; there is no refresh sweep). Refresh jobs share an id per basket and 10 s window (up to 10 s index lag); embed jobs are queued from the refresh when the version changed. Performance engine: on a version-change day old holdings step to that day's prices before the reset and the rebalance fee applies after stepping; entry fee on the first computed day (also when the first snapshot comes after the publish day); resets detected by `versionId`; gap runs and last prices pruned to current constituents; a constituent that never had a price skips the day (no row); metric windows need a row exactly N days earlier; `available` is false when the last row is more than 3 days old or a gap run exceeds 3; drawdown is a positive fraction. Job ids use `_` (BullMQ rejects `:`). AI search runs a second Gemini round only after an error or empty result. Hidden-profile unhide returns the profile to draft. Handles `apply` and `status` are reserved (static `/managers` routes).
+- **Spec 7 leftovers (not blocking):** the discovery "Load more" link replaces the page (cursor in the URL) instead of appending; organization filter is an ID text field (no organization picker or list API); tags in the filter panel are typed keys; ops tag retirement does not enqueue index refreshes; assignment ends caused by membership changes that do not lose the leader are not re-indexed until the next refresh; the profile email on hide or unhide needs a verified email contact and is not asserted in a test; the IP-day AI cap counter is not tested separately; a skipped first price day can miss a subscription period start; no investor counts, price backfill, saved searches or jobs dashboard.
 
 - Spec 6 review leftovers (not blocking): version diff omits lead changes; `VERSION_CONFLICT` compares ms-precision timestamps; publish has no slug-collision retry; some manager emails (`notifyReassignmentRequired` callers) not wired; preview/diff routes missing from the role test table; no org-suspended publish test; drafts do not preview would-be disclosures. A current lead may hand over the lead on an unpublished basket (published: ops approval).
 - Env: `mobile#check-types` fails on `main` (TS2322 in `apps/mobile/src/lib/appkit.tsx`, duplicate wagmi/viem peer variants in node_modules) — fix separately (pnpm dedupe/override), not caused by Specs 5–6.
@@ -132,7 +138,7 @@ Each spec follows §4. Scopes below are from `docs/source/*` and `docs/domains/*
 6. **Rebalance / skip / drift / fix**, notifications.
 7. **Subscriptions & fees**, manager payouts to verified payout wallet.
 8. **Future plans** (`Future-Plans.txt`): multiple independent wallets, wallet migration, more asset classes — only after explicit approval.
-- A real job queue (BullMQ or similar) is **not** installed; introduce it only when execution/orchestration specs need it (record as decision update).
+- BullMQ is installed since Spec 7 (worker for discovery jobs, ADR-006); execution and orchestration specs can reuse it (record any new queues in ADR-006).
 
 ## 7. Pending user actions & known deferred items
 
