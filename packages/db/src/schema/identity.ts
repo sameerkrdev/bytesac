@@ -98,8 +98,9 @@ export const walletAddresses = app.table(
   (t) => [
     uniqueIndex("wallet_addresses_chain_address_key").on(t.chain, t.address),
     index("wallet_addresses_wallet_idx").on(t.investmentWalletId),
-    check("wallet_addresses_chain_family", sql`(${t.chainFamily} = 'solana') = (${t.chain} = 'solana')`),
-    check("wallet_addresses_method_family", sql`(${t.chainFamily} = 'solana') = (${t.verificationMethod} = 'ed25519')`),
+    // ::text casts: a value added to an enum in the same migration cannot be referenced as an enum literal.
+    check("wallet_addresses_chain_family", sql`(${t.chainFamily}::text = 'solana') = (${t.chain}::text = 'solana') and (${t.chainFamily}::text = 'bitcoin') = (${t.chain}::text = 'bitcoin')`),
+    check("wallet_addresses_method_family", sql`(${t.chainFamily}::text = 'solana') = (${t.verificationMethod}::text = 'ed25519') and (${t.chainFamily}::text = 'bitcoin') = (${t.verificationMethod}::text in ('bip322', 'bip137'))`),
     check("wallet_addresses_disabled_reason", sql`${t.status} = 'active' OR ${t.disabledReason} IS NOT NULL`),
   ],
 );

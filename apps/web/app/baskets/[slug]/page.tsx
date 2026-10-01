@@ -4,11 +4,11 @@ import { publicBasketResponseSchema, type BasketStatus } from "@repo/validator";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
+import { InvestButton } from "@/components/invest/invest-button";
 import { PerformanceChart } from "@/components/baskets/performance-chart";
 import { BasketView } from "@/components/baskets/basket-view";
 import { DiffSummary } from "@/components/baskets/version-history";
 import { StatusBadge } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = { title: "Basket · Bytesac" };
 
@@ -43,7 +43,7 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
       </div>
       {notice && <p role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">{notice}</p>}
       {b.hasAssetWarning && <p role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">One or more assets in this basket were paused or deprecated in the registry after publication.</p>}
-      <Button disabled className="min-h-11">Investing opens soon</Button>
+      <InvestButton slug={slug} name={b.version.name} minimumUsdc={b.version.minimumInvestmentUsdc} incrementUsdc={b.version.minimumIncrementUsdc} />
 
       <PerformanceChart performance={b.performance} metrics={b.metrics} label={b.label} />
 

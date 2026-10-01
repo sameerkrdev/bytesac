@@ -35,6 +35,12 @@ const trustProxy = makeValidator<boolean | number | string>((v) => {
   return t;
 });
 
+const routeProviders = makeValidator((v) => {
+  const list = commaList(false)(v).map((x) => x.toLowerCase());
+  if (list.length === 0 || list.some((x) => x !== "lifi")) throw new Error("expected a comma-separated list of known route providers (lifi)");
+  return list;
+});
+
 export const env = cleanEnv(process.env, {
   NODE_ENV: str({ choices: ["development", "test", "production"], default: "development" }),
   PORT: port({ default: 4000 }),
@@ -63,4 +69,13 @@ export const env = cleanEnv(process.env, {
   GEMINI_API_KEY: str({ default: "" }),
   GEMINI_MODEL: str({ default: "gemini-3.1-flash-lite" }),
   GEMINI_EMBEDDING_MODEL: str({ default: "gemini-embedding-2" }),
+  /** Empty disables routing: quotes and connection checks fail with ROUTE_UNAVAILABLE. */
+  LIFI_API_KEY: str({ default: "" }),
+  LIFI_INTEGRATOR: str({ default: "bytesac" }),
+  /** Platform keys (KMS before launch): never logged. Empty disables Solana fee sponsoring / EVM gas drops. Solana: base58 of the 64-byte secret key. EVM: 0x-prefixed private key. */
+  SOLANA_FEE_PAYER_SECRET: str({ default: "" }),
+  EVM_GAS_WALLET_SECRET: str({ default: "" }),
+  /** Owner (public address) of the platform's USDC token account that receives network fees. */
+  GAS_TREASURY_SOLANA_ADDRESS: str({ default: "" }),
+  ROUTE_PROVIDER_ORDER: routeProviders({ default: ["lifi"] }),
 });

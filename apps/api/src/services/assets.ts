@@ -314,8 +314,14 @@ async function observe(chain: AssetChain, standard: TokenStandard, address: stri
   return { verification: "onchain" as const, observedDecimals: meta?.decimals ?? null, observedSymbol: meta?.symbol ?? null, observedName: meta?.name ?? null, observedAt: new Date() };
 }
 
+/** Registry addresses never include Bitcoin: a Bitcoin deployment is the native asset (no address); linking a user address is a separate flow. */
+const registryAddress = (chain: Parameters<typeof canonicalizeAddress>[0], raw: string) => {
+  if (chain === "bitcoin") throw createHttpError("A Bitcoin deployment is the native asset and has no address.", { code: "VALIDATION_FAILED" });
+  return canonicalizeAddress(chain, raw);
+};
+
 export async function createDeployment(ctx: OpsCtx, id: string, body: CreateDeploymentRequest): Promise<OpsAssetDetail> {
-  const address = body.address === undefined ? null : canonicalizeAddress(body.chain, body.address);
+  const address = body.address === undefined ? null : registryAddress(body.chain, body.address);
   const observed = await observe(body.chain, body.tokenStandard, address);
   await db.transaction(async (tx) => {
     await lockEditable(tx, id);
@@ -336,7 +342,7 @@ async function changeDeployment(ctx: OpsCtx, id: string, did: string, patch: Upd
     chain: patch.chain ?? pre.chain, tokenStandard: patch.tokenStandard ?? pre.tokenStandard, address: patch.address ?? pre.address ?? undefined,
     decimals: patch.decimals ?? pre.decimals, sourceUrl: patch.sourceUrl === undefined ? pre.sourceUrl : patch.sourceUrl,
   });
-  const address = next.address === undefined ? null : canonicalizeAddress(next.chain, next.address);
+  const address = next.address === undefined ? null : registryAddress(next.chain, next.address);
   const identityChanged = next.chain !== pre.chain || next.tokenStandard !== pre.tokenStandard || address !== pre.address;
   if (kind === "verified") {
     if (pre.status !== "DRAFT") throw invalid("Only a draft deployment can be re-verified.");

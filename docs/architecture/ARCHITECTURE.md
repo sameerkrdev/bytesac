@@ -141,6 +141,8 @@ Reconciliation, repair, rebalance and customization are different operations. A 
 ### Execution orchestrator
 A user-level operation may contain multiple steps and transactions across chains/providers. Persist the plan, authorization, each step, provider request and transaction separately. Track partial completion. Resume only from verified state; never replay completed steps blindly.
 
+**Implemented for first investment and exit (Spec 8, ADR-014):** `services/operations.ts` plans an operation (`invest`, `sell_to_usdc`, `sell_former`) as legs (`network_fee`, `swap`, `cross_chain`) with `createInvestPlan`/`createSellPlan`, quotes one leg at a time through the `RouteProvider` (LI.FI, `providers/routes/`), and accepts the user's proof per source chain: a signed Solana transaction (message hash checked against the stored one, then co-signed by the platform fee payer in `providers/solana-tx.ts`), an EVM transaction hash (`to`, `data` hash and `value` checked), or a signed Bitcoin PSBT (outputs checked, finalized and broadcast in `providers/bitcoin.ts`). `services/gas.ts` holds the platform wallets, EVM gas drops and the per-user and global daily caps. Every leg and operation transition is validated against the maps in `@repo/validator` under an operation row lock and audited. The BullMQ worker runs `track-leg` (source finality, LI.FI status, received amount; `UNKNOWN` after 30 minutes, re-checked hourly for 7 days), `reconcile-positions` (nightly at 02:30 UTC and on portfolio read) and `gas-wallet-check` (every 15 minutes).
+
 ### Activity, indexing and reconciliation
 - Ingest provider notifications and chain events.
 - Validate, deduplicate and order events where possible.
@@ -167,10 +169,10 @@ Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind 
 2. User opens basket research, manager and organization information.
 3. User connects a wallet and authenticates.
 4. Backend checks eligibility for the selected instrument/routes and action.
-5. User reviews investment amount, target allocation, expected assets, fees, route, risks and estimated outcomes.
-6. User signs every transaction of the plan in their own wallet(s); nothing is delegated (ADR-013).
-7. Planner creates operation steps; orchestrator executes them.
-8. Indexing and reconciliation verify settlement and update actual portfolio state.
+5. User reviews investment amount, target allocation, expected assets, fees (the network fee leg is shown; no platform or manager fees yet), route, risks and estimated outcomes.
+6. User signs every transaction of the plan in their own wallet(s), one leg at a time with a fresh quote per leg; nothing is delegated (ADR-013).
+7. Planner creates operation steps; orchestrator executes them (`POST /v1/operations/invest`, then per leg `quote` and `submit`).
+8. `track-leg` and reconciliation verify settlement; a settled leg appends the amount actually received to the position ledger, which `GET /v1/portfolio` shows against the target weights.
 9. UI reports pending, partial, completed or failed status accurately.
 
 ### Manager application and organization onboarding
@@ -209,7 +211,7 @@ A basket references instruments, not arbitrary chain addresses. At execution tim
 5. Select route(s) and create explicit execution steps.
 6. Apply chain-specific signing, submission, confirmation and finality handling.
 
-Investments are funded with USDC on Solana; cross-chain legs come from one route aggregator behind an adapter and deliver to the user's own linked address on the destination chain (destination gas via route top-up or an explicit funding step). Every leg has its own state (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`); unknown outcomes are reconciled, never retried blindly (ADR-013). Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC, wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
+Investments are funded with USDC on Solana; cross-chain legs come from LI.FI behind the `RouteProvider` adapter and deliver to the user's own linked address on the destination chain (Solana, EVM or native Bitcoin). Gas is paid by platform gas wallets (Solana fee payer co-signing, EVM gas drops) and recovered through the network fee leg; Bitcoin miner fees come from the user's PSBT inputs (ADR-014). Every leg has its own state (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`); unknown outcomes are reconciled, never retried blindly (ADR-013). Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC (a `native` deployment on `bitcoin`, linked through a BIP-322 proof), wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
 
 ## 7. Suggested persistence model
 
@@ -221,8 +223,8 @@ Names are indicative; align final names with existing migrations and implementat
 - `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010)
 - `asset_tags`, `instrument_tags`, `manager_profiles`, `instrument_price_snapshots`, `basket_performance_days`, `basket_search_index` (derived; implemented in Spec 7, ADR-012; `instruments.sector`)
 - `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` (revisioned), `disclosure_templates`, `basket_version_disclosures` (revisioned), `basket_assignments`, `basket_reviews`, `basket_events` (implemented, ADR-011)
-- `user_portfolios`, `wallet_asset_balances`, `basket_positions`, `unassigned_positions`
-- `investment_operations`, `operation_steps`, `blockchain_transactions`, `provider_requests`
+- `basket_positions`, `position_ledger_entries` (append-only), `position_reconciliations` (append-only history) (implemented, Spec 8, ADR-014); later: `user_portfolios`, `wallet_asset_balances`, `unassigned_positions`
+- `operations`, `operation_legs`, `gas_drops`, `platform_wallets`, `sponsor_usage` (implemented, Spec 8, ADR-014); later: `blockchain_transactions`, `provider_requests`
 - `portfolio_activity`, `ledger_entries`, `transition_plans`, `transition_plan_legs`
 - `drift_cases`, `shared_asset_shortfalls`, `allocation_decisions`, `valuation_snapshots`
 - `audit_events`, `outbox_events`, `idempotency_records`
@@ -246,7 +248,7 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | ORM/migrations | Drizzle + Drizzle Kit, in `@repo/db` |
 | Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; BullMQ (pinned) worker for Spec 7 jobs (price snapshots, performance, search index, embeddings); `pg_cron` for retention |
 | AI search | Google Gemini via `@google/genai` (pinned): forced function calling with one read-only tool, and text embeddings (768 dimensions) stored with pgvector; optional key, keyword search without it |
-| Wallet UX | Reown AppKit. Web: AppKit with Wagmi and Solana adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
+| Wallet UX | Reown AppKit. Web: AppKit with Wagmi, Solana and Bitcoin (`@reown/appkit-adapter-bitcoin`) adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
 | Sessions | Backend-managed sessions table (not Supabase Auth) |
 | Validation | Zod (shared `@repo/validator` package) |
 | Errors | `http-errors` with a stable `code`; one Express error handler |
@@ -258,8 +260,8 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | EVM authentication | SIWE |
 | Solana authentication | SIWS |
 | Blockchain RPC/events | Alchemy, behind adapters |
-| Swaps/cross-chain | 0x where the route is supported |
-| Native BTC | Dedicated Bitcoin adapter |
+| Swaps/cross-chain | LI.FI only, behind the `RouteProvider` abstraction (ADR-014); further providers arrive with RWAs (Spec 11) |
+| Native BTC | `providers/bitcoin.ts` (BIP-322/BIP-137 verification on `@scure/btc-signer` and `@noble/*`, PSBT output checks, Alchemy Bitcoin REST for balance, transaction and broadcast); Solana transactions through `@solana/web3.js` 1.99.0 |
 | Crypto prices | CoinMarketCap |
 | Files | Cloudflare R2 (private bucket, S3 API via `@aws-sdk/client-s3` behind `providers/r2.ts`; presigned direct upload to `incoming/`, verified copy to `documents/`, ops-only presigned download) |
 
@@ -288,8 +290,8 @@ Current provider capabilities, supported chains, plan limits and commercial term
 
 ## 10. Open decisions that must not be silently assumed
 
-1. Route aggregator choice, coverage per chain/asset and destination gas top-up (custody, attribution and spend authority are decided in ADR-013).
-2. Fee collection under self-custody (proposal: explicit fee legs in the signed plan; ADR-013).
+1. Real-key verification of LI.FI coverage per chain/asset, terms and limits, and the gas cap values (the provider, gas model and network fee are decided in ADR-014; custody, attribution and spend authority in ADR-013).
+2. Platform and manager fee collection under self-custody (proposal: explicit fee legs in the signed plan; ADR-013; the network fee leg is implemented).
 3. Whether bridging is permitted for each RWA instrument.
 4. RWA acquisition, transfer, redemption and settlement method per issuer/instrument.
 5. Price-source hierarchy, freshness limits and fallback behavior.

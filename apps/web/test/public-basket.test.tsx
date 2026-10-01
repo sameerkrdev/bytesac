@@ -5,6 +5,7 @@ import { ETH, SOL, emptyDiff } from "./org-fixtures";
 
 const permanentRedirect = vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT ${path}`); });
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, permanentRedirect: (p: string) => permanentRedirect(p) }));
+vi.mock("@/components/invest/invest-button", () => ({ InvestButton: (p: { slug: string; minimumUsdc: string | null }) => <span>invest:{p.slug}:{p.minimumUsdc}</span> }));
 import PublicBasketPage from "@/app/baskets/[slug]/page";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -35,11 +36,11 @@ const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => (
 const page = async (slug = "core-crypto") => render(await PublicBasketPage({ params: Promise.resolve({ slug }) }));
 
 describe("Public basket page", () => {
-  it("renders the allocation with prices, unavailable prices, the disabled invest button and plain text", async () => {
+  it("renders the allocation with prices, unavailable prices, the invest button and plain text", async () => {
     serve(detail());
     await page();
     expect(screen.getByRole("heading", { level: 1, name: "Core Crypto" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Investing opens soon" })).toBeDisabled();
+    expect(screen.getByText("invest:core-crypto:100")).toBeInTheDocument();
     expect(screen.getByText("150.25 USD")).toBeInTheDocument();
     expect(screen.getByText("Price unavailable")).toBeInTheDocument();
     expect(screen.getByText("A <b>bold</b> thesis")).toBeInTheDocument();

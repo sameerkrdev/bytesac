@@ -71,6 +71,20 @@
       "when": 1790810296820,
       "tag": "0009_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790852884017,
+      "tag": "0010_positions",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790862854501,
+      "tag": "0011_positions_review_fixes",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,7 @@ import { contactViewSchema } from "./contacts";
 import { platformRoleSchema } from "./managers";
 import { organizationSummarySchema } from "./organizations";
 
-export const verificationMethodSchema = z.enum(["eoa_ecdsa", "erc1271", "erc6492", "ed25519"]);
+export const verificationMethodSchema = z.enum(["eoa_ecdsa", "erc1271", "erc6492", "ed25519", "bip322", "bip137"]);
 export type VerificationMethod = z.infer<typeof verificationMethodSchema>;
 
 export const walletAddressViewSchema = z.object({

@@ -1,4 +1,5 @@
 import {
+  bitcoinChallengeResponseSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
   aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
@@ -272,6 +273,18 @@ export function createApiClient(options: ApiClientOptions) {
 
     listPublicBaskets: (cursor?: string): Promise<PublicBasketListResponse> => request("GET", `/v1/public/baskets?${qs({ cursor })}`, publicBasketListResponseSchema),
     getPublicBasket: (slug: string): Promise<PublicBasketResponse> => request("GET", `/v1/public/baskets/${e(slug)}`, publicBasketResponseSchema),
+
+    createBitcoinChallenge: (b: BitcoinChallengeRequest): Promise<BitcoinChallengeResponse> => request("POST", "/v1/me/chain-accounts/bitcoin/challenge", bitcoinChallengeResponseSchema, b),
+    verifyBitcoin: (b: BitcoinVerify): Promise<VerifyResponse> => request("POST", "/v1/me/chain-accounts/bitcoin/verify", verifyResponseSchema, b),
+    investPlan: (b: InvestRequest): Promise<OperationView> => request("POST", "/v1/operations/invest", operationSchema, b),
+    sellPlan: (b: SellRequest): Promise<OperationView> => request("POST", "/v1/operations/sell", operationSchema, b),
+    getOperation: (id: string): Promise<OperationView> => request("GET", `/v1/operations/${e(id)}`, operationSchema),
+    quoteLeg: (id: string, legId: string): Promise<LegQuoteResponse> => request("POST", `/v1/operations/${e(id)}/legs/${e(legId)}/quote`, legQuoteResponseSchema),
+    submitLeg: (id: string, legId: string, b: LegSubmit): Promise<OperationView> => request("POST", `/v1/operations/${e(id)}/legs/${e(legId)}/submit`, operationSchema, b),
+    cancelOperation: (id: string): Promise<OperationView> => request("POST", `/v1/operations/${e(id)}/cancel`, operationSchema),
+    getPortfolio: (): Promise<Portfolio> => request("GET", "/v1/portfolio", portfolioSchema),
+    leavePosition: (id: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(id)}/leave`, null),
+    getInvestability: (slug: string): Promise<Investability> => request("GET", `/v1/baskets/${e(slug)}/investability`, investabilitySchema),
 
     /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */
     discoverBaskets: ({ cursor, ...filters }: DiscoveryFilters = {}): Promise<DiscoverySearchResponse> =>

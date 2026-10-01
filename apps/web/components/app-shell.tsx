@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
 
-const NAV = [{ href: "/home", label: "Home" }, { href: "/profile", label: "Profile" }];
+const NAV = [{ href: "/home", label: "Home" }, { href: "/portfolio", label: "Portfolio" }, { href: "/profile", label: "Profile" }];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();

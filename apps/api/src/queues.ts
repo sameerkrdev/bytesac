@@ -13,6 +13,9 @@ export const queues = {
   "basket-performance": queue("basket-performance"),
   "search-index-refresh": queue("search-index-refresh"),
   "embed-basket": queue("embed-basket"),
+  "track-leg": queue("track-leg"),
+  "reconcile-positions": queue("reconcile-positions"),
+  "gas-wallet-check": queue("gas-wallet-check"),
 };
 
 interface JobData {
@@ -21,6 +24,10 @@ interface JobData {
   "search-index-refresh": { basketId: string };
   /** `attempt` (the row's `embedding_attempts`) makes a retry a new job id, so a retained failed job never blocks the sweep. */
   "embed-basket": { basketId: string; versionId: string; attempt?: number };
+  /** `recheck` n is the hourly re-check of a leg left UNKNOWN (n = 1 .. 168, seven days). */
+  "track-leg": { legId: string; recheck?: number };
+  "reconcile-positions": { userId?: string };
+  "gas-wallet-check": Record<string, never>;
 }
 
 /**
@@ -36,6 +43,12 @@ export async function enqueue<N extends keyof JobData>(name: N, data: JobData[N]
     } else if (name === "embed-basket") {
       const { basketId, versionId, attempt = 0 } = data as JobData["embed-basket"];
       await queues[name].add(name, data, { jobId: `embed_${basketId}_${versionId}_${attempt}` });
+    } else if (name === "track-leg") {
+      // First tracking: back off 15 s, 30 s, 60 s ... (the tracker itself marks the leg UNKNOWN once it is 30 minutes old); rechecks run once, hourly.
+      const { legId, recheck = 0 } = data as JobData["track-leg"];
+      await queues[name].add(name, data, recheck
+        ? { jobId: `leg_${legId}_recheck_${recheck}`, delay: 3_600_000, attempts: 1 }
+        : { jobId: `leg_${legId}`, attempts: 12, backoff: { type: "exponential", delay: 15_000 } });
     } else await queues[name].add(name, data);
   } catch (err) {
     // A committed change is not undone by a queue outage; the next change or the sweep catches up.

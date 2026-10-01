@@ -15,7 +15,8 @@ import { writeAudit } from "./audit";
 import { linkInvitesIfProven } from "./members";
 import { createSession, revokeSession, type IssuedSession } from "./sessions";
 import { buildSignInMessage } from "./sign-in-message";
-import { verifyEvmSignature, verifySolanaSignature } from "./signatures";
+import { verifyBitcoinProof } from "../providers/bitcoin";
+import { verifyEvmSignature, verifySolanaSignature, type VerifyOutcome } from "./signatures";
 import { addressesForWallet, canonicalizeAddress, createUserWithWallet, findAddressOwner, insertAddresses, type NewAddressRow } from "./wallets";
 
 export type ChallengeRow = typeof authChallenges.$inferSelect;
@@ -39,6 +40,7 @@ async function dbNow(): Promise<Date> {
 
 /** `organizationId` is for payout-wallet proofs: the row is bound to the organization and the signed text is a plain custom message (not SIWS), naming it. */
 export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; meta: RequestMeta }): Promise<ChallengeResponse> {
+  if (familyOf(i.chain) === "bitcoin" && i.purpose === "sign_in") throw createHttpError("Bitcoin can be linked but not used to sign in.", { code: "UNSUPPORTED_CHAIN" });
   const address = canonicalizeAddress(i.chain, i.rawAddress);
   await consume(limits.challengeIp, i.meta.ip);
   await consume(limits.challengeAddress, address);
@@ -112,6 +114,8 @@ export interface VerifyInput {
   client: ClientKind;
   auth?: AuthContext;
   meta: RequestMeta;
+  /** Bitcoin links only: the signing method and the address the caller claims (must equal the challenge address). */
+  bitcoin?: { method: "bip322" | "bip137"; address: string };
 }
 export interface VerifyResult { userId: string; isNewUser: boolean; issued: IssuedSession | null }
 
@@ -125,10 +129,16 @@ export async function verifyChallenge(input: VerifyInput): Promise<VerifyResult>
     }
 
     // Phase B: verify outside any transaction
-    let outcome;
+    let outcome: VerifyOutcome;
     try {
       const request = { chain: ch.chain, address: ch.address, message: ch.message, signature: input.signature };
-      outcome = familyOf(ch.chain) === "evm" ? await verifyEvmSignature(request) : verifySolanaSignature(request);
+      const family = familyOf(ch.chain);
+      if (family === "bitcoin") {
+        const btc = input.bitcoin;
+        if (!btc) throw createHttpError("Bitcoin addresses are linked through the Bitcoin endpoints.", { code: "VALIDATION_FAILED" });
+        outcome = btc.address === ch.address && verifyBitcoinProof({ address: ch.address, message: ch.message, signature: input.signature, method: btc.method })
+          ? { kind: "valid", method: btc.method } : { kind: "invalid" };
+      } else outcome = family === "evm" ? await verifyEvmSignature(request) : verifySolanaSignature(request);
     } catch (err) {
       // The signature was not judged (e.g. RPC outage): release the claim so the same signature can be retried.
       await db.update(authChallenges).set({ status: "pending", claimId: null, leaseExpiresAt: null })

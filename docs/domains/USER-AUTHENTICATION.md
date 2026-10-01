@@ -28,6 +28,7 @@ The verification method decides scope (D-033, ADR-004):
 - EOA signature (ECDSA-recovered, including EIP-7702-delegated EOAs) proves the key and registers all supported EVM chains from one proof.
 - ERC-1271 (deployed contract wallet) and ERC-6492 (undeployed wallet) register only the chain verified; other EVM chains for the same address need their own verification.
 - Solana ed25519 registers `solana`.
+- **Bitcoin** is link-only, never a sign-in method (`signInChainSchema` excludes it; D-032). A logged-in user links one Bitcoin address with `POST /v1/me/chain-accounts/bitcoin/challenge` and `/verify` (purpose `add_chain_account`, 10 attempts per hour per user). The server builds the BIP-322 `to_sign` PSBT with the challenge, the wallet only signs it, and the server verifies the witness (P2WPKH, P2TR, P2SH-P2WPKH); a BIP-137 message signature is accepted as a fallback for legacy, P2SH-P2WPKH and P2WPKH addresses. The same one-per-family, not-linked-elsewhere and session-rotation rules apply (ADR-014).
 - A different chain family is added only through an explicit, logged-in "Add chain account" with a fresh signature. Linking is serialized per wallet, so two sessions cannot link two addresses in one family.
 - Refused: an address that belongs to another user (`ADDRESS_ALREADY_LINKED`), or a different address in a family the user already has (`CHAIN_FAMILY_ALREADY_LINKED`). A logged-out sign-in with an unknown address always creates a new user.
 

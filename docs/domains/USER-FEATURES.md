@@ -15,6 +15,8 @@ Users can review a basket, eligibility, investment preview, expected acquisition
 
 Decided (ADR-013): assets stay in the user's own wallets and every transaction is user-signed. Users can **Leave basket (keep assets)** without any transaction, **Sell to USDC** (all or part, back to USDC on Solana), and later **Sell former basket assets** (up to `min(recorded, on-chain)`); none needs manager approval and there is no lock-in. Do not imply every RWA is instantly redeemable or transferable.
 
+**Implemented (Spec 8, ADR-014):** the basket page shows **Invest** when the basket is investable and the user is eligible (verified email and phone, a linked address per needed chain family, no other open operation); otherwise it names the reason with a link ("Verify your phone", "Link an EVM wallet", "Link a Bitcoin wallet", "Not investable yet"). The wizard asks for the USDC amount and slippage, previews every leg with the network fee and "No platform or manager fees are charged yet", then walks through each signature (quote, approve in the wallet, submitted, pending, settled), with "Get a new quote" after an expired quote, a Bitcoin confirmation-time note and a result screen (completed, partly completed with the legs that did not run, "Stop here"). **Profile** has a Bitcoin wallet section (BIP-322 through the wallet's PSBT signing, BIP-137 fallback). **/portfolio** lists positions, notices, open operations, history and former positions with Leave, Sell to USDC and Sell former assets.
+
 ## Basket updates
 Users receive manager version updates and can choose to participate or skip. No silent asset movement. Rebalance preview should show changes, costs and impact. Skips and customizations must be represented distinctly.
 

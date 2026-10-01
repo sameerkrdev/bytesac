@@ -1,11 +1,13 @@
+import { db } from "@repo/db";
 import { Router, type Request } from "express";
 import {
   basketReasonRequestSchema, createAssignmentRequestSchema, endAssignmentRequestSchema, saveBasketDraftRequestSchema, updateAssignmentRequestSchema, z,
-  type BasketReasonRequest, type CreateAssignmentRequest, type EndAssignmentRequest, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
+  type BasketReasonRequest, type Investability, type CreateAssignmentRequest, type EndAssignmentRequest, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
 } from "@repo/validator";
-import { requireSession } from "../middleware/auth";
+import { optionalSession, requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
+import { getInvestability } from "../services/investability";
 import {
   addAssignment, createNextVersion, endAssignment, getBasketForMember, getVersionDiff, listVersions, previewOpenVersion, saveDraft, updateAssignment, validateOpenVersion,
 } from "../services/baskets";
@@ -18,6 +20,14 @@ const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.
 
 /** Manager routes: every action is authorized per basket in the service (assignment flags), never here. */
 export const basketsRouter = Router();
+/** Session optional: eligibility is only computed for a signed-in user. */
+basketsRouter.get("/:slug/investability", optionalSession, validate({ params: z.object({ slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(90) }) }), async (req, res) => {
+  await consume(limits.publicBasketIp, req.ctx.ip);
+  const { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility } = await getInvestability(db, { slug: req.params.slug as string }, req.auth?.userId ?? null);
+  const body: Investability = { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility };
+  res.json(body);
+});
+
 basketsRouter.use(requireSession, async (req, _res, next) => {
   if (req.method !== "GET") await consume(limits.basketMutationUser, req.auth!.userId);
   next();

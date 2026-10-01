@@ -4,6 +4,9 @@ import { CHAINS, familyOf, type Chain } from "@repo/validator";
 
 export const SIGN_IN_STATEMENT = "Sign in to Bytesac. This does not authorize any transaction or spending.";
 
+/** Bitcoin is link-only: it can never sign you in. */
+export const LINK_STATEMENT = "Link this Bitcoin address to your Bytesac account. This does not sign you in or authorize any transaction or spending.";
+
 export interface SignInMessageInput {
   chain: Chain;
   address: string;
@@ -30,6 +33,22 @@ export function buildSignInMessage(i: SignInMessageInput): { message: string; ch
       expirationTime: i.expiresAt,
     });
     return { message, chainId: String(chainId) };
+  }
+  if (familyOf(i.chain) === "bitcoin") {
+    const message = [
+      `${i.domain} wants you to link your Bitcoin account:`,
+      i.address,
+      "",
+      LINK_STATEMENT,
+      "",
+      `URI: ${i.uri}`,
+      "Version: 1",
+      "Chain ID: mainnet",
+      `Nonce: ${i.nonce}`,
+      `Issued At: ${i.issuedAt.toISOString()}`,
+      `Expiration Time: ${i.expiresAt.toISOString()}`,
+    ].join("\n");
+    return { message, chainId: "mainnet" };
   }
   const chainId = info.solanaCluster as string;
   const message = [

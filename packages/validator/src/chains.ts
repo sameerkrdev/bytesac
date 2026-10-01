@@ -1,8 +1,11 @@
 import { z } from "zod";
 
-export const chainSchema = z.enum(["ethereum", "base", "bnb", "arbitrum", "solana"]);
+export const chainSchema = z.enum(["ethereum", "base", "bnb", "arbitrum", "solana", "bitcoin"]);
+/** Chains an address can be linked on. Bitcoin is link-only: sign-in challenges use `signInChainSchema`. */
 export type Chain = z.infer<typeof chainSchema>;
-export const chainFamilySchema = z.enum(["evm", "solana"]);
+export const signInChainSchema = chainSchema.exclude(["bitcoin"]);
+export type SignInChain = z.infer<typeof signInChainSchema>;
+export const chainFamilySchema = z.enum(["evm", "solana", "bitcoin"]);
 export type ChainFamily = z.infer<typeof chainFamilySchema>;
 
 interface ChainInfo {
@@ -18,6 +21,7 @@ export const CHAINS: Readonly<Record<Chain, ChainInfo>> = {
   bnb: { family: "evm", label: "BNB Chain", evmChainId: 56 },
   arbitrum: { family: "evm", label: "Arbitrum", evmChainId: 42161 },
   solana: { family: "solana", label: "Solana", solanaCluster: "mainnet" },
+  bitcoin: { family: "bitcoin", label: "Bitcoin" },
 };
 
 const ORDER: readonly Chain[] = chainSchema.options;
@@ -30,6 +34,6 @@ export function chainsInFamily(family: ChainFamily): Chain[] {
   return ORDER.filter((c) => CHAINS[c].family === family);
 }
 
-export function chainFromEvmChainId(id: number): Chain | undefined {
-  return ORDER.find((c) => CHAINS[c].evmChainId === id);
+export function chainFromEvmChainId(id: number): SignInChain | undefined {
+  return signInChainSchema.options.find((c) => CHAINS[c].evmChainId === id);
 }

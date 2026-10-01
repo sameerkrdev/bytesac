@@ -17,6 +17,27 @@ class FakeEvmRpc {
     if (this.tokenBehavior === "unavailable") throw createHttpError(503, "rpc down", { code: "VERIFIER_UNAVAILABLE" });
     return this.token;
   };
+  /** Native balances by `chain:address`; ERC-20 by `chain:address:token`. Unlisted = 0. */
+  balances = new Map<string, bigint>();
+  transactions = new Map<string, { from: string; to: string | null; input: string; value: bigint; blockNumber: bigint | null }>();
+  receipts = new Map<string, { success: boolean; blockNumber: bigint; head: bigint; logs: Array<{ address: string; topics: string[]; data: string }> }>();
+  sentNative: Array<{ chain: string; to: string; value: bigint }> = [];
+  sendFails = false;
+  /** The node definitively refuses the send (insufficient funds, nonce). */
+  sendRefused = false;
+  evmBalance = async (chain: string, owner: string, token: string | null): Promise<bigint> => this.balances.get(`${chain}:${owner.toLowerCase()}${token ? ":" + token.toLowerCase() : ""}`) ?? 0n;
+  /** Native amounts received per `hash:owner`; unlisted = receipt not found. */
+  nativeReceived = new Map<string, bigint>();
+  evmNativeReceived = async (_chain: string, owner: string, hash: string): Promise<bigint | null> => this.nativeReceived.get(`${hash}:${owner.toLowerCase()}`) ?? null;
+  evmTransaction = async (_chain: string, hash: string) => this.transactions.get(hash) ?? null;
+  evmReceipt = async (_chain: string, hash: string) => this.receipts.get(hash) ?? null;
+  gasWalletAddress = (): string => "0x00000000000000000000000000000000000000aa";
+  sendNativeFromGasWallet = async (i: { chain: string; to: string; value: bigint }): Promise<string> => {
+    if (this.sendFails) throw new Error("rpc down");
+    if (this.sendRefused) throw Object.assign(new Error("insufficient funds"), { refused: true });
+    this.sentNative.push(i);
+    return `0xdrop${this.sentNative.length}`;
+  };
   verifyContractSignature = async (input: { chain: string; address: string }): Promise<boolean> => {
     this.calls.push({ chain: input.chain, address: input.address });
     if (this.onCall) await this.onCall();
@@ -163,7 +184,7 @@ class FakeQueue {
 export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
-  Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [] });
+  Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [], balances: new Map(), transactions: new Map(), receipts: new Map(), nativeReceived: new Map(), sentNative: [], sendFails: false, sendRefused: false });
   Object.assign(fakes.solana, { behavior: "ok", decimals: 6, calls: [] });
   fakes.queue.jobs = [];
   Object.assign(fakes.gemini, { search: async () => null, embedFails: false, vector: unitVector(0), searchCalls: [], embedCalls: [] });

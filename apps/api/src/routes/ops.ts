@@ -8,13 +8,14 @@ import {
   basketApprovalRequestSchema, basketReasonRequestSchema, basketReviewDecisionRequestSchema, createDisclosureTemplateRequestSchema, listOpsBasketsQuerySchema,
   applicationNoteRequestSchema, decideMemberVerificationRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listMemberReviewQuerySchema, listOrganizationsQuerySchema,
   organizationNoteRequestSchema, payoutWalletDecisionRequestSchema, transferOwnershipRequestSchema, transitionApplicationRequestSchema, transitionOrganizationRequestSchema,
-  versionDecisionRequestSchema, z,
+  versionDecisionRequestSchema, resolveLegRequestSchema, z, type ResolveLegRequest,
   createAssetTagRequestSchema, hideManagerProfileRequestSchema, listOpsManagerProfilesQuerySchema, type CreateAssetTagRequest, type HideManagerProfileRequest,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest,
   type ApplicationNoteRequest, type DecideMemberVerificationRequest, type GrantRoleRequest, type TransferOwnershipRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
   type TransitionApplicationRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
 } from "@repo/validator";
 import { requireRole, requireSession } from "../middleware/auth";
+import { resolveLeg } from "../services/positions";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import {
@@ -303,4 +304,9 @@ opsRouter.post("/manager-profiles/:id/hide", reviewer, validate({ params: idPara
 
 opsRouter.post("/manager-profiles/:id/unhide", reviewer, validate({ params: idParam }), async (req, res) => {
   res.json(await unhideProfile(ctx(req), req.params.id as string));
+});
+
+/** A leg stuck UNKNOWN: ops settle or fail it from on-chain evidence (verified server-side where possible), audited. */
+opsRouter.post("/operations/:id/legs/:legId/resolve", requireRole("ops_admin"), validate({ params: z.object({ id: z.uuid(), legId: z.uuid() }), body: resolveLegRequestSchema }), async (req, res) => {
+  res.json(await resolveLeg({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx }, req.params.id as string, req.params.legId as string, req.body as ResolveLegRequest));
 });

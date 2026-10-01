@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chainSchema } from "./chains";
+import { chainSchema, signInChainSchema } from "./chains";
 import { documentViewSchema, draftPart, membershipRoleSchema, organizationStatusSchema, type MembershipRole, type OrganizationPermission } from "./organizations";
 
 export const MEMBERSHIP_STATUSES = [
@@ -37,7 +37,7 @@ const INVITABLE_ROLES = ["ADMIN", "MANAGER", "ANALYST", "VIEWER"] as const;
 const invitableRoleSchema = z.enum(INVITABLE_ROLES);
 
 export const inviteMemberRequestSchema = z.strictObject({
-  walletChain: chainSchema,
+  walletChain: signInChainSchema,
   walletAddress: z.string().trim().min(1).max(128),
   role: invitableRoleSchema,
   email: z.email().max(254).toLowerCase(),

@@ -2,9 +2,9 @@
 
 ## Overview
 
-Express 5 + TypeScript API for Bytesac (initial settlement currency: USDC on Solana). This foundation covers wallet sign-in (SIWE/SIWS challenge and verify), sessions, linked chain accounts, contact verification (email and SMS OTP), notification preferences, manager applications and platform screening (public apply/status endpoints, `/v1/ops` for reviewers and admins, platform roles and the wallet-proof permission grant), organization onboarding (owner drafts, private documents in Cloudflare R2, payout wallet proof, `/v1/ops/organizations` review, public profile), organization members (invitations linked by wallet proof, fixed permission matrix, member verification and `/v1/ops/members` review, ops-only ownership transfer, public team), the asset registry (ops `/v1/ops/assets` drafting, on-chain deployment verification, review and lifecycle, CoinMarketCap prices, session read API `/v1/assets`), audited ops commands and retention. Postgres (schema `app`, Drizzle, in `packages/db`) is the system of record; Redis backs rate limits; retention runs inside Postgres via pg_cron (ADR-006).
+Express 5 + TypeScript API for Bytesac (initial settlement currency: USDC on Solana). This foundation covers wallet sign-in (SIWE/SIWS challenge and verify), sessions, linked chain accounts, contact verification (email and SMS OTP), notification preferences, manager applications and platform screening (public apply/status endpoints, `/v1/ops` for reviewers and admins, platform roles and the wallet-proof permission grant), organization onboarding (owner drafts, private documents in Cloudflare R2, payout wallet proof, `/v1/ops/organizations` review, public profile), organization members (invitations linked by wallet proof, fixed permission matrix, member verification and `/v1/ops/members` review, ops-only ownership transfer, public team), the asset registry (ops `/v1/ops/assets` drafting, on-chain deployment verification, review and lifecycle, CoinMarketCap prices, session read API `/v1/assets`), first investment and exit (Spec 8: investability, LI.FI-routed invest and sell operations with Solana fee-payer co-signing, EVM gas drops and Bitcoin PSBTs, position ledger, reconciliation, portfolio, Bitcoin address linking), audited ops commands and retention. Postgres (schema `app`, Drizzle, in `packages/db`) is the system of record; Redis backs rate limits; retention runs inside Postgres via pg_cron (ADR-006).
 
-Layout: `src/app.ts` (configured express `app`), `src/server.ts` (listens), `src/env.ts` (envalid), `src/middleware/`, `src/routes/`, `src/services/`, `src/providers/` (Twilio, Resend, EVM RPC, Solana RPC, CoinMarketCap, R2), `src/ops/`. Errors are `http-errors` with a stable `code`; logging is winston via `@repo/logger` (set `LOG_LEVEL=http` to see request logs).
+Layout: `src/app.ts` (configured express `app`), `src/server.ts` (listens), `src/env.ts` (envalid), `src/middleware/`, `src/routes/`, `src/services/`, `src/providers/` (Twilio, Resend, EVM RPC, Solana RPC and transactions, Bitcoin, LI.FI route provider, CoinMarketCap, R2), `src/ops/`. Errors are `http-errors` with a stable `code`; logging is winston via `@repo/logger` (set `LOG_LEVEL=http` to see request logs).
 
 ## Local setup
 
@@ -43,6 +43,37 @@ pnpm --filter api build && pnpm --filter api start:worker   # production: node d
 - **pgvector:** the local Docker image installs `postgresql-17-pgvector` (run `docker compose down -v` once to rebuild); on Supabase enable the `vector` extension before migrating.
 - **Gemini (optional):** `GEMINI_API_KEY` empty disables AI search and embeddings (structured and keyword search still work; baskets keep `embedding_status = pending`). `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite` and `GEMINI_EMBEDDING_MODEL` to `gemini-embedding-2` (768 dimensions). The defaults and tool calling were chosen from the Gemini documentation and have **not** been exercised against the real API: verify with a real key before launch, and confirm Google's data-use terms (query text is sent to Google; no user identity; queries are not stored or logged here).
 - **New dependencies (pinned):** `bullmq` 6.3.10 and `@google/genai` 2.24.0 (newest versions allowed by pnpm's minimum release age at the time); their install scripts are disabled in `allowBuilds`.
+
+## First investment and exit (Spec 8, ADR-014)
+
+Operations run on the same worker as discovery: `track-leg` (after each submission: 12 attempts with 15 s exponential backoff, then `UNKNOWN`, re-checked hourly for up to 7 days; a recheck never throws, a dropped Solana transaction fails once its blockhash expired, and a 5-minute sweep picks up legs claimed but never confirmed as sent, turns SUBMITTED or PENDING_CHAIN legs older than 35 minutes whose job is missing into UNKNOWN, and cancels expired untouched plans (releasing their gas reservation); never resubmits), `reconcile-positions` (nightly at 02:30 UTC; also on `GET /v1/portfolio`, at most once a minute per user) and `gas-wallet-check` (every 15 minutes, warning logs; plans are also refused while a platform wallet cannot fund them). Ops resolve a leg stuck `UNKNOWN` with `POST /v1/ops/operations/:id/legs/:legId/resolve` (`ops_admin`; body `status` SETTLED or FAILED, `txEvidence`, `reason`, optional `amountReceived`; the server reads the chain and refuses what it cannot match). Migrations `0010_positions.sql` and `0011_positions_review_fixes.sql` adds the position, ledger, operation, leg, gas drop, platform wallet, sponsor usage and reconciliation tables (ledger and reconciliation history are SELECT and INSERT only for the runtime role).
+
+**Environment** (all optional; empty disables the feature that needs it, see `.env.example`):
+
+| Variable | Purpose |
+|---|---|
+| `LIFI_API_KEY`, `LIFI_INTEGRATOR` | LI.FI quotes, connections and status. Empty key: routing fails with `ROUTE_UNAVAILABLE`. Integrator defaults to `bytesac`. |
+| `ROUTE_PROVIDER_ORDER` | Comma-separated provider ids, default `lifi` (the only provider). The ops registry must name the provider LI.FI on a deployment's execution route. |
+| `SOLANA_FEE_PAYER_SECRET` | Base58 of the 64-byte secret key of the platform Solana fee payer. Empty disables Solana legs. |
+| `EVM_GAS_WALLET_SECRET` | 0x-prefixed private key of the platform EVM gas wallet (same address on every EVM chain). Empty disables gas drops. |
+| `GAS_TREASURY_SOLANA_ADDRESS` | Owner address of the platform USDC token account that receives network fees (created by the first fee transfer if missing; the platform pays the rent once). Empty disables the network fee leg. |
+| `ALCHEMY_API_KEY` | Also builds the Alchemy Bitcoin host (balance, transaction, broadcast) and the Polygon host; enable Bitcoin and Polygon for the key. |
+
+**Gas lifecycle:** reservations are released when an operation is cancelled or expires; at most 5 EVM gas drops per user per chain per day; token-account rent paid by the fee payer is counted in the reservation (a basket with many new Solana token accounts can reach the 0.02 SOL per-user cap). **Caps** are constants in native units in `src/services/gas.ts` (no env override yet): per user per day Solana 0.02 SOL and about $5 on each EVM chain; global per day about $200 per chain, assuming SOL $150, ETH $2,500, BNB $600, POL $0.20. Re-tune them there, and review them when prices move.
+
+**Wallet funding and keys:** the Solana fee payer pays transaction fees (and the one-time treasury token account rent) for sponsored legs; the EVM gas wallet needs native gas on each EVM chain (Ethereum, Base, BNB Chain, Arbitrum, Polygon); `gas-wallet-check` warns when a balance falls below its floor (Solana 0.5 SOL, EVM 0.01 ETH, BNB 0.05, POL 10). The keys are plain env secrets here: put them in a KMS or HSM before launch, keep them out of logs (the modules never log them), and never reuse them elsewhere. These wallets must hold platform funds only.
+
+**New dependencies (pinned exact, newest allowed by the minimum release age; no exclusions):** `@solana/web3.js` 1.99.0, `@scure/btc-signer` 2.4.1, `@noble/curves` 2.4.0, `@noble/hashes` 2.4.0.
+
+**Manual mainnet checklist (a user action before launch; tests mock every provider):**
+
+1. With a real `LIFI_API_KEY`, request an investability check and a small quote for each leg type (Solana swap, Solana to EVM, Solana to Bitcoin, and the reverse sells): confirm the quote echoes `toAddress`, `svmSponsor` works, and the Solana and Bitcoin transaction encodings parse.
+2. Link a Bitcoin address with each wallet you support (BIP-322 `signPSBT`, then BIP-137 fallback); confirm Taproot and P2SH-P2WPKH behaviour.
+3. Invest a small amount in a Solana-only basket, then a mixed one, with Phantom and Solflare: confirm a wallet that adds guard instructions is refused with `TX_MISMATCH` and nothing is sent.
+4. Confirm the Alchemy Bitcoin `/tx` and `/sendtx` shapes (a Bitcoin sell leg).
+5. Sell part of a position, stop an operation midway, leave a basket and sell the former assets; check `track-leg` reaches `SETTLED` and the ledger and portfolio match the wallets.
+6. Also try: an EVM sell with and without the fee in USDC on Solana (refused without; the gas top-up only follows a settled fee); a Solana-only sell without USDC (fee last); a stuck leg and the ops resolve call; a plan refused when a gas wallet is empty.
+7. Fund the platform wallets, confirm the caps and `gas-wallet-check` warnings behave, and have the network fee and self-custody flows legally reviewed.
 
 ## Cloudflare R2 (organization documents)
 

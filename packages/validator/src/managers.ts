@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chainSchema } from "./chains";
+import { chainSchema, signInChainSchema } from "./chains";
 
 export const APPLICATION_STATUSES = ["EMAIL_PENDING", "SUBMITTED", "SCREENING", "CONTACTED", "ADDITIONAL_INFORMATION_REQUIRED", "SCREENING_APPROVED", "SCREENING_REJECTED"] as const;
 export const applicationStatusSchema = z.enum(APPLICATION_STATUSES);
@@ -33,7 +33,7 @@ export const createApplicationRequestSchema = z.strictObject({
   reason: freeText,
   intendedBaskets: freeText,
   qualifications: z.string().trim().max(4000).optional(),
-  walletChain: chainSchema,
+  walletChain: signInChainSchema,
   walletAddress: z.string().trim().min(1).max(128),
 }).superRefine((v, ctx) => {
   if (v.applicantType === "firm" && !v.firmName) ctx.addIssue({ code: "custom", path: ["firmName"], message: "Firm name is required for firms" });

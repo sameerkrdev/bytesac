@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chainSchema } from "./chains";
+import { signInChainSchema } from "./chains";
 
 export const clientKindSchema = z.enum(["web", "mobile"]);
 export type ClientKind = z.infer<typeof clientKindSchema>;
@@ -9,7 +9,7 @@ export type ChallengePurpose = z.infer<typeof challengePurposeSchema>;
 
 export const challengeRequestSchema = z.strictObject({
   purpose: challengePurposeSchema,
-  chain: chainSchema,
+  chain: signInChainSchema,
   address: z.string().trim().min(1).max(128),
 });
 export type ChallengeRequest = z.infer<typeof challengeRequestSchema>;
