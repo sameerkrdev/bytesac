@@ -6,6 +6,8 @@ Read this first, then follow it. It captures the project state, the rules the us
 
 ## 0. Paste-ready starter prompt (for a fresh Claude Code session)
 
+> **First read `docs/superpowers/CONTINUATION.md`** — it lists the in-flight Spec 8 fix wave (with the user's binding decisions D1–D7), the remaining roadmap (Specs 9–11, future plans) and all open items. It supersedes the "next phase" sentence below.
+
 > You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows, Git Bash + PowerShell; **Python is not installed** — edit files with Edit/Write or `node -e`). Specs 1–7 are merged to `main` (Spec 4 `33c2ab3` members/roles — ADR-009; Spec 5 `8c02722` asset registry — ADR-010, ADR-002; Spec 6 `e0ed413` baskets — ADR-011; Spec 7 `9d56ef2` discovery, model performance, AI search, BullMQ worker — ADR-012). Custody/execution/spend authority is decided in ADR-013 (self-custody, user signs every leg, USDC-on-Solana funding with cross-chain legs to the user's own addresses, pro-rata shortfalls). Spec 8 (first investment and exit, ADR-014) is implemented on branch `feat/spec8-first-investment` pending the whole-branch review and the user's merge decision; the next phase is Spec 9 (rebalance, skip, drift, fix) — start it only after the user's explicit approval.
 >
 > **1. Load context (mandatory, in order):** `docs/superpowers/HANDOFF.md` (follow it exactly — §3 rules, §4 working method), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ relevant ADRs), `docs/engineering/CODING-STANDARDS.md`, the domain doc and `docs/source/*` file for the phase. Check memory files for user preferences.
