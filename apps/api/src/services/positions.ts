@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, operations, positionLedgerEntries, positionReconciliations, type Tx,
 } from "@repo/db";
@@ -201,9 +201,10 @@ export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
     };
   });
   const open = await db.select().from(operations).where(and(eq(operations.userId, ctx.userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"])));
+  const past = await db.select().from(operations).where(and(eq(operations.userId, ctx.userId), notInArray(operations.status, ["PLANNED", "IN_PROGRESS"]))).orderBy(desc(operations.createdAt)).limit(20);
   return {
     positions: view.filter((p) => p.status === "OPEN"), formerPositions: view.filter((p) => p.status === "CLOSED"),
-    openOperations: await Promise.all(open.map((o) => operationView(db, o))),
+    openOperations: await Promise.all(open.map((o) => operationView(db, o))), history: await Promise.all(past.map((o) => operationView(db, o))),
   };
 }
 

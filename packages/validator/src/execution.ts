@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { assetChainSchema } from "./assets";
+import { challengeResponseSchema } from "./auth";
 import { decimalStringSchema } from "./baskets";
 import { chainFamilySchema } from "./chains";
 
@@ -64,6 +65,10 @@ export const legSubmitSchema = z.strictObject({
 }).refine((b) => [b.signedTx, b.txHash, b.signedPsbt].filter((x) => x !== undefined).length === 1, { message: "Send exactly one of signedTx, txHash, signedPsbt." });
 export type LegSubmit = z.infer<typeof legSubmitSchema>;
 
+/** The challenge plus the BIP-322 `to_sign` PSBT (base64) the wallet signs. */
+export const bitcoinChallengeResponseSchema = challengeResponseSchema.extend({ toSignPsbt: z.string() });
+export type BitcoinChallengeResponse = z.infer<typeof bitcoinChallengeResponseSchema>;
+
 export const bitcoinChallengeRequestSchema = z.strictObject({ address: z.string().trim().min(1).max(128) });
 export type BitcoinChallengeRequest = z.infer<typeof bitcoinChallengeRequestSchema>;
 
@@ -81,6 +86,7 @@ export type BitcoinVerify = z.infer<typeof bitcoinVerifySchema>;
 // ---------------------------------------------------------------------------------------------------------------------
 
 export const investabilitySchema = z.object({
+  basketId: z.uuid(),
   investable: z.boolean(),
   reasons: z.array(z.object({ instrumentId: z.uuid().optional(), code: z.string(), message: z.string() })),
   requiredFamilies: z.array(chainFamilySchema),
@@ -153,6 +159,8 @@ export const positionSchema = z.object({
 export const portfolioSchema = z.object({
   positions: z.array(positionSchema),
   openOperations: z.array(operationSchema),
+  /** The 20 most recent finished operations (completed, partial, failed, cancelled), newest first. */
+  history: z.array(operationSchema),
   formerPositions: z.array(positionSchema),
 });
 export type Portfolio = z.infer<typeof portfolioSchema>;
@@ -167,7 +175,7 @@ export const legQuoteResponseSchema = z.object({
   transaction: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("solana"), serializedBase64: z.string() }),
     z.object({ kind: z.literal("evm"), to: z.string(), data: z.string(), value: z.string(), chainId: z.number().int() }),
-    z.object({ kind: z.literal("bitcoin"), psbtBase64: z.string() }),
+    z.object({ kind: z.literal("bitcoin"), psbtBase64: z.string(), inputCount: z.number().int().min(1) }),
   ]).nullable(),
   /** ERC-20 sells: the exact-amount approval the wallet must sign first (never unlimited). */
   approval: z.object({ token: z.string(), spender: z.string(), amount: z.string() }).nullable(),

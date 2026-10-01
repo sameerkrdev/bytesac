@@ -25,7 +25,7 @@ describe("basket investability", () => {
     const b = await seedBasket({ assets: [SOL, ETH, BTC], minimum: "250" });
     const res = await investability(b.slug);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ investable: true, reasons: [], requiredFamilies: ["solana", "evm", "bitcoin"], minimumUsdc: "250" });
+    expect(res.body).toEqual({ basketId: expect.any(String), investable: true, reasons: [], requiredFamilies: ["solana", "evm", "bitcoin"], minimumUsdc: "250" });
     expect(connections).toHaveBeenCalledWith(expect.objectContaining({ fromChain: "solana", toChain: "bitcoin", toToken: null }));
   });
 

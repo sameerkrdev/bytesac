@@ -1,5 +1,5 @@
 import {
-  investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type BitcoinChallengeRequest, type BitcoinVerify,
+  bitcoinChallengeResponseSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
   aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
@@ -274,7 +274,7 @@ export function createApiClient(options: ApiClientOptions) {
     listPublicBaskets: (cursor?: string): Promise<PublicBasketListResponse> => request("GET", `/v1/public/baskets?${qs({ cursor })}`, publicBasketListResponseSchema),
     getPublicBasket: (slug: string): Promise<PublicBasketResponse> => request("GET", `/v1/public/baskets/${e(slug)}`, publicBasketResponseSchema),
 
-    createBitcoinChallenge: (b: BitcoinChallengeRequest): Promise<ChallengeResponse> => request("POST", "/v1/me/chain-accounts/bitcoin/challenge", challengeResponseSchema, b),
+    createBitcoinChallenge: (b: BitcoinChallengeRequest): Promise<BitcoinChallengeResponse> => request("POST", "/v1/me/chain-accounts/bitcoin/challenge", bitcoinChallengeResponseSchema, b),
     verifyBitcoin: (b: BitcoinVerify): Promise<VerifyResponse> => request("POST", "/v1/me/chain-accounts/bitcoin/verify", verifyResponseSchema, b),
     investPlan: (b: InvestRequest): Promise<OperationView> => request("POST", "/v1/operations/invest", operationSchema, b),
     sellPlan: (b: SellRequest): Promise<OperationView> => request("POST", "/v1/operations/sell", operationSchema, b),

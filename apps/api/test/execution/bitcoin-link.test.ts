@@ -58,6 +58,7 @@ describe("linking a Bitcoin address", () => {
     const ch = await challenge(u.h, w.address);
     expect(ch.body.message).toContain("link your Bitcoin account");
     expect(ch.body.message).toContain(w.address);
+    expect(Buffer.from(ch.body.toSignPsbt, "base64").subarray(0, 5).toString("hex")).toBe("70736274ff");
     const res = await verify(u.h, { challengeId: ch.body.challengeId, address: w.address, signature: bip322Psbt(w, ch.body.message), method: "bip322" });
     expect(res.status).toBe(200);
     const cookie = (res.headers["set-cookie"] as unknown as string[]).map((c) => c.split(";")[0]).find((c) => c?.startsWith("bx_session="));

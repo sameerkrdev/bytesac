@@ -10,7 +10,7 @@ import {
   type AssetChain, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest,
 } from "@repo/validator";
 import { env } from "../env";
-import { bitcoinBalance, broadcastBitcoin, checkPsbtOutputs, expectedBtcOutputs, finalizePsbt, type PsbtOutput } from "../providers/bitcoin";
+import { bitcoinBalance, broadcastBitcoin, checkPsbtOutputs, expectedBtcOutputs, finalizePsbt, psbtInputCount, type PsbtOutput } from "../providers/bitcoin";
 import { evmBalance, evmTransaction } from "../providers/evm-rpc";
 import { routeProviderById } from "../providers/routes";
 import type { LegQuote } from "../providers/routes/types";
@@ -211,7 +211,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
     solanaGas += quotes[n]!.gasNative;
     legs.push({
       kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id,
-      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol }, expectedTx: null, gasPayer: "platform_fee_payer",
+      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals }, expectedTx: null, gasPayer: "platform_fee_payer",
     });
   });
 
@@ -234,16 +234,16 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
 
   // Quantity per deployment: the smaller of the recorded holding and what the wallet still holds, never more.
   const holdings = await db.select({
-    deploymentId: positionLedgerEntries.deploymentId, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`, chain: instrumentDeployments.chain, address: instrumentDeployments.address, symbol: instruments.symbol,
+    deploymentId: positionLedgerEntries.deploymentId, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol,
   }).from(positionLedgerEntries).innerJoin(instrumentDeployments, eq(instrumentDeployments.id, positionLedgerEntries.deploymentId)).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId))
-    .where(eq(positionLedgerEntries.positionId, position.id)).groupBy(positionLedgerEntries.deploymentId, instrumentDeployments.chain, instrumentDeployments.address, instruments.symbol)
+    .where(eq(positionLedgerEntries.positionId, position.id)).groupBy(positionLedgerEntries.deploymentId, instrumentDeployments.chain, instrumentDeployments.address, instrumentDeployments.decimals, instruments.symbol)
     .orderBy(asc(instrumentDeployments.chain), asc(positionLedgerEntries.deploymentId));
-  const sells: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; quantity: bigint }[] = [];
+  const sells: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }[] = [];
   for (const h of holdings) {
     const wanted = (BigInt(h.quantity) * BigInt(body.percent)) / 100n;
     if (wanted <= 0n) continue;
     const quantity = [wanted, await walletBalance(addresses, h.chain, h.address)].reduce((a, b) => (a < b ? a : b));
-    if (quantity > 0n) sells.push({ deploymentId: h.deploymentId, chain: h.chain, address: h.address, symbol: h.symbol, quantity });
+    if (quantity > 0n) sells.push({ deploymentId: h.deploymentId, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity });
   }
   if (sells.length === 0) throw createHttpError("There is nothing to sell: your wallet holds none of this position's assets.", { code: "INSUFFICIENT_BALANCE" });
 
@@ -260,7 +260,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
     gas.set(gasChain, (gas.get(gasChain) ?? 0n) + (payer === "platform_gas_drop" ? drop : payer === "platform_fee_payer" ? q.gasNative : 0n));
     legs.push({
       kind: s.chain === "solana" ? "swap" : "cross_chain", fromChain: s.chain, fromDeploymentId: s.deploymentId, toChain: "solana", toDeploymentId: null, amountIn: s.quantity,
-      minOut: minOut(q.estimatedOut, body.slippageBps), routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol },
+      minOut: minOut(q.estimatedOut, body.slippageBps), routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol, decimals: s.decimals },
       expectedTx: payer === "platform_gas_drop" ? { gasReserved: true, gasDropNative: drop.toString() } : null, gasPayer: payer,
     });
   });
@@ -342,7 +342,7 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     await save({ ...base, expectedTx: { outputs: expectedBtcOutputs(q.transaction.psbtBase64, addressOn(addresses, "bitcoin")) } });
   }
   const approval = q.approvalAddress && from?.address ? { token: from.address, spender: q.approvalAddress, amount: leg.amountIn } : null;
-  return { ...response({ estimatedOut: q.estimatedOut.toString(), minOut: q.minOut.toString(), transaction: q.transaction, approval }), gasDrop };
+  return { ...response({ estimatedOut: q.estimatedOut.toString(), minOut: q.minOut.toString(), transaction: q.transaction.kind === "bitcoin" ? { ...q.transaction, inputCount: psbtInputCount(q.transaction.psbtBase64) } : q.transaction, approval }), gasDrop };
 }
 
 async function legDeployment(id: string | null) {

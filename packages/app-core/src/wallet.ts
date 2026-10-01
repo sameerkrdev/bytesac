@@ -23,6 +23,11 @@ export class WalletRejectedError extends Error {
   constructor() { super("User rejected the request"); this.name = "WalletRejectedError"; }
 }
 
+/** The wallet to sign with is not connected or is not the one linked to Bytesac; the message is fit to show. */
+export class WrongWalletError extends Error {
+  constructor(what: string) { super(`Connect the ${what} you linked to Bytesac, then try again.`); this.name = "WrongWalletError"; }
+}
+
 /** A connected wallet account on a supported chain (wallet-SDK independent). */
 export interface ConnectedAccount { chain: SignInChain; address: string; walletName: string | null }
 

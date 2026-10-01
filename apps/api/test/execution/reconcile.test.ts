@@ -107,7 +107,7 @@ describe("portfolio", () => {
     await arrange(600n, 400n);
     const stranger = await seedUser();
     const res = await request(app).get("/v1/portfolio").set(stranger.h);
-    expect(res.body).toEqual({ positions: [], formerPositions: [], openOperations: [] });
+    expect(res.body).toEqual({ positions: [], formerPositions: [], openOperations: [], history: [] });
     expect((await request(app).get("/v1/portfolio").set({ Origin: "http://localhost:3000", "X-Requested-With": "bytesac" })).status).toBe(401);
   });
 });

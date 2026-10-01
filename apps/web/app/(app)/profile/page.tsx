@@ -1,4 +1,5 @@
 "use client";
+import { BitcoinLink } from "@/components/profile/bitcoin-link";
 import { ContactsSection } from "@/components/profile/contacts-section";
 import { ManagerProfileEditor } from "@/components/profile/manager-profile-editor";
 import { NotificationsSection } from "@/components/profile/notifications-section";
@@ -13,6 +14,7 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <h1 className="font-display text-3xl font-bold text-ivory md:text-4xl">Profile</h1>
       <WalletSection me={me} />
+      <BitcoinLink me={me} />
       <ContactsSection me={me} />
       <ManagerProfileEditor />
       <NotificationsSection />

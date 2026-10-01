@@ -17,9 +17,26 @@ const PSBT_OPTS = { allowUnknownOutputs: true, allowUnknownInputs: true } as con
 const PSBT_MAGIC = Buffer.from("70736274ff", "hex");
 const BIP322_TAG = sha256(enc.encode("BIP0322-signed-message"));
 
+/** The standard's virtual transactions: `to_spend` commits to the message hash and pays the address script; `to_sign` spends it. */
+function bip322Txs(address: string, message: string) {
+  const decoded = Address().decode(address);
+  const script = OutScript.encode(decoded);
+  const messageHash = sha256(concat(BIP322_TAG, BIP322_TAG, enc.encode(message)));
+  const toSpend = RawTx.encode({
+    version: 0, lockTime: 0, segwitFlag: false, witnesses: [], outputs: [{ amount: 0n, script }],
+    inputs: [{ txid: new Uint8Array(32), index: 0xffffffff, finalScriptSig: Script.encode(["OP_0", messageHash]), sequence: 0 }],
+  });
+  const toSign = new Transaction({ version: 0, allowUnknownOutputs: true });
+  toSign.addInput({ txid: sha256d(toSpend).reverse(), index: 0, sequence: 0, witnessUtxo: { script, amount: 0n } });
+  toSign.addOutput({ script: Script.encode(["RETURN"]), amount: 0n });
+  return { decoded, script, toSign };
+}
+
+/** The unsigned BIP-322 `to_sign` PSBT (base64) a wallet signs to prove control of `address`; the client only calls `signPSBT`. */
+export const bip322ToSignPsbt = (address: string, message: string): string => Buffer.from(bip322Txs(address, message).toSign.toPSBT()).toString("base64");
+
 /**
- * BIP-322 "simple" verification, built from the standard's virtual transactions: `to_spend` commits to the message hash and pays the address
- * script; `to_sign` spends it. The witness (and, for P2SH-P2WPKH, the scriptSig) is checked against the sighash of our own `to_sign`, so a signature
+ * BIP-322 "simple" verification, built from the standard's virtual transactions (above). The witness (and, for P2SH-P2WPKH, the scriptSig) is checked against the sighash of our own `to_sign`, so a signature
  * over any other transaction or message fails. Supports P2WPKH, P2TR and P2SH-P2WPKH.
  */
 function verifyBip322(address: string, message: string, signature: Uint8Array): boolean {
@@ -37,16 +54,7 @@ function verifyBip322(address: string, message: string, signature: Uint8Array): 
     witness = RawWitness.decode(signature);
   }
 
-  const decoded = Address().decode(address);
-  const script = OutScript.encode(decoded);
-  const messageHash = sha256(concat(BIP322_TAG, BIP322_TAG, enc.encode(message)));
-  const toSpend = RawTx.encode({
-    version: 0, lockTime: 0, segwitFlag: false, witnesses: [], outputs: [{ amount: 0n, script }],
-    inputs: [{ txid: new Uint8Array(32), index: 0xffffffff, finalScriptSig: Script.encode(["OP_0", messageHash]), sequence: 0 }],
-  });
-  const toSign = new Transaction({ version: 0, allowUnknownOutputs: true });
-  toSign.addInput({ txid: sha256d(toSpend).reverse(), index: 0, sequence: 0, witnessUtxo: { script, amount: 0n } });
-  toSign.addOutput({ script: Script.encode(["RETURN"]), amount: 0n });
+  const { decoded, script, toSign } = bip322Txs(address, message);
 
   if (decoded.type === "tr") {
     const sig = witness[0];
@@ -107,6 +115,9 @@ export function psbtOutputs(psbtBase64: string): PsbtOutput[] {
     return { script: Buffer.from(o.script!).toString("hex"), amount: String(o.amount) };
   });
 }
+
+/** How many inputs the wallet must sign (all are the user's UTXOs). */
+export const psbtInputCount = (psbtBase64: string): number => Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS).inputsLength;
 
 /**
  * The outputs of a LI.FI Bitcoin PSBT, after checking its shape: the vault deposit, the OP_RETURN memo, and optionally a refund output that must pay

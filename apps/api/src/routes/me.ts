@@ -15,6 +15,7 @@ import { listMyInvitations } from "../services/members";
 import { getOwnProfile, saveOwnProfile, setOwnProfilePublished } from "../services/manager-profiles";
 import { listMyOrganizations } from "../services/organizations";
 import { listActiveSessions, revokeSession } from "../services/sessions";
+import { bip322ToSignPsbt } from "../providers/bitcoin";
 import { addressesForWallet, canonicalBitcoinAddress } from "../services/wallets";
 
 export const meRouter = Router();
@@ -49,7 +50,8 @@ meRouter.get("/", async (req, res) => {
 /** Bitcoin is link-only (add-chain): a BIP-322 or BIP-137 proof over the challenge message, with the Spec 1 rules (one address per family, not linked elsewhere, session rotation, audit). */
 meRouter.post("/chain-accounts/bitcoin/challenge", validate({ body: bitcoinChallengeRequestSchema }), async (req, res) => {
   const { address } = req.body as BitcoinChallengeRequest;
-  res.json(await issueChallenge({ purpose: "add_chain_account", chain: "bitcoin", rawAddress: address, sessionId: req.auth!.sessionId, meta: req.ctx }));
+  const challenge = await issueChallenge({ purpose: "add_chain_account", chain: "bitcoin", rawAddress: address, sessionId: req.auth!.sessionId, meta: req.ctx });
+  res.json({ ...challenge, toSignPsbt: bip322ToSignPsbt(canonicalBitcoinAddress(address), challenge.message) });
 });
 
 meRouter.post("/chain-accounts/bitcoin/verify", validate({ body: bitcoinVerifySchema }), async (req, res) => {
