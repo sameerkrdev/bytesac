@@ -99,6 +99,13 @@ describe("fee-payer exposure (I4)", () => {
     expect(() => sponsorExposure(build(Array.from({ length: 25 }, () => transfer)))).toThrow(expect.objectContaining({ code: "ROUTE_UNAVAILABLE" }));
   });
 
+  it("refuses the deprecated RequestUnits instruction and truncated compute-budget data (503, not a crash)", () => {
+    const raw = (data: number[]) => new TransactionInstruction({ programId: COMPUTE, keys: [], data: Buffer.from(data) });
+    expect(() => sponsorExposure(build([raw([0, 1, 0, 0, 0, 1, 0, 0, 0]), transfer]))).toThrow(expect.objectContaining({ code: "ROUTE_UNAVAILABLE" }));
+    expect(() => sponsorExposure(build([raw([3, 1]), transfer]))).toThrow(expect.objectContaining({ code: "ROUTE_UNAVAILABLE" }));
+    expect(() => sponsorExposure(build([raw([2, 1]), transfer]))).toThrow(expect.objectContaining({ code: "ROUTE_UNAVAILABLE" }));
+  });
+
   it("cosign refuses an unsponsorable transaction even when its hash matches", () => {
     const drain = SystemProgram.transfer({ fromPubkey: payer(), toPubkey: recipient, lamports: 1_000_000n });
     const tx = new VersionedTransaction(new TransactionMessage({ payerKey: payer(), recentBlockhash: BLOCKHASH, instructions: [drain] }).compileToV0Message());

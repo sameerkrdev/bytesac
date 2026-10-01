@@ -147,9 +147,10 @@ export function expectedBtcTx(psbtBase64: string, userAddress: string, sellSats:
   let inputTotal = 0n;
   for (let n = 0; n < tx.inputsLength; n++) {
     const i = tx.getInput(n);
-    const prev = i.witnessUtxo?.amount ?? (i.nonWitnessUtxo && !(i.nonWitnessUtxo instanceof Uint8Array) ? i.nonWitnessUtxo.outputs[i.index!]?.amount : undefined);
-    if (prev === undefined) throw refuse("input amount unknown");
-    inputTotal += prev;
+    // Only segwit and Taproot inputs: their signatures commit to the input amount, so the fee computed here cannot be understated. A legacy input's
+    // amount is not committed by its signature, so it is refused rather than trusted.
+    if (!i.witnessUtxo) throw refuse("legacy inputs are not supported");
+    inputTotal += i.witnessUtxo.amount;
   }
   const fee = inputTotal - outputs.reduce((sum, o) => sum + BigInt(o.amount), 0n);
   if (fee < 0n || fee > maxBtcMinerFee(sellSats)) throw refuse("miner fee");

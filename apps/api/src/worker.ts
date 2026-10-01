@@ -3,9 +3,12 @@ import { logger } from "@repo/logger";
 import { env } from "./env";
 import { enqueue, queues } from "./queues";
 import { seedPlatformWallets } from "./services/gas";
-import { checkGasWallets, reconcilePositions, trackLeg, trackStaleClaims } from "./services/positions";
+import { checkGasWallets, expireStalePlans, reconcilePositions, trackLeg, trackStaleClaims } from "./services/positions";
 import { runBasketPerformance, runPriceSnapshot } from "./services/performance";
 import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "./services/search-index";
+
+/** Every 5 minutes: hand stuck legs to the tracker and cancel expired, untouched plans (releasing their gas reservations). */
+const sweepOperations = async () => { await trackStaleClaims(); await expireStalePlans(); };
 
 /**
  * Starts one Worker per queue and registers the repeatable jobs. `upsertJobScheduler` is keyed by a fixed id, so any number of instances (or restarts)
@@ -20,7 +23,7 @@ export async function startWorker(): Promise<Worker[]> {
     new Worker("search-index-refresh", (job) => refreshSearchIndex(job.data.basketId), { connection }),
     // The embed queue also carries the sweep, registered below as a job named "sweep".
     new Worker("embed-basket", (job) => (job.name === "sweep" ? sweepEmbeddings() : embedBasket(job.data.basketId)), { connection }),
-    new Worker("track-leg", (job) => (job.name === "sweep" ? trackStaleClaims() : trackLeg(job.data.legId, job.data.recheck)), { connection }),
+    new Worker("track-leg", (job) => (job.name === "sweep" ? sweepOperations() : trackLeg(job.data.legId, job.data.recheck)), { connection }),
     new Worker("reconcile-positions", (job) => reconcilePositions(job.data.userId), { connection }),
     new Worker("gas-wallet-check", () => checkGasWallets(), { connection }),
   ];

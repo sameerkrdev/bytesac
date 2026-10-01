@@ -114,7 +114,7 @@ export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: st
 }
 
 /** Expired plans (nothing submitted within 30 minutes) are cancelled when next touched, which frees the user's one active-operation slot. */
-async function cancelIfExpired(tx: Tx, ctx: OpCtx | null, op: Op): Promise<boolean> {
+export async function cancelIfExpired(tx: Tx, ctx: OpCtx | null, op: Op): Promise<boolean> {
   if (op.status !== "PLANNED" || op.expiresAt > new Date()) return false;
   const [claimed] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, op.id), ne(operationLegs.status, "PLANNED"))).limit(1);
   if (claimed) return false; // a signed transaction is being sent: the plan is not abandoned
@@ -286,10 +286,15 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
       expectedTx: payer === "platform_gas_drop" ? { gasReserved: true, gasDropNative: drop.toString() } : null, gasPayer: payer,
     });
   });
-  // The network fee goes FIRST when the wallet already holds that much USDC, so the platform is paid before it spends gas; otherwise it is last
-  // (paid from the proceeds) and a fee the user never pays is an accepted loss within the caps.
+  // The network fee goes FIRST when the wallet already holds that much USDC, so the platform is paid before it spends gas; otherwise (Solana-only
+  // sells) it is last, paid from the proceeds, and a fee the user never pays is an accepted loss within the caps.
+  const evmSell = sells.find((s) => gasPayerFor(s.chain) === "platform_gas_drop");
+  const feeUsdc = await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT);
+  // EVM gas is only ever dropped after the network fee has settled, so selling an EVM asset needs the fee in USDC on Solana up front (D-071).
+  const cents = (fee + 9_999n) / 10_000n; // rounded up to whole cents: "at least"
+  if (evmSell && feeUsdc < fee) throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the network fee before selling assets on ${ASSET_CHAINS[evmSell.chain].label}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
   const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" };
-  if ((await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT)) >= fee) legs.unshift(feeLeg);
+  if (feeUsdc >= fee) legs.unshift(feeLeg);
   else legs.push(feeLeg);
 
   const id = await insertPlan(ctx, {
@@ -352,9 +357,9 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
   const planned = (leg.expectedTx ?? {}) as { gasDropNative?: string; gasReserved?: boolean };
   let gasDrop: LegQuoteResponse["gasDrop"] = null;
   if (leg.gasPayer === "platform_gas_drop") {
-    // With the network fee paid first, the platform's gas follows only once that fee has settled; when the fee is last (the user had no USDC to prepay it) the drop is the accepted risk.
-    const feeFirst = legs.find((l) => l.kind === "network_fee" && l.sequence < leg.sequence);
-    if (feeFirst && feeFirst.status !== "SETTLED") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop: { status: "pending", txHash: null } };
+    // The platform's gas follows only once the operation's network fee has settled (an EVM sell plan always puts the fee first).
+    const fee = legs.find((l) => l.kind === "network_fee");
+    if (fee?.status !== "SETTLED") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop: { status: "pending", txHash: null } };
     // Selling the native asset: the wallet needs the amount sold plus gas.
     gasDrop = await sendGasDrop(leg.id, leg.fromChain, addressOn(addresses, leg.fromChain), BigInt(planned.gasDropNative ?? 0), from?.address ? 0n : BigInt(leg.amountIn));
     if (gasDrop.status !== "confirmed" && gasDrop.status !== "skipped") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop };
@@ -433,7 +438,7 @@ export async function submitLeg(ctx: OpCtx, opId: string, legId: string, body: L
     const tx = await evmTransaction(leg.fromChain, body.txHash);
     if (!tx) throw createHttpError("That transaction isn't visible yet. Try again in a moment.", { code: "VALIDATION_FAILED" });
     if (tx.from !== addressOn(addresses, leg.fromChain).toLowerCase() || tx.to !== expected.to || sha256Hex(tx.input) !== expected.dataHash || tx.value.toString() !== expected.value) throw mismatch("The transaction doesn't match the prepared one.");
-    sourceTx = body.txHash;
+    sourceTx = body.txHash.toLowerCase(); // hashes compare case-insensitively: one spelling under the unique index
   }
 
   try {

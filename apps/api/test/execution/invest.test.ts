@@ -373,6 +373,24 @@ describe("review fixes", () => {
     expect(await usage()).toBe(0n);
   });
 
+  it("N2: the sweeper cancels expired untouched plans and releases their reservation, but leaves a plan with a claimed leg", async () => {
+    const { expireStalePlans } = await import("../../src/services/positions");
+    const { user, basket } = await arrange();
+    const op = (await invest(user.h, basket.basketId)).body;
+    expect(await usage()).toBe(40_000n);
+    await expireStalePlans(); // not expired yet
+    expect((await opRow(op.id)).status).toBe("PLANNED");
+    await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;
+    await expireStalePlans();
+    expect((await opRow(op.id)).status).toBe("CANCELLED");
+    expect(await usage()).toBe(0n);
+    const again = (await invest(user.h, basket.basketId, { idempotencyKey: "key-sweep002" })).body;
+    await adminSql`UPDATE app.operation_legs SET status = 'SUBMITTING', source_tx = 'sig-claimed2' WHERE id = ${again.legs[0].id}`;
+    await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${again.id}`;
+    await expireStalePlans();
+    expect((await opRow(again.id)).status).toBe("PLANNED");
+  });
+
   it("D2: the user may stop while a leg is UNKNOWN: PARTIAL, which frees the slot", async () => {
     const { user, basket } = await arrange();
     const op = (await invest(user.h, basket.basketId)).body;

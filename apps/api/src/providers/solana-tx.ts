@@ -85,6 +85,8 @@ export function sponsorExposure(serializedBase64: string): { lamports: bigint; r
     if (ix.programIdIndex === 0) throw refuse("fee payer as program");
     if (program === COMPUTE_BUDGET) {
       const data = Buffer.from(ix.data);
+      if (data[0] === 0) throw refuse("deprecated compute budget instruction"); // RequestUnits carries its own additional fee
+      if ((data[0] === 2 && data.length < 5) || (data[0] === 3 && data.length < 9)) throw refuse("compute budget data");
       if (data[0] === 2) limit = BigInt(data.readUInt32LE(1));
       if (data[0] === 3) price = data.readBigUInt64LE(1);
     }

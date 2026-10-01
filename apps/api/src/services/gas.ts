@@ -111,8 +111,11 @@ export async function sendGasDrop(legId: string, chain: AssetChain, recipient: s
     if ((await evmBalance(chain, recipient, null)) >= amountNative + alsoSpends) return { status: "skipped", txHash: null };
     try {
       drop = await db.transaction(async (tx) => {
-        const [leg] = await tx.select({ userId: operations.userId, expectedTx: operationLegs.expectedTx }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
+        const [leg] = await tx.select({ userId: operations.userId, operationId: operations.id, expectedTx: operationLegs.expectedTx }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
         if (!leg) throw createHttpError("Leg not found", { code: "NOT_FOUND" });
+        // Under the operation's row lock (the same one cancel takes), so a cancel either happens first (no drop) or sees this drop as spent (it is kept, not released).
+        const [op] = await tx.select({ status: operations.status, expiresAt: operations.expiresAt }).from(operations).where(eq(operations.id, leg.operationId)).for("update");
+        if (!op || (op.status !== "PLANNED" && op.status !== "IN_PROGRESS") || (op.status === "PLANNED" && op.expiresAt <= new Date())) throw createHttpError(409, "This operation is no longer open.", { code: "INVALID_TRANSITION" });
         const [{ n }] = (await tx.select({ n: sql<number>`count(*)::int` }).from(gasDrops).innerJoin(operationLegs, eq(operationLegs.id, gasDrops.legId)).innerJoin(operations, eq(operations.id, operationLegs.operationId))
           .where(and(eq(operations.userId, leg.userId), eq(gasDrops.chain, chain), sql`(${gasDrops.createdAt} at time zone 'utc')::date = (now() at time zone 'utc')::date`))) as [{ n: number }];
         if (n >= MAX_DROPS_PER_DAY) throw createHttpError(409, "Today's gas top-ups for this network are used up. Try again tomorrow.", { code: "GAS_BUDGET_EXHAUSTED" });

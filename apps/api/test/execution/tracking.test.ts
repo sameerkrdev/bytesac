@@ -224,6 +224,24 @@ describe("review fixes: tracking", () => {
   });
 });
 
+describe("N3: legs whose tracking job is gone", () => {
+  it("the sweep turns a SUBMITTED leg past the window into UNKNOWN (so the user can stop and ops can resolve) and restarts the recheck chain", async () => {
+    const { ids, opId, user } = await seed([{ kind: "network_fee", status: "SETTLED" }, { status: "SUBMITTED", toIndex: 0, sourceTx: "sig-orphan", submittedMinutesAgo: 40 }]);
+    await trackStaleClaims();
+    expect((await legRow(ids[1]!)).status).toBe("UNKNOWN");
+    expect(fakes.queue.jobs).toContainEqual({ name: "track-leg", data: { legId: ids[1], recheck: 2 } });
+    const stop = await request(app).post(`/v1/operations/${opId}/cancel`).set(user.h);
+    expect(stop.status).toBe(200);
+    expect(stop.body.status).toBe("PARTIAL");
+  });
+
+  it("a recent SUBMITTED leg is left to its own job", async () => {
+    const { ids } = await seed([{ status: "SUBMITTED", toIndex: 0, sourceTx: "sig-fresh", submittedMinutesAgo: 5 }]);
+    await trackStaleClaims();
+    expect((await legRow(ids[0]!)).status).toBe("SUBMITTED");
+  });
+});
+
 describe("ops resolve tool (D2)", () => {
   const resolve = (h: Record<string, string>, opId: string, legId: string, body: object) => request(app).post(`/v1/ops/operations/${opId}/legs/${legId}/resolve`).set(h).send(body);
   const base = { txEvidence: "0xevidence000", reason: "Verified on the explorer by ops." };

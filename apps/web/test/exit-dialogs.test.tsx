@@ -44,6 +44,23 @@ describe("Sell to USDC", () => {
     expect(screen.getByText("2. Network fee")).toBeInTheDocument();
   });
 
+  it("previews a fee that is paid first when the plan starts with it", async () => {
+    api.sellPlan.mockResolvedValue(operation({ kind: "sell_to_usdc", sellPercent: 50, amountUsdc: null, legs: [feeLeg({ id: ID(13), sequence: 1 }), sellLeg({ sequence: 2 })] }));
+    renderApp(<SellDialog position={position()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Sell to USDC" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Get preview" }));
+    expect(await screen.findByText("Network fee (paid to Bytesac for gas, paid first from the USDC already in your wallet): 0.07 USDC")).toBeInTheDocument();
+  });
+
+  it("shows the server's own message when the network fee USDC is missing", async () => {
+    const { ApiError } = await import("@repo/api-client");
+    api.sellPlan.mockRejectedValue(new ApiError("INSUFFICIENT_BALANCE", 409, "Add at least $0.19 USDC on Solana to pay the network fee before selling assets on Ethereum."));
+    renderApp(<SellDialog position={position()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Sell to USDC" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Get preview" }));
+    expect(await screen.findByText((text) => text === "Add at least $0.19 USDC on Solana to pay the network fee before selling assets on Ethereum.")).toBeInTheDocument();
+  });
+
   it("only whole percents from 1 to 100 can be previewed", async () => {
     renderApp(<SellDialog position={position()} />);
     await userEvent.click(screen.getByRole("button", { name: "Sell to USDC" }));

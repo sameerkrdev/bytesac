@@ -13,7 +13,7 @@ import { feePayer, solanaBalance, solanaFinality, solanaReceived } from "../prov
 import { redis } from "../middleware/rate-limit";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { addressOn, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
+import { addressOn, cancelIfExpired, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
 import { getPrices } from "./pricing";
 
 const TRACK_WINDOW_MS = 30 * 60_000;
@@ -89,10 +89,22 @@ async function markStaleUnknown(legId: string): Promise<void> {
   });
 }
 
-/** Legs claimed (SUBMITTING) but never confirmed as sent, for example after a crash between the claim and the send, are handed to the tracker. */
+/**
+ * Liveness sweep (every 5 minutes). Legs claimed (SUBMITTING) but never confirmed as sent, for example after a crash between the claim and the send,
+ * are handed to the tracker. A SUBMITTED or PENDING_CHAIN leg past the 30-minute window whose tracking job is gone (a queue outage, a flushed Redis) is
+ * checked right here in recheck mode, which makes it UNKNOWN (so the user can stop and ops can resolve it) and restarts the recheck chain.
+ */
 export async function trackStaleClaims(): Promise<void> {
-  const stale = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
-  for (const l of stale) await enqueue("track-leg", { legId: l.id });
+  const claimed = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
+  for (const l of claimed) await enqueue("track-leg", { legId: l.id });
+  const stuck = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(inArray(operationLegs.status, ["SUBMITTED", "PENDING_CHAIN"]), sql`${operationLegs.submittedAt} < now() - interval '35 minutes'`));
+  for (const l of stuck) await trackLeg(l.id, 1);
+}
+
+/** Plans nobody touched are cancelled once expired (nothing claimed or submitted), which frees the user's slot and releases the unspent gas reservation. */
+export async function expireStalePlans(): Promise<void> {
+  const due = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.status, "PLANNED"), sql`${operations.expiresAt} <= now()`));
+  for (const { id } of due) await db.transaction(async (tx) => { await cancelIfExpired(tx, null, await lockOperation(tx, id)); });
 }
 
 /** Returns whether the leg is still open (needs another check). */
