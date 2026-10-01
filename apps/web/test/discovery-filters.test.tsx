@@ -77,6 +77,19 @@ describe("Discovery page", () => {
     expect(screen.getAllByLabelText("Minimum 1 y net return (%)").at(-1)).toHaveValue(12);
   });
 
+  it("has a Keywords input bound to q, prefilled from the URL and clearable", async () => {
+    serve({ items: [], nextCursor: null });
+    await page({ f: encodeDiscoveryFilters({ q: "btc", categories: ["index"] }) });
+    const input = screen.getByLabelText("Keywords");
+    expect(input).toHaveValue("btc");
+    await userEvent.clear(input);
+    await userEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    expect(pushed()).toEqual({ categories: ["index"] });
+    await userEvent.type(input, "eth");
+    await userEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    expect(pushed()).toEqual({ q: "eth", categories: ["index"] });
+  });
+
   it("does not push invalid numbers", async () => {
     serve({ items: [], nextCursor: null });
     await page();

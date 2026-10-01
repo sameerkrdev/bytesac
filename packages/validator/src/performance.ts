@@ -92,6 +92,11 @@ export function computePerformanceDays(i: PerformanceInput): PerformanceDay[] {
     const M = dec(version.minimumUsdc);
     const fixedFactor = (amount: string, perDay = 1n) => S - div(dec(amount), M * perDay);
     const feeFactor = (fee: Fee, perDay = 1n) => (fee.type === "percent" ? S - (BigInt(fee.bps) * S) / (10_000n * perDay) : fixedFactor(fee.amountUsdc, perDay));
+    const managementAndSubscription = (d: string, v: PerformanceVersion) => {
+      const f = feeFactor(v.fees.management, 365n);
+      const sub = v.fees.subscription;
+      return sub && isPeriodStart(sub.period, i.versions[0]!.publishedDay, d) ? mul(f, fixedFactor(sub.amountUsdc)) : f;
+    };
     const step = (h: Record<string, string>) => Object.fromEntries(Object.entries(h).map(([id, v]) => [id, div(mul(dec(v), dec(lastPrices[id]!)), dec(prev!.lastPrices[id]!))]));
     const sum = (h: Record<string, bigint>) => Object.values(h).reduce((a, b) => a + b, 0n);
 
@@ -100,15 +105,15 @@ export function computePerformanceDays(i: PerformanceInput): PerformanceDay[] {
       // Launch (entry fee) or a new version (rebalance fee): continue the index, reset holdings to the target weights.
       gross = prev ? sum(step(prev.holdingsGross)) : 100n * S;
       net = prev ? sum(step(prev.holdingsNet)) : 100n * S;
-      net = mul(net, feeFactor(prev ? version.fees.rebalance : version.fees.entry));
+      // Daily order (spec §4): drift -> management -> subscription -> rebalance. The launch day has no management/subscription, only the entry fee.
+      if (prev) net = mul(mul(net, managementAndSubscription(day, version)), feeFactor(version.fees.rebalance));
+      else net = mul(net, feeFactor(version.fees.entry));
       hg = Object.fromEntries(version.weights.map((w) => [w.instrumentId, (gross * BigInt(w.bps)) / 10_000n]));
       hn = Object.fromEntries(version.weights.map((w) => [w.instrumentId, (net * BigInt(w.bps)) / 10_000n]));
     } else {
       hg = step(prev.holdingsGross);
       hn = step(prev.holdingsNet);
-      let f = feeFactor(version.fees.management, 365n);
-      const sub = version.fees.subscription;
-      if (sub && isPeriodStart(sub.period, i.versions[0]!.publishedDay, day)) f = mul(f, fixedFactor(sub.amountUsdc));
+      const f = managementAndSubscription(day, version);
       hn = Object.fromEntries(Object.entries(hn).map(([id, v]) => [id, mul(v, f)]));
       gross = sum(hg);
       net = sum(hn);
@@ -155,7 +160,7 @@ export function performanceMetrics(days: Pick<PerformanceDay, "day" | "indexGros
   const byDay = new Map(days.map((d) => [d.day, d]));
   const window = (key: "indexNet" | "indexGross") => {
     const at = (n: number) => { const r = byDay.get(addDays(last.day, -n)); return r ? fraction(last[key], r[key]) : null; };
-    return { sinceLaunch: fraction(last[key], days[0]![key]), d30: at(30), d90: at(90), y1: at(365) };
+    return { sinceLaunch: fraction(last[key], "100"), d30: at(30), d90: at(90), y1: at(365) };
   };
   const available = Object.values(last.gapRun).every((g) => g <= 3) && last.day >= addDays(today, -3);
   let volatility: string | null = null;

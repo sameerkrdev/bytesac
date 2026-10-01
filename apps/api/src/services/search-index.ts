@@ -24,6 +24,8 @@ export async function refreshSearchIndex(basketId: string): Promise<void> {
     return;
   }
   const [v] = await db.select().from(basketVersions).where(eq(basketVersions.id, b.currentVersionId));
+  // Basket age and "newest" count from the first publish; later versions are rebalances of the same basket.
+  const [first] = await db.select({ at: sql<Date>`min(${basketVersions.publishedAt})` }).from(basketVersions).where(and(eq(basketVersions.basketId, basketId), inArray(basketVersions.status, ["published", "superseded"])));
   const [prior] = await db.select({ versionId: basketSearchIndex.currentVersionId }).from(basketSearchIndex).where(eq(basketSearchIndex.basketId, basketId));
   const assets = await db.select({ id: instruments.id, symbol: instruments.symbol, name: instruments.name, assetType: instruments.assetType, sector: instruments.sector, bps: basketVersionAssets.targetWeightBps })
     .from(basketVersionAssets).innerJoin(instruments, eq(instruments.id, basketVersionAssets.instrumentId))
@@ -47,7 +49,7 @@ export async function refreshSearchIndex(basketId: string): Promise<void> {
     exposures: { instruments: assets.map((a) => ({ id: a.id, symbol: a.symbol, bps: a.bps })), assetTypes: group((a) => a.assetType, "type"), sectors: group((a) => a.sector, "sector") },
     tags: tags.map((t) => t.key).sort(), maxWeightBps: Math.max(...assets.map((a) => a.bps)), minimumInvestmentUsdc: minimum,
     feeEntryBps: effectiveFeeBps(fees.entry, minimum), feeManagementBps: effectiveFeeBps(fees.management, minimum), feeRebalanceBps: effectiveFeeBps(fees.rebalance, minimum),
-    feeSubscriptionBps: fees.subscription ? effectiveFeeBps(fees.subscription, minimum) : null, reviewFrequency: v!.rebalance.reviewFrequency, publishedAt: v!.publishedAt!, currentVersionId: v!.id,
+    feeSubscriptionBps: fees.subscription ? effectiveFeeBps(fees.subscription, minimum) : null, reviewFrequency: v!.rebalance.reviewFrequency, publishedAt: new Date(first!.at), currentVersionId: v!.id,
     managerHandles: managers.map((m) => m.handle).sort(), managerMaxExperienceYears: managers.reduce<number | null>((max, m) => (m.experienceYears === null ? max : Math.max(max ?? 0, m.experienceYears)), null),
     metrics,
     searchText: sql<string>`setweight(to_tsvector('english', ${v!.name}::text), 'A') || setweight(to_tsvector('english', ${[v!.shortDescription, v!.category].filter(Boolean).join(" ")}::text), 'B')

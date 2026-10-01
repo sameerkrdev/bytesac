@@ -11,7 +11,7 @@ const EMBEDDING_DIMENSIONS = 768;
 const embedding = z.array(z.number()).length(EMBEDDING_DIMENSIONS);
 
 export async function embedText(text: string): Promise<number[]> {
-  const res = await ai.models.embedContent({ model: env.GEMINI_EMBEDDING_MODEL, contents: text, config: { outputDimensionality: EMBEDDING_DIMENSIONS } });
+  const res = await ai.models.embedContent({ model: env.GEMINI_EMBEDDING_MODEL, contents: text, config: { outputDimensionality: EMBEDDING_DIMENSIONS, abortSignal: AbortSignal.timeout(10_000) } });
   return embedding.parse(res.embeddings?.[0]?.values);
 }
 

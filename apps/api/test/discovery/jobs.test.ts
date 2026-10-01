@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../../src/app";
-import { activeInstrument } from "../baskets/helpers";
+import { activeInstrument, basketOrg, publishedBasket } from "../baskets/helpers";
+import { opsUser } from "../managers/helpers";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { orgWithOwner } from "../members/helpers";
@@ -57,6 +58,21 @@ describe("runPriceSnapshot", () => {
     const rows = await adminSql`SELECT day::text, price_usd::text, source FROM app.instrument_price_snapshots WHERE instrument_id = ${id}`;
     expect(rows).toEqual([{ day: today, price_usd: "65000.5", source: "coinmarketcap" }]);
     expect(fakes.queue.jobs.filter((j) => j.name === "basket-performance")).toHaveLength(2);
+  });
+
+  it("also prices a PAUSED instrument held by a published basket, but not an unheld one", async () => {
+    const ctx = await basketOrg();
+    const admin = await opsUser(app, "ops_admin");
+    const [held, other, pausedUnheld] = [await activeInstrument(ctx.owner.userId), await activeInstrument(ctx.owner.userId), await activeInstrument(ctx.owner.userId)];
+    await publishedBasket(ctx.owner, ctx.owner.id, admin, held, other);
+    for (const [k, id] of [held, other, pausedUnheld].entries()) {
+      await adminSql`INSERT INTO app.price_references (id, instrument_id, kind, provider, external_id) VALUES (gen_random_uuid(), ${id}, 'market', 'coinmarketcap', ${String(10 + k)})`;
+      fakes.cmc.quotes.set(String(10 + k), { value: "1", observedAt: new Date().toISOString() });
+    }
+    await adminSql`UPDATE app.instruments SET status = 'PAUSED' WHERE id IN (${held}, ${pausedUnheld})`;
+    await runPriceSnapshot();
+    const rows = await adminSql<{ instrument_id: string }[]>`SELECT instrument_id FROM app.instrument_price_snapshots`;
+    expect(rows.map((r) => r.instrument_id).sort()).toEqual([held, other].sort());
   });
 
   it("skips instruments the provider returned nothing for", async () => {

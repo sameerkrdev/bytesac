@@ -57,7 +57,7 @@ export async function structuredSearch(f: DiscoveryFilters): Promise<DiscoverySe
   if (f.minBasketAgeDays !== undefined) c.push(sql`${idx.publishedAt} <= now() - make_interval(days => ${f.minBasketAgeDays})`);
   if (f.minManagerExperienceYears !== undefined) c.push(sql`${idx.managerMaxExperienceYears} >= ${f.minManagerExperienceYears}`);
   const p = f.performance;
-  if (p) {
+  if (p && Object.keys(p).length) {
     // A basket without available performance never passes a performance filter.
     c.push(sql`(${idx.metrics}->>'available')::boolean`);
     if (p.minNetReturn1y) c.push(sql`${metric("net,y1")} >= ${p.minNetReturn1y}::numeric`);

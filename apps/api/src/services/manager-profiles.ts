@@ -66,12 +66,12 @@ export async function setOwnProfilePublished(ctx: { userId: string; sessionId: s
   return { profile: view(p) };
 }
 
-/** Published profiles only. Self-reported claims are labelled; `verified` comes only from an approved member verification or ownership of a VERIFIED organization. */
+/** Published profiles only. Self-reported claims are labelled; `verified` comes only from an ACTIVE membership with an approved member verification, or ACTIVE ownership of a VERIFIED organization. */
 export async function getPublicManager(handle: string): Promise<PublicManager> {
   const [p] = await db.select({
     profile: managerProfiles,
     // `manager_profiles.user_id` is written out: a single-table select renders column references unqualified, which would bind to the subquery.
-    verified: sql<boolean>`(exists (select 1 from app.member_verifications mv join app.organization_memberships m on m.id = mv.membership_id where m.user_id = manager_profiles.user_id and mv.status = 'approved')
+    verified: sql<boolean>`(exists (select 1 from app.member_verifications mv join app.organization_memberships m on m.id = mv.membership_id where m.user_id = manager_profiles.user_id and m.status = 'ACTIVE' and mv.status = 'approved')
       or exists (select 1 from app.organization_memberships m join app.organizations o on o.id = m.organization_id where m.user_id = manager_profiles.user_id and m.role = 'OWNER' and m.status = 'ACTIVE' and o.status = 'VERIFIED'))`,
   }).from(managerProfiles).where(and(eq(managerProfiles.handle, handle), eq(managerProfiles.status, "published")));
   if (!p) throw notFound();

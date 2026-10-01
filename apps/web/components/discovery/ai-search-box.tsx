@@ -43,6 +43,7 @@ export function AiSearchBox({ client = api }: { client?: Pick<ApiClient, "aiSear
         <div className="space-y-4">
           <p role="status" className="text-sm font-medium text-ivory">{MODE_LABEL[search.data.mode]}</p>
           {search.data.filters && <FilterChips filters={search.data.filters} onChange={edit} />}
+          {search.data.filters && <Button type="button" variant="secondary" className="min-h-11" onClick={() => edit(search.data.filters!)}>Edit these filters</Button>}
           <ResultsList items={search.data.results} />
         </div>
       )}

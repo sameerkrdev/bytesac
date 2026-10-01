@@ -73,13 +73,25 @@ describe("runBasketPerformance", () => {
     expect(rows[2]!.holdings.gross).toEqual({ [a]: "112.000000000000000000", [b]: "48.000000000000000000" });
   });
 
-  it("stops at the retirement day", async () => {
+  it("stops at the retirement day of an approved retirement request", async () => {
     const r = await live();
-    await adminSql`UPDATE app.baskets SET status = 'RETIRED' WHERE id = ${r.id}`;
-    await adminSql`INSERT INTO app.basket_events (id, basket_id, kind, actor_type, created_at) VALUES (gen_random_uuid(), ${r.id}, 'retired', 'ops', '2026-03-02T12:00:00Z')`;
+    expect((await post(ctx.owner.h, `/v1/baskets/${r.id}/retirement-request`, { reason: "Winding down" })).status).toBe(200);
+    expect((await post(admin.h, `/v1/ops/baskets/${r.id}/retirement/decision`, { decision: "approved" })).status).toBe(200);
+    await adminSql`UPDATE app.basket_events SET created_at = '2026-03-02T12:00:00Z' WHERE basket_id = ${r.id} AND to_status = 'RETIRED'`;
     await prices(["10", "20", "20"], ["5", "5", "5"]);
     await runBasketPerformance();
     expect((await performanceRows(r.id)).map((x) => x.day)).toEqual(["2026-03-01", "2026-03-02"]);
+  });
+
+  it("re-queues the search index of every listed basket, even one without new rows", async () => {
+    const r = await live();
+    await runBasketPerformance();
+    expect(fakes.queue.jobs).toContainEqual({ name: "search-index-refresh", data: { basketId: r.id } }); // no snapshots at all yet
+    await prices(["10"], ["5"]);
+    fakes.queue.jobs = [];
+    await runBasketPerformance();
+    await runBasketPerformance();
+    expect(fakes.queue.jobs.filter((j) => j.data.basketId === r.id)).toHaveLength(2); // the second run computes nothing new, still refreshes
   });
 
   it("ignores baskets that were never published and does nothing without snapshots", async () => {

@@ -5,7 +5,7 @@ import { activeInstrument, basketOrg, publishedBasket } from "../baskets/helpers
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { opsUser } from "../managers/helpers";
-import { addMember } from "../members/helpers";
+import { addMember, membershipAction, memberAction } from "../members/helpers";
 import { resetOrgDb, user } from "../organizations/helpers";
 
 type Headers = Record<string, string>;
@@ -116,6 +116,22 @@ describe("public profile", () => {
     await adminSql`UPDATE app.organizations SET status = 'SUBMITTED' WHERE id = ${ctx.owner.id}`;
     expect((await pub("owner-one")).body.verified).toBe(false);
     await adminSql`UPDATE app.organizations SET status = 'VERIFIED' WHERE id = ${ctx.owner.id}`;
+  });
+});
+
+describe("verified badge after a membership ends", () => {
+  it("is dropped when the member leaves or is removed", async () => {
+    const [leaver, removed] = [await addMember(app, ctx.owner.id, "MANAGER"), await addMember(app, ctx.owner.id, "MANAGER")];
+    for (const [m, handle] of [[leaver, "leaver-one"], [removed, "removed-one"]] as const) {
+      await adminSql`INSERT INTO app.member_verifications (id, membership_id, status) VALUES (gen_random_uuid(), ${m.mid}, 'approved')`;
+      await put(m.h, body({ handle }));
+      await act(m.h, "publish");
+      expect((await pub(handle)).body.verified).toBe(true);
+    }
+    expect((await membershipAction(app, leaver.h, leaver.mid, "leave")).status).toBe(200);
+    expect((await pub("leaver-one")).body.verified).toBe(false);
+    expect((await memberAction(app, ctx.owner.h, ctx.owner.id, removed.mid, "remove")).status).toBe(200);
+    expect((await pub("removed-one")).body.verified).toBe(false);
   });
 });
 

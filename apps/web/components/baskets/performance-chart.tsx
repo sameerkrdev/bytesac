@@ -63,8 +63,8 @@ export function PerformanceChart({ performance, metrics, label }: Props) {
           </div>
           <svg viewBox={`0 0 ${W} ${H}`} role="img" className="h-auto w-full text-stone"
             aria-label={`Simulated index, base 100, from ${first!.day} to ${pts.at(-1)!.day}. Net moved from ${Number(first!.net).toFixed(2)} to ${Number(pts.at(-1)!.net).toFixed(2)}; gross from ${Number(first!.gross).toFixed(2)} to ${Number(pts.at(-1)!.gross).toFixed(2)}. A data table follows.`}>
-            {ticks.map((t) => (
-              <g key={t}>
+            {ticks.map((t, k) => (
+              <g key={k}>
                 <line x1={L} x2={W - R} y1={y(String(t))} y2={y(String(t))} stroke="currentColor" strokeOpacity={0.25} />
                 <text x={L - 6} y={y(String(t))} textAnchor="end" dominantBaseline="middle" fontSize={11} fill="currentColor">{t.toFixed(1)}</text>
               </g>

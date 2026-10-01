@@ -46,6 +46,13 @@ describe("AI search box", () => {
     expect(screen.queryByText("Matched by filters")).not.toBeInTheDocument();
   });
 
+  it("Edit these filters hands all of them to the structured search, prefilled in the panel", async () => {
+    await ask(respond({ filters: { q: "btc", categories: ["stablecoin"], maxFeeBps: { management: 50 } } }));
+    await userEvent.click(await screen.findByRole("button", { name: "Edit these filters" }));
+    const url = new URL(push.mock.calls[0]![0], "http://x");
+    expect(decodeDiscoveryFilters(url.searchParams.get("f") ?? undefined)).toEqual({ q: "btc", categories: ["stablecoin"], maxFeeBps: { management: 50 } });
+  });
+
   it("shows the rate-limit message on 429", async () => {
     await ask({ aiSearchBaskets: vi.fn().mockRejectedValue(new ApiError("RATE_LIMITED", 429, "slow down", 30)) });
     expect(await screen.findByRole("alert")).toHaveTextContent("Too many searches. Try again later.");

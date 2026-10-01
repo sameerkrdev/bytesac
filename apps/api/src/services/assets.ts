@@ -246,7 +246,7 @@ export async function updateInstrument(ctx: OpsCtx, id: string, body: UpdateInst
     }
     await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "instrument", entityId: id, kind: "updated", metadata: { fields: Object.keys(body), tags: tagChange, sector: body.sector } });
   });
-  if (body.sector || tagIds) await refreshBasketsHolding(id);
+  if (body.sector || body.name || tagIds) await refreshBasketsHolding(id);
   return getAssetForOps(id);
 }
 
@@ -282,7 +282,7 @@ export async function createAssetTag(ctx: OpsCtx, body: CreateAssetTagRequest): 
 
 /** A retired tag can no longer be added; instruments keep it until ops remove it, and the search index stops listing it on the next refresh. */
 export async function retireAssetTag(ctx: OpsCtx, id: string): Promise<AssetTagView> {
-  return db.transaction(async (tx) => {
+  const view = await db.transaction(async (tx) => {
     const [t] = await tx.select().from(assetTags).where(eq(assetTags.id, id)).for("update");
     if (!t) throw notFound("Tag");
     if (t.status === "retired") return tagView(t);
@@ -290,6 +290,9 @@ export async function retireAssetTag(ctx: OpsCtx, id: string): Promise<AssetTagV
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "asset_tag.retired", entityType: "asset_tag", entityId: id, requestId: ctx.meta.requestId, metadata: { key: t.key } });
     return tagView(updated!);
   });
+  const tagged = await db.selectDistinct({ instrumentId: instrumentTags.instrumentId }).from(instrumentTags).where(and(eq(instrumentTags.tagId, id), isNull(instrumentTags.removedAt)));
+  for (const t of tagged) await refreshBasketsHolding(t.instrumentId);
+  return view;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

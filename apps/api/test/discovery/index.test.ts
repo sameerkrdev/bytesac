@@ -3,7 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/app";
 import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "../../src/services/search-index";
 import { structuredSearch } from "../../src/services/discovery";
-import { activeInstrument, basketOrg, basketRow, post, publishedBasket } from "../baskets/helpers";
+import { activeInstrument, basketOrg, basketRow, decideBasket, decision, post, publishBasket, publishedBasket, saveOpen, submitBasket } from "../baskets/helpers";
+import { setPublishedAt } from "./helpers";
 import { adminSql } from "../helpers/db";
 import { fakes, unitVector } from "../helpers/fakes";
 import { opsUser } from "../managers/helpers";
@@ -50,6 +51,21 @@ describe("refreshSearchIndex", () => {
     expect(idx.metrics).toMatchObject({ available: false, dataDays: 0 });
     expect(fakes.queue.jobs.filter((j) => j.name === "embed-basket")).toEqual([{ name: "embed-basket", data: { basketId: r.id, versionId: r.vid } }]);
     expect((await structuredSearch({ q: "indexed" })).items.map((i) => i.name)).toEqual(["Indexed Basket"]);
+  });
+
+  it("indexes the first publish date, not the current version's", async () => {
+    const r = await publishedBasket(ctx.owner, ctx.owner.id, admin, a, b, "Aged Basket");
+    await setPublishedAt(r.vid, "2026-01-01T10:00:00Z");
+    await post(ctx.owner.h, `/v1/baskets/${r.id}/versions`);
+    const v2 = (await adminSql<{ id: string }[]>`SELECT id FROM app.basket_versions WHERE basket_id = ${r.id} AND status = 'draft'`)[0]!.id;
+    await saveOpen(ctx.owner.h, r.id, { rationale: "Rotate", assets: [{ instrumentId: a, targetWeightBps: 7000 }, { instrumentId: b, targetWeightBps: 3000 }] });
+    await submitBasket(ctx.owner.h, r.id);
+    await decideBasket(admin.h, r.id, v2, decision("approved"));
+    expect((await publishBasket(ctx.owner.h, r.id)).status).toBe(200);
+    await refreshSearchIndex(r.id);
+    const idx = (await row(r.id))!;
+    expect(idx.current_version_id).toBe(v2);
+    expect(new Date(idx.published_at).toISOString()).toBe("2026-01-01T10:00:00.000Z");
   });
 
   it("updates the status when paused and delists a retired basket", async () => {
@@ -115,6 +131,9 @@ describe("enqueued refreshes", () => {
     expect(tagged.body.tags).toEqual([{ id: tag.id, key: "layer-two", label: "Layer two" }]);
     expect(refreshJobs(held.id)).toHaveLength(1);
     await post(admin.h, `/v1/ops/asset-tags/${tag.id}/retire`);
+    expect(refreshJobs(held.id)).toHaveLength(2); // retiring the tag refreshes the baskets holding tagged instruments
+    await request(app).patch(`/v1/ops/assets/${a}`).set(admin.h).send({ name: "Renamed Alpha" });
+    expect(refreshJobs(held.id)).toHaveLength(3);
     expect((await request(app).patch(`/v1/ops/assets/${other}`).set(admin.h).send({ tagIds: [tag.id] })).status).toBe(404);
     expect((await request(app).patch(`/v1/ops/assets/${a}`).set(admin.h).send({ tagIds: [] })).body.tags).toEqual([]);
   });

@@ -60,7 +60,7 @@ export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
   const [open, setOpen] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [f, setF] = useState({
-    organizationId: filters.organizationId ?? "", managerHandle: filters.managerHandle ?? "", categories: (filters.categories ?? []) as string[],
+    q: filters.q ?? "", organizationId: filters.organizationId ?? "", managerHandle: filters.managerHandle ?? "", categories: (filters.categories ?? []) as string[],
     assets: rows(filters.assets, (a) => a.symbol ?? ""), assetTypes: rows(filters.assetTypes, (a) => a.type), sectors: rows(filters.sectors, (a) => a.sector),
     tags: (filters.tags ?? []).join(", "), maxSingle: fromBps(filters.maxSingleWeightBps), maxMinimum: filters.maxMinimumInvestmentUsdc ?? "",
     fees: Object.fromEntries(FEES.map((k) => [k, fromBps(filters.maxFeeBps?.[k])])), reviews: (filters.reviewFrequencies ?? []) as string[], age: filters.minBasketAgeDays?.toString() ?? "",
@@ -79,7 +79,7 @@ export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
     const perf = Object.fromEntries(PERF.filter(([k]) => f.perf[k]?.trim()).map(([k]) => [k, toFraction(f.perf[k]!)]));
     const tags = f.tags.split(",").map((t) => t.trim()).filter(Boolean);
     const parsed = discoveryFiltersSchema.safeParse({
-      q: filters.q, sort: filters.sort,
+      q: f.q.trim() || undefined, sort: filters.sort,
       organizationId: f.organizationId.trim() || undefined, managerHandle: f.managerHandle.trim() || undefined,
       categories: f.categories.length ? f.categories : undefined,
       assets: f.assets.length ? f.assets.map((r) => ({ symbol: r.key.trim(), ...bounds(r) })) : undefined,
@@ -104,6 +104,7 @@ export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
             {Object.entries(SORTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </Select>
         </div>
+        {field("Keywords", f.q, (q) => setF({ ...f, q }), { maxLength: 200, spellCheck: false })}
         {field("Organization ID", f.organizationId, (organizationId) => setF({ ...f, organizationId }), { spellCheck: false })}
         {field("Manager handle", f.managerHandle, (managerHandle) => setF({ ...f, managerHandle }), { spellCheck: false })}
         <fieldset className="space-y-1">

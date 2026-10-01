@@ -35,14 +35,31 @@ describe("computePerformanceDays", () => {
 
   it("a new version steps to its publish day, resets to the new weights and charges the rebalance fee", () => {
     const days = range("2026-03-01", 3);
-    const prices = { A: { [days[0]!]: "10", [days[1]!]: "20", [days[2]!]: "20" }, B: { [days[0]!]: "5", [days[1]!]: "5", [days[2]!]: "5" } };
+    const prices = { A: { [days[0]!]: "10", [days[1]!]: "20", [days[2]!]: "30" }, B: { [days[0]!]: "5", [days[1]!]: "5", [days[2]!]: "5" } };
     const v2 = v({ versionId: "v2", publishedDay: days[2]!, weights: [{ instrumentId: "A", bps: 10_000 }], fees: { ...FEES0, rebalance: { type: "percent", bps: 50 } } });
     const rows = run({ versions: [v(), v2], days, prices });
     expect(rows[2]!.versionId).toBe("v2");
-    expect(rows[2]!.indexGross).toBe("150.000000000000000000");
-    expect(rows[2]!.indexNet).toBe("149.250000000000000000");
-    expect(rows[2]!.holdingsGross).toEqual({ A: "150.000000000000000000" });
+    expect(rows[2]!.indexGross).toBe("200.000000000000000000"); // stepped to the publish day: 5 A at 30 + 10 B at 5
+    expect(rows[2]!.indexNet).toBe("199.000000000000000000");
+    expect(rows[2]!.holdingsGross).toEqual({ A: "200.000000000000000000" });
     expect(Object.keys(rows[2]!.lastPrices)).toEqual(["A"]);
+  });
+
+  it("a version publish day still charges management and a subscription period start (before the rebalance fee)", () => {
+    const days = range("2026-03-01", 32); // Mar 1 .. Apr 1
+    const fees = { ...FEES0, subscription: { amountUsdc: "10", period: "monthly" as const } };
+    const v2 = v({ versionId: "v2", publishedDay: "2026-04-01", fees: { ...fees, management: { type: "percent", bps: 3650 }, rebalance: { type: "percent", bps: 100 } } });
+    const rows = run({ versions: [v({ fees }), v2], days, prices: flat(days) });
+    // 100 on Mar 31, then x(1 - 0.001 daily mgmt) x(1 - 10/1000 subscription) x(1 - 1% rebalance) on Apr 1
+    expect(Number(rows.at(-1)!.indexNet)).toBeCloseTo(100 * 0.999 * 0.99 * 0.99, 9);
+  });
+
+  it("net since launch is measured from 100, so the entry fee counts", () => {
+    const days = range("2026-03-01", 2);
+    const rows = run({ versions: [v({ fees: { ...FEES0, entry: { type: "percent", bps: 100 } } })], days, prices: flat(days) });
+    const m = performanceMetrics(rows, days[1]!);
+    expect(m.net.sinceLaunch).toBe("-0.010000");
+    expect(m.gross.sinceLaunch).toBe("0.000000");
   });
 
   it("resumes from a stored day and matches a full run", () => {
@@ -127,5 +144,13 @@ describe("performanceMetrics", () => {
     const prices = { A: { [days[0]!]: "10", [days[1]!]: "20" } };
     const rows = run({ versions: [v({ weights: [{ instrumentId: "A", bps: 10_000 }] })], days, prices });
     expect(performanceMetrics(rows, days[1]!).net.sinceLaunch).toBe("1.000000");
+  });
+
+  it("max drawdown is the largest peak-to-trough fall of the net index", () => {
+    const days = range("2026-03-01", 40);
+    const px = days.map((_, k) => (k < 10 ? 10 + k : k < 20 ? 19 - (k - 9) : 10 + (k - 19) / 2)); // up to 19, down to 9, then recover
+    const prices = { A: Object.fromEntries(days.map((d, k) => [d, String(px[k])])) };
+    const rows = run({ versions: [v({ weights: [{ instrumentId: "A", bps: 10_000 }] })], days, prices });
+    expect(performanceMetrics(rows, days.at(-1)!).maxDrawdown).toBe(((19 - 9) / 19).toFixed(6));
   });
 });
