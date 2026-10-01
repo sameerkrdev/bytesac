@@ -3,7 +3,7 @@ import { vi } from "vitest";
 // Third-party providers are replaced by in-memory fakes; tests drive them through `fakes`.
 vi.mock("../src/providers/resend", async () => {
   const { fakes } = await import("./helpers/fakes");
-  return { sendOtpEmail: fakes.email.sendOtp, sendApplicationEmail: fakes.email.sendApplication, sendOrganizationEmail: fakes.email.sendOrganization, sendMembershipEmail: fakes.email.sendMembership, sendBasketEmail: fakes.email.sendBasket };
+  return { sendOtpEmail: fakes.email.sendOtp, sendApplicationEmail: fakes.email.sendApplication, sendOrganizationEmail: fakes.email.sendOrganization, sendMembershipEmail: fakes.email.sendMembership, sendBasketEmail: fakes.email.sendBasket, sendProfileEmail: fakes.email.sendProfile };
 });
 vi.mock("../src/providers/twilio", async () => {
   const { fakes } = await import("./helpers/fakes");
@@ -20,6 +20,14 @@ vi.mock("../src/providers/solana-rpc", async () => {
 vi.mock("../src/providers/coinmarketcap", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { fetchQuotes: fakes.cmc.fetchQuotes };
+});
+vi.mock("../src/queues", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { queues: {}, enqueue: fakes.queue.enqueue };
+});
+vi.mock("../src/providers/gemini", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { embedText: fakes.gemini.embedText, geminiSearchCall: fakes.gemini.geminiSearchCall };
 });
 vi.mock("../src/providers/r2", async () => {
   const { fakes } = await import("./helpers/fakes");

@@ -23,6 +23,8 @@ export default async function OpsLayout({ children }: { children: ReactNode }) {
           {allowed && <Link href="/ops/members" className={linkCls}>Members</Link>}
           {allowed && <Link href="/ops/assets" className={linkCls}>Assets</Link>}
           {allowed && <Link href="/ops/baskets" className={linkCls}>Baskets</Link>}
+          {allowed && <Link href="/ops/manager-profiles" className={linkCls}>Manager profiles</Link>}
+          {isAdmin && <Link href="/ops/tags" className={linkCls}>Tags</Link>}
           {isAdmin && <Link href="/ops/disclosures" className={linkCls}>Disclosures</Link>}
           {isAdmin && <Link href="/ops/roles" className={linkCls}>Roles</Link>}
           <Link href="/home" className={`${linkCls} ml-auto`}>Back to Home</Link>

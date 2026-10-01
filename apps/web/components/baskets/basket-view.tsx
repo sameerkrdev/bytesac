@@ -1,6 +1,6 @@
 "use client";
 
-import { ASSET_TYPE_LABEL, BASKET_CATEGORY_LABEL, formatBps } from "@repo/app-core";
+import { ASSET_TYPE_LABEL, BASKET_CATEGORY_LABEL, REVIEW_FREQUENCY_LABEL, formatBps } from "@repo/app-core";
 import type { AssetType, BasketVersionView, Fee } from "@repo/validator";
 import type { ReactNode } from "react";
 
@@ -14,7 +14,6 @@ export interface AllocationRow {
 }
 
 const fee = (f: Fee) => (f.type === "percent" ? formatBps(f.bps) : `${f.amountUsdc} USDC`);
-const FREQUENCY = { none: "No scheduled review", monthly: "Reviewed monthly", quarterly: "Reviewed quarterly" } as const;
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section aria-label={title} className="space-y-3">
@@ -77,7 +76,7 @@ export function BasketView({ content: c, allocation, disclosures }: { content: B
       </Section>
 
       <Section title="Rebalancing">
-        <p className="text-sm text-ivory">{FREQUENCY[c.rebalance.reviewFrequency]}{c.rebalance.driftThresholdBps !== undefined && ` · drift threshold ${formatBps(c.rebalance.driftThresholdBps)}`}</p>
+        <p className="text-sm text-ivory">{REVIEW_FREQUENCY_LABEL[c.rebalance.reviewFrequency]}{c.rebalance.driftThresholdBps !== undefined && ` · drift threshold ${formatBps(c.rebalance.driftThresholdBps)}`}</p>
         <p className="text-sm text-stone">These are the manager&apos;s review intentions, not a promise. A rebalance is only a new proposal. Nothing changes in your holdings unless you give your explicit consent.</p>
       </Section>
 

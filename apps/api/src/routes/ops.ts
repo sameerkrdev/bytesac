@@ -9,6 +9,7 @@ import {
   applicationNoteRequestSchema, decideMemberVerificationRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listMemberReviewQuerySchema, listOrganizationsQuerySchema,
   organizationNoteRequestSchema, payoutWalletDecisionRequestSchema, transferOwnershipRequestSchema, transitionApplicationRequestSchema, transitionOrganizationRequestSchema,
   versionDecisionRequestSchema, z,
+  createAssetTagRequestSchema, hideManagerProfileRequestSchema, listOpsManagerProfilesQuerySchema, type CreateAssetTagRequest, type HideManagerProfileRequest,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest,
   type ApplicationNoteRequest, type DecideMemberVerificationRequest, type GrantRoleRequest, type TransferOwnershipRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
   type TransitionApplicationRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
@@ -25,9 +26,10 @@ import {
 } from "../services/organization-review";
 import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
 import {
-  createAssetProvider, createDeployment, createInstrument, createIssuer, createRoute, createRule, getAssetForOps, listAssetProviders, listAssetsForOps, listIssuers, putPriceReference,
+  createAssetProvider, createAssetTag, listAssetTags, retireAssetTag, createDeployment, createInstrument, createIssuer, createRoute, createRule, getAssetForOps, listAssetProviders, listAssetsForOps, listIssuers, putPriceReference,
   recordNav, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
 } from "../services/assets";
+import { hideProfile, listProfilesForOps, unhideProfile } from "../services/manager-profiles";
 import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "../services/asset-review";
 import {
   createDisclosureTemplate, decideLead, decideRetirement, decideVersion as decideBasketVersion, getBasketForOps, listBasketsForOps, listDisclosureTemplates, platformPause, platformResume, platformRetire,
@@ -277,4 +279,28 @@ opsRouter.post("/disclosure-templates", requireRole("ops_admin"), validate({ bod
 
 opsRouter.post("/disclosure-templates/:id/retire", requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
   res.json(await retireDisclosureTemplate(ctx(req), req.params.id as string));
+});
+
+opsRouter.get("/asset-tags", reviewer, async (_req, res) => {
+  res.json(await listAssetTags());
+});
+
+opsRouter.post("/asset-tags", requireRole("ops_admin"), validate({ body: createAssetTagRequestSchema }), async (req, res) => {
+  res.status(201).json(await createAssetTag(ctx(req), req.body as CreateAssetTagRequest));
+});
+
+opsRouter.post("/asset-tags/:id/retire", requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
+  res.json(await retireAssetTag(ctx(req), req.params.id as string));
+});
+
+opsRouter.get("/manager-profiles", reviewer, async (req, res) => {
+  res.json(await listProfilesForOps(listOpsManagerProfilesQuerySchema.parse(req.query)));
+});
+
+opsRouter.post("/manager-profiles/:id/hide", reviewer, validate({ params: idParam, body: hideManagerProfileRequestSchema }), async (req, res) => {
+  res.json(await hideProfile(ctx(req), req.params.id as string, req.body as HideManagerProfileRequest));
+});
+
+opsRouter.post("/manager-profiles/:id/unhide", reviewer, validate({ params: idParam }), async (req, res) => {
+  res.json(await unhideProfile(ctx(req), req.params.id as string));
 });

@@ -17,3 +17,6 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
 
 /** 2550 -> "25.5%". */
 export const formatBps = (bps: number): string => `${bps / 100}%`;
+
+/** A decimal-string fraction as a percent: "0.1234" -> "12.34%" (with `signed`, "+12.34%"). */
+export const formatFraction = (f: string, signed = false): string => `${signed && Number(f) > 0 ? "+" : ""}${(Number(f) * 100).toFixed(2)}%`;

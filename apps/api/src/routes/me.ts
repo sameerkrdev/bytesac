@@ -2,13 +2,14 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { Router } from "express";
 import { contacts, db, investmentWallets, sessions, userPermissions, users } from "@repo/db";
-import { familyOf, z, type MeResponse, type SessionsResponse } from "@repo/validator";
+import { familyOf, managerProfileRequestSchema, z, type ManagerProfileRequest, type MeResponse, type SessionsResponse } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { writeAudit } from "../services/audit";
 import { contactView } from "../services/contacts";
 import { activeRoles } from "../services/platform-roles";
 import { listMyInvitations } from "../services/members";
+import { getOwnProfile, saveOwnProfile, setOwnProfilePublished } from "../services/manager-profiles";
 import { listMyOrganizations } from "../services/organizations";
 import { listActiveSessions, revokeSession } from "../services/sessions";
 import { addressesForWallet } from "../services/wallets";
@@ -68,3 +69,17 @@ meRouter.delete("/sessions/:id", validate({ params: z.object({ id: z.uuid() }) }
   });
   res.status(204).end();
 });
+
+meRouter.get("/manager-profile", async (req, res) => {
+  res.json(await getOwnProfile(req.auth!.userId));
+});
+
+meRouter.put("/manager-profile", validate({ body: managerProfileRequestSchema }), async (req, res) => {
+  res.json(await saveOwnProfile(req.auth!.userId, req.body as ManagerProfileRequest));
+});
+
+for (const action of ["publish", "unpublish"] as const) {
+  meRouter.post(`/manager-profile/${action}`, async (req, res) => {
+    res.json(await setOwnProfilePublished({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, requestId: req.ctx.requestId }, action === "publish"));
+  });
+}

@@ -1,13 +1,13 @@
 import createHttpError from "http-errors";
 import { alias } from "drizzle-orm/pg-core";
-import { and, desc, eq, exists, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import {
-  assetEvents, assetIssuers, assetProviders, db, eligibilityRules, executionRoutes, instrumentDeployments, instruments, isUniqueViolation, navObservations, priceReferences,
-  type DbOrTx, type Tx,
+  assetEvents, assetIssuers, assetProviders, assetTags, basketVersionAssets, baskets, db, eligibilityRules, executionRoutes, instrumentDeployments, instrumentTags, instruments, isUniqueViolation, navObservations,
+  priceReferences, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
   ASSET_CHAINS, RWA_ASSET_TYPES, createDeploymentRequestSchema,
-  type AssetChain, type AssetProviderRequest, type AssetListQuery, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest,
+  type AssetChain, type AssetTagView, type CreateAssetTagRequest, type ListAssetTagsResponse, type AssetProviderRequest, type AssetListQuery, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest,
   type IssuerRequest, type IssuerView, type NavEntryRequest, type OpsAssetDetail, type OpsAssetListResponse, type OpsAssetListQuery, type PublicAssetDetail, type PublicAssetListResponse, type PutPriceReferenceRequest,
   type TokenStandard, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
 } from "@repo/validator";
@@ -16,6 +16,7 @@ import { readTokenMetadata } from "../providers/evm-rpc";
 import { getMintDecimals } from "../providers/solana-rpc";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
+import { enqueue } from "../queues";
 import { getPrices } from "./pricing";
 import { canonicalizeAddress } from "./wallets";
 
@@ -135,7 +136,7 @@ export async function listAssetsForOps(q: OpsAssetListQuery): Promise<OpsAssetLi
 export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
   const [inst] = await db.select().from(instruments).where(eq(instruments.id, id));
   if (!inst) throw notFound("Asset");
-  const [deployments, routes, rules, refs, events, missing, prices] = await Promise.all([
+  const [deployments, routes, rules, refs, events, missing, prices, tags] = await Promise.all([
     db.select().from(instrumentDeployments).where(eq(instrumentDeployments.instrumentId, id)).orderBy(instrumentDeployments.createdAt, instrumentDeployments.id),
     db.select().from(executionRoutes).where(eq(executionRoutes.instrumentId, id)).orderBy(executionRoutes.createdAt, executionRoutes.id),
     db.select().from(eligibilityRules).where(eq(eligibilityRules.instrumentId, id)).orderBy(eligibilityRules.createdAt, eligibilityRules.id),
@@ -143,10 +144,13 @@ export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
     db.select().from(assetEvents).where(eq(assetEvents.instrumentId, id)).orderBy(assetEvents.createdAt, assetEvents.id),
     missingRequirements(db, id),
     getPrices([id]),
+    db.select({ id: assetTags.id, key: assetTags.key, label: assetTags.label }).from(instrumentTags).innerJoin(assetTags, eq(assetTags.id, instrumentTags.tagId))
+      .where(and(eq(instrumentTags.instrumentId, id), isNull(instrumentTags.removedAt))).orderBy(assetTags.key),
   ]);
   const navs = refs.length === 0 ? [] : await db.select().from(navObservations).where(inArray(navObservations.priceReferenceId, refs.map((r) => r.id))).orderBy(desc(navObservations.asOf), desc(navObservations.createdAt));
   return {
     id: inst.id, name: inst.name, symbol: inst.symbol, assetType: inst.assetType, description: inst.description, issuerId: inst.issuerId, riskNotes: inst.riskNotes, links: inst.links,
+    sector: inst.sector, tags,
     status: inst.status, createdByUserId: inst.createdByUserId, submittedByUserId: inst.submittedByUserId, decidedByUserId: inst.decidedByUserId,
     createdAt: inst.createdAt.toISOString(), updatedAt: inst.updatedAt.toISOString(),
     deployments: deployments.map((d) => ({ ...d, observedAt: iso(d.observedAt), createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() })),
@@ -218,14 +222,77 @@ export async function createInstrument(ctx: OpsCtx, body: CreateInstrumentReques
 }
 
 export async function updateInstrument(ctx: OpsCtx, id: string, body: UpdateInstrumentRequest): Promise<OpsAssetDetail> {
+  const { tagIds, ...fields } = body;
   await db.transaction(async (tx) => {
     const row = await lockEditable(tx, id);
     if (row.status !== "DRAFT" && row.status !== "CHANGES_REQUIRED" && ((body.assetType && body.assetType !== row.assetType) || (body.symbol && body.symbol !== row.symbol) || (body.issuerId === null && RWA_ASSET_TYPES.includes(row.assetType)))) throw invalid(LOCKED);
     await assertIssuer(tx, body.issuerId);
-    await tx.update(instruments).set({ ...body, updatedAt: sql`now()` }).where(eq(instruments.id, id));
-    await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "instrument", entityId: id, kind: "updated", metadata: { fields: Object.keys(body) } });
+    await tx.update(instruments).set({ ...fields, updatedAt: sql`now()` }).where(eq(instruments.id, id));
+    let tagChange: { added: string[]; removed: string[] } | undefined;
+    if (tagIds) {
+      // Tags are descriptive, so they change on a live instrument too: additions must be active tags, removals are timestamped (never deleted).
+      const wanted = new Set(tagIds);
+      const live = await tx.select({ tagId: instrumentTags.tagId }).from(instrumentTags).where(and(eq(instrumentTags.instrumentId, id), isNull(instrumentTags.removedAt)));
+      const liveIds = new Set(live.map((t) => t.tagId));
+      const added = [...wanted].filter((t) => !liveIds.has(t));
+      const removed = [...liveIds].filter((t) => !wanted.has(t));
+      if (added.length) {
+        const ok = await tx.select({ id: assetTags.id }).from(assetTags).where(and(inArray(assetTags.id, added), eq(assetTags.status, "active")));
+        if (ok.length !== added.length) throw notFound("Tag");
+        await tx.insert(instrumentTags).values(added.map((tagId) => ({ instrumentId: id, tagId, addedByUserId: ctx.userId })));
+      }
+      if (removed.length) await tx.update(instrumentTags).set({ removedAt: sql`now()` }).where(and(eq(instrumentTags.instrumentId, id), inArray(instrumentTags.tagId, removed), isNull(instrumentTags.removedAt)));
+      tagChange = { added, removed };
+    }
+    await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "instrument", entityId: id, kind: "updated", metadata: { fields: Object.keys(body), tags: tagChange, sector: body.sector } });
   });
+  if (body.sector || body.name || tagIds) await refreshBasketsHolding(id);
   return getAssetForOps(id);
+}
+
+/** Sector and tags feed the search index of every published basket that holds the instrument. */
+async function refreshBasketsHolding(instrumentId: string): Promise<void> {
+  const held = await db.selectDistinct({ basketId: baskets.id }).from(baskets)
+    .innerJoin(basketVersionAssets, and(eq(basketVersionAssets.versionId, baskets.currentVersionId), eq(basketVersionAssets.revision, sql`(select assets_revision from app.basket_versions where id = ${baskets.currentVersionId})`)))
+    .where(eq(basketVersionAssets.instrumentId, instrumentId));
+  for (const b of held) await enqueue("search-index-refresh", { basketId: b.basketId });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------------------------------------------------
+
+const tagView = (t: typeof assetTags.$inferSelect): AssetTagView => ({ id: t.id, key: t.key, label: t.label, status: t.status, createdAt: t.createdAt.toISOString(), retiredAt: iso(t.retiredAt) });
+
+export async function listAssetTags(): Promise<ListAssetTagsResponse> {
+  return { tags: (await db.select().from(assetTags).orderBy(assetTags.key)).map(tagView) };
+}
+
+export async function createAssetTag(ctx: OpsCtx, body: CreateAssetTagRequest): Promise<AssetTagView> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [t] = await tx.insert(assetTags).values({ ...body, createdByUserId: ctx.userId }).returning();
+      await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "asset_tag.created", entityType: "asset_tag", entityId: t!.id, requestId: ctx.meta.requestId, metadata: { key: body.key } });
+      return tagView(t!);
+    });
+  } catch (err) {
+    throw isUniqueViolation(err) ? createHttpError("That tag key already exists.", { code: "VALIDATION_FAILED" }) : err;
+  }
+}
+
+/** A retired tag can no longer be added; instruments keep it until ops remove it, and the search index stops listing it on the next refresh. */
+export async function retireAssetTag(ctx: OpsCtx, id: string): Promise<AssetTagView> {
+  const view = await db.transaction(async (tx) => {
+    const [t] = await tx.select().from(assetTags).where(eq(assetTags.id, id)).for("update");
+    if (!t) throw notFound("Tag");
+    if (t.status === "retired") return tagView(t);
+    const [updated] = await tx.update(assetTags).set({ status: "retired", retiredAt: sql`now()` }).where(eq(assetTags.id, id)).returning();
+    await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "asset_tag.retired", entityType: "asset_tag", entityId: id, requestId: ctx.meta.requestId, metadata: { key: t.key } });
+    return tagView(updated!);
+  });
+  const tagged = await db.selectDistinct({ instrumentId: instrumentTags.instrumentId }).from(instrumentTags).where(and(eq(instrumentTags.tagId, id), isNull(instrumentTags.removedAt)));
+  for (const t of tagged) await refreshBasketsHolding(t.instrumentId);
+  return view;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

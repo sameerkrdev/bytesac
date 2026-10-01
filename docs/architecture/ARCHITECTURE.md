@@ -68,7 +68,8 @@ Investor Web / Mobile                     Manager Web
 
  Durable state: PostgreSQL (Supabase-hosted; backend-only access, schema app)
  Sessions: backend-managed (sessions table)
- Cache/rate limits: Redis; scheduled DB jobs: pg_cron (ADR-006)
+ Cache/rate limits/queues: Redis; background jobs: BullMQ worker (ADR-006, ADR-012); retention: pg_cron
+ AI search: Google Gemini (query text only; optional)
  Files: Cloudflare R2
 ```
 
@@ -148,6 +149,14 @@ A user-level operation may contain multiple steps and transactions across chains
 - Update the ledger from verified evidence and retain discrepancies.
 - External wallet activity is observation, not proof of user intent to change basket attribution.
 
+### Discovery, performance and AI search
+Implemented in Spec 7 (ADR-012). Nothing invests or executes.
+- **Worker:** a BullMQ process (`apps/api/src/worker.ts`) runs `price-snapshot` (daily, CoinMarketCap USD per instrument), `basket-performance`, `search-index-refresh`, `embed-basket` and an embedding sweep; services enqueue after commit and swallow queue errors.
+- **Index:** `basket_search_index` is a derived, in-place table of listed baskets (exposures, tags, fees, review frequency, manager data, metrics, `tsvector`, `vector(768)`); structured search is one parameterized query over it, with filters carried by one `DiscoveryFilters` schema.
+- **Performance:** `computePerformanceDays` (BigInt fixed-point, buy-and-hold per version, fees on net only) writes `basket_performance_days`; `performanceMetrics` derives windows, volatility and drawdown; the public detail shows a downsampled series with the simulated-performance label.
+- **AI flow:** query, rate limits, Gemini forced call of `search_baskets` (validated arguments, public index only), then semantic (pgvector) and keyword fallbacks; the response carries the mode and the filters used, never Gemini text.
+- **Profiles:** opt-in manager profiles at `/managers/[handle]`; ops can hide; verification badge only from real verifications.
+
 ### Pricing and valuation
 Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind `getPrices`, batched, cached in Redis for 60 s and flagged stale after 5 minutes; a missing key or provider failure yields `unavailable`, never an error. Issuer NAV is entered by ops with history and returned as its own entry. There is no price history yet. Keep market price, indicative price, issuer NAV and executable quote distinct. Source priority, provider fallback and valuation freshness policy are still open (D-027). RWA prices and terms may require issuer-specific sources.
 
@@ -210,6 +219,7 @@ Names are indicative; align final names with existing migrations and implementat
 - `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
 - `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `member_verification_documents`, `membership_events`, `organization_payout_wallets`, `organization_events`
 - `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010)
+- `asset_tags`, `instrument_tags`, `manager_profiles`, `instrument_price_snapshots`, `basket_performance_days`, `basket_search_index` (derived; implemented in Spec 7, ADR-012; `instruments.sector`)
 - `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` (revisioned), `disclosure_templates`, `basket_version_disclosures` (revisioned), `basket_assignments`, `basket_reviews`, `basket_events` (implemented, ADR-011)
 - `user_portfolios`, `wallet_asset_balances`, `basket_positions`, `unassigned_positions`
 - `investment_operations`, `operation_steps`, `blockchain_transactions`, `provider_requests`
@@ -234,7 +244,8 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | Backend | Node.js + Express + TypeScript; flat `app.ts`/`server.ts`/`env.ts` with `middleware/`, `routes/`, `services/`, `providers/`; bundled with tsup |
 | Database | Supabase PostgreSQL |
 | ORM/migrations | Drizzle + Drizzle Kit, in `@repo/db` |
-| Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; `pg_cron` for scheduled database jobs (retention). No queue until one is needed |
+| Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; BullMQ (pinned) worker for Spec 7 jobs (price snapshots, performance, search index, embeddings); `pg_cron` for retention |
+| AI search | Google Gemini via `@google/genai` (pinned): forced function calling with one read-only tool, and text embeddings (768 dimensions) stored with pgvector; optional key, keyword search without it |
 | Wallet UX | Reown AppKit. Web: AppKit with Wagmi and Solana adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
 | Sessions | Backend-managed sessions table (not Supabase Auth) |
 | Validation | Zod (shared `@repo/validator` package) |
@@ -270,6 +281,7 @@ Current provider capabilities, supported chains, plan limits and commercial term
 - Maintain audit history for approvals, membership changes, basket versions and financial operations.
 - Client IP integrity: the web tier proxies `/api/*` to the API through a Next.js rewrite that neither sets nor sanitizes `X-Forwarded-For`. The edge/load balancer must overwrite (not append) `X-Forwarded-For` with the real client IP, and the API's `TRUST_PROXY` must trust only the Next server hop (private CIDR, or loopback when co-located). Otherwise per-IP rate limits and session `ip_prefix` are spoofable or global.
 - Mobile wallet connectors: Reown's Phantom and Solflare connectors persist their dapp keypair and session in AsyncStorage. This is not the Bytesac session token (which lives in the OS secure store), and every signature still requires explicit approval in the wallet app. Wallet-return deep links are consumed by the wallet SDK and must not drive app navigation.
+- Discovery needs the `vector` (pgvector) extension and a running worker with non-evicting Redis; Gemini terms and defaults must be verified before launch (ADR-012).
 - Retention depends on the `pg_cron` extension: enable it on Supabase (Dashboard, Database, Extensions) and monitor `cron.job_run_details`.
 - Apply least privilege, input validation, rate limits, monitoring, backups and restore drills.
 - Obtain jurisdiction-specific legal/compliance review for investment, custody, RWA distribution and fee models.

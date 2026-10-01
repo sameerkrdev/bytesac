@@ -31,6 +31,10 @@ export const limits = {
   publicProfileIp: limiter("public:org:ip", 60, 60),
   basketMutationUser: limiter("basket:mutate:user", 60, 60),
   publicBasketIp: limiter("public:basket:ip", 60, 60),
+  discoveryIp: limiter("public:discovery:ip", 60, 60),
+  aiSearchIp: limiter("ai:search:ip", 10, 60),
+  aiSearchIpDay: limiter("ai:search:ip:d", 100, 86_400),
+  aiSearchGlobalDay: limiter("ai:search:global:d", 5000, 86_400),
 };
 
 /** Takes one point for `key`; throws 429 RATE_LIMITED past the limit. Returns a function that gives the point back. */

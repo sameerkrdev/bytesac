@@ -7,3 +7,4 @@ export * from "./organizations";
 export * from "./members";
 export * from "./assets";
 export * from "./baskets";
+export * from "./discovery";

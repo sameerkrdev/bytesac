@@ -17,7 +17,7 @@ export const deployment = (over: Partial<OpsAssetDetail["deployments"][number]> 
 });
 
 export const asset = (over: Partial<OpsAssetDetail> = {}): OpsAssetDetail => ({
-  id: ASSET_ID, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", description: null, issuerId: null, riskNotes: null, links: [], status: "DRAFT",
+  id: ASSET_ID, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", description: null, issuerId: null, riskNotes: null, links: [], sector: "other", tags: [], status: "DRAFT",
   createdByUserId: SUBMITTER, submittedByUserId: null, decidedByUserId: null, createdAt: T, updatedAt: T,
   deployments: [deployment()], routes: [], rules: [], priceReferences: [], navObservations: [], events: [], missing: [], prices: [], ...over,
 });
@@ -32,6 +32,7 @@ const provider: AssetProviderView = { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4f11"
 
 /** Lookup lists the editor sections load; tests override the calls they care about. */
 export const lookups = () => ({
+  opsListAssetTags: vi.fn().mockResolvedValue({ tags: [] }),
   opsListAssetIssuers: vi.fn().mockResolvedValue([issuer]),
   opsCreateAssetIssuer: vi.fn(),
   opsListAssetProviders: vi.fn().mockResolvedValue([provider]),

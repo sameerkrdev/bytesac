@@ -1,4 +1,4 @@
-import type { AssignmentFlag, BasketCategory, BasketIssueCode, BasketSection, BasketStatus, BasketVersionStatus, BasketAssignmentView } from "@repo/validator";
+import type { AssignmentFlag, InstrumentSector, BasketCategory, BasketIssueCode, BasketSection, BasketStatus, BasketVersionStatus, BasketAssignmentView } from "@repo/validator";
 
 type Tone = "success" | "warning" | "danger" | "neutral";
 type Label = { label: string; tone: Tone };
@@ -58,3 +58,11 @@ export const BASKET_ISSUE_LABEL: Record<BasketIssueCode, string> = {
   MANAGER_ASSIGNMENT_REQUIRED: "Lead manager needed",
   REBALANCE_RATIONALE_REQUIRED: "Explain this version",
 };
+
+export const SECTOR_LABEL: Record<InstrumentSector, string> = {
+  store_of_value: "Store of value", smart_contract_platform: "Smart-contract platforms", layer2: "Layer 2", defi: "DeFi", stablecoin: "Stablecoins", oracle_infra: "Oracles and infrastructure",
+  gaming_metaverse: "Gaming and metaverse", ai_data: "AI and data", meme: "Memecoins", rwa_treasury: "Tokenized treasuries", rwa_credit: "Tokenized credit", rwa_commodity: "Tokenized commodities",
+  rwa_equity: "Tokenized equities", other: "Other",
+};
+
+export const REVIEW_FREQUENCY_LABEL = { none: "No scheduled review", monthly: "Reviewed monthly", quarterly: "Reviewed quarterly" } as const;

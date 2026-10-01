@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, createApiClient } from "./index";
+import { ApiError, createApiClient, decodeDiscoveryFilters, encodeDiscoveryFilters } from "./index";
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
@@ -82,5 +82,15 @@ describe("api client", () => {
     const f = vi.fn(async () => jsonResponse(200, { nope: true }));
     const api = createApiClient({ baseUrl: "", transport: { kind: "cookie" }, fetch: f });
     await expect(api.me()).rejects.toMatchObject({ code: "INTERNAL" });
+  });
+});
+
+describe("discovery filters in the URL", () => {
+  it("round-trips exactly, including non-ASCII text, and ignores anything invalid", () => {
+    const f = { q: "stablecoin é", assets: [{ symbol: "SOL", minBps: 100 }], sort: "newest" as const };
+    expect(decodeDiscoveryFilters(encodeDiscoveryFilters(f))).toEqual(f);
+    expect(decodeDiscoveryFilters("%%%")).toEqual({});
+    expect(decodeDiscoveryFilters(encodeDiscoveryFilters({ sort: "bogus" } as never))).toEqual({});
+    expect(decodeDiscoveryFilters(undefined)).toEqual({});
   });
 });

@@ -1,11 +1,10 @@
-import type { PublicBasketDetail } from "@repo/validator";
+import { PERFORMANCE_LABEL, type PublicBasketDetail } from "@repo/validator";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ETH, SOL, emptyDiff } from "./org-fixtures";
 
 const permanentRedirect = vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT ${path}`); });
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, permanentRedirect: (p: string) => permanentRedirect(p) }));
-import PublicBasketsPage from "@/app/baskets/page";
 import PublicBasketPage from "@/app/baskets/[slug]/page";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -13,7 +12,10 @@ const T = "2026-09-30T00:00:00.000Z";
 const serve = (body: unknown, status = 200) => vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status })));
 
 const price = { instrumentId: SOL, kind: "market", status: "ok", value: "150.25", currency: "USD", source: "cmc", observedAt: T, stale: false } as const;
+const NO_WINDOWS = { sinceLaunch: null, d30: null, d90: null, y1: null };
 const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => ({
+  performance: { available: false, dataDays: 0, series: [] }, metrics: { available: false, dataDays: 0, net: NO_WINDOWS, gross: NO_WINDOWS, volatility: null, maxDrawdown: null },
+  sectors: [], tags: [], label: PERFORMANCE_LABEL,
   slug: "core-crypto", status: "ACTIVE", hasAssetWarning: false, organization: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: "Ada Capital" },
   version: {
     versionNumber: 2, publishedAt: T, name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "A <b>bold</b> thesis", methodology: null,
@@ -27,7 +29,7 @@ const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => (
   ],
   disclosures: [{ title: "No guarantee", body: "Nothing is guaranteed." }],
   versionHistory: [{ versionNumber: 2, publishedAt: T, rationale: "Rebalanced", diff: { ...emptyDiff, changed: [{ instrumentId: SOL, fromBps: 5000, toBps: 6000 }] } }, { versionNumber: 1, publishedAt: T, rationale: null, diff: emptyDiff }],
-  managers: [{ displayName: "Olga Ivanova", role: "lead", from: T, to: null }, { displayName: "Max Former", role: "co_manager", from: T, to: "2026-09-30T12:00:00.000Z" }],
+  managers: [{ displayName: "Olga Ivanova", handle: null, role: "lead", from: T, to: null }, { displayName: "Max Former", handle: null, role: "co_manager", from: T, to: "2026-09-30T12:00:00.000Z" }],
   ...over,
 });
 const page = async (slug = "core-crypto") => render(await PublicBasketPage({ params: Promise.resolve({ slug }) }));
@@ -88,16 +90,5 @@ describe("Public basket page", () => {
   it("404s an unknown slug", async () => {
     serve({}, 404);
     await expect(page("nope")).rejects.toThrow("NEXT_NOT_FOUND");
-  });
-});
-
-describe("Public basket list", () => {
-  it("shows cards and a Load more link when there is a next page", async () => {
-    serve({ items: [{ slug: "core-crypto", name: "Core Crypto", shortDescription: "Two assets", organizationName: "Ada Capital", category: "multi_asset", assetCount: 2, minimumInvestmentUsdc: "100", status: "PAUSED", publishedAt: T }], nextCursor: "abc" });
-    render(await PublicBasketsPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole("link", { name: "Core Crypto" })).toHaveAttribute("href", "/baskets/core-crypto");
-    expect(screen.getByText(/2 assets · minimum 100 USDC/)).toBeInTheDocument();
-    expect(screen.getByText("Paused")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Load more" })).toHaveAttribute("href", "/baskets?cursor=abc");
   });
 });

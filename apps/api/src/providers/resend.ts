@@ -105,3 +105,17 @@ export async function sendBasketEmail(kind: BasketEmailKind, to: string, data: B
   const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...BASKET_EMAILS[kind](data) }, { idempotencyKey });
   if (error) logger.warn("basket email failed", { kind, errorName: error.name });
 }
+
+export type ProfileEmailKind = "hidden" | "unhidden";
+export interface ProfileEmailData { message?: string | null }
+
+const PROFILE_EMAILS: Record<ProfileEmailKind, (d: ProfileEmailData) => { subject: string; text: string }> = {
+  hidden: (d) => ({ subject: "Bytesac manager profile hidden", text: `Your public manager profile was hidden by the Bytesac team and can no longer be published by you.${withMessage(d.message)}` }),
+  unhidden: () => ({ subject: "Bytesac manager profile restored", text: "Your manager profile was restored by the Bytesac team. It stays unpublished until you publish it again." }),
+};
+
+/** Sends a manager-profile email. Failures only log: a moderation change never rolls back for an undelivered notice. */
+export async function sendProfileEmail(kind: ProfileEmailKind, to: string, data: ProfileEmailData, idempotencyKey: string): Promise<void> {
+  const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...PROFILE_EMAILS[kind](data) }, { idempotencyKey });
+  if (error) logger.warn("profile email failed", { kind, errorName: error.name });
+}

@@ -9,14 +9,14 @@ import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import { OpsError } from "../ops-error";
 import { AssetDeployments } from "./asset-deployments";
-import { AssetDetailsForm } from "./asset-form";
+import { AssetClassification, AssetDetailsForm } from "./asset-form";
 import { AssetPricing } from "./asset-pricing";
 import { AssetReviewPanel } from "./asset-review-panel";
 import { AssetRoutes } from "./asset-routes";
 import { AssetRules } from "./asset-rules";
 
 type Client = Pick<ApiClient,
-  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction"
+  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetTags" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction"
   | "opsCreateRoute" | "opsUpdateRoute" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets" | "opsCreateRule" | "opsUpdateRule"
   | "opsPutPriceReference" | "opsRecordNav" | "opsSubmitAsset" | "opsDecideAsset" | "opsAssetAction">;
 
@@ -47,6 +47,7 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
         {a.status === "UNDER_REVIEW" && <p role="status" className="text-sm text-stone">This asset is under review and read-only until a decision is made.</p>}
       </div>
       <AssetDetailsForm {...p} />
+      <AssetClassification {...p} />
       <AssetDeployments {...p} />
       <AssetRoutes {...p} />
       <AssetRules {...p} />
