@@ -5,6 +5,7 @@ import bs58 from "bs58";
 import { vi } from "vitest";
 import * as bitcoin from "../../src/providers/bitcoin";
 import { lifi } from "../../src/providers/routes/lifi";
+import type { LegStatus } from "../../src/providers/routes/types";
 import * as solanaTx from "../../src/providers/solana-tx";
 import { fakes } from "../helpers/fakes";
 import { bitcoinWallet } from "./helpers";
@@ -27,7 +28,9 @@ export interface ChainState {
   solanaReceived: Map<string, bigint>;
   bitcoinTxs: Map<string, { confirmations: number; outputs: { address: string | null; value: bigint }[] }>;
   /** LI.FI status answers per source tx hash; unlisted = PENDING. */
-  lifiStatus: Map<string, { state: "PENDING" } | { state: "DONE"; destinationTx: string | null } | { state: "FAILED"; reason: string } | { state: "UNKNOWN"; reason: string }>;
+  lifiStatus: Map<string, LegStatus>;
+  /** Balance-free estimates asked for (rebalance buys, balance-refused quotes). */
+  estimates: Array<{ fromChain: string; toChain: string; fromAmount: bigint; fromToken: string | null; toToken: string | null }>;
   quotes: Array<{ fromChain: string; toChain: string; fromAmount: bigint; toAddress: string; svmSponsor?: string }>;
   /** Overrides applied to the next fresh quotes: scale the output (price move) or add gas. */
   quoteOut: { numerator: bigint; denominator: bigint };
@@ -55,7 +58,7 @@ export function btcPsbt(refund: string, sats: bigint, over: { depositSats?: bigi
 
 /** Installs spies on every network-facing function the operations use. Call in `beforeEach`; `vi.restoreAllMocks()` undoes it. */
 export function mockChains(): ChainState {
-  const state: ChainState = { balances: new Map(), solanaFinality: new Map(), solanaReceived: new Map(), bitcoinTxs: new Map(), lifiStatus: new Map(), quotes: [], broadcasts: [], quoteOut: { numerator: 1n, denominator: 1n }, tokenAccounts: new Set() };
+  const state: ChainState = { balances: new Map(), solanaFinality: new Map(), solanaReceived: new Map(), bitcoinTxs: new Map(), lifiStatus: new Map(), estimates: [], quotes: [], broadcasts: [], quoteOut: { numerator: 1n, denominator: 1n }, tokenAccounts: new Set() };
   // The platform wallets are funded unless a test says otherwise.
   state.balances.set(balanceKey(solanaTx.feePayer().publicKey.toBase58(), null), 10n ** 12n);
   fakes.evm.balances.set(`ethereum:${fakes.evm.gasWalletAddress()}`, 10n ** 20n);
@@ -71,10 +74,15 @@ export function mockChains(): ChainState {
   vi.spyOn(bitcoin, "broadcastBitcoin").mockImplementation(async (hex) => { state.broadcasts.push(hex); return "broadcast"; });
   vi.spyOn(lifi, "connections").mockResolvedValue(true);
   vi.spyOn(lifi, "status").mockImplementation(async ({ txHash }) => state.lifiStatus.get(txHash) ?? { state: "PENDING" });
+  vi.spyOn(lifi, "estimate").mockImplementation(async (i) => {
+    state.estimates.push({ fromChain: i.fromChain, toChain: i.toChain, fromAmount: i.fromAmount, fromToken: i.fromToken, toToken: i.toToken });
+    const out = (i.fromAmount * state.quoteOut.numerator) / state.quoteOut.denominator;
+    return { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", transaction: null, gasEstimateUsd: 0.05, gasNative: 5_000n, nativePriceUsd: null, priceImpact: null, routeFees: [] };
+  });
   vi.spyOn(lifi, "quote").mockImplementation(async (i) => {
     state.quotes.push({ fromChain: i.fromChain, toChain: i.toChain, fromAmount: i.fromAmount, toAddress: i.toAddress, svmSponsor: i.svmSponsor });
     const out = (i.fromAmount * state.quoteOut.numerator) / state.quoteOut.denominator;
-    const base = { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", gasEstimateUsd: 0.05, nativePriceUsd: null, expiresAt: new Date(Date.now() + 60_000), approvalAddress: null };
+    const base = { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", gasEstimateUsd: 0.05, nativePriceUsd: null, priceImpact: null, routeFees: [], expiresAt: new Date(Date.now() + 60_000), approvalAddress: null };
     if (i.fromChain === "solana") {
       const tx = new VersionedTransaction(new TransactionMessage({
         payerKey: solanaTx.feePayer().publicKey, recentBlockhash: BLOCKHASH,

@@ -134,6 +134,17 @@ export const legSchema = z.object({
   sourceTx: z.string().nullable(),
   destinationTx: z.string().nullable(),
   failureReason: z.string().nullable(),
+  /** LI.FI route fees and price impact from the plan (null on a leg without a route, such as the network fee). */
+  priceImpact: z.number().nullable(),
+  routeFees: z.array(z.object({ name: z.string(), amountUsd: z.number(), included: z.boolean() })),
+  /** LI.FI substatus of the transfer (for example PARTIAL, REFUNDED, NOT_PROCESSABLE_REFUND_NEEDED), from the last status check. */
+  providerSubstatus: z.string().nullable(),
+  /** Set on a recovery leg: the leg whose destination swap failed. */
+  recoveryOf: z.uuid().nullable(),
+  /** Set on a leg that failed with DESTINATION_SWAP_FAILED: the token that arrived instead (amount from chain evidence). */
+  recoveryToken: z.object({ chain: assetChainSchema, address: z.string().nullable(), decimals: z.number().int(), symbol: z.string(), amount: z.string() }).nullable(),
+  /** The leg touches a deployment ops flagged as fee-on-transfer: the received amount can be below the quote. */
+  feeOnTransfer: z.boolean(),
 });
 export type Leg = z.infer<typeof legSchema>;
 
@@ -208,3 +219,8 @@ export const legQuoteResponseSchema = z.object({
   gasDrop: z.object({ status: z.enum(["pending", "confirmed", "failed", "skipped"]), txHash: z.string().nullable() }).nullable(),
 });
 export type LegQuoteResponse = z.infer<typeof legQuoteResponseSchema>;
+
+/** Ops route policy: a LI.FI bridge or exchange (`/v1/tools` key) denied on every estimate and quote until allowed again. */
+export const ROUTE_TOOL_KINDS = ["bridge", "exchange"] as const;
+export const routePolicyInputSchema = z.object({ kind: z.enum(ROUTE_TOOL_KINDS), toolKey: z.string().trim().min(1).max(100), reason: z.string().trim().min(1).max(500) });
+export type RoutePolicyInput = z.infer<typeof routePolicyInputSchema>;

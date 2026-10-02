@@ -52,6 +52,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   DATA_STALE: { title: "Balances out of date", message: "We couldn't confirm your balances or prices right now. Try again in a moment.", recovery: "retry" },
   REPAIR_REQUIRED: { title: "Wallet holdings changed", message: "Your wallet holds less than this basket records. Buy back the difference or update your baskets first.", recovery: "fix-input" },
   SHORTFALL_CHANGED: { title: "Holdings changed again", message: "Your wallet changed while you were editing. Review the new figures and save again.", recovery: "retry" },
+  SOL_REQUIRED: { title: "SOL needed", message: "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", recovery: "retry" },
   VERSION_NOT_CURRENT: { title: "A newer version is available", message: "The basket was updated. Review the latest version instead.", recovery: "restart" },
   DOCUMENT_REJECTED: { title: "File not accepted", message: "Upload a PDF, JPEG or PNG up to 10 MB.", recovery: "fix-input" },
   INTERNAL: { title: "Something went wrong", message: "Try again. If it keeps happening, contact support.", recovery: "retry" },

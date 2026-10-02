@@ -60,9 +60,9 @@ export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
 /** Used for the rent estimate only when LI.FI's gas costs carry no native token price. */
 export const SOL_USD_FALLBACK = 150;
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
-const LAMPORTS_PER_SIGNATURE = 5_000n;
+export const LAMPORTS_PER_SIGNATURE = 5_000n;
 /** Priority fee the platform will pay for one transaction (price x limit), the instruction and static-account counts it accepts. */
-const MAX_PRIORITY_LAMPORTS = 1_000_000n;
+export const MAX_PRIORITY_LAMPORTS = 1_000_000n;
 const MAX_INSTRUCTIONS = 24;
 const MAX_STATIC_ACCOUNTS = 64;
 

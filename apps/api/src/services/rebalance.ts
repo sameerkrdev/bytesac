@@ -150,6 +150,8 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     const buyConstituents = plan.buys.map((b) => inv.constituents.find((c) => c.deployment.id === b.deploymentId)!);
     const buyQuotes = await Promise.all(plan.buys.map((b, n) => planQuote({
       fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: b.chain, toToken: buyConstituents[n]!.deployment.address, amount: b.amountMicro, slippageBps: body.slippageBps, addresses,
+      // Funded by sale proceeds that are not in the wallet yet: LI.FI's balance-free estimate, never a quote (execution takes a real quote per leg).
+      estimate: true,
     })));
     const sellCosts = sellQuotes.map((q, n) => (sells[n]!.chain === "solana" ? sponsoredCost(q) : { lamports: 0n, usd: q.gasEstimateUsd }));
     const buyCosts = buyQuotes.map(sponsoredCost);
@@ -186,7 +188,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
       gas.set("solana", gas.get("solana")! + buyCosts[n]!.lamports);
       legs.push({
         kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id, amountIn: b.amountMicro,
-        minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: buyQuotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, planned: true },
+        minOut: (buyQuotes[n]!.minOut * b.amountMicro) / plan.buys[n]!.amountMicro, routeSummary: { tool: buyQuotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, planned: true, routeFees: buyQuotes[n]!.routeFees, priceImpact: buyQuotes[n]!.priceImpact },
         expectedTx: null, gasPayer: "platform_fee_payer",
       });
     }
@@ -243,7 +245,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
       { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" },
       {
         kind: d.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: d.chain, toDeploymentId: body.deploymentId, amountIn: buy, minOut: minOut(q.estimatedOut, body.slippageBps),
-        routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals }, expectedTx: null, gasPayer: "platform_fee_payer",
+        routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact }, expectedTx: null, gasPayer: "platform_fee_payer",
       },
     ];
     const id = await insertPlan(ctx, {

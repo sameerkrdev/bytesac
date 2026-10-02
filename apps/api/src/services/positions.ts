@@ -181,6 +181,10 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
   let destinationTx = sourceTx;
   if (leg.fromChain !== leg.toChain) {
     const status = await routeProviderById(leg.provider ?? "")!.status({ txHash: sourceTx, fromChain: leg.fromChain, toChain: leg.toChain });
+    if (status.substatus && status.substatus !== leg.providerSubstatus) {
+      await db.update(operationLegs).set({ providerSubstatus: status.substatus }).where(eq(operationLegs.id, leg.id));
+      leg = { ...leg, providerSubstatus: status.substatus };
+    }
     if (status.state === "FAILED") return fail(`The route failed: ${status.reason}.`);
     if (status.state === "UNKNOWN") return goUnknown();
     if (status.state === "PENDING") return notFinal();

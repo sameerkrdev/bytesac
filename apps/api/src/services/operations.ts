@@ -13,9 +13,10 @@ import { env } from "../env";
 import { bitcoinBalance, broadcastBitcoin, checkPsbt, expectedBtcTx, finalizePsbt, maxBtcMinerFee, psbtInputs, type PsbtInput, type PsbtOutput } from "../providers/bitcoin";
 import { evmBalance, evmTransaction } from "../providers/evm-rpc";
 import { routeProviderById } from "../providers/routes";
-import type { LegQuote } from "../providers/routes/types";
+import { isBuildRefusal } from "../providers/routes/lifi";
+import type { LegEstimate, LegQuote, RouteFee } from "../providers/routes/types";
 import { SendTransactionError } from "@solana/web3.js";
-import { SOL_USD_FALLBACK, buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure } from "../providers/solana-tx";
+import { LAMPORTS_PER_SIGNATURE, MAX_PRIORITY_LAMPORTS, SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure } from "../providers/solana-tx";
 import type { RequestMeta } from "../middleware/request-context";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
@@ -25,6 +26,7 @@ import { notify } from "./notifications";
 import { orgDisplayName } from "./members";
 import { planFees, type PlannedFee } from "./fees";
 import { getPrices, priceToMicro } from "./pricing";
+import { routeDenyList } from "./routing";
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
 type Op = typeof operations.$inferSelect;
@@ -61,6 +63,7 @@ export function addressOn(addresses: Addresses, chain: AssetChain): string {
 
 export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> {
   const legs = await db.select().from(operationLegs).where(eq(operationLegs.operationId, op.id)).orderBy(asc(operationLegs.sequence));
+  const flagged = new Set((await db.select({ id: instrumentDeployments.id }).from(instrumentDeployments).where(and(eq(instrumentDeployments.feeOnTransfer, true), inArray(instrumentDeployments.id, legs.flatMap((l) => [l.fromDeploymentId, l.toDeploymentId]).filter((d): d is string => !!d))))).map((d) => d.id));
   const fees = await db.select({ f: operationFees, org: orgDisplayName }).from(operationFees).leftJoin(organizations, eq(organizations.id, operationFees.organizationId))
     .where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFees.createdAt), asc(operationFees.id));
   return {
@@ -72,6 +75,8 @@ export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> 
       recipientLabel: f.kind === "network" ? "Bytesac (network)" : f.kind === "platform" ? "Bytesac (platform)" : (org ?? "Organization"),
     })) : [{ kind: "network" as const, amountMicro: op.networkFeeUsdc, waivedReason: null, recipientLabel: "Bytesac (network)" }],
     legs: legs.map((l) => ({
+      priceImpact: typeof l.routeSummary?.priceImpact === "number" ? l.routeSummary.priceImpact : null, routeFees: (l.routeSummary?.routeFees ?? []) as RouteFee[],
+      providerSubstatus: l.providerSubstatus, recoveryOf: l.recoveryOf, recoveryToken: l.recoveryToken, feeOnTransfer: [l.fromDeploymentId, l.toDeploymentId].some((d) => d && flagged.has(d)),
       id: l.id, sequence: l.sequence, kind: l.kind, status: l.status, fromChain: l.fromChain, toChain: l.toChain, fromDeploymentId: l.fromDeploymentId, toDeploymentId: l.toDeploymentId,
       amountIn: l.amountIn, minOut: l.minOut, amountReceived: l.amountReceived, provider: l.provider, routeSummary: l.routeSummary, quoteExpiresAt: l.quoteExpiresAt?.toISOString() ?? null,
       gasPayer: l.gasPayer, sourceTx: l.sourceTx, destinationTx: l.destinationTx, failureReason: l.failureReason,
@@ -208,22 +213,37 @@ export interface LegDraft {
 
 export const gasPayerFor = (chain: AssetChain): Leg["gasPayer"] => (chain === "solana" ? "platform_fee_payer" : chain === "bitcoin" ? "user_btc_inputs" : "platform_gas_drop");
 
-/** One quote per asset leg is taken at plan time only to estimate gas and outputs; quotes that are signed are fetched later, per leg. */
-export async function planQuote(i: { fromChain: AssetChain; fromToken: string | null; toChain: AssetChain; toToken: string | null; amount: bigint; slippageBps: number; addresses: Addresses }): Promise<LegQuote> {
+/** What a plan holds per leg: a quote (a built transaction) or an estimate (no transaction, no funded wallet needed). */
+export type PlanQuote = LegQuote | LegEstimate;
+
+/**
+ * One quote per asset leg is taken at plan time only to estimate gas and outputs; quotes that are signed are fetched later, per leg. `estimate`: the wallet
+ * does not hold the funds yet (a rebalance buy paid from sale proceeds), so LI.FI's balance-free route estimate is used. A quote LI.FI refuses because it
+ * cannot build the transaction for this wallet (code 1001) falls back to an estimate as well.
+ */
+export async function planQuote(i: { fromChain: AssetChain; fromToken: string | null; toChain: AssetChain; toToken: string | null; amount: bigint; slippageBps: number; addresses: Addresses; estimate?: boolean }): Promise<PlanQuote> {
   const provider = routeProviderById(env.ROUTE_PROVIDER_ORDER[0]!)!;
-  return provider.quote({
-    fromChain: i.fromChain, fromToken: i.fromToken, toChain: i.toChain, toToken: i.toToken, fromAmount: i.amount, slippageBps: i.slippageBps,
-    fromAddress: addressOn(i.addresses, i.fromChain), toAddress: addressOn(i.addresses, i.toChain),
-    svmSponsor: i.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,
-  });
+  const toAddress = addressOn(i.addresses, i.toChain);
+  const trade = { fromChain: i.fromChain, fromToken: i.fromToken, toChain: i.toChain, toToken: i.toToken, fromAmount: i.amount, slippageBps: i.slippageBps, toAddress, deny: await routeDenyList(i.toChain, toAddress) };
+  if (i.estimate) return provider.estimate(trade);
+  try {
+    return await provider.quote({ ...trade, fromAddress: addressOn(i.addresses, i.fromChain), svmSponsor: i.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined });
+  } catch (err) {
+    if (!isBuildRefusal(err)) throw err;
+    return provider.estimate(trade);
+  }
 }
+
+/** Without a built transaction (an estimate) the platform exposure per Solana-source leg is bounded by its caps: one signature, the priority-fee ceiling and one token account's rent. */
+const ESTIMATE_EXPOSURE_LAMPORTS = LAMPORTS_PER_SIGNATURE + MAX_PRIORITY_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS;
 
 /**
  * What a Solana-source leg costs the platform: the decoded fee-payer exposure (signatures, priority fee, token-account rent) or LI.FI's own estimate if
  * higher, and the gas estimate in USD with the rent added on top (it is not known whether LI.FI's figure includes it). Refuses an unsponsorable transaction.
+ * An estimate carries no transaction: the conservative exposure above stands in (D-072 keeps its bound).
  */
-export function sponsoredCost(q: LegQuote): { lamports: bigint; usd: number } {
-  const e = sponsorExposure((q.transaction as { serializedBase64: string }).serializedBase64);
+export function sponsoredCost(q: PlanQuote): { lamports: bigint; usd: number } {
+  const e = q.transaction ? sponsorExposure((q.transaction as { serializedBase64: string }).serializedBase64) : { lamports: ESTIMATE_EXPOSURE_LAMPORTS, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS };
   return { lamports: e.lamports > q.gasNative ? e.lamports : q.gasNative, usd: q.gasEstimateUsd + (Number(e.rentLamports) / 1e9) * (q.nativePriceUsd ?? SOL_USD_FALLBACK) };
 }
 
@@ -315,7 +335,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
     solanaGas += costs[n]!.lamports;
     legs.push({
       kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id,
-      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals }, expectedTx: null, gasPayer: "platform_fee_payer",
+      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: null, gasPayer: "platform_fee_payer",
     });
   });
 
@@ -328,7 +348,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
 
 /** A sell leg (asset to USDC on Solana) with its gas reservation added to `gas`. Shared by sell and rebalance plans. */
 export function sellLeg(
-  s: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }, q: LegQuote, cost: { lamports: bigint }, slippageBps: number, gas: Map<AssetChain, bigint>,
+  s: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }, q: PlanQuote, cost: { lamports: bigint }, slippageBps: number, gas: Map<AssetChain, bigint>,
 ): LegDraft {
   const payer = gasPayerFor(s.chain);
   // EVM sells: the planned drop is reserved with the plan; `sendGasDrop` later sends exactly this amount. Estimate x 1.5, and x 2 when an ERC-20
@@ -338,7 +358,7 @@ export function sellLeg(
   gas.set(gasChain, (gas.get(gasChain) ?? 0n) + (payer === "platform_gas_drop" ? drop : payer === "platform_fee_payer" ? cost.lamports : 0n));
   return {
     kind: s.chain === "solana" ? "swap" : "cross_chain", fromChain: s.chain, fromDeploymentId: s.deploymentId, toChain: "solana", toDeploymentId: null, amountIn: s.quantity,
-    minOut: minOut(q.estimatedOut, slippageBps), routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol, decimals: s.decimals },
+    minOut: minOut(q.estimatedOut, slippageBps), routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol, decimals: s.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact },
     expectedTx: payer === "platform_gas_drop" ? { gasReserved: true, gasDropNative: drop.toString() } : null, gasPayer: payer,
   };
 }
@@ -512,10 +532,11 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     fromChain: leg.fromChain, fromToken: from ? from.address : USDC_SOLANA_MINT, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, fromAmount: BigInt(leg.amountIn),
     slippageBps: op.slippageBps, fromAddress: addressOn(addresses, leg.fromChain), toAddress: addressOn(addresses, leg.toChain),
     svmSponsor: leg.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,
+    deny: await routeDenyList(leg.toChain, addressOn(addresses, leg.toChain)),
   });
   // The plan's minimum is what the user agreed to: a fresh quote that returns less means the price moved, and a new plan (and consent) is needed.
   if (leg.minOut !== null && q.minOut < BigInt(leg.minOut)) throw createHttpError(409, "The price moved since the plan was made. Plan again.", { code: "PRICE_MOVED", details: { plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() } });
-  const base = { routeSummary: { ...(leg.routeSummary ?? {}), tool: q.toolSummary } };
+  const base = { routeSummary: { ...(leg.routeSummary ?? {}), tool: q.toolSummary, routeFees: q.routeFees, priceImpact: q.priceImpact } };
   if (q.transaction.kind === "solana") {
     sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent
     await save({ ...base, builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash });

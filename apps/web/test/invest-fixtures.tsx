@@ -15,7 +15,8 @@ export const me = (): MeResponse => ({
 /** The network-fee leg (Solana, USDC transfer to the platform). */
 export const feeLeg = (o: Partial<Leg> = {}): Leg => ({
   id: ID(10), sequence: 1, kind: "network_fee", status: "PLANNED", fromChain: "solana", toChain: "solana", fromDeploymentId: null, toDeploymentId: null, amountIn: "70000", minOut: null,
-  amountReceived: null, provider: null, routeSummary: null, quoteExpiresAt: null, gasPayer: "platform_fee_payer", sourceTx: null, destinationTx: null, failureReason: null, ...o,
+  amountReceived: null, provider: null, routeSummary: null, quoteExpiresAt: null, gasPayer: "platform_fee_payer", sourceTx: null, destinationTx: null, failureReason: null,
+  priceImpact: null, routeFees: [], providerSubstatus: null, recoveryOf: null, recoveryToken: null, feeOnTransfer: false, ...o,
 });
 
 /** A buy leg: USDC on Solana to an asset on another chain. */

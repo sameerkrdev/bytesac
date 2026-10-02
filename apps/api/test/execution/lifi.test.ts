@@ -109,10 +109,10 @@ describe("lifi status", () => {
     expect(await status({ status: "PENDING" })).toEqual({ state: "PENDING" });
     expect(await status({ status: "NOT_FOUND" })).toEqual({ state: "PENDING" });
     // the amount LI.FI reports is deliberately not surfaced: what arrived is read from the chain
-    expect(await status({ status: "DONE", substatus: "COMPLETED", receiving: { txHash: "0xdest", amount: "123" } })).toEqual({ state: "DONE", destinationTx: "0xdest" });
-    expect(await status({ status: "DONE", substatus: "PARTIAL" })).toEqual({ state: "UNKNOWN", reason: expect.any(String) }); // a different token was delivered: funds moved, never written off
-    expect(await status({ status: "DONE", substatus: "REFUNDED" })).toEqual({ state: "FAILED", reason: "REFUNDED" });
-    expect(await status({ status: "FAILED", substatus: "OUT_OF_GAS" })).toEqual({ state: "FAILED", reason: "OUT_OF_GAS" });
+    expect(await status({ status: "DONE", substatus: "COMPLETED", receiving: { txHash: "0xdest", amount: "123" } })).toEqual({ state: "DONE", destinationTx: "0xdest", substatus: "COMPLETED" });
+    expect(await status({ status: "DONE", substatus: "PARTIAL" })).toMatchObject({ state: "UNKNOWN", reason: expect.any(String), substatus: "PARTIAL" }); // a different token was delivered: funds moved, never written off
+    expect(await status({ status: "DONE", substatus: "REFUNDED" })).toEqual({ state: "FAILED", reason: "REFUNDED", substatus: "REFUNDED" });
+    expect(await status({ status: "FAILED", substatus: "OUT_OF_GAS" })).toEqual({ state: "FAILED", reason: "OUT_OF_GAS", substatus: "OUT_OF_GAS" });
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ status: "INVALID" }));
     await expect(lifi.status({ txHash: "x", fromChain: "solana", toChain: "ethereum" })).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
   });

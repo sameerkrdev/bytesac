@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, jsonb, numeric, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, check, date, index, integer, jsonb, numeric, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { assetChain, instrumentDeployments } from "./assets";
 import { basketVersions, baskets } from "./baskets";
@@ -109,6 +109,12 @@ export const operationLegs = app.table(
     amountReceived: numeric("amount_received"),
     gasPayer: gasPayer("gas_payer"),
     failureReason: text("failure_reason"),
+    /** LI.FI substatus from the last status check. */
+    providerSubstatus: text("provider_substatus"),
+    /** A recovery leg points at the leg whose destination swap failed (one recovery per leg). */
+    recoveryOf: uuid("recovery_of").unique().references((): AnyPgColumn => operationLegs.id),
+    /** Set with FAILED / DESTINATION_SWAP_FAILED: the token that arrived instead, amount from chain evidence. */
+    recoveryToken: jsonb("recovery_token").$type<{ chain: (typeof assetChain.enumValues)[number]; address: string | null; decimals: number; symbol: string; amount: string }>(),
     submittedAt: ts("submitted_at"),
     unknownSince: ts("unknown_since"),
     createdAt: ts("created_at").notNull().defaultNow(),
