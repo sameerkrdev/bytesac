@@ -2,12 +2,14 @@ import createHttpError from "http-errors";
 import { minOut as slippageFloor, z, type AssetChain } from "@repo/validator";
 import { env } from "../../env";
 import { redis } from "../../middleware/rate-limit";
-import type { ConnectionInput, LegQuoteInput, RouteProvider } from "./types";
+import type { ConnectionInput, LegEstimateInput, LegQuoteInput, RouteFee, RouteProvider } from "./types";
 
 const BASE_URL = "https://li.quest/v1";
+/** Never route through a trade this far from the USD value in (docs.li.fi: `maxPriceImpact` hides routes above it; LI.FI defaults to 0.10). */
+export const MAX_PRICE_IMPACT = 0.05;
 
 /** LI.FI chain ids (docs.li.fi: EVM chains use their chain id; Solana 1151111081099710; Bitcoin 20000000000001). */
-const CHAIN_IDS: Readonly<Record<AssetChain, number>> = {
+export const CHAIN_IDS: Readonly<Record<AssetChain, number>> = {
   ethereum: 1, base: 8453, bnb: 56, arbitrum: 42161, polygon: 137, solana: 1151111081099710, bitcoin: 20000000000001,
 };
 /** LI.FI native token conventions: EVM zero address, Solana System Program id, Bitcoin "bitcoin". */
@@ -21,19 +23,41 @@ const tokenId = (chain: AssetChain, token: string | null) => token ?? NATIVE[cha
 const same = (a: string, b: string) => a === b || (a.startsWith("0x") && a.toLowerCase() === b.toLowerCase());
 
 const unavailable = (message: string, cause?: unknown) => createHttpError(message, { code: "ROUTE_UNAVAILABLE", cause });
+/** LI.FI refused a plan-time quote because the wallet cannot fund it yet (code 1001, see `lifiCall`). */
+export const isBuildRefusal = (err: unknown) => (err as { lifiCode?: number } | null)?.lifiCode === 1001;
 
-async function call(path: string, params: Record<string, string | number>): Promise<unknown> {
+/**
+ * LI.FI request. A list param is sent once per item. An error body (`{ message, code, errors }`, codes 1000-1013 per docs.li.fi/api-reference/error-codes)
+ * is mapped: the no-SOL refusal -> 409 SOL_REQUIRED; no route because of price impact -> 503 with the price-impact message; other refusals keep their
+ * LI.FI code on `lifiCode` (1001 = the transaction could not be built, which is what an unfunded wallet gets).
+ */
+export async function lifiCall(path: string, o: { params?: Record<string, string | number | string[]>; body?: unknown; base?: string } = {}): Promise<unknown> {
   if (!env.LIFI_API_KEY) throw unavailable("Routing is not configured.");
+  const query = new URLSearchParams();
+  for (const [k, v] of Object.entries(o.params ?? {})) for (const item of Array.isArray(v) ? v : [v]) query.append(k, String(item));
+  let res: Response;
   try {
-    const res = await fetch(`${BASE_URL}${path}?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`, {
-      headers: { "x-lifi-api-key": env.LIFI_API_KEY, Accept: "application/json" },
+    res = await fetch(`${o.base ?? BASE_URL}${path}?${query}`, {
+      method: o.body === undefined ? "GET" : "POST",
+      headers: { "x-lifi-api-key": env.LIFI_API_KEY, Accept: "application/json", ...(o.body === undefined ? {} : { "Content-Type": "application/json" }) },
+      body: o.body === undefined ? undefined : JSON.stringify(o.body),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) throw new Error(`LI.FI responded ${res.status}`);
-    return await res.json();
   } catch (err) {
     throw unavailable("The route provider is unavailable. Try again.", err);
   }
+  const body: unknown = await res.json().catch(() => null);
+  if (!res.ok) throw refusal(res.status, body);
+  return body;
+}
+
+function refusal(status: number, body: unknown): Error {
+  const b = (body ?? {}) as { message?: unknown; code?: unknown };
+  const text = JSON.stringify(body) ?? "";
+  const message = typeof b.message === "string" ? b.message : "";
+  if (/\bSOL\b/.test(message) && /balance|rent|fee|gas|fund/i.test(message)) return createHttpError(409, "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", { code: "SOL_REQUIRED" });
+  if (/price.?impact/i.test(text)) return createHttpError("Price impact too high for this trade size.", { code: "ROUTE_UNAVAILABLE" });
+  return createHttpError(`LI.FI responded ${status}`, { code: "ROUTE_UNAVAILABLE", lifiCode: typeof b.code === "number" ? b.code : undefined });
 }
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.infer<T> => {
@@ -50,17 +74,43 @@ const gasCost = z.object({
   amount: z.string().regex(/^\d+$/).nullish(),
   token: z.object({ priceUSD: z.string().regex(/^\d+(\.\d+)?$/).nullish() }).nullish(),
 });
+const usd = z.string().regex(/^\d+(\.\d+)?$/).nullish();
+/** `estimate.feeCosts[]`: LI.FI service fee, DEX and bridge fees; `included` = already deducted from the quoted amounts. */
+const feeCost = z.object({ name: z.string(), amountUSD: usd, included: z.boolean() });
+const stepEstimate = z.object({ gasCosts: z.array(gasCost).optional(), feeCosts: z.array(feeCost).optional() });
 const quoteSchema = z.object({
   tool: z.string(),
   action: z.object({ fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: token, fromAmount: z.string(), toAddress: z.string() }),
-  estimate: z.object({ toAmount: z.string(), toAmountMin: z.string(), approvalAddress: z.string().nullish(), gasCosts: z.array(gasCost).optional() }),
+  estimate: stepEstimate.extend({ toAmount: z.string(), toAmountMin: z.string(), approvalAddress: z.string().nullish(), fromAmountUSD: usd, toAmountUSD: usd }),
   transactionRequest: z.object({ to: z.string().optional(), data: z.string(), value: z.string().nullish(), chainId: z.number().optional() }),
+});
+/** `POST /advanced/routes`: routes carry the USD totals; each step its tool and estimate. `routes: []` means nothing is available (`unavailableRoutes` says why). */
+const routesSchema = z.object({
+  routes: z.array(z.object({
+    fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: token, fromAmount: z.string(), toAmount: z.string(), toAmountMin: z.string(), fromAmountUSD: usd, toAmountUSD: usd,
+    steps: z.array(z.object({ tool: z.string(), action: z.object({ fromChainId: z.number() }), estimate: stepEstimate })).min(1),
+  })),
+  unavailableRoutes: z.unknown().optional(),
 });
 const statusSchema = z.object({
   status: z.enum(["NOT_FOUND", "INVALID", "PENDING", "DONE", "FAILED"]),
-  substatus: z.string().optional(),
-  receiving: z.object({ txHash: z.string().optional() }).optional(),
+  substatus: z.string().nullish(),
+  // A partial or malformed token object is treated as absent (the leg then stays UNKNOWN for a person) rather than failing every status check.
+  receiving: z.object({ txHash: z.string().optional(), token: z.object({ address: z.string(), decimals: z.number(), symbol: z.string() }).optional().catch(undefined) }).optional(),
 });
+
+/** Gas (from `gas` estimates: the source chain's), route fees (from `all` estimates) and price impact (from the USD totals) of a quote or route. */
+function summarize(gas: z.infer<typeof stepEstimate>[], all: z.infer<typeof stepEstimate>[], total: { fromAmountUSD?: string | null; toAmountUSD?: string | null }) {
+  const gasCosts = gas.flatMap((e) => e.gasCosts ?? []);
+  const from = Number(total.fromAmountUSD);
+  return {
+    gasEstimateUsd: gasCosts.reduce((s, g) => s + Number(g.amountUSD ?? 0), 0),
+    gasNative: gasCosts.reduce((s, g) => s + BigInt(g.amount ?? 0), 0n),
+    nativePriceUsd: Number(gasCosts.find((g) => g.token?.priceUSD)?.token?.priceUSD) || null,
+    priceImpact: total.fromAmountUSD && total.toAmountUSD && from > 0 ? 1 - Number(total.toAmountUSD) / from : null,
+    routeFees: all.flatMap((e) => e.feeCosts ?? []).map((f): RouteFee => ({ name: f.name, amountUsd: Number(f.amountUSD ?? 0), included: f.included })),
+  };
+}
 
 const PSBT_HEX_MAGIC = "70736274ff";
 const QUOTE_TTL_MS = 60_000;
@@ -73,20 +123,41 @@ export const lifi: RouteProvider = {
     const key = `lifi:conn:${CHAIN_IDS[i.fromChain]}:${fromToken}:${CHAIN_IDS[i.toChain]}:${toToken}`;
     const cached = await redis.get(key).catch(() => null);
     if (cached) return cached === "1";
-    const { connections } = parse(connectionsSchema, await call("/connections", { fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain], fromToken, toToken }));
+    const { connections } = parse(connectionsSchema, await lifiCall("/connections", { params: { fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain], fromToken, toToken } }));
     const connected = connections.some((c) => c.fromTokens.some((t) => same(t.address, fromToken)) && c.toTokens.some((t) => same(t.address, toToken)));
     await redis.set(key, connected ? "1" : "0", "EX", 3600).catch(() => undefined);
     return connected;
   },
 
+  async estimate(i: LegEstimateInput) {
+    const [fromToken, toToken] = [tokenId(i.fromChain, i.fromToken), tokenId(i.toChain, i.toToken)];
+    const { routes, unavailableRoutes } = parse(routesSchema, await lifiCall("/advanced/routes", { body: {
+      fromChainId: CHAIN_IDS[i.fromChain], toChainId: CHAIN_IDS[i.toChain], fromTokenAddress: fromToken, toTokenAddress: toToken, fromAmount: i.fromAmount.toString(), toAddress: i.toAddress,
+      options: { slippage: i.slippageBps / 10_000, integrator: env.LIFI_INTEGRATOR, maxPriceImpact: MAX_PRICE_IMPACT, bridges: { deny: i.deny?.bridges ?? [] }, exchanges: { deny: i.deny?.exchanges ?? [] } },
+    } }));
+    const r = routes[0];
+    if (!r) throw unavailable(/price.?impact/i.test(JSON.stringify(unavailableRoutes ?? null)) ? "Price impact too high for this trade size." : "No route is available for this trade.");
+    // Provider responses are untrusted: the route must be exactly the trade we asked for.
+    const estimatedOut = BigInt(r.toAmount);
+    const minOut = BigInt(r.toAmountMin);
+    if (
+      r.fromChainId !== CHAIN_IDS[i.fromChain] || r.toChainId !== CHAIN_IDS[i.toChain] || !same(r.fromToken.address, fromToken) || !same(r.toToken.address, toToken) || BigInt(r.fromAmount) !== i.fromAmount
+      || minOut + 1n < slippageFloor(estimatedOut, i.slippageBps)
+    ) throw unavailable("The route provider returned a route that does not match the trade.");
+    // The gas the user pays is the source chain's: steps that start on another chain are paid there.
+    const own = r.steps.filter((s) => s.action.fromChainId === CHAIN_IDS[i.fromChain]).map((s) => s.estimate);
+    return { estimatedOut, minOut, toolSummary: r.steps.map((s) => s.tool).join(" > "), transaction: null, ...summarize(own, r.steps.map((s) => s.estimate), r) };
+  },
+
   async quote(i: LegQuoteInput) {
     if (i.fromChain === "solana" && !i.svmSponsor) throw new Error("A Solana source needs the platform fee payer (svmSponsor).");
     const [fromToken, toToken] = [tokenId(i.fromChain, i.fromToken), tokenId(i.toChain, i.toToken)];
-    const q = parse(quoteSchema, await call("/quote", {
+    const q = parse(quoteSchema, await lifiCall("/quote", { params: {
       fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain], fromToken, toToken, fromAmount: i.fromAmount.toString(),
-      fromAddress: i.fromAddress, toAddress: i.toAddress, slippage: i.slippageBps / 10_000, integrator: env.LIFI_INTEGRATOR,
+      fromAddress: i.fromAddress, toAddress: i.toAddress, slippage: i.slippageBps / 10_000, integrator: env.LIFI_INTEGRATOR, maxPriceImpact: MAX_PRICE_IMPACT,
+      ...(i.deny?.bridges.length ? { denyBridges: i.deny.bridges } : {}), ...(i.deny?.exchanges.length ? { denyExchanges: i.deny.exchanges } : {}),
       ...(i.fromChain === "solana" ? { svmSponsor: i.svmSponsor! } : {}),
-    }));
+    } }));
     // Provider responses are untrusted: the quote must be exactly the leg we asked for, delivered to the user's own address.
     const a = q.action;
     const estimatedOut = BigInt(q.estimate.toAmount);
@@ -105,25 +176,24 @@ export const lifi: RouteProvider = {
         : { kind: "evm" as const, to: tx.to ?? "", data, value: BigInt(tx.value ?? 0).toString(), chainId: tx.chainId ?? CHAIN_IDS[i.fromChain] };
     if (transaction.kind === "evm" && !/^0x[0-9a-fA-F]{40}$/.test(transaction.to)) throw unavailable("The route provider returned a quote without a target contract.");
 
-    return {
-      estimatedOut, minOut, toolSummary: q.tool, transaction,
-      gasEstimateUsd: (q.estimate.gasCosts ?? []).reduce((s, g) => s + Number(g.amountUSD ?? 0), 0),
-      approvalAddress: q.estimate.approvalAddress ?? null,
-      gasNative: (q.estimate.gasCosts ?? []).reduce((s, g) => s + BigInt(g.amount ?? 0), 0n),
-      nativePriceUsd: Number((q.estimate.gasCosts ?? []).find((g) => g.token?.priceUSD)?.token?.priceUSD) || null,
-      expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
-    };
+    return { estimatedOut, minOut, toolSummary: q.tool, transaction, approvalAddress: q.estimate.approvalAddress ?? null, ...summarize([q.estimate], [q.estimate], q.estimate), expiresAt: new Date(Date.now() + QUOTE_TTL_MS) };
   },
 
   async status(i) {
-    const s = parse(statusSchema, await call("/status", { txHash: i.txHash, fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain] }));
+    const s = parse(statusSchema, await lifiCall("/status", { params: { txHash: i.txHash, fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain] } }));
+    const substatus = s.substatus ?? undefined;
     if (s.status === "INVALID") throw unavailable("The route provider rejected the status request.");
-    if (s.status === "FAILED") return { state: "FAILED", reason: s.substatus ?? "FAILED" };
-    if (s.status !== "DONE") return { state: "PENDING" };
-    // REFUNDED: the destination token was not delivered. PARTIAL: a different token was (funds did move): left for a person, never written off.
-    if (s.substatus === "REFUNDED") return { state: "FAILED", reason: s.substatus };
-    if (s.substatus === "PARTIAL") return { state: "UNKNOWN", reason: "The route delivered a different token than quoted." };
+    // A refund is due (not processable): not a failure yet, the refund lands as REFUNDED. The leg stays pending and shows the substatus.
+    if (s.status === "FAILED" && (substatus === "NOT_PROCESSABLE_REFUND_NEEDED" || substatus === "REFUND_IN_PROGRESS")) return { state: "PENDING", substatus };
+    if (s.status === "FAILED") return { state: "FAILED", reason: substatus ?? "FAILED", substatus };
+    if (s.status !== "DONE") return { state: "PENDING", substatus };
+    // REFUNDED: the destination token was not delivered. PARTIAL: a different token was (funds did move): the tracker reads the chain and recovers, or leaves it for a person.
+    if (substatus === "REFUNDED") return { state: "FAILED", reason: substatus, substatus };
+    if (substatus === "PARTIAL") {
+      const { txHash, token } = s.receiving ?? {};
+      return { state: "UNKNOWN", reason: "The route delivered a different token than quoted.", substatus, receiving: txHash && token ? { txHash, token } : undefined };
+    }
     // The amount LI.FI reports is not used: what arrived is read from the chain.
-    return { state: "DONE", destinationTx: s.receiving?.txHash ?? null };
+    return { state: "DONE", destinationTx: s.receiving?.txHash ?? null, substatus };
   },
 };

@@ -116,6 +116,9 @@ export const evmBalance = (chain: AssetChain, owner: string, token: string | nul
     ? c.readContract({ address: token as `0x${string}`, abi: erc20Abi, functionName: "balanceOf", args: [owner as `0x${string}`] })
     : c.getBalance({ address: owner as `0x${string}` }));
 
+/** True when `address` holds contract code (a smart-contract wallet or any contract); false for an EOA. */
+export const evmCode = (chain: AssetChain, address: string): Promise<boolean> => read(chain, async (c) => ((await c.getCode({ address: address as `0x${string}` })) ?? "0x") !== "0x");
+
 /** The transaction as mined or pending, or null when the node does not know the hash. */
 export const evmTransaction = (chain: AssetChain, hash: string) =>
   read(chain, async (c) => {

@@ -134,6 +134,17 @@ export const legSchema = z.object({
   sourceTx: z.string().nullable(),
   destinationTx: z.string().nullable(),
   failureReason: z.string().nullable(),
+  /** LI.FI route fees and price impact from the plan (null on a leg without a route, such as the network fee). */
+  priceImpact: z.number().nullable(),
+  routeFees: z.array(z.object({ name: z.string(), amountUsd: z.number(), included: z.boolean() })),
+  /** LI.FI substatus of the transfer (for example PARTIAL, REFUNDED, NOT_PROCESSABLE_REFUND_NEEDED), from the last status check. */
+  providerSubstatus: z.string().nullable(),
+  /** Set on a recovery leg: the leg whose destination swap failed. */
+  recoveryOf: z.uuid().nullable(),
+  /** Set on a leg that failed with DESTINATION_SWAP_FAILED: the token that arrived instead (amount from chain evidence). */
+  recoveryToken: z.object({ chain: assetChainSchema, address: z.string().nullable(), decimals: z.number().int(), symbol: z.string(), amount: z.string() }).nullable(),
+  /** The leg touches a deployment ops flagged as fee-on-transfer: the received amount can be below the quote. */
+  feeOnTransfer: z.boolean(),
 });
 export type Leg = z.infer<typeof legSchema>;
 
@@ -208,3 +219,20 @@ export const legQuoteResponseSchema = z.object({
   gasDrop: z.object({ status: z.enum(["pending", "confirmed", "failed", "skipped"]), txHash: z.string().nullable() }).nullable(),
 });
 export type LegQuoteResponse = z.infer<typeof legQuoteResponseSchema>;
+
+/** Ops route policy: a LI.FI bridge or exchange (`/v1/tools` key) denied on every estimate and quote until allowed again. */
+export const ROUTE_TOOL_KINDS = ["bridge", "exchange"] as const;
+export const routePolicyInputSchema = z.object({ kind: z.enum(ROUTE_TOOL_KINDS), toolKey: z.string().trim().min(1).max(100), reason: z.string().trim().min(1).max(500) });
+export type RoutePolicyInput = z.infer<typeof routePolicyInputSchema>;
+
+const routeToolView = z.object({ key: z.string(), name: z.string(), denyEntryId: z.uuid().nullable() });
+export const routePolicyEntrySchema = z.object({
+  id: z.uuid(), kind: z.enum(ROUTE_TOOL_KINDS), toolKey: z.string(), reason: z.string(), createdBy: z.uuid(), createdAt: z.iso.datetime({ offset: true }), removedBy: z.uuid().nullable(), removedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type RoutePolicyEntry = z.infer<typeof routePolicyEntrySchema>;
+/** `GET /v1/ops/routing`: LI.FI bridges and exchanges with their deny state, and the deny/allow history. */
+export const routingViewSchema = z.object({ bridges: z.array(routeToolView), exchanges: z.array(routeToolView), entries: z.array(routePolicyEntrySchema) });
+export type RoutingView = z.infer<typeof routingViewSchema>;
+/** `GET /v1/ops/operations/:id/legs/:legId/lifi-transfers`: LI.FI's records (untrusted, provider shape) of the leg's source wallet within 24 h of the submission. */
+export const lifiTransfersSchema = z.object({ wallet: z.string(), transfers: z.array(z.record(z.string(), z.unknown())) });
+export type LifiTransfers = z.infer<typeof lifiTransfersSchema>;

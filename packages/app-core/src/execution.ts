@@ -36,13 +36,14 @@ const EXPLORER: Record<AssetChain, string> = {
 export const explorerTxUrl = (chain: AssetChain, tx: string): string => `${EXPLORER[chain]}${encodeURIComponent(tx)}`;
 
 /** The plan-time summary the API stores on a leg (`decimals` and `symbol` describe the asset side: the output of a buy, the input of a sell). */
-export function legRoute(leg: Pick<Leg, "routeSummary">): { tool?: string; estimatedOut?: string; symbol?: string; decimals?: number } {
+export function legRoute(leg: Pick<Leg, "routeSummary">): { tool?: string; estimatedOut?: string; symbol?: string; decimals?: number; fromSymbol?: string; fromDecimals?: number } {
   const r = leg.routeSummary;
   if (typeof r !== "object" || r === null) return {};
   const o = r as Record<string, unknown>;
   return {
     tool: typeof o.tool === "string" ? o.tool : undefined, estimatedOut: typeof o.estimatedOut === "string" ? o.estimatedOut : undefined,
     symbol: typeof o.symbol === "string" ? o.symbol : undefined, decimals: typeof o.decimals === "number" ? o.decimals : undefined,
+    fromSymbol: typeof o.fromSymbol === "string" ? o.fromSymbol : undefined, fromDecimals: typeof o.fromDecimals === "number" ? o.fromDecimals : undefined,
   };
 }
 
@@ -56,6 +57,14 @@ export function legTitle(leg: Pick<Leg, "kind" | "routeSummary" | "toChain">, bu
 /** Amount in and estimated/minimum out of a leg, formatted; the USDC side is always 6 decimals, the asset side uses the summary's decimals. */
 export function legAmounts(leg: Pick<Leg, "kind" | "amountIn" | "minOut" | "routeSummary" | "toChain">, buying: boolean): { in: string; estimatedOut: string | null; minOut: string | null } {
   const r = legRoute(leg);
+  // A recovery leg swaps the token that arrived (fromSymbol) into the asset (symbol): its in/out sides are named by the summary, not by buying/selling.
+  if (r.fromSymbol !== undefined) {
+    return {
+      in: `${formatUnits(leg.amountIn, r.fromDecimals ?? 0)} ${r.fromSymbol}`,
+      estimatedOut: r.estimatedOut ? `${formatUnits(r.estimatedOut, r.decimals ?? 0)} ${r.symbol ?? ""}`.trim() : null,
+      minOut: leg.minOut ? `${formatUnits(leg.minOut, r.decimals ?? 0)} ${r.symbol ?? ""}`.trim() : null,
+    };
+  }
   const inDecimals = buying ? USDC_DECIMALS : (r.decimals ?? 0);
   const outDecimals = buying ? (r.decimals ?? 0) : USDC_DECIMALS;
   const inSymbol = buying ? "USDC" : r.symbol ?? "";

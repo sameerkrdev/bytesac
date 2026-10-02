@@ -2,7 +2,7 @@
 
 import { ApiError } from "@repo/api-client";
 import { explorerTxUrl, formatUnits, legAmounts, legRoute, legTitle, LEG_STATUS_LABEL, OPERATION_STATUS_LABEL } from "@repo/app-core";
-import type { Leg, LegQuoteResponse, OperationView } from "@repo/validator";
+import { ASSET_CHAINS, type Leg, type LegQuoteResponse, type OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -16,25 +16,38 @@ import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 
 class GasDropError extends Error {}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Previews warn from a 2% price impact; the server refuses above 5%. */
+const PRICE_IMPACT_WARNING = 0.02;
 const ACTIVE = ["PLANNED", "IN_PROGRESS"];
 /** Legs being sent or confirmed: the operation cannot be stopped while one of these is open. An UNKNOWN leg does not block stopping; it keeps being checked. */
 const IN_FLIGHT = ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"];
 type Prepared = { leg: Leg; q: LegQuoteResponse & { transaction: NonNullable<LegQuoteResponse["transaction"]> } };
 
 /** The leg the user signs next: the first planned one whose predecessors settled (a network fee that is already on chain does not hold up the first asset leg). */
-const nextLeg = (legs: Leg[]) => legs.find((l, i) => l.status === "PLANNED" && legs.slice(0, i).every((p) => p.status === "SETTLED" || (p.kind === "network_fee" && p.status === "PENDING_CHAIN")));
+const nextLeg = (legs: Leg[]) => legs.find((l, i) => l.status === "PLANNED" && legs.slice(0, i).every((p) => p.status === "SETTLED" || p.recoveryToken || (p.kind === "network_fee" && p.status === "PENDING_CHAIN")));
 
 /** One leg: what it does, amounts, status and explorer links. */
 export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
   const a = legAmounts(l, buying);
   const btc = l.fromChain === "bitcoin" || l.toChain === "bitcoin";
+  const fees = l.routeFees.filter((f) => f.included).reduce((s, f) => s + f.amountUsd, 0);
+  const t = l.recoveryToken;
+  const refunded = l.providerSubstatus === "REFUNDED";
+  const refunding = l.providerSubstatus === "NOT_PROCESSABLE_REFUND_NEEDED" || l.providerSubstatus === "REFUND_IN_PROGRESS";
   return (
     <li className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
-      <p className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-ivory">{l.sequence}. {legTitle(l, buying)}</span><StatusBadge {...LEG_STATUS_LABEL[l.status]} /></p>
-      <p className="text-stone">{a.in}{a.estimatedOut && ` → about ${a.estimatedOut}`}{a.minOut && ` (at least ${a.minOut})`}</p>
+      <p className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-ivory">{l.sequence}. {l.recoveryOf ? "Complete swap" : legTitle(l, buying)}</span><StatusBadge {...LEG_STATUS_LABEL[l.status]} /></p>
+      <p className="text-stone">{l.recoveryOf && "Swap what arrived: "}{a.in}{a.estimatedOut && ` → about ${a.estimatedOut}`}{a.minOut && ` (at least ${a.minOut})`}</p>
+      {l.recoveryOf && l.status === "PLANNED" && <p className="text-xs text-stone">You sign a fresh quote first; the figures above are an estimate.</p>}
+      {l.status === "PLANNED" && fees > 0 && <p className="text-xs text-stone">Route fees (LI.FI, DEX, bridge): ${fees.toFixed(2)} — included in the estimate</p>}
+      {l.status === "PLANNED" && l.priceImpact !== null && <p className={`text-xs ${l.priceImpact >= PRICE_IMPACT_WARNING ? "text-warning" : "text-stone"}`}>Price impact {(l.priceImpact * 100).toFixed(2)}%{l.priceImpact >= PRICE_IMPACT_WARNING && " — higher than usual"}</p>}
+      {l.feeOnTransfer && l.status === "PLANNED" && <p className="text-xs text-warning">This token charges a transfer tax; amounts are estimates.</p>}
+      {refunding && <p className="text-xs text-warning">Refund in progress (the route couldn&apos;t complete).</p>}
+      {l.status === "FAILED" && refunded && <p className="text-xs text-ivory">Funds returned to your wallet.</p>}
+      {t && <p className="text-xs text-ivory">Arrived as {formatUnits(t.amount, t.decimals)} {t.symbol} on {ASSET_CHAINS[t.chain].label}. Complete the swap below, or stop here and keep it in your wallet.</p>}
       {btc && l.status !== "SETTLED" && <p className="text-xs text-stone">Bitcoin needs 2 confirmations, about 20 minutes.</p>}
       {l.status === "UNKNOWN" && <p className="text-xs text-warning">We are checking this with the chain. Do not sign it again. You can stop here; the check continues and the result is added to your portfolio.</p>}
-      {l.failureReason && <p className="text-xs text-danger">{l.failureReason}</p>}
+      {l.failureReason && !t && <p className="text-xs text-danger">{l.failureReason}</p>}
       <p className="flex flex-wrap gap-3 text-xs">
         {l.sourceTx && <a className="inline-flex items-center gap-1 text-mint underline" href={explorerTxUrl(l.fromChain, l.sourceTx)} target="_blank" rel="noreferrer">Source transaction<ExternalLink aria-hidden className="size-3" /></a>}
         {l.destinationTx && <a className="inline-flex items-center gap-1 text-mint underline" href={explorerTxUrl(l.toChain, l.destinationTx)} target="_blank" rel="noreferrer">Destination transaction<ExternalLink aria-hidden className="size-3" /></a>}
@@ -118,16 +131,16 @@ export function LegProgress({ operationId }: { operationId: string }) {
         <div role="status" className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
           <p className="font-medium text-ivory">Fresh quote for step {fresh.leg.sequence}</p>
           {freshAmounts ? <p className="text-stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-stone">Fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC (all fees together).</p>}
-          <p className="text-xs text-stone">The quote is valid for about a minute. If the price moves against you the server refuses it and nothing is sent.</p>
+          <p className="text-xs text-stone">The quote is valid for about a minute. {fresh.leg.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</p>
         </div>
       )}
       {ACTIVE.includes(o.status) && inFlight && !busy && <p role="status" className="text-sm text-stone">Waiting for the network to confirm. This page updates by itself.</p>}
 
       {ACTIVE.includes(o.status) && (
         <div className="flex flex-wrap gap-3">
-          {next && !busy && !fresh && <Button className="min-h-11" onClick={() => prepare.mutate(next)}>{expired ? "Get a new quote" : `Review step ${next.sequence}`}</Button>}
+          {next && !busy && !fresh && <Button className="min-h-11" onClick={() => prepare.mutate(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>}
           {fresh && !busy && <Button className="min-h-11" onClick={() => sign.mutate(fresh)}>Approve step {fresh.leg.sequence} in your wallet</Button>}
-          {!inFlight && !busy && <Button variant="secondary" className="min-h-11" disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown ? "Stop here" : "Cancel"}</Button>}
+          {!inFlight && !busy && <Button variant="secondary" className="min-h-11" disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
         </div>
       )}
 

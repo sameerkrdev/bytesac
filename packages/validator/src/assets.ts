@@ -107,6 +107,8 @@ export const createDeploymentRequestSchema = z.object({ ...deploymentFields, add
   .refine((d) => d.tokenStandard !== "erc20" || ASSET_CHAINS[d.chain].family === "evm", { message: "ERC-20 tokens live on EVM chains.", path: ["tokenStandard"] })
   .refine((d) => !d.tokenStandard.startsWith("spl") || d.chain === "solana", { message: "SPL tokens live on Solana.", path: ["tokenStandard"] });
 export type CreateDeploymentRequest = z.infer<typeof createDeploymentRequestSchema>;
+export const feeOnTransferRequestSchema = z.object({ feeOnTransfer: z.boolean() });
+export type FeeOnTransferRequest = z.infer<typeof feeOnTransferRequestSchema>;
 export const updateDeploymentRequestSchema = z.object(deploymentFields).partial();
 export type UpdateDeploymentRequest = z.infer<typeof updateDeploymentRequestSchema>;
 
@@ -212,6 +214,10 @@ export const opsAssetDetailSchema = z.object({
   deployments: z.array(z.object({
     id: uuid, chain: assetChainSchema, tokenStandard: tokenStandardSchema, address: z.string().nullable(), decimals: z.number().int(), verification: z.enum(["onchain", "manual"]),
     observedDecimals: z.number().int().nullable(), observedSymbol: z.string().nullable(), observedName: z.string().nullable(), observedAt: isoTime.nullable(), sourceUrl: z.string().nullable(),
+    /** Ops flag: the token takes a fee on transfer (previews warn that less can arrive). */
+    feeOnTransfer: z.boolean(),
+    /** LI.FI token list: listed = verified; null when unknown (native asset, Bitcoin, LI.FI unavailable). */
+    lifiVerification: z.enum(["verified", "unverified", "flagged"]).nullable(),
     status: assetItemStatusSchema, approvedByUserId: uuid.nullable(), createdAt: isoTime, updatedAt: isoTime,
   })),
   routes: z.array(z.object({

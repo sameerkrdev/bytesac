@@ -8,7 +8,7 @@ import {
   type Earnings, type EarningsQuery, type Fee, type FeeKind, type PlatformFeeList, type PlatformFeeOperation, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type Revenue, type WaivedReason,
 } from "@repo/validator";
 import { env } from "../env";
-import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection } from "../providers/solana-tx";
+import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection, tokenAccountMissing } from "../providers/solana-tx";
 import { writeAudit } from "./audit";
 import { requirePermission } from "./members";
 import { notifyOwner } from "./organizations";
@@ -79,9 +79,8 @@ export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedF
   }
 
   // Rent only for a recipient whose USDC token account does not exist yet (an RPC error counts as missing: the estimate stays conservative).
-  const mint = new PublicKey(USDC_SOLANA_MINT);
   const charged = rows.filter((r) => r.kind !== "network" && r.amountMicro > 0n);
-  const missing = await Promise.all([...new Set(charged.map((r) => r.recipientAddress!))].map((a) => connection.getAccountInfo(ata(new PublicKey(a), mint), "confirmed").then((info) => !info, () => true)));
+  const missing = await Promise.all([...new Set(charged.map((r) => r.recipientAddress!))].map((a) => tokenAccountMissing(a, USDC_SOLANA_MINT)));
   const extra = BigInt(missing.filter(Boolean).length);
   if (extra > 0n) network.amountMicro += networkFeeMicro([(Number(TOKEN_ACCOUNT_RENT_LAMPORTS * extra) / 1e9) * (i.solPriceUsd ?? SOL_USD_FALLBACK)], i.usdcPrice);
   const transfers = rows.filter((r) => r.amountMicro > 0n).map((r) => ({ recipient: r.recipientAddress!, amountMicro: r.amountMicro }));

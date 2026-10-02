@@ -14,7 +14,7 @@ import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { AssetError, ItemActions, type SectionProps } from "./asset-ui";
 
-type Client = Pick<ApiClient, "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction">;
+type Client = Pick<ApiClient, "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction" | "opsSetFeeOnTransfer">;
 type Deployment = OpsAssetDetail["deployments"][number];
 
 function verificationOf(d: Deployment) {
@@ -79,10 +79,11 @@ export function AssetDeployments({ a, locked, isAdmin, onChange, client = api }:
     onSuccess: (d) => { setEditing(null); onChange(d); },
   });
   const verify = useMutation({ mutationFn: (did: string) => client.opsVerifyDeployment(a.id, did), onSuccess: onChange });
+  const feeTax = useMutation({ mutationFn: (v: { did: string; feeOnTransfer: boolean }) => client.opsSetFeeOnTransfer(a.id, v.did, { feeOnTransfer: v.feeOnTransfer }), onSuccess: onChange });
   const act = useMutation({ mutationFn: (v: { did: string; action: Parameters<Client["opsAssetItemAction"]>[3] }) => client.opsAssetItemAction(a.id, "deployments", v.did, v.action), onSuccess: onChange });
   const native = tokenStandard === "native";
   const needsSource = ASSET_CHAINS[chain].verification === "manual" || native;
-  const error = [create, update, verify, act].find((m) => m.isError)?.error;
+  const error = [create, update, verify, act, feeTax].find((m) => m.isError)?.error;
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
@@ -97,7 +98,9 @@ export function AssetDeployments({ a, locked, isAdmin, onChange, client = api }:
                   <span className="font-medium text-ivory">{ASSET_CHAINS[d.chain].label} · {d.tokenStandard}</span>
                   <StatusBadge {...ASSET_ITEM_STATUS_LABEL[d.status]} />
                   <span className={`inline-flex items-center gap-1 text-xs font-medium ${v.cls}`}><v.icon aria-hidden className="size-3.5" />{v.text}</span>
+                  {d.lifiVerification && <span className={`text-xs font-medium ${d.lifiVerification === "verified" ? "text-success" : "text-warning"}`}>LI.FI: {d.lifiVerification}</span>}
                 </div>
+                {d.feeOnTransfer && <p className="text-xs font-medium text-warning">Fee-on-transfer: previews warn that less can arrive.</p>}
                 {d.address && <p className="break-all font-mono text-xs text-stone">{d.address}</p>}
                 <p className="text-xs text-stone">
                   Decimals entered {d.decimals}, on chain {d.observedDecimals ?? "—"}
@@ -111,6 +114,7 @@ export function AssetDeployments({ a, locked, isAdmin, onChange, client = api }:
                     </Button>
                   )}
                   {d.status === "DRAFT" && !locked && <Button type="button" variant="secondary" className="min-h-11" onClick={() => setEditing(d.id)}>Edit</Button>}
+                  {isAdmin && <Button type="button" variant="secondary" className="min-h-11" disabled={feeTax.isPending} onClick={() => feeTax.mutate({ did: d.id, feeOnTransfer: !d.feeOnTransfer })}>{d.feeOnTransfer ? "Clear fee-on-transfer flag" : "Flag as fee-on-transfer"}</Button>}
                   {isAdmin && <ItemActions status={d.status} disabled={locked} pending={act.isPending} onAct={(action) => act.mutate({ did: d.id, action })} />}
                 </div>
                 {editing === d.id && !locked && <EditDeployment d={d} pending={update.isPending} onSave={(body) => update.mutate({ did: d.id, body })} onCancel={() => setEditing(null)} />}

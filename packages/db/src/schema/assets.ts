@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, numeric, date, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, numeric, date, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { app } from "./enums";
 import { users } from "./identity";
@@ -93,6 +93,8 @@ export const instrumentDeployments = app.table(
     observedName: text("observed_name"),
     observedAt: ts("observed_at"),
     sourceUrl: text("source_url"),
+    /** Ops flag: the token takes a fee on transfer, so the received amount can be below the quote (previews say so; the ledger is unchanged). */
+    feeOnTransfer: boolean("fee_on_transfer").notNull().default(false),
     status: assetItemStatus("status").notNull().default("DRAFT"),
     approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
     createdAt: ts("created_at").notNull().defaultNow(),

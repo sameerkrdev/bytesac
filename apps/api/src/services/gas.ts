@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db, gasDrops, isUniqueViolation, operationLegs, operations, platformWallets, sponsorUsage, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
 import { ASSET_CHAINS, type AssetChain } from "@repo/validator";
@@ -83,6 +83,25 @@ export async function releaseUnspentGas(tx: Tx, opId: string): Promise<void> {
     }
   }
   await tx.update(operations).set({ gasReserved: {} }).where(eq(operations.id, opId));
+}
+
+/**
+ * A stopped operation gives back what its recovery legs reserved (Solana, at quote time: `expectedTx.reservedNative`) but never sent. An EVM recovery's drop is
+ * reserved and sent in one step, so it is never unspent. ponytail: returned to today's budget row, so a stop after UTC midnight credits the new day.
+ */
+export async function releaseRecoveryGas(tx: Tx, opId: string): Promise<void> {
+  const unsent = await tx.select({ chain: operationLegs.fromChain, expectedTx: operationLegs.expectedTx }).from(operationLegs)
+    .where(and(eq(operationLegs.operationId, opId), isNotNull(operationLegs.recoveryOf), eq(operationLegs.status, "PLANNED")));
+  const [op] = await tx.select({ userId: operations.userId, reserved: operations.gasReserved }).from(operations).where(eq(operations.id, opId));
+  const reserved = { ...op!.reserved };
+  for (const l of unsent) {
+    const n = BigInt((l.expectedTx as { reservedNative?: string } | null)?.reservedNative ?? 0);
+    if (n <= 0n) continue;
+    await tx.update(sponsorUsage).set({ amountNative: sql`greatest(${sponsorUsage.amountNative} - ${n.toString()}::numeric, 0)` })
+      .where(and(eq(sponsorUsage.userId, op!.userId), eq(sponsorUsage.chain, l.chain), sql`${sponsorUsage.day} = (now() at time zone 'utc')::date`));
+    reserved[l.chain] = (BigInt(reserved[l.chain] ?? 0) > n ? BigInt(reserved[l.chain]!) - n : 0n).toString();
+  }
+  await tx.update(operations).set({ gasReserved: reserved }).where(eq(operations.id, opId));
 }
 
 /** A plan is refused (503) while a platform wallet cannot fund the gas it needs: the Solana fee payer in lamports, the EVM gas wallet in wei per chain. */

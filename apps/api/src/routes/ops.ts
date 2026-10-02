@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import {
-  assetDecisionRequestSchema, assetProviderRequestSchema, createDeploymentRequestSchema, createInstrumentRequestSchema, createRouteRequestSchema, createRuleRequestSchema, issuerRequestSchema, navEntryRequestSchema,
+  assetDecisionRequestSchema, assetProviderRequestSchema, feeOnTransferRequestSchema, routePolicyInputSchema, type FeeOnTransferRequest, type RoutePolicyInput, createDeploymentRequestSchema, createInstrumentRequestSchema, createRouteRequestSchema, createRuleRequestSchema, issuerRequestSchema, navEntryRequestSchema,
   opsAssetListQuerySchema, priceKindSchema, putPriceReferenceRequestSchema, updateAssetProviderRequestSchema, updateDeploymentRequestSchema, updateInstrumentRequestSchema, updateIssuerRequestSchema,
   updateRouteRequestSchema, updateRuleRequestSchema,
   type AssetDecisionRequest, type AssetProviderRequest, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type NavEntryRequest,
@@ -17,6 +17,7 @@ import {
 } from "@repo/validator";
 import { requireRole, requireSession } from "../middleware/auth";
 import { resolveLeg } from "../services/positions";
+import { allowTool, denyTool, getLifiTransfers, getRouting } from "../services/routing";
 import { endOverride, getRevenue, getRevenueCsv, listSchedules, saveSchedule } from "../services/fees";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
@@ -30,7 +31,7 @@ import {
 import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
 import {
   createAssetProvider, createAssetTag, listAssetTags, retireAssetTag, createDeployment, createInstrument, createIssuer, createRoute, createRule, getAssetForOps, listAssetProviders, listAssetsForOps, listIssuers, putPriceReference,
-  recordNav, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
+  recordNav, setFeeOnTransfer, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
 } from "../services/assets";
 import { hideProfile, listProfilesForOps, unhideProfile } from "../services/manager-profiles";
 import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "../services/asset-review";
@@ -157,6 +158,10 @@ opsRouter.post("/assets/:id/deployments", reviewer, validate({ params: idParam, 
 
 opsRouter.patch("/assets/:id/deployments/:did", reviewer, validate({ params: didParam, body: updateDeploymentRequestSchema }), async (req, res) => {
   res.json(await updateDeployment(ctx(req), req.params.id as string, req.params.did as string, req.body as UpdateDeploymentRequest));
+});
+
+opsRouter.patch("/assets/:id/deployments/:did/fee-on-transfer", requireRole("ops_admin"), validate({ params: didParam, body: feeOnTransferRequestSchema }), async (req, res) => {
+  res.json(await setFeeOnTransfer(ctx(req), req.params.id as string, req.params.did as string, (req.body as FeeOnTransferRequest).feeOnTransfer));
 });
 
 opsRouter.post("/assets/:id/deployments/:did/verify", reviewer, validate({ params: didParam }), async (req, res) => {
@@ -311,6 +316,24 @@ opsRouter.post("/manager-profiles/:id/unhide", reviewer, validate({ params: idPa
 /** A leg stuck UNKNOWN: ops settle or fail it from on-chain evidence (verified server-side where possible), audited. */
 opsRouter.post("/operations/:id/legs/:legId/resolve", requireRole("ops_admin"), validate({ params: z.object({ id: z.uuid(), legId: z.uuid() }), body: resolveLegRequestSchema }), async (req, res) => {
   res.json(await resolveLeg({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx }, req.params.id as string, req.params.legId as string, req.body as ResolveLegRequest));
+});
+
+/** LI.FI's own record of the wallet's transfers around a leg (read-only, ops_admin): an aid for resolving a stuck leg, never evidence. */
+opsRouter.get("/operations/:id/legs/:legId/lifi-transfers", requireRole("ops_admin"), validate({ params: z.object({ id: z.uuid(), legId: z.uuid() }) }), async (req, res) => {
+  res.json(await getLifiTransfers(req.params.id as string, req.params.legId as string));
+});
+
+// Route policy: LI.FI bridges and exchanges ops keep out of every estimate and quote. Ops roles read; only ops_admin denies or allows.
+opsRouter.get("/routing", reviewer, async (_req, res) => {
+  res.json(await getRouting());
+});
+
+opsRouter.post("/routing/deny", requireRole("ops_admin"), validate({ body: routePolicyInputSchema }), async (req, res) => {
+  res.status(201).json(await denyTool(ctx(req), req.body as RoutePolicyInput));
+});
+
+opsRouter.post("/routing/:id/allow", requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
+  res.json(await allowTool(ctx(req), req.params.id as string));
 });
 
 // Platform fee schedules: the default per operation type, and organization / basket overrides. Reviewers read; only ops_admin changes them.

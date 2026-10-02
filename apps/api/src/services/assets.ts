@@ -16,6 +16,7 @@ import { readTokenMetadata } from "../providers/evm-rpc";
 import { getMintDecimals } from "../providers/solana-rpc";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
+import { lifiVerification } from "./routing";
 import { enqueue } from "../queues";
 import { getPrices } from "./pricing";
 import { canonicalizeAddress } from "./wallets";
@@ -153,7 +154,7 @@ export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
     sector: inst.sector, tags,
     status: inst.status, createdByUserId: inst.createdByUserId, submittedByUserId: inst.submittedByUserId, decidedByUserId: inst.decidedByUserId,
     createdAt: inst.createdAt.toISOString(), updatedAt: inst.updatedAt.toISOString(),
-    deployments: deployments.map((d) => ({ ...d, observedAt: iso(d.observedAt), createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() })),
+    deployments: await Promise.all(deployments.map(async (d) => ({ ...d, lifiVerification: await lifiVerification(d.chain, d.address), observedAt: iso(d.observedAt), createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() }))),
     routes: routes.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })),
     rules: rules.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })),
     priceReferences: refs.map((r) => ({ id: r.id, kind: r.kind, provider: r.provider, externalId: r.externalId, quoteCurrency: "USD" as const, status: r.status, createdAt: r.createdAt.toISOString() })),
@@ -364,6 +365,19 @@ async function changeDeployment(ctx: OpsCtx, id: string, did: string, patch: Upd
 }
 
 export const updateDeployment = (ctx: OpsCtx, id: string, did: string, body: UpdateDeploymentRequest) => changeDeployment(ctx, id, did, body, "updated");
+
+/** The fee-on-transfer flag: an ops_admin note for previews, no effect on identity, so it is editable while the asset is active; recorded as an asset event and audited. */
+export async function setFeeOnTransfer(ctx: OpsCtx, id: string, did: string, feeOnTransfer: boolean): Promise<OpsAssetDetail> {
+  await db.transaction(async (tx) => {
+    await lockInstrument(tx, id);
+    const [row] = await tx.select().from(instrumentDeployments).where(and(eq(instrumentDeployments.id, did), eq(instrumentDeployments.instrumentId, id))).for("update");
+    if (!row) throw notFound("Deployment");
+    if (row.feeOnTransfer === feeOnTransfer) return;
+    await tx.update(instrumentDeployments).set({ feeOnTransfer, updatedAt: sql`now()` }).where(eq(instrumentDeployments.id, did));
+    await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "deployment", entityId: did, kind: "updated", fromStatus: row.status, toStatus: row.status, metadata: { feeOnTransfer } });
+  });
+  return getAssetForOps(id);
+}
 
 export async function verifyDeployment(ctx: OpsCtx, id: string, did: string): Promise<OpsAssetDetail> {
   await consume(limits.assetVerifyUser, ctx.userId);

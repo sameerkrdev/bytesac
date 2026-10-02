@@ -19,6 +19,12 @@ The source lists these as future expansion ideas, not initial-release commitment
 - A platform take rate on manager fees (a share of each manager fee to the platform).
 - Tax statements for investors and organizations (fees paid and earned).
 - Fees on mobile (Spec 10 is web and API only).
+- LI.FI integrator `fee` (B1): charge the platform fee through LI.FI's integrator `fee` parameter, collected in each leg's `fromToken` to the integrator wallet, instead of the up-front USDC fee leg.
+- LI.FI route `order` per route kind (B4): choose `FASTEST` or `CHEAPEST` per kind of route.
+- LI.FI `stepTransaction` with `skipSimulation=true` and per-step transactions (B8).
+- A separate `recover` operation (own network fee) for a failed destination swap, instead of the in-operation recovery leg of ADR-017.
+- Ops-configurable price-impact limits per chain or asset (release 1 uses a constant 5%).
+- A platform SOL drop for Solana wallets without SOL (release 1 shows `SOL_REQUIRED`).
 - Alchemy address-activity webhooks for instant drift and shortfall detection (Spec 9 polls on the nightly job and on portfolio read).
 - Mobile push (Firebase Cloud Messaging for iOS and Android) and the mobile portfolio, rebalance, repair and notification screens.
 - Moving web and API push from FCM registration tokens to Firebase Installation IDs when the token APIs are removed.

@@ -47,6 +47,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Spec 1 wallet checklists: web (MetaMask, Phantom) and mobile (dev build).
 - [ ] AppKit Solana signing and real R2 uploads (Specs 3–4).
 - [ ] LI.FI with a real key: `toAddress` echo, `svmSponsor` on every Solana leg type, base64 versioned transactions, Bitcoin PSBT encoding and output shape, rounding tolerance.
+- [ ] LI.FI hardening (Spec 10.1, ADR-017) with a real key: the no-SOL refusal shape (matched on "SOL" plus balance/rent/fee/gas wording) and whether `svmSponsor` avoids it; the price-impact no-route shape; that code 1001 is what an unfunded wallet gets; the `NOT_PROCESSABLE_REFUND_NEEDED` status mapping; Mayan tool key names (prefix `mayan`); deny-list parameter encoding (repeated parameters); a token flag field in `/v1/tokens`; whether a `FAILED` status with a receiving transaction and token can occur (only `DONE`/`PARTIAL` is recovered); `advanced/routes` without `fromAddress` for Solana sources; analytics `/v2/analytics/transfers` access, timestamp unit (seconds assumed) and pagination. Details in `apps/api/README.md`.
 - [ ] Alchemy Bitcoin `/tx/{txid}` and `POST /sendtx/` response shapes.
 - [ ] Phantom and Solflare: wallets that add instructions get `TX_MISMATCH` by design.
 - [ ] Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction (Xverse, Leather, Unisat, OKX).
@@ -69,6 +70,11 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 **Must fix before onboarding real assets**
 - [ ] CoinMarketCap: one `price: null` id marks the whole uncached batch unavailable.
 - [ ] `mobile#check-types` fails on `main` (duplicate `@wagmi/core` peer variants in `apps/mobile/src/lib/appkit.tsx`; pnpm dedupe/override).
+
+**Spec 10.1**
+- [ ] Releasing unspent recovery gas after a stop credits the current UTC day's budget row; a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
+- [ ] Recovery legs use the fresh quote's minimum (no `PRICE_MOVED`); a duplicate route deny returns 400 `VALIDATION_FAILED`, not 409; the LI.FI transfers lookup is a form on `/ops/routing` (operation and leg ids) because the web has no leg resolve view.
+- [ ] Mobile Leg fixtures may need the new leg fields (`mobile#check-types` already fails on `main`); `lifiVerification` `flagged` is never produced.
 
 **Spec 10**
 - [ ] `/ops/fees` does not show who last changed a row; override form takes raw ids (no picker); ops lists capped at 500 rows.

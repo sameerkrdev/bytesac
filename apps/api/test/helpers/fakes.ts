@@ -29,6 +29,9 @@ class FakeEvmRpc {
   /** Native amounts received per `hash:owner`; unlisted = receipt not found. */
   nativeReceived = new Map<string, bigint>();
   evmNativeReceived = async (_chain: string, owner: string, hash: string): Promise<bigint | null> => this.nativeReceived.get(`${hash}:${owner.toLowerCase()}`) ?? null;
+  /** Addresses (lowercase) that hold contract code; unlisted = EOA. */
+  contracts = new Set<string>();
+  evmCode = async (_chain: string, address: string): Promise<boolean> => this.contracts.has(address.toLowerCase());
   evmTransaction = async (_chain: string, hash: string) => this.transactions.get(hash) ?? null;
   evmReceipt = async (_chain: string, hash: string) => this.receipts.get(hash) ?? null;
   gasWalletAddress = (): string => "0x00000000000000000000000000000000000000aa";
