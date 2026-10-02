@@ -70,6 +70,7 @@ Investor Web / Mobile                     Manager Web
  Sessions: backend-managed (sessions table)
  Cache/rate limits/queues: Redis; background jobs: BullMQ worker (ADR-006, ADR-012); retention: pg_cron
  AI search: Google Gemini (query text only; optional)
+ Notifications: in-app inbox, Resend email, Firebase Cloud Messaging web push (ADR-015)
  Files: Cloudflare R2
 ```
 
@@ -125,8 +126,12 @@ Maintain separate representations for:
 
 Custody and attribution are decided (ADR-013): assets stay in the user's own wallets; each basket position is a logical sub-ledger (user × basket × deployment, raw base units) reconciled against on-chain balances. A shortfall is allocated pro-rata across the baskets holding that deployment and marked `SHORT` until the user chooses Fix or Accept; wallet surplus is outside baskets and never touched. Never spend the same physical quantity twice. Leaving a basket keeps a former-basket record so the user can later sell `min(recorded, on-chain)` back to USDC.
 
+**Implemented (Spec 9, ADR-015):** basket cash (`position_cash_entries`, append-only micro-USDC) holds unspent sale proceeds and is reconciled against wallet USDC on Solana like a deployment (cash rows have no deployment). A shortfall blocks rebalancing for the affected baskets and is resolved per asset by Buy back (one repair operation for the deployment) or Sync (no transaction; user-edited split recorded as `position_decisions` plus negative ledger or cash entries).
+
 ### Transition planner
 Inputs include current reconciled state, selected basket version, user intent, pricing, eligible routes, balances, reserved amounts, fees, slippage, minimums and pending operations.
+
+**Implemented (Spec 9):** `planRebalance`, `scaleBuys`, `feePlacement`, `splitRepair` and `headlineOf` are pure functions in `@repo/validator` (`rebalance.ts`); `services/rebalance.ts` applies them to reconciled holdings, fresh prices and basket cash (`valuePosition` is the single valuation used by planning, keep custom and drift).
 
 The planner:
 - calculates target quantities/values from weights and approved valuation;
@@ -201,6 +206,8 @@ Version: `draft → in_review → changes_required → in_review → approved �
 - Coordinate shared-asset discrepancies to avoid duplicate repair trades.
 - Reconcile after execution before declaring alignment.
 
+**Implemented (Spec 9, ADR-015):** the flow above is built. Publishing a version enqueues `version-published` (cancels untouched `PLANNED` rebalances, notifies open holders). Apply (`POST /v1/operations/rebalance`, target `latest`) and drift fix (target `applied`) plan sells to USDC on Solana, an optional network fee and buys from USDC on Solana sized from what actually arrived; `POST /v1/positions/:id/skip`, `/custom` and `/custom/revert` record decisions; `POST /v1/operations/repair` and `POST /v1/portfolio/sync` resolve a shortfall; `GET /v1/me/notifications`, `POST /v1/me/notifications/read` and `/v1/me/push-tokens` serve the inbox and push; `GET /v1/baskets/:id/adoption` serves managers. Web: `/portfolio/[positionId]/rebalance`, `/portfolio/repair/[asset]`, `/notifications`, the header bell and the profile push toggle.
+
 ## 6. Multi-chain and asset routing
 
 A basket references instruments, not arbitrary chain addresses. At execution time:
@@ -223,8 +230,8 @@ Names are indicative; align final names with existing migrations and implementat
 - `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010)
 - `asset_tags`, `instrument_tags`, `manager_profiles`, `instrument_price_snapshots`, `basket_performance_days`, `basket_search_index` (derived; implemented in Spec 7, ADR-012; `instruments.sector`)
 - `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` (revisioned), `disclosure_templates`, `basket_version_disclosures` (revisioned), `basket_assignments`, `basket_reviews`, `basket_events` (implemented, ADR-011)
-- `basket_positions`, `position_ledger_entries` (append-only), `position_reconciliations` (append-only history) (implemented, Spec 8, ADR-014); later: `user_portfolios`, `wallet_asset_balances`, `unassigned_positions`
-- `operations`, `operation_legs`, `gas_drops`, `platform_wallets`, `sponsor_usage` (implemented, Spec 8, ADR-014); later: `blockchain_transactions`, `provider_requests`
+- `basket_positions` (with `allocation_status`), `position_ledger_entries` (append-only), `position_reconciliations` (append-only history; cash rows have a null deployment) (implemented, Spec 8, ADR-014); `position_cash_entries` (append-only), `position_decisions` (append-only: skip, keep_custom, revert_custom, sync), `notifications`, `push_tokens` (implemented, Spec 9, ADR-015); later: `user_portfolios`, `wallet_asset_balances`, `unassigned_positions`
+- `operations` (kinds invest, sell_to_usdc, sell_former, rebalance, repair; `buy_scale`, `repair_shares`), `operation_legs`, `gas_drops`, `platform_wallets`, `sponsor_usage` (implemented, Spec 8 and 9, ADR-014, ADR-015); later: `blockchain_transactions`, `provider_requests`
 - `portfolio_activity`, `ledger_entries`, `transition_plans`, `transition_plan_legs`
 - `drift_cases`, `shared_asset_shortfalls`, `allocation_decisions`, `valuation_snapshots`
 - `audit_events`, `outbox_events`, `idempotency_records`
@@ -246,7 +253,7 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | Backend | Node.js + Express + TypeScript; flat `app.ts`/`server.ts`/`env.ts` with `middleware/`, `routes/`, `services/`, `providers/`; bundled with tsup |
 | Database | Supabase PostgreSQL |
 | ORM/migrations | Drizzle + Drizzle Kit, in `@repo/db` |
-| Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; BullMQ (pinned) worker for Spec 7 jobs (price snapshots, performance, search index, embeddings); `pg_cron` for retention |
+| Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; BullMQ (pinned) worker for Spec 7 jobs (price snapshots, performance, search index, embeddings) and the Spec 9 `notifications` queue (`deliver`, `version-published`, `basket-notice`); `pg_cron` for retention |
 | AI search | Google Gemini via `@google/genai` (pinned): forced function calling with one read-only tool, and text embeddings (768 dimensions) stored with pgvector; optional key, keyword search without it |
 | Wallet UX | Reown AppKit. Web: AppKit with Wagmi, Solana and Bitcoin (`@reown/appkit-adapter-bitcoin`) adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
 | Sessions | Backend-managed sessions table (not Supabase Auth) |
@@ -255,6 +262,7 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | Logging | winston via `@repo/logger` (secrets redacted), morgan request logs |
 | Environment | envalid, validated at startup |
 | Email OTP | Resend |
+| Notifications | In-app inbox (table) plus email through Resend and web push through Firebase Cloud Messaging: `firebase-admin` 14.5.0 on the API (optional `FIREBASE_SERVICE_ACCOUNT`), the `firebase` JS SDK 12.19.0 on web (`getToken` with a VAPID key, `public/firebase-messaging-sw.js` with the compat scripts of the same version, `NEXT_PUBLIC_FIREBASE_*`). Registration tokens today; Installation IDs later (ADR-015). Mobile push deferred. |
 | SMS OTP | Twilio Verify (`twilio` SDK pinned to 6.1.1 to satisfy the repo's minimum-release-age policy; no release-age exclusions) |
 | Tests | Vitest |
 | EVM authentication | SIWE |
@@ -290,13 +298,13 @@ Current provider capabilities, supported chains, plan limits and commercial term
 
 ## 10. Open decisions that must not be silently assumed
 
-1. Real-key verification of LI.FI coverage per chain/asset, terms and limits, and the gas cap values (the provider, gas model and network fee are decided in ADR-014; custody, attribution and spend authority in ADR-013).
+1. Real-key verification of LI.FI coverage per chain/asset, terms and limits, and the gas cap values (the provider, gas model and network fee are decided in ADR-014; custody, attribution and spend authority in ADR-013; rebalance routing, repair and notifications in ADR-015).
 2. Platform and manager fee collection under self-custody (proposal: explicit fee legs in the signed plan; ADR-013; the network fee leg is implemented).
 3. Whether bridging is permitted for each RWA instrument.
 4. RWA acquisition, transfer, redemption and settlement method per issuer/instrument.
 5. Price-source hierarchy, freshness limits and fallback behavior.
-6. Rebalance thresholds, tolerances, dust handling and residual-cash policy.
-7. Fix semantics and whether customization can be retained.
+6. Rebalance threshold tuning (defaults decided: 50 bps, 5 USDC, drift 500 bps; D-077, D-081) and residual-cash policy beyond basket cash (D-078).
+7. ~~Fix semantics and customization~~ — decided: Buy back or Sync for shortfalls, Rebalance or Keep custom for drift (D-023, D-080, D-081).
 8. Supported chains and asset types for each release.
 9. Legal eligibility and KYC requirements by jurisdiction, instrument and action.
 

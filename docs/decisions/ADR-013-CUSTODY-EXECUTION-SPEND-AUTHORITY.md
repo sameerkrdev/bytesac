@@ -1,9 +1,9 @@
 # ADR-013: Custody, Execution and Spend Authority (Release 1)
 
-- **Status:** APPROVED (user, 2026-10-01); amended in place for Spec 8 (native BTC, platform gas and network fee leg, LI.FI: ADR-014)
+- **Status:** APPROVED (user, 2026-10-01); amended in place for Spec 8 (native BTC, platform gas and network fee leg, LI.FI: ADR-014) and Spec 9 (hub routing for rebalances, user-editable shortfall split: ADR-015)
 - **Date:** 2026-10-01
 - **Owners:** Product + platform engineering
-- **Related:** D-002, D-009, D-013, D-022, D-023, D-024, D-028, D-030, D-033, D-067, D-068; ADR-004, ADR-010, ADR-011, ADR-014; `docs/source/User-Detailed-Features.txt` §9–§17; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
+- **Related:** D-002, D-009, D-013, D-022, D-023, D-024, D-028, D-030, D-033, D-067, D-068, D-076, D-080; ADR-004, ADR-010, ADR-011, ADR-014, ADR-015; `docs/source/User-Detailed-Features.txt` §9–§17; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
 
 ## Context
 
@@ -24,11 +24,11 @@ Investment, rebalance, fix and withdrawal cannot be specified until the platform
 - Cross-chain legs use **one route aggregator behind an adapter**: **LI.FI** (ADR-014, D-013). Each leg delivers to the user's **own linked address** on the destination chain.
 - **Gas is paid by platform gas wallets and recovered through a user-signed network fee leg** (ADR-014, D-067, D-068): Solana legs use a platform fee payer that co-signs only transactions byte-identical to the provider-built message the user saw and validated as fee-and-rent-only exposure; EVM source legs get a capped native gas drop from the platform gas wallet before the user signs; Bitcoin miner fees come from the user's own BTC inside the PSBT. The network fee is the first leg of an invest plan (estimated gas x 1.2, minimum 0.01 USDC, no markup) and, for a sale, the first leg when the wallet already holds that much USDC on Solana, otherwise the last (paid from the proceeds) (D-071).
 - A basket with constituents on a chain family where the user has no linked address cannot be invested in until the user links one.
-- Rebalance and fix use the same routes (sell on chain A → buy on chain B); each leg is signed on its source chain.
+- A rebalance uses the same routes through a **hub** (D-076, ADR-015): every sell goes to USDC on Solana, every buy runs from USDC on Solana and is sized from what the sells actually delivered; each leg is signed on its source chain. Direct sell-to-buy pairing is a future plan.
 
 ### 3. Operations, legs and states
 
-- Every operation (`invest`, `rebalance`, `fix`, `sell_to_usdc`, `sell_former_assets`) is a **plan of legs**. Each leg states asset, chain, amount, route, fees, minimum received and a quote that expires after 60 seconds.
+- Every operation (`invest`, `rebalance`, `repair`, `sell_to_usdc`, `sell_former`) is a **plan of legs**. Each leg states asset, chain, amount, route, fees, minimum received and a quote that expires after 60 seconds.
 - Leg states: `PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`. An `UNKNOWN` outcome is reconciled from chain evidence (source transaction, destination delivery) and is **never blindly retried**.
 - Operations may be `PARTIAL`; remaining legs need a fresh quote and a fresh signature, or the user stops.
 - Every operation carries an idempotency key. Plans are invalidated when prices, balances, the basket version, routes or eligibility change materially.
@@ -45,7 +45,7 @@ Investment, rebalance, fix and withdrawal cannot be specified until the platform
 ### 5. Attribution and shortfalls (D-023)
 
 - Reconciliation compares, per deployment, the sum of the user's basket sub-ledger quantities with the wallet balance.
-- **Shortfall** (wallet holds less): the difference is allocated **pro-rata** across the baskets holding that deployment; affected positions become `SHORT` ("You moved or sold some of this asset outside Bytesac"). The user chooses per basket: **Fix** (a signed plan buys back to target) or **Accept** (the sub-ledger is reduced to the reconciled quantity). Nothing is restored automatically.
+- **Shortfall** (wallet holds less): the difference is allocated **pro-rata by default** across the baskets holding that deployment (or the basket cash, for USDC on Solana); affected positions become `SHORT` ("You moved or sold some of this asset outside Bytesac") and rebalancing them is blocked until it is resolved. The user chooses: **Buy back** (one signed repair plan per short deployment covering every affected basket, never one per basket) or **Sync** (no transaction; the user splits the shortfall across the affected baskets, prefilled pro-rata, summing exactly, and the sub-ledgers are reduced). Basket cash can only be synced. Nothing is restored automatically (D-023, D-080, ADR-015).
 - **Surplus** (wallet holds more): the excess is **outside baskets** and is never sold or used by basket operations.
 - No physical quantity is ever counted for two baskets; planners use reconciled quantities only.
 
@@ -60,7 +60,7 @@ Investment, rebalance, fix and withdrawal cannot be specified until the platform
 - **Per-user smart vault with scoped delegation** — one-step execution and strong user ownership, but requires custom on-chain programs per chain family, security audits and a delegation design before launch. Deferred to a future ADR.
 - **Shared platform vault with sub-ledgers and netting** — cheapest execution, but it is custody (licensing burden) and conflicts with user ownership of underlying assets. Rejected.
 - **Solana-only execution** — simplest, but excludes constituents on other chains, which the product requires. Rejected.
-- **Solana as a hub for every cross-chain move** — simpler accounting, double bridge hops and fees on non-Solana rebalances. Rejected.
+- **Solana as a hub for every rebalance move** — chosen for release 1 (ADR-015): every leg is independent, verifiable and sized from chain evidence, at the cost of a second hop for pairs that could be matched directly. Direct sell-to-buy pairing is recorded in `FUTURE-PLANS.md`. Funding is unchanged (USDC on Solana); a non-rebalance cross-chain move is not routed through a hub.
 - **Platform bridging liquidity per chain** — fastest UX, but the platform holds funds in transit. Rejected.
 - **Dedicated investment wallet / oldest-basket-first shortfall rules** — simpler accounting or predictability, but fragile or unfair. Rejected in favour of pro-rata with explicit user choice.
 
