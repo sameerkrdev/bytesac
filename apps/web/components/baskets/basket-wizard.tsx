@@ -122,7 +122,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
   if (!d || !v) return <p role="status" className="text-sm text-muted-foreground">This basket has no version to show.</p>;
 
   // Live feedback mirrors the server's validation. It cannot run on amounts that are not numbers, so those are reported instead.
-  const amounts = [d.minimumInvestmentUsdc, d.minimumIncrementUsdc, d.fees.subscription?.amountUsdc, ...[d.fees.entry, d.fees.management, d.fees.rebalance].map((f) => (f.type === "fixed" ? f.amountUsdc : null))];
+  const amounts = [d.minimumInvestmentUsdc, d.minimumIncrementUsdc, d.fees.subscription?.amountUsdc, ...[d.fees.entry, d.fees.management, d.fees.rebalance].map((f) => (f.type === "fixed" ? f.amountUsdc : f.maxUsdc))];
   const amountsOk = amounts.every((a) => a == null || decimalStringSchema.safeParse(a).success);
   const validation: BasketValidation = amountsOk ? validateBasketVersion({
     version: d,

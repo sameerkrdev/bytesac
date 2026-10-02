@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiError } from "@repo/api-client";
-import { formatBps, formatUnits } from "@repo/app-core";
+import { formatBps } from "@repo/app-core";
 import { SLIPPAGE_DEFAULT_BPS, type Leg, type OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DiffSummary } from "@/components/baskets/version-history";
+import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { ErrorBox } from "@/components/portfolio/exit-dialogs";
 import { Button } from "@/components/ui/button";
@@ -78,9 +79,9 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
         <section aria-label="Plan" className="space-y-4">
           <h2 className="font-display text-lg font-semibold text-ivory">Your plan</h2>
           <Legs title="Sells" legs={plan.legs.filter((l) => l.kind !== "network_fee" && !l.toDeploymentId)} buying={false} />
-          {feeLeg && <p className="text-sm text-ivory">Network fee: {formatUnits(plan.networkFeeUsdc, 6)} USDC, {fromCash ? "paid from this basket's sale proceeds" : "paid from your free USDC"}.</p>}
+          {feeLeg && <><FeeLines fees={plan.fees} /><p className="text-xs text-stone">Fees are {fromCash ? "paid from this basket's sale proceeds" : "paid from your free USDC"}.</p></>}
           <Legs title="Buys" legs={plan.legs.filter((l) => l.toDeploymentId)} buying note="Buy amounts are resized to what your sales actually return." />
-          <p className="text-sm text-stone">No platform or manager fees are charged yet. Outputs are estimates, protected by a minimum per step ({SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.</p>
+          <p className="text-sm text-stone">Outputs are estimates, protected by a minimum per step ({SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.</p>
           <div className="flex flex-wrap gap-3">
             <Button className="min-h-11" onClick={() => setSigning(true)}>Continue to signing</Button>
             <Button variant="secondary" className="min-h-11" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>

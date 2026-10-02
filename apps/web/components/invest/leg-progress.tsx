@@ -6,6 +6,7 @@ import type { Leg, LegQuoteResponse, OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { FeeLines } from "@/components/invest/fee-lines";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -116,7 +117,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
       {fresh && !busy && (
         <div role="status" className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
           <p className="font-medium text-ivory">Fresh quote for step {fresh.leg.sequence}</p>
-          {freshAmounts ? <p className="text-stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-stone">Network fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC.</p>}
+          {freshAmounts ? <p className="text-stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-stone">Fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC (all fees together).</p>}
           <p className="text-xs text-stone">The quote is valid for about a minute. If the price moves against you the server refuses it and nothing is sent.</p>
         </div>
       )}
@@ -135,12 +136,12 @@ export function LegProgress({ operationId }: { operationId: string }) {
         <p role="status" className="text-sm text-ivory">
           {o.status === "PARTIAL" ? "Some steps settled and some did not run. What you received is in your wallet." : "No assets were bought or sold."}
           {unknown && " A step is still being checked with the chain; its result is added to your portfolio when it settles."}
-          {feePaid && " The network fee was already paid and is not refunded."}
+          {feePaid && " The fees were already paid and are not refunded."}
           {remaining.length > 0 && ` Not run: ${remaining.map((l) => legTitle(l, buying)).join(", ")}.`} Start a new plan to continue. Unspent USDC stays in your wallet.
         </p>
       )}
       {o.status === "CANCELLED" && <p role="status" className="text-sm text-ivory">Cancelled. Nothing was submitted.</p>}
-      <p className="text-xs text-stone">Network fee: {formatUnits(o.networkFeeUsdc, 6)} USDC, paid to Bytesac for gas.</p>
+      <FeeLines fees={o.fees} />
     </div>
   );
 }

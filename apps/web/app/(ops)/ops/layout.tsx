@@ -24,6 +24,8 @@ export default async function OpsLayout({ children }: { children: ReactNode }) {
           {allowed && <Link href="/ops/assets" className={linkCls}>Assets</Link>}
           {allowed && <Link href="/ops/baskets" className={linkCls}>Baskets</Link>}
           {allowed && <Link href="/ops/manager-profiles" className={linkCls}>Manager profiles</Link>}
+          {allowed && <Link href="/ops/fees" className={linkCls}>Fees</Link>}
+          {allowed && <Link href="/ops/revenue" className={linkCls}>Revenue</Link>}
           {isAdmin && <Link href="/ops/tags" className={linkCls}>Tags</Link>}
           {isAdmin && <Link href="/ops/disclosures" className={linkCls}>Disclosures</Link>}
           {isAdmin && <Link href="/ops/roles" className={linkCls}>Roles</Link>}

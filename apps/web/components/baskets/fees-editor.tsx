@@ -1,15 +1,17 @@
 "use client";
 
-import { formatBps } from "@repo/app-core";
-import { decimalStringSchema, feeWithinCap, maxFixedFeeUsdc, type BasketVersionView, type Fee } from "@repo/validator";
+import { decimalStringSchema, feeWithinCap, maxFixedFeeUsdc, micro, type BasketVersionView, type Fee } from "@repo/validator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { rateText } from "@/lib/fees";
 import { PercentInput } from "./allocation-editor";
 
 export type FeesState = Pick<BasketVersionView, "fees" | "minimumInvestmentUsdc" | "minimumIncrementUsdc">;
 
 const FEES = [["entry", "Entry fee"], ["management", "Management fee (per year)"], ["rebalance", "Rebalance fee"]] as const;
+const NOT_COLLECTED = "Disclosed — not collected in this release.";
+const capOk = (v: string) => decimalStringSchema.safeParse(v).success && micro(v) > 0n;
 
 /** Text field for a USDC amount. A fixed amount above 1% of the minimum is flagged here and again by the server. */
 function Amount({ id, label, value, minimum, onChange, disabled }: { id: string; label: string; value: string; minimum: string | null; onChange(v: string): void; disabled: boolean }) {
@@ -66,11 +68,20 @@ export function FeesEditor({ value, onChange, readOnly }: { value: FeesState; on
             {fee.type === "percent" ? (
               <div className="space-y-1">
                 <PercentInput id={`${key}-pct`} label={`${label} percent`} value={fee.bps} disabled={readOnly} onChange={(bps) => setFee(key, { type: "percent", bps: bps ?? 0 })} />
-                <p className="text-xs text-stone">Up to {formatBps(100)}</p>
+                <p className="text-xs text-stone">Up to {rateText(100)}</p>
+                <Label htmlFor={`${key}-cap`} className="text-xs font-medium text-ivory">Maximum (USDC, optional)</Label>
+                <div className="flex items-center gap-2">
+                  <Input id={`${key}-cap`} inputMode="decimal" value={fee.maxUsdc ?? ""} disabled={readOnly} aria-invalid={fee.maxUsdc !== undefined && !capOk(fee.maxUsdc)} className="min-h-11 w-36 bg-space text-ivory"
+                    onChange={(e) => setFee(key, e.target.value === "" ? { type: "percent", bps: fee.bps } : { type: "percent", bps: fee.bps, maxUsdc: e.target.value })} />
+                  <span className="text-xs text-stone">USDC</span>
+                </div>
+                {fee.maxUsdc !== undefined && !capOk(fee.maxUsdc) && <p role="alert" className="text-xs text-danger">Enter an amount above zero with up to 6 decimals.</p>}
+                {fee.maxUsdc !== undefined && capOk(fee.maxUsdc) && <p className="text-xs text-stone">Shown as {rateText(fee.bps, null, fee.maxUsdc)}</p>}
               </div>
             ) : (
               <Amount id={`${key}-amt`} label={`${label} amount`} value={fee.amountUsdc} minimum={min} disabled={readOnly} onChange={(v) => setFee(key, { type: "fixed", amountUsdc: v })} />
             )}
+            {key === "management" && <p className="text-xs text-stone">{NOT_COLLECTED}</p>}
           </fieldset>
         );
       })}
@@ -96,8 +107,9 @@ export function FeesEditor({ value, onChange, readOnly }: { value: FeesState; on
             </div>
           </div>
         )}
+        <p className="text-xs text-stone">{NOT_COLLECTED}</p>
       </fieldset>
-      <p className="text-xs text-stone">Fees and minimums are disclosed terms. Nothing is charged or invested.</p>
+      <p className="text-xs text-stone">Entry and rebalance fees are charged to investors up front in USDC. Minimums are disclosed terms.</p>
     </div>
   );
 }

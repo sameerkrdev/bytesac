@@ -3,6 +3,7 @@
 import { formatUnits, OPERATION_STATUS_LABEL } from "@repo/app-core";
 import type { OperationView } from "@repo/validator";
 import { useState } from "react";
+import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ export function OperationDetail({ operation: o, open }: { operation: OperationVi
       <details>
         <summary className="min-h-11 cursor-pointer py-3 text-sm text-mint">Steps ({o.legs.length})</summary>
         <ol className="space-y-3">{o.legs.map((l) => <LegRow key={l.id} leg={l} buying={o.kind === "invest"} />)}</ol>
-        <p className="pt-2 text-xs text-stone">Network fee: {formatUnits(o.networkFeeUsdc, 6)} USDC, paid to Bytesac for gas.</p>
+        <div className="pt-2"><FeeLines fees={o.fees} /></div>
       </details>
       {open && <Button className="min-h-11" onClick={() => setResume(true)}>Continue</Button>}
       {resume && (

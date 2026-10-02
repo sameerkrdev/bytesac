@@ -38,7 +38,8 @@ describe("Sell to USDC", () => {
     expect(screen.getByLabelText("Percent to sell")).toHaveValue("50");
     await userEvent.click(screen.getByRole("button", { name: "Get preview" }));
     expect(api.sellPlan).toHaveBeenCalledWith({ positionId: ID(40), percent: 50, slippageBps: 100, idempotencyKey: expect.any(String) });
-    expect(await screen.findByText("Network fee (paid to Bytesac for gas, taken from your proceeds): 0.07 USDC")).toBeInTheDocument();
+    expect(await screen.findByText("Network fee (paid to Bytesac for gas)")).toBeInTheDocument();
+    expect(screen.getByText("Fees are taken from your proceeds.")).toBeInTheDocument();
     expect(screen.getByText("1. Sell ETH")).toBeInTheDocument();
     expect(screen.getByText("0.03 ETH → about 75 USDC (at least 74 USDC)")).toBeInTheDocument();
     expect(screen.getByText("2. Network fee")).toBeInTheDocument();
@@ -49,7 +50,7 @@ describe("Sell to USDC", () => {
     renderApp(<SellDialog position={position()} />);
     await userEvent.click(screen.getByRole("button", { name: "Sell to USDC" }));
     await userEvent.click(await screen.findByRole("button", { name: "Get preview" }));
-    expect(await screen.findByText("Network fee (paid to Bytesac for gas, paid first from the USDC already in your wallet): 0.07 USDC")).toBeInTheDocument();
+    expect(await screen.findByText("Fees are paid first from the USDC already in your wallet.")).toBeInTheDocument();
   });
 
   it("shows the server's own message when the network fee USDC is missing", async () => {
