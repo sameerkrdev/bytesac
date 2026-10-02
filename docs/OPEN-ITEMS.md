@@ -76,6 +76,11 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Recovery legs use the fresh quote's minimum (no `PRICE_MOVED`); a duplicate route deny returns 400 `VALIDATION_FAILED`, not 409; the LI.FI transfers lookup is a form on `/ops/routing` (operation and leg ids) because the web has no leg resolve view.
 - [ ] Mobile Leg fixtures may need the new leg fields (`mobile#check-types` already fails on `main`); `lifiVerification` `flagged` is never produced.
 
+**Spec 10.1**
+- [ ] Server-side price-impact backstop (refuse measured impact > 5%; measure includes route fees) — decide after the real-key check of `maxPriceImpact` encoding.
+- [ ] Gas budget counters: a quote-time top-up racing a stop/expiry is not returned; Stop does not release top-ups on unsent non-recovery legs (reset at UTC midnight).
+- [ ] A stuck recovery leg holds the user's single active-operation slot until Stop; review Minors 2, 7, 11.
+
 **Spec 10**
 - [ ] `/ops/fees` does not show who last changed a row; override form takes raw ids (no picker); ops lists capped at 500 rows.
 - [ ] Revenue reconciliation buckets by `settled_at` (false mismatch near midnight possible).

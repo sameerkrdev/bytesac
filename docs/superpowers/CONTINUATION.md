@@ -1,6 +1,6 @@
 # Bytesac — Continuation Guide (for a new session or a different AI model)
 
-Written 2026-10-02 after Spec 10 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
+Written 2026-10-03 after Spec 10.1 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
 
 Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Local path: `D:\Coding\projects\bytesac` (Windows 11; Git Bash + PowerShell; **Python is not installed** — edit files with your editor tools or `node -e`).
 
@@ -27,8 +27,9 @@ Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Lo
 | 8 First investment + exit | LI.FI legs via `RouteProvider`, Solana fee-payer co-signing (`svmSponsor`), EVM gas drops, network-fee leg, native BTC (BIP-322 linking, PSBTs), positions ledger, tracking, reconciliation, portfolio, leave/sell | ADR-014, D-067..D-075 |
 | 9 Rebalance, skip, drift, repair, notifications | Apply/skip versions (one plan via the USDC-on-Solana hub, buys rescaled to actual proceeds), drift fix + keep custom, `SHORT` Buy back / Sync, basket cash sub-ledger, trade thresholds, portfolio states, inbox + email + FCM web push, investor basket notices, manager adoption counts | ADR-015, D-076..D-084 |
 | 10 Manager fees, platform fees, earnings | Manager entry/rebalance fees to the org payout wallet, ops-configured platform fee per operation (overrides), one user-signed fee leg with all transfers, waivers, earnings (Owner/Admin) and ops revenue with CSV, daily revenue reconciliation, public fees page | ADR-016, D-085..D-092 |
+| 10.1 LI.FI hardening | Plan-time estimates via routes, `SOL_REQUIRED`, Mayan rule, recovery leg after a failed destination swap, refund messaging, 5% price impact, ops deny list, route fees, LI.FI transfer lookup, token verification, fee-on-transfer flag | ADR-017, D-093..D-099 |
 
-Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`. Migrations `0000..0013`. Decision register up to **D-092**; ADRs up to **ADR-016**.
+Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`, Spec 10.1 `b23da86`. Migrations `0000..0014`. Decision register up to **D-099**; ADRs up to **ADR-017**.
 
 Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (Spec 9 review artifacts lived in the git-ignored SDD workspace and were deleted after merge; findings and rulings are summarized in HANDOFF §5).
 
@@ -84,7 +85,7 @@ Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 r
 5. Pricing: NAV (ops-entered today) vs a data vendor; staleness rules for planning.
 6. Transfer restrictions: allowlisted wallets (the user's linked addresses), what happens when a user moves an RWA token outside (reconciliation, `SHORT`).
 
-Money/permission/custody/eligibility questions must go to the user. Expect 5 tasks: (1) data + validator (eligibility rules, RWA leg states); (2) eligibility engine + RWA route provider adapter(s); (3) async settlement tracking, redemptions, rebalance/repair integration; (4) web (eligibility capture, RWA disclosures, pending states); (5) web tests + docs (ADR-017, register rows from D-093).
+Money/permission/custody/eligibility questions must go to the user. Expect 5 tasks: (1) data + validator (eligibility rules, RWA leg states); (2) eligibility engine + RWA route provider adapter(s); (3) async settlement tracking, redemptions, rebalance/repair integration; (4) web (eligibility capture, RWA disclosures, pending states); (5) web tests + docs (ADR-018, register rows from D-100).
 
 ---
 
@@ -101,6 +102,8 @@ Money/permission/custody/eligibility questions must go to the user. Expect 5 tas
 The full checklist is `docs/OPEN-ITEMS.md` (keep it current when closing items).
 
 **Spec 8 pre-launch (user actions; not machine-verifiable):** LI.FI key + terms + integrator fee; confirm `svmSponsor`, `toAddress` echo and Solana transaction encoding with a real key; Alchemy Bitcoin `/tx` and `/sendtx` shapes; Phantom/Solflare manual test (wallets that add instructions get `TX_MISMATCH` by design); Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction; fund platform wallets (Solana fee payer, EVM gas wallet per chain, gas treasury); move platform keys to a KMS; review gas caps (0.02 SOL/user/day may be too low once rent is counted); legal review of the network fee and self-custody flows; small-amount mainnet checklist in `apps/api/README.md`.
+
+**Spec 10.1 (real-key checks and leftovers):** see `docs/OPEN-ITEMS.md` and `apps/api/README.md`; server-side price-impact backstop deferred; two gas-budget counter leaks (top-up after stop/expiry; stop not releasing top-ups on unsent legs).
 
 **Spec 10 pre-launch (user actions):** fee caps and disclosure wording (compliance); platform fee rates; revenue treasury address (`REVENUE_TREASURY_SOLANA_ADDRESS`) and its USDC token account; legal review of manager fees paid directly to organizations and of the platform fee; tax/reporting; CSV downloads in a browser; small mainnet run with fees.
 
