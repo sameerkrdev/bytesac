@@ -98,6 +98,8 @@ Money/permission/custody/eligibility questions must go to the user. Expect 5 tas
 
 ## 7. Open items to keep raising (never decide silently)
 
+The full checklist is `docs/OPEN-ITEMS.md` (keep it current when closing items).
+
 **Spec 8 pre-launch (user actions; not machine-verifiable):** LI.FI key + terms + integrator fee; confirm `svmSponsor`, `toAddress` echo and Solana transaction encoding with a real key; Alchemy Bitcoin `/tx` and `/sendtx` shapes; Phantom/Solflare manual test (wallets that add instructions get `TX_MISMATCH` by design); Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction; fund platform wallets (Solana fee payer, EVM gas wallet per chain, gas treasury); move platform keys to a KMS; review gas caps (0.02 SOL/user/day may be too low once rent is counted); legal review of the network fee and self-custody flows; small-amount mainnet checklist in `apps/api/README.md`.
 
 **Spec 10 pre-launch (user actions):** fee caps and disclosure wording (compliance); platform fee rates; revenue treasury address (`REVENUE_TREASURY_SOLANA_ADDRESS`) and its USDC token account; legal review of manager fees paid directly to organizations and of the platform fee; tax/reporting; CSV downloads in a browser; small mainnet run with fees.
