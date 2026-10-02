@@ -16,7 +16,7 @@ import { AssetRoutes } from "./asset-routes";
 import { AssetRules } from "./asset-rules";
 
 type Client = Pick<ApiClient,
-  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetTags" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction"
+  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetTags" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction" | "opsSetFeeOnTransfer"
   | "opsCreateRoute" | "opsUpdateRoute" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets" | "opsCreateRule" | "opsUpdateRule"
   | "opsPutPriceReference" | "opsRecordNav" | "opsSubmitAsset" | "opsDecideAsset" | "opsAssetAction">;
 
