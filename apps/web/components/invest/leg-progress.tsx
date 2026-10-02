@@ -34,13 +34,11 @@ export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
   const t = l.recoveryToken;
   const refunded = l.providerSubstatus === "REFUNDED";
   const refunding = l.providerSubstatus === "NOT_PROCESSABLE_REFUND_NEEDED" || l.providerSubstatus === "REFUND_IN_PROGRESS";
-  const r = legRoute(l);
   return (
     <li className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
       <p className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-ivory">{l.sequence}. {l.recoveryOf ? "Complete swap" : legTitle(l, buying)}</span><StatusBadge {...LEG_STATUS_LABEL[l.status]} /></p>
-      {l.recoveryOf
-        ? <p className="text-stone">Swap the {formatUnits(l.amountIn, r.decimals ?? 0)} {r.symbol} that arrived into your target asset. You sign a fresh quote first.</p>
-        : <p className="text-stone">{a.in}{a.estimatedOut && ` → about ${a.estimatedOut}`}{a.minOut && ` (at least ${a.minOut})`}</p>}
+      <p className="text-stone">{l.recoveryOf && "Swap what arrived: "}{a.in}{a.estimatedOut && ` → about ${a.estimatedOut}`}{a.minOut && ` (at least ${a.minOut})`}</p>
+      {l.recoveryOf && l.status === "PLANNED" && <p className="text-xs text-stone">You sign a fresh quote first; the figures above are an estimate.</p>}
       {l.status === "PLANNED" && fees > 0 && <p className="text-xs text-stone">Route fees (LI.FI, DEX, bridge): ${fees.toFixed(2)} — included in the estimate</p>}
       {l.status === "PLANNED" && l.priceImpact !== null && <p className={`text-xs ${l.priceImpact >= PRICE_IMPACT_WARNING ? "text-warning" : "text-stone"}`}>Price impact {(l.priceImpact * 100).toFixed(2)}%{l.priceImpact >= PRICE_IMPACT_WARNING && " — higher than usual"}</p>}
       {l.feeOnTransfer && l.status === "PLANNED" && <p className="text-xs text-warning">This token charges a transfer tax; amounts are estimates.</p>}
@@ -132,8 +130,8 @@ export function LegProgress({ operationId }: { operationId: string }) {
       {fresh && !busy && (
         <div role="status" className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
           <p className="font-medium text-ivory">Fresh quote for step {fresh.leg.sequence}</p>
-          {fresh.leg.recoveryOf ? <p className="text-stone">Swap the token that arrived into your target asset.</p> : freshAmounts ? <p className="text-stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-stone">Fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC (all fees together).</p>}
-          <p className="text-xs text-stone">The quote is valid for about a minute. If the price moves against you the server refuses it and nothing is sent.</p>
+          {freshAmounts ? <p className="text-stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-stone">Fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC (all fees together).</p>}
+          <p className="text-xs text-stone">The quote is valid for about a minute. {fresh.leg.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</p>
         </div>
       )}
       {ACTIVE.includes(o.status) && inFlight && !busy && <p role="status" className="text-sm text-stone">Waiting for the network to confirm. This page updates by itself.</p>}

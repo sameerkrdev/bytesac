@@ -94,8 +94,9 @@ const routesSchema = z.object({
 });
 const statusSchema = z.object({
   status: z.enum(["NOT_FOUND", "INVALID", "PENDING", "DONE", "FAILED"]),
-  substatus: z.string().optional(),
-  receiving: z.object({ txHash: z.string().optional(), token: z.object({ address: z.string(), decimals: z.number(), symbol: z.string() }).optional() }).optional(),
+  substatus: z.string().nullish(),
+  // A partial or malformed token object is treated as absent (the leg then stays UNKNOWN for a person) rather than failing every status check.
+  receiving: z.object({ txHash: z.string().optional(), token: z.object({ address: z.string(), decimals: z.number(), symbol: z.string() }).optional().catch(undefined) }).optional(),
 });
 
 /** Gas (from `gas` estimates: the source chain's), route fees (from `all` estimates) and price impact (from the USD totals) of a quote or route. */
@@ -180,7 +181,7 @@ export const lifi: RouteProvider = {
 
   async status(i) {
     const s = parse(statusSchema, await lifiCall("/status", { params: { txHash: i.txHash, fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain] } }));
-    const substatus = s.substatus;
+    const substatus = s.substatus ?? undefined;
     if (s.status === "INVALID") throw unavailable("The route provider rejected the status request.");
     // A refund is due (not processable): not a failure yet, the refund lands as REFUNDED. The leg stays pending and shows the substatus.
     if (s.status === "FAILED" && (substatus === "NOT_PROCESSABLE_REFUND_NEEDED" || substatus === "REFUND_IN_PROGRESS")) return { state: "PENDING", substatus };

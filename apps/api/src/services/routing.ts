@@ -120,6 +120,7 @@ const tokenListSchema = z.object({ tokens: z.record(z.string(), z.array(z.object
 export async function lifiVerification(chain: AssetChain, address: string | null): Promise<"verified" | "unverified" | "flagged" | null> {
   if (!address || chain === "bitcoin") return null;
   const key = `lifi:tokens:${CHAIN_IDS[chain]}`;
+  if (await redis.get(`${key}:down`).catch(() => null)) return null; // LI.FI failed a moment ago: not asked again for a minute
   const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
   try {
     let listed: string[] | null = JSON.parse((await redis.get(key).catch(() => null)) ?? "null");
@@ -129,6 +130,7 @@ export async function lifiVerification(chain: AssetChain, address: string | null
     }
     return listed.includes(norm(address)) ? "verified" : "unverified";
   } catch {
+    await redis.set(`${key}:down`, "1", "EX", 60).catch(() => undefined);
     return null;
   }
 }

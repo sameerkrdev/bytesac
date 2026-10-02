@@ -26,6 +26,9 @@ export function describeUnsigned(serializedBase64: string): { serializedBase64: 
 
 export const ata = (owner: PublicKey, mint: PublicKey) => PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROGRAM.toBuffer(), mint.toBuffer()], ATA_PROGRAM)[0];
 
+/** Whether `owner` has no token account for `mint` yet. An RPC error counts as missing: rent estimates stay conservative. */
+export const tokenAccountMissing = (owner: string, mint: string): Promise<boolean> => connection.getAccountInfo(ata(new PublicKey(owner), new PublicKey(mint)), "confirmed").then((info) => !info, () => true);
+
 /**
  * The fee leg: one USDC TransferChecked per recorded fee from the user's token account to each recipient's (network, manager, platform, in that order),
  * fee payer = platform (which also creates a recipient token account that is missing). Server-built, so the planner knows every byte.

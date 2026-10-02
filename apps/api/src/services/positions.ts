@@ -214,13 +214,15 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
         if ((await finality(leg.toChain, delivered.txHash)) !== "finalized") return notFinal();
         const addresses = await userAddresses(db, op.userId);
         const owner = addressOn(addresses, leg.toChain);
-        const native = /^0x0{40}$/.test(delivered.token.address) || delivered.token.address === "11111111111111111111111111111111";
+        const native = /^0x(0{40}|e{40})$/i.test(delivered.token.address) || delivered.token.address === "11111111111111111111111111111111";
         const evidenced = await receivedOnChain(leg.toChain, owner, native ? null : delivered.token.address, delivered.txHash);
         if (evidenced !== null && evidenced > 0n) {
           // Network calls stay outside the database transaction: the estimate first, then the writes under the operation lock.
-          const [target] = leg.toDeploymentId ? await db.select({ address: instrumentDeployments.address }).from(instrumentDeployments).where(eq(instrumentDeployments.id, leg.toDeploymentId)) : [];
+          const [target] = leg.toDeploymentId ? await db.select({ address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol }).from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.id, leg.toDeploymentId)) : [];
           const toToken = leg.toDeploymentId ? target!.address : USDC_SOLANA_MINT; // a sell's proceeds are USDC on Solana
-          const estimate = await routeProviderById(leg.provider ?? "")!.estimate({
+          // The token that arrived is the intended one already: there is nothing to swap, a person resolves it.
+          const arrivedAsTarget = !native && toToken !== null && delivered.token.address.toLowerCase() === toToken.toLowerCase();
+          const estimate = arrivedAsTarget ? null : await routeProviderById(leg.provider ?? "")!.estimate({
             fromChain: leg.toChain, fromToken: native ? null : delivered.token.address, toChain: leg.toChain, toToken, fromAmount: evidenced, toAddress: owner, slippageBps: op.slippageBps, deny: await routeDenyList(leg.toChain, owner),
           }).catch((err: unknown) => {
             logger.warn("recovery estimate failed; the leg stays unknown", { legId, errMessage: err instanceof Error ? err.message : "unknown" });
@@ -241,7 +243,7 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
               await tx.insert(operationLegs).values({
                 operationId: op.id, sequence: next, kind: "swap", fromChain: leg.toChain, fromDeploymentId: null, toChain: leg.toChain, toDeploymentId: leg.toDeploymentId, amountIn: evidenced.toString(), minOut: estimate.minOut.toString(),
                 provider: leg.provider, gasPayer: payer, recoveryOf: leg.id,
-                routeSummary: { fromToken: recoveryToken.address, symbol: recoveryToken.symbol, decimals: recoveryToken.decimals, tool: estimate.toolSummary, estimatedOut: estimate.estimatedOut.toString(), routeFees: estimate.routeFees, priceImpact: estimate.priceImpact },
+                routeSummary: { fromToken: recoveryToken.address, fromSymbol: recoveryToken.symbol, fromDecimals: recoveryToken.decimals, symbol: target?.symbol ?? "USDC", decimals: target?.decimals ?? 6, tool: estimate.toolSummary, estimatedOut: estimate.estimatedOut.toString(), routeFees: estimate.routeFees, priceImpact: estimate.priceImpact },
                 // The gas is reserved when the recovery is quoted, under the per-chain lock and the daily caps (an EVM drop is sized here, x1.5 x2 like an ERC-20 sell).
                 expectedTx: payer === "platform_gas_drop" ? { gasReserved: false, gasDropNative: ((estimate.gasNative * (native ? 3n : 4n)) / 2n).toString() } : { gasReserved: false },
               });

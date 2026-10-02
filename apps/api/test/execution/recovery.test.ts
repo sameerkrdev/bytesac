@@ -91,11 +91,51 @@ describe("recovery after a failed destination swap", () => {
     expect(original).toMatchObject({ status: "FAILED", failure_reason: "DESTINATION_SWAP_FAILED", provider_substatus: "PARTIAL", recovery_token: { chain: "base", address: DELIVERED, decimals: 6, symbol: "USDC", amount: "299000000" } });
     expect(recovery).toMatchObject({
       sequence: 3, kind: "swap", status: "PLANNED", from_chain: "base", to_chain: "base", to_deployment_id: a.tkn.deploymentId, amount_in: "299000000", gas_payer: "platform_gas_drop", recovery_of: original!.id, min_out: "296010000",
-      route_summary: { fromToken: DELIVERED, symbol: "USDC", decimals: 6 },
+      route_summary: { fromToken: DELIVERED, fromSymbol: "USDC", fromDecimals: 6, symbol: "TKN", decimals: 6 },
     });
     expect(recovery!.expected_tx).toMatchObject({ gasReserved: false, gasDropNative: "10000" });
     expect((await opRow(a.opId)).status).toBe("IN_PROGRESS");
     expect(await ledger()).toHaveLength(0);
+  });
+
+  it("a later leg that fails does not orphan a pending recovery: the operation stays IN_PROGRESS, the recovery can still be quoted, and it ends PARTIAL once the recovery settles", async () => {
+    const a = await arrange();
+    partial(a, 299_000_000n);
+    await trackLeg(a.assetId);
+    const recovery = (await legs(a.opId))[2]!;
+    // A second invest leg, sent and then failed by LI.FI while the recovery is still planned.
+    const [other] = await adminSql<{ id: string }[]>`
+      INSERT INTO app.operation_legs (id, operation_id, sequence, kind, from_chain, to_chain, to_deployment_id, amount_in, provider, status, source_tx, submitted_at)
+      VALUES (gen_random_uuid(), ${a.opId}, 4, 'cross_chain', 'solana', 'base', ${a.tkn.deploymentId}, 100000000, 'lifi', 'PENDING_CHAIN', 'sig-b', now()) RETURNING id`;
+    a.chain.solanaFinality.set("sig-b", "finalized");
+    a.chain.lifiStatus.set("sig-b", { state: "FAILED", reason: "FAILED" });
+    await trackLeg(other!.id);
+    expect((await legs(a.opId)).map((l) => l.status)).toEqual(["SETTLED", "FAILED", "PLANNED", "FAILED"]);
+    expect((await opRow(a.opId)).status).toBe("IN_PROGRESS");
+    fakes.evm.balances.clear();
+    const quoted = await post(a.user.h, `/v1/operations/${a.opId}/legs/${recovery.id}/quote`);
+    expect(quoted.status).toBe(200);
+    await settleRecovery(a, recovery.id, 290_000_000n);
+    expect((await opRow(a.opId)).status).toBe("PARTIAL"); // the recovery settled; the other leg failed
+  });
+
+  it("a rebalance whose only sell was recovered stays IN_PROGRESS when every buy ends NO_FUNDS, until the recovery is final", async () => {
+    const a = await arrange("rebalance", "sell");
+    // A buy planned after the sell (no basket cash yet: the proceeds were recovered, not credited).
+    const [buy] = await adminSql<{ id: string }[]>`
+      INSERT INTO app.operation_legs (id, operation_id, sequence, kind, from_chain, to_chain, to_deployment_id, amount_in, min_out, provider, status)
+      VALUES (gen_random_uuid(), ${a.opId}, 3, 'cross_chain', 'solana', 'base', ${a.tkn.deploymentId}, 100000000, 90000000, 'lifi', 'PLANNED') RETURNING id`;
+    partial(a, 5_000_000n);
+    await trackLeg(a.assetId);
+    const recovery = (await legs(a.opId)).find((l) => l.recovery_of)!;
+    const nothing = await post(a.user.h, `/v1/operations/${a.opId}/legs/${buy!.id}/quote`);
+    expect(nothing.status).toBe(400);
+    expect((await legs(a.opId)).find((l) => l.id === buy!.id)!.failure_reason).toBe("NO_FUNDS");
+    expect((await opRow(a.opId)).status).toBe("IN_PROGRESS");
+    const quoted = await post(a.user.h, `/v1/operations/${a.opId}/legs/${recovery.id}/quote`);
+    expect(quoted.status).toBe(200);
+    await settleRecovery(a, recovery.id, 4_900_000n);
+    expect((await opRow(a.opId)).status).toBe("PARTIAL");
   });
 
   it("no readable evidence (nothing arrived for the user), or no estimate: the leg stays UNKNOWN and nothing is appended", async () => {

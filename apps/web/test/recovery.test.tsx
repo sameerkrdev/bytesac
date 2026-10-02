@@ -12,7 +12,7 @@ vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => signer }));
 import { LegProgress } from "@/components/invest/leg-progress";
 
 const failed = buyLeg({ status: "FAILED", failureReason: "DESTINATION_SWAP_FAILED", recoveryToken: { chain: "ethereum", address: "0xabc", decimals: 6, symbol: "USDC", amount: "299000000" } });
-const recovery = buyLeg({ id: ID(13), sequence: 3, status: "PLANNED", fromChain: "ethereum", toChain: "ethereum", kind: "swap", amountIn: "299000000", recoveryOf: failed.id, minOut: null, routeSummary: { fromToken: "0xabc", symbol: "USDC", decimals: 6 } });
+const recovery = buyLeg({ id: ID(13), sequence: 3, status: "PLANNED", fromChain: "ethereum", toChain: "ethereum", kind: "swap", amountIn: "299000000", recoveryOf: failed.id, minOut: null, routeSummary: { fromToken: "0xabc", fromSymbol: "USDC", fromDecimals: 6, symbol: "WETH", decimals: 18, estimatedOut: "100000000000000000" } });
 const show = () => renderApp(<LegProgress operationId={ID(20)} />);
 beforeEach(() => vi.clearAllMocks());
 
@@ -29,14 +29,18 @@ describe("refund and recovery states", () => {
   });
   it("shows what arrived, hides the raw reason, and signs the recovery leg through the signer", async () => {
     api.getOperation.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SETTLED" }), failed, recovery] }));
-    api.quoteLeg.mockResolvedValue({ legId: recovery.id, estimatedOut: "1", minOut: "1", quoteExpiresAt: "2026-10-01T12:01:00.000Z", transaction: { kind: "solana", serializedBase64: "AAEC" }, approval: null, gasDrop: null });
+    api.quoteLeg.mockResolvedValue({ legId: recovery.id, estimatedOut: "120000000000000000", minOut: "110000000000000000", quoteExpiresAt: "2026-10-01T12:01:00.000Z", transaction: { kind: "solana", serializedBase64: "AAEC" }, approval: null, gasDrop: null });
     signer.signSolana.mockResolvedValue("c2lnbmVk");
     api.submitLeg.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SETTLED" }), failed, { ...recovery, status: "SUBMITTED" }] }));
     show();
     expect(await screen.findByText(/Arrived as 299 USDC on Ethereum/)).toBeInTheDocument();
     expect(screen.queryByText("DESTINATION_SWAP_FAILED")).toBeNull();
     expect(screen.getByRole("button", { name: "Stop here" })).toBeInTheDocument();
+    expect(screen.getByText(/299 USDC → about 0\.1 WETH/)).toBeInTheDocument(); // the plan row names the target token and its decimals
     await userEvent.click(await screen.findByRole("button", { name: "Complete swap" }));
+    // The fresh quote's estimate and minimum are shown in the target token before the wallet opens, and the "server refuses it" line is gone.
+    expect(await screen.findByText(/299 USDC → about 0\.12 WETH \(at least 0\.11 WETH\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/server refuses it/)).toBeNull();
     await userEvent.click(await screen.findByRole("button", { name: "Approve step 3 in your wallet" }));
     await waitFor(() => expect(api.submitLeg).toHaveBeenCalledWith(ID(20), recovery.id, { signedTx: "c2lnbmVk" }));
   });

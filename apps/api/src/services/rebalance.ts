@@ -16,7 +16,7 @@ import { planFees } from "./fees";
 import { getInvestability } from "./investability";
 import {
   FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, addressOn, applyVersion, assertEligible, assertNoneInFlight, auditBase, basketCashMicro, findByKey, freeUsdcMicro, getOperation, insertPlan, operationView,
-  lockOperation, planQuote, reused, sellLeg, setOperationStatus, sponsoredCost, usdcPrice, userAddresses, type LegDraft, type OpCtx,
+  legCost, lockOperation, planQuote, reservedExpectedTx, reused, sellLeg, setOperationStatus, usdcPrice, userAddresses, type LegDraft, type OpCtx,
 } from "./operations";
 import { fanOutToHolders } from "./notifications";
 import { getPrices, priceToMicro } from "./pricing";
@@ -153,8 +153,9 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
       // Funded by sale proceeds that are not in the wallet yet: LI.FI's balance-free estimate, never a quote (execution takes a real quote per leg).
       estimate: true,
     })));
-    const sellCosts = sellQuotes.map((q, n) => (sells[n]!.chain === "solana" ? sponsoredCost(q) : { lamports: 0n, usd: q.gasEstimateUsd }));
-    const buyCosts = buyQuotes.map(sponsoredCost);
+    const solanaOwner = addressOn(addresses, "solana");
+    const sellCosts = await Promise.all(sellQuotes.map((q, n) => (sells[n]!.chain === "solana" ? legCost(q, "solana", USDC_SOLANA_MINT, solanaOwner) : { lamports: 0n, usd: q.gasEstimateUsd, estimated: false })));
+    const buyCosts = await Promise.all(buyQuotes.map((q, n) => legCost(q, plan.buys[n]!.chain, buyConstituents[n]!.deployment.address, solanaOwner)));
     // The traded value T: planned sells plus the buys funded from existing basket cash. Only applying a newer manager version carries the manager's rebalance fee.
     const traded = sum(plan.sells.map((s) => s.valueMicro)) + (val.cashMicro < sum(plan.buys.map((b) => b.amountMicro)) ? val.cashMicro : sum(plan.buys.map((b) => b.amountMicro)));
     const price = await usdcPrice();
@@ -189,7 +190,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
       legs.push({
         kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id, amountIn: b.amountMicro,
         minOut: (buyQuotes[n]!.minOut * b.amountMicro) / plan.buys[n]!.amountMicro, routeSummary: { tool: buyQuotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, planned: true, routeFees: buyQuotes[n]!.routeFees, priceImpact: buyQuotes[n]!.priceImpact },
-        expectedTx: null, gasPayer: "platform_fee_payer",
+        expectedTx: reservedExpectedTx(buyCosts[n]!), gasPayer: "platform_fee_payer",
       });
     }
 
@@ -234,7 +235,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
 
     const addresses = await userAddresses(db, ctx.userId);
     const q = await planQuote({ fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: d.chain, toToken: d.address, amount: buy, slippageBps: body.slippageBps, addresses });
-    const cost = sponsoredCost(q);
+    const cost = await legCost(q, d.chain, d.address, addressOn(addresses, "solana"));
     const usdc = await usdcPrice();
     const fees = await planFees(db, { networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, cost.usd], usdc), operation: "repair", platformBaseMicro: buy, usdcPrice: usdc, solPriceUsd: q.nativePriceUsd, manager: null, organizationId: null, basketId: null });
     const fee = fees.totalMicro;
@@ -245,7 +246,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
       { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" },
       {
         kind: d.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: d.chain, toDeploymentId: body.deploymentId, amountIn: buy, minOut: minOut(q.estimatedOut, body.slippageBps),
-        routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact }, expectedTx: null, gasPayer: "platform_fee_payer",
+        routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact }, expectedTx: reservedExpectedTx(cost), gasPayer: "platform_fee_payer",
       },
     ];
     const id = await insertPlan(ctx, {

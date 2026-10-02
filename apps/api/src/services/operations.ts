@@ -16,7 +16,7 @@ import { routeProviderById } from "../providers/routes";
 import { isBuildRefusal } from "../providers/routes/lifi";
 import type { LegEstimate, LegQuote, RouteFee } from "../providers/routes/types";
 import { SendTransactionError } from "@solana/web3.js";
-import { LAMPORTS_PER_SIGNATURE, MAX_PRIORITY_LAMPORTS, SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure } from "../providers/solana-tx";
+import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure, tokenAccountMissing } from "../providers/solana-tx";
 import type { RequestMeta } from "../middleware/request-context";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
@@ -168,12 +168,14 @@ export async function assertNoneInFlight(conn: DbOrTx, userId: string, asset: st
 
 /**
  * After a leg ends: COMPLETED when every leg settled; PARTIAL when an asset leg settled and another failed; FAILED when a leg failed and no asset leg settled.
- * A leg that failed with a recovery that is still alive (not itself failed or unknown) counts as neither: the recovery stands in for it.
+ * A leg that failed with a recovery that is still alive (not itself failed or unknown) counts as neither: the recovery stands in for it. While any recovery
+ * is not final (PLANNED to UNKNOWN) the operation stays IN_PROGRESS, whatever else failed: the user can still sign it, or Stop (PARTIAL, D-072).
  */
 export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: string): Promise<void> {
   const op = await lockOperation(tx, opId);
   if (op.status !== "IN_PROGRESS") return;
   const all = await tx.select({ id: operationLegs.id, kind: operationLegs.kind, status: operationLegs.status, recoveryOf: operationLegs.recoveryOf }).from(operationLegs).where(eq(operationLegs.operationId, opId));
+  if (all.some((l) => l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")) return;
   const recovered = new Set(all.filter((l) => l.recoveryOf && l.status !== "FAILED" && l.status !== "UNKNOWN").map((l) => l.recoveryOf));
   const legs = all.filter((l) => !recovered.has(l.id));
   if (legs.every((l) => l.status === "SETTLED")) {
@@ -239,18 +241,26 @@ export async function planQuote(i: { fromChain: AssetChain; fromToken: string | 
   }
 }
 
-/** Without a built transaction (an estimate) the platform exposure per Solana-source leg is bounded by its caps: one signature, the priority-fee ceiling and one token account's rent. */
-const ESTIMATE_EXPOSURE_LAMPORTS = LAMPORTS_PER_SIGNATURE + MAX_PRIORITY_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS;
-
 /**
  * What a Solana-source leg costs the platform: the decoded fee-payer exposure (signatures, priority fee, token-account rent) or LI.FI's own estimate if
  * higher, and the gas estimate in USD with the rent added on top (it is not known whether LI.FI's figure includes it). Refuses an unsponsorable transaction.
- * An estimate carries no transaction: the conservative exposure above stands in (D-072 keeps its bound).
+ * An estimate carries no transaction: LI.FI's own gas figure plus `rentLamports` (the caller passes it only when the destination token account is missing);
+ * `quoteLeg` tops the reservation up if the transaction it builds needs more (D-072 keeps its bound).
  */
-export function sponsoredCost(q: PlanQuote): { lamports: bigint; usd: number } {
-  const e = q.transaction ? sponsorExposure((q.transaction as { serializedBase64: string }).serializedBase64) : { lamports: ESTIMATE_EXPOSURE_LAMPORTS, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS };
-  return { lamports: e.lamports > q.gasNative ? e.lamports : q.gasNative, usd: q.gasEstimateUsd + (Number(e.rentLamports) / 1e9) * (q.nativePriceUsd ?? SOL_USD_FALLBACK) };
+export function sponsoredCost(q: PlanQuote, rentLamports = 0n): { lamports: bigint; usd: number; estimated: boolean } {
+  const usd = (rent: bigint) => q.gasEstimateUsd + (Number(rent) / 1e9) * (q.nativePriceUsd ?? SOL_USD_FALLBACK);
+  if (!q.transaction) return { lamports: q.gasNative + rentLamports, usd: usd(rentLamports), estimated: true };
+  const e = sponsorExposure((q.transaction as { serializedBase64: string }).serializedBase64);
+  return { lamports: e.lamports > q.gasNative ? e.lamports : q.gasNative, usd: usd(e.rentLamports), estimated: false };
 }
+
+/** Plan-time cost of a Solana-source leg delivering `toToken` (null: native) to the user's wallet: an estimate adds token-account rent only when the destination is Solana and the account is missing. */
+export async function legCost(q: PlanQuote, toChain: AssetChain, toToken: string | null, solanaOwner: string): Promise<ReturnType<typeof sponsoredCost>> {
+  return sponsoredCost(q, !q.transaction && toChain === "solana" && toToken && (await tokenAccountMissing(solanaOwner, toToken)) ? TOKEN_ACCOUNT_RENT_LAMPORTS : 0n);
+}
+
+/** An estimated leg records what it reserved, so the quote it later signs can top the reservation up. */
+export const reservedExpectedTx = (c: { lamports: bigint; estimated?: boolean }): Record<string, unknown> | null => (c.estimated ? { reservedNative: c.lamports.toString() } : null);
 
 /** Reserves platform-paid gas, then inserts the operation and its legs, all in one transaction (a refused budget leaves no operation). */
 export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$inferInsert, "userId" | "expiresAt" | "gasReserved">; legs: LegDraft[]; gas: Map<AssetChain, bigint>; fees: PlannedFee[] }): Promise<string> {
@@ -323,7 +333,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   const quotes = await Promise.all(inv.constituents.map((c, n) => planQuote({
     fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: c.deployment.chain, toToken: c.deployment.address, amount: provisional[n]!.amountMicro, slippageBps: body.slippageBps, addresses,
   })));
-  const costs = quotes.map(sponsoredCost);
+  const costs = await Promise.all(quotes.map((q, n) => legCost(q, inv.constituents[n]!.deployment.chain, inv.constituents[n]!.deployment.address, addressOn(addresses, "solana"))));
   const price = await usdcPrice();
   const fees = await planFees(db, {
     networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: "invest", platformBaseMicro: amount, usdcPrice: price, solPriceUsd: quotes.find((q) => q.nativePriceUsd)?.nativePriceUsd,
@@ -340,7 +350,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
     solanaGas += costs[n]!.lamports;
     legs.push({
       kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id,
-      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: null, gasPayer: "platform_fee_payer",
+      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: reservedExpectedTx(costs[n]!), gasPayer: "platform_fee_payer",
     });
   });
 
@@ -353,7 +363,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
 
 /** A sell leg (asset to USDC on Solana) with its gas reservation added to `gas`. Shared by sell and rebalance plans. */
 export function sellLeg(
-  s: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }, q: PlanQuote, cost: { lamports: bigint }, slippageBps: number, gas: Map<AssetChain, bigint>,
+  s: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }, q: PlanQuote, cost: { lamports: bigint; estimated?: boolean }, slippageBps: number, gas: Map<AssetChain, bigint>,
 ): LegDraft {
   const payer = gasPayerFor(s.chain);
   // EVM sells: the planned drop is reserved with the plan; `sendGasDrop` later sends exactly this amount. Estimate x 1.5, and x 2 when an ERC-20
@@ -364,7 +374,7 @@ export function sellLeg(
   return {
     kind: s.chain === "solana" ? "swap" : "cross_chain", fromChain: s.chain, fromDeploymentId: s.deploymentId, toChain: "solana", toDeploymentId: null, amountIn: s.quantity,
     minOut: minOut(q.estimatedOut, slippageBps), routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol, decimals: s.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact },
-    expectedTx: payer === "platform_gas_drop" ? { gasReserved: true, gasDropNative: drop.toString() } : null, gasPayer: payer,
+    expectedTx: payer === "platform_gas_drop" ? { gasReserved: true, gasDropNative: drop.toString() } : reservedExpectedTx(cost), gasPayer: payer,
   };
 }
 
@@ -397,7 +407,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   if (sells.length === 0) throw createHttpError("There is nothing to sell: your wallet holds none of this position's assets.", { code: "INSUFFICIENT_BALANCE" });
 
   const quotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
-  const costs = quotes.map((q, n) => (sells[n]!.chain === "solana" ? sponsoredCost(q) : { lamports: 0n, usd: q.gasEstimateUsd }));
+  const costs = await Promise.all(quotes.map((q, n) => (sells[n]!.chain === "solana" ? legCost(q, "solana", USDC_SOLANA_MINT, addressOn(addresses, "solana")) : { lamports: 0n, usd: q.gasEstimateUsd, estimated: false })));
   const price = await usdcPrice();
   // The platform fee is charged on the planned sale value; a sell with any price missing is waived "no_price".
   const marketPrices = new Map((await getPrices(sells.map((s) => s.instrumentId))).flatMap((p) => (p.kind === "market" && p.status === "ok" && !p.stale && p.value && priceToMicro(p.value) ? [[p.instrumentId, priceToMicro(p.value)!] as const] : [])));
@@ -474,7 +484,7 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
       const feeInFlight = fresh.filter((l) => l.kind === "network_fee" && l.routeSummary?.fromCash === true && l.status !== "SETTLED").reduce((s, l) => s + BigInt(l.amountIn), 0n);
       const cash = await basketCashMicro(tx, op.positionId!);
       const available = cash > feeInFlight ? cash - feeInFlight : 0n;
-      const buys = fresh.filter((l) => l.sequence >= current.sequence && l.fromDeploymentId === null && l.kind !== "network_fee");
+      const buys = fresh.filter((l) => l.sequence >= current.sequence && l.fromDeploymentId === null && l.kind !== "network_fee" && !l.recoveryOf); // a recovery is not sized from cash
       const planned = buys.map((l) => BigInt(l.amountIn));
       const scaled = scaleBuys(planned, available);
       for (const [n, l] of buys.entries()) {
@@ -553,7 +563,8 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
   if (q.transaction.kind === "solana") {
     const exposure = sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent
     // A recovery's Solana fees were not reserved with the plan: reserve them now (per-chain lock and daily caps; refusal is 409 GAS_BUDGET_EXHAUSTED), once per leg.
-    if (leg.recoveryOf && planned.gasReserved === false) await reserveRecoveryGas(op, leg, "solana", exposure.lamports > q.gasNative ? exposure.lamports : q.gasNative);
+    // A planned estimate leg reserved LI.FI's gas figure (and rent if the account was missing): if this transaction needs more, the reservation is topped up under the same lock and caps.
+    await reserveLegGas(op, leg, "solana", exposure.lamports > q.gasNative ? exposure.lamports : q.gasNative);
     await save({ ...base, builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash });
   } else if (q.transaction.kind === "evm") {
     await save({ ...base, expectedTx: { ...planned, to: q.transaction.to.toLowerCase(), dataHash: sha256Hex(q.transaction.data), value: q.transaction.value } });
@@ -565,15 +576,21 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
   return { ...response({ estimatedOut: q.estimatedOut.toString(), minOut: q.minOut.toString(), transaction: q.transaction.kind === "bitcoin" ? { ...q.transaction, inputCount } : q.transaction, approval }), gasDrop };
 }
 
-/** Reserves platform gas for a recovery leg (planned legs reserve with their plan), adding it to the operation's reservation so a later release stays exact, and marks the leg. */
-async function reserveRecoveryGas(op: Op, leg: Leg, chain: AssetChain, amountNative: bigint): Promise<void> {
+/**
+ * Brings what a Solana leg has reserved up to `needed`: a recovery leg reserves in full at its first quote (nothing was held at plan time), a planned estimate leg
+ * only the shortfall over its recorded `reservedNative`. Adds to the operation's reservation so a later release stays exact. Refusal is 409 GAS_BUDGET_EXHAUSTED.
+ */
+async function reserveLegGas(op: Op, leg: Leg, chain: AssetChain, needed: bigint): Promise<void> {
   await db.transaction(async (tx) => {
     const locked = await lockOperation(tx, op.id);
     const [current] = await tx.select({ expectedTx: operationLegs.expectedTx, status: operationLegs.status }).from(operationLegs).where(eq(operationLegs.id, leg.id));
-    if (current!.status !== "PLANNED" || (current!.expectedTx as { gasReserved?: boolean } | null)?.gasReserved !== false) return;
-    await reserveGas(tx, { userId: op.userId, chain, amountNative });
-    await tx.update(operations).set({ gasReserved: { ...locked.gasReserved, [chain]: (BigInt(locked.gasReserved[chain] ?? 0) + amountNative).toString() } }).where(eq(operations.id, op.id));
-    await tx.update(operationLegs).set({ expectedTx: { ...(current!.expectedTx ?? {}), gasReserved: true, reservedNative: amountNative.toString() } }).where(eq(operationLegs.id, leg.id));
+    const ex = (current!.expectedTx ?? {}) as { gasReserved?: boolean; reservedNative?: string };
+    const have = ex.gasReserved === false ? 0n : ex.reservedNative !== undefined ? BigInt(ex.reservedNative) : null;
+    if (current!.status !== "PLANNED" || have === null || needed <= have) return;
+    const extra = needed - have;
+    await reserveGas(tx, { userId: op.userId, chain, amountNative: extra });
+    await tx.update(operations).set({ gasReserved: { ...locked.gasReserved, [chain]: (BigInt(locked.gasReserved[chain] ?? 0) + extra).toString() } }).where(eq(operations.id, op.id));
+    await tx.update(operationLegs).set({ expectedTx: { ...ex, gasReserved: true, reservedNative: needed.toString() } }).where(eq(operationLegs.id, leg.id));
   });
 }
 
