@@ -20,3 +20,4 @@ export * from "./discovery";
 export * from "./performance";
 export * from "./execution";
 export * from "./rebalance";
+export * from "./fees";

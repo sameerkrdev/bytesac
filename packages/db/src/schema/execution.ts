@@ -16,7 +16,7 @@ export const operationStatus = app.enum("operation_status", ["PLANNED", "IN_PROG
 export const legKind = app.enum("leg_kind", ["network_fee", "swap", "cross_chain"]);
 export const legStatus = app.enum("leg_status", ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"]);
 export const gasPayer = app.enum("gas_payer", ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"]);
-export const platformWalletPurpose = app.enum("platform_wallet_purpose", ["solana_fee_payer", "evm_gas", "gas_treasury"]);
+export const platformWalletPurpose = app.enum("platform_wallet_purpose", ["solana_fee_payer", "evm_gas", "gas_treasury", "revenue_treasury"]);
 export const gasDropStatus = app.enum("gas_drop_status", ["pending", "confirmed", "failed"]);
 export const reconciliationStatus = app.enum("reconciliation_status", ["OK", "SHORT", "SURPLUS"]);
 

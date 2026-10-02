@@ -31,7 +31,7 @@ export type PayoutWalletStatus = z.infer<typeof payoutWalletStatusSchema>;
 export const membershipRoleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "ANALYST", "VIEWER"]);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
 
-export const ORGANIZATION_PERMISSIONS = ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage"] as const;
+export const ORGANIZATION_PERMISSIONS = ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage", "earnings.read"] as const;
 export const organizationPermissionSchema = z.enum(ORGANIZATION_PERMISSIONS);
 export type OrganizationPermission = z.infer<typeof organizationPermissionSchema>;
 

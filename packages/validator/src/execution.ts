@@ -3,6 +3,7 @@ import { assetChainSchema } from "./assets";
 import { challengeResponseSchema } from "./auth";
 import { decimalStringSchema } from "./baskets";
 import { chainFamilySchema } from "./chains";
+import { operationFeeViewSchema } from "./fees";
 import { positionExtrasSchema, repairSchema } from "./rebalance";
 
 export const LEG_STATES = ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"] as const;
@@ -149,6 +150,7 @@ export const operationSchema = z.object({
   expiresAt: z.iso.datetime({ offset: true }),
   createdAt: z.iso.datetime({ offset: true }),
   legs: z.array(legSchema),
+  fees: z.array(operationFeeViewSchema),
 });
 export type OperationView = z.infer<typeof operationSchema>;
 /** A rebalance plan, or "already aligned" (the version was recorded and no operation made). */

@@ -92,6 +92,13 @@
       "when": 1790893910886,
       "tag": "0012_rebalance",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790951555644,
+      "tag": "0013_fees",
+      "breakpoints": true
     }
   ]
 }

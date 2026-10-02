@@ -56,7 +56,7 @@ export const BASKET_VERSION_TRANSITIONS: Readonly<Record<BasketVersionStatus, re
 export const decimalStringSchema = z.string().regex(/^\d{1,12}(\.\d{1,6})?$/);
 
 export const feeSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("percent"), bps: z.number().int().min(0).max(100) }),
+  z.strictObject({ type: z.literal("percent"), bps: z.number().int().min(0).max(100), maxUsdc: decimalStringSchema.refine((d) => /[1-9]/.test(d), "The cap must be above zero.").optional() }),
   z.strictObject({ type: z.literal("fixed"), amountUsdc: decimalStringSchema }),
 ]);
 export type Fee = z.infer<typeof feeSchema>;

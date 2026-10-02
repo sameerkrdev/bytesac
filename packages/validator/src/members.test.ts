@@ -16,6 +16,7 @@ describe("ROLE_PERMISSIONS", () => {
     "members.manage_admins": ["OWNER"],
     "analytics.read": ["OWNER", "ADMIN", "MANAGER", "ANALYST"],
     "baskets.manage": ["OWNER", "ADMIN", "MANAGER"],
+    "earnings.read": ["OWNER", "ADMIN"],
   };
   it("matches the spec table", () => {
     for (const permission of ORGANIZATION_PERMISSIONS) {

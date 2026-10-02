@@ -3,11 +3,11 @@ import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations,
-  positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
+  operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
   ASSET_CHAINS, LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, micro, minOut, networkFeeMicro, scaleBuys, splitInvestment,
-  type AssetChain, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest,
+  type AssetChain, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest, type WaivedReason,
 } from "@repo/validator";
 import { env } from "../env";
 import { bitcoinBalance, broadcastBitcoin, checkPsbt, expectedBtcTx, finalizePsbt, maxBtcMinerFee, psbtInputs, type PsbtInput, type PsbtOutput } from "../providers/bitcoin";
@@ -22,6 +22,7 @@ import { writeAudit } from "./audit";
 import { assertWalletsCanFund, platformAddress, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
 import { getInvestability } from "./investability";
 import { notify } from "./notifications";
+import { orgDisplayName } from "./members";
 import { getPrices } from "./pricing";
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
@@ -61,9 +62,15 @@ export function addressOn(addresses: Addresses, chain: AssetChain): string {
 
 export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> {
   const legs = await db.select().from(operationLegs).where(eq(operationLegs.operationId, op.id)).orderBy(asc(operationLegs.sequence));
+  const fees = await db.select({ f: operationFees, org: orgDisplayName }).from(operationFees).leftJoin(organizations, eq(organizations.id, operationFees.organizationId))
+    .where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFees.createdAt), asc(operationFees.id));
   return {
     id: op.id, kind: op.kind, status: op.status, basketId: op.basketId, positionId: op.positionId, amountUsdc: op.amountUsdc, sellPercent: op.sellPercent, slippageBps: op.slippageBps,
     networkFeeUsdc: op.networkFeeUsdc, expiresAt: op.expiresAt.toISOString(), createdAt: op.createdAt.toISOString(),
+    fees: fees.map(({ f, org }) => ({
+      kind: f.kind, amountMicro: f.amountMicro, waivedReason: f.waivedReason as WaivedReason | null,
+      recipientLabel: f.kind === "network" ? "Bytesac (network)" : f.kind === "platform" ? "Bytesac (platform)" : (org ?? "Organization"),
+    })),
     legs: legs.map((l) => ({
       id: l.id, sequence: l.sequence, kind: l.kind, status: l.status, fromChain: l.fromChain, toChain: l.toChain, fromDeploymentId: l.fromDeploymentId, toDeploymentId: l.toDeploymentId,
       amountIn: l.amountIn, minOut: l.minOut, amountReceived: l.amountReceived, provider: l.provider, routeSummary: l.routeSummary, quoteExpiresAt: l.quoteExpiresAt?.toISOString() ?? null,

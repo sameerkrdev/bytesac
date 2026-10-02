@@ -10,3 +10,4 @@ export * from "./baskets";
 export * from "./discovery";
 export * from "./execution";
 export * from "./notifications";
+export * from "./fees";
