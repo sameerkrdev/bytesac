@@ -56,7 +56,7 @@ export const BASKET_VERSION_TRANSITIONS: Readonly<Record<BasketVersionStatus, re
 export const decimalStringSchema = z.string().regex(/^\d{1,12}(\.\d{1,6})?$/);
 
 export const feeSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("percent"), bps: z.number().int().min(0).max(100) }),
+  z.strictObject({ type: z.literal("percent"), bps: z.number().int().min(0).max(100), maxUsdc: decimalStringSchema.refine((d) => /[1-9]/.test(d), "The cap must be above zero.").optional() }),
   z.strictObject({ type: z.literal("fixed"), amountUsdc: decimalStringSchema }),
 ]);
 export type Fee = z.infer<typeof feeSchema>;
@@ -435,6 +435,8 @@ export const publicBasketDetailSchema = publicBasketResearchSchema.extend({
     instrumentId: z.string(), name: z.string(), symbol: z.string(), assetType: assetTypeSchema, chains: z.array(z.string()), targetWeightBps: z.number(),
     minWeightBps: z.number().nullable(), maxWeightBps: z.number().nullable(), prices: z.array(publicPriceSchema),
   })),
+  /** The platform fee that applies to this basket per operation (an organization or basket override included; no reason text). */
+  platformFee: z.array(z.object({ operationKind: z.string(), bps: z.number().int(), minUsdc: z.string().nullable(), maxUsdc: z.string().nullable() })),
   disclosures: z.array(z.object({ title: z.string(), body: z.string() })),
   versionHistory: z.array(z.object({ versionNumber: z.number(), publishedAt: iso, rationale: z.string().nullable(), diff: basketDiffSchema })),
   managers: z.array(z.object({ displayName: z.string(), handle: z.string().nullable(), role: basketAssignmentRoleSchema, from: iso, to: iso.nullable() })),

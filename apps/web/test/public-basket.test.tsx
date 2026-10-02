@@ -16,7 +16,7 @@ const price = { instrumentId: SOL, kind: "market", status: "ok", value: "150.25"
 const NO_WINDOWS = { sinceLaunch: null, d30: null, d90: null, y1: null };
 const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => ({
   performance: { available: false, dataDays: 0, series: [] }, metrics: { available: false, dataDays: 0, net: NO_WINDOWS, gross: NO_WINDOWS, volatility: null, maxDrawdown: null },
-  sectors: [], tags: [], label: PERFORMANCE_LABEL,
+  sectors: [], tags: [], label: PERFORMANCE_LABEL, platformFee: [],
   slug: "core-crypto", status: "ACTIVE", hasAssetWarning: false, organization: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: "Ada Capital" },
   version: {
     versionNumber: 2, publishedAt: T, name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "A <b>bold</b> thesis", methodology: null,
@@ -47,6 +47,13 @@ describe("Public basket page", () => {
     expect(screen.getByText("Nothing is guaranteed.")).toBeInTheDocument();
     expect(screen.getByText(/explicit consent/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ada Capital" })).toHaveAttribute("href", "/organizations/0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61");
+  });
+
+  it("shows the platform rates and that management and subscription fees are not collected", async () => {
+    serve(detail({ platformFee: [{ operationKind: "invest", bps: 100, minUsdc: null, maxUsdc: "50" }] }));
+    await page();
+    expect(screen.getByText("Investing: 1% up to $50")).toBeInTheDocument();
+    expect(screen.getAllByText(/Disclosed — not collected in this release/).length).toBeGreaterThan(0);
   });
 
   it("badges a stale price", async () => {

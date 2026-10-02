@@ -174,7 +174,7 @@ Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind 
 2. User opens basket research, manager and organization information.
 3. User connects a wallet and authenticates.
 4. Backend checks eligibility for the selected instrument/routes and action.
-5. User reviews investment amount, target allocation, expected assets, fees (the network fee leg is shown; no platform or manager fees yet), route, risks and estimated outcomes.
+5. User reviews investment amount, target allocation, expected assets, fees (network, manager and platform, each with its recipient), route, risks and estimated outcomes.
 6. User signs every transaction of the plan in their own wallet(s), one leg at a time with a fresh quote per leg; nothing is delegated (ADR-013).
 7. Planner creates operation steps; orchestrator executes them (`POST /v1/operations/invest`, then per leg `quote` and `submit`).
 8. `track-leg` and reconciliation verify settlement; a settled leg appends the amount actually received to the position ledger, which `GET /v1/portfolio` shows against the target weights.
@@ -206,6 +206,8 @@ Version: `draft → in_review → changes_required → in_review → approved �
 - Coordinate shared-asset discrepancies to avoid duplicate repair trades.
 - Reconcile after execution before declaring alignment.
 
+**Implemented (Spec 10, ADR-016):** `services/fees.ts` holds `planFees` (manager entry and rebalance fee from the plan's target version, platform fee from the resolved schedule, dust and waiver rules, payout wallet lookup), the schedule and override admin (`/v1/ops/fees`, versioned rows under an advisory lock, audited), the earnings and revenue reports (settled fees only, CSV) and the daily `revenue-reconcile` worker job (read-only, compares settled platform fees with the revenue treasury's USDC inflows). `insertPlan` writes `operation_fees` rows beside the legs; `buildFeeTransfer` builds one transaction with a transfer per charged fee; settling the fee leg stamps `settled_at`. Public: `GET /v1/public/fees`, the basket detail `platformFee`. Web: `/ops/fees`, `/ops/revenue`, `/organization/earnings`, `/fees` and fee lines in every preview.
+
 **Implemented (Spec 9, ADR-015):** the flow above is built. Publishing a version enqueues `version-published` (cancels untouched `PLANNED` rebalances that target an older version, notifies open holders). Apply (`POST /v1/operations/rebalance`, target `latest`) and drift fix (target `applied`) plan sells to USDC on Solana, an optional network fee and buys from USDC on Solana sized from what actually arrived; `POST /v1/positions/:id/skip`, `/custom` and `/custom/revert` record decisions; `POST /v1/operations/repair` and `POST /v1/portfolio/sync` resolve a shortfall; `GET /v1/me/notifications`, `POST /v1/me/notifications/read` and `/v1/me/push-tokens` serve the inbox and push; `GET /v1/baskets/:id/adoption` serves managers. Web: `/portfolio/[positionId]/rebalance`, `/portfolio/repair/[asset]`, `/notifications`, the header bell and the profile push toggle.
 
 ## 6. Multi-chain and asset routing
@@ -218,7 +220,7 @@ A basket references instruments, not arbitrary chain addresses. At execution tim
 5. Select route(s) and create explicit execution steps.
 6. Apply chain-specific signing, submission, confirmation and finality handling.
 
-Investments are funded with USDC on Solana; cross-chain legs come from LI.FI behind the `RouteProvider` adapter and deliver to the user's own linked address on the destination chain (Solana, EVM or native Bitcoin). Gas is paid by platform gas wallets (Solana fee payer co-signing, EVM gas drops) and recovered through the network fee leg; Bitcoin miner fees come from the user's PSBT inputs (ADR-014). Every leg has its own state (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`); unknown outcomes are reconciled, never retried blindly (ADR-013). Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC (a `native` deployment on `bitcoin`, linked through a BIP-322 proof), wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
+Investments are funded with USDC on Solana; cross-chain legs come from LI.FI behind the `RouteProvider` adapter and deliver to the user's own linked address on the destination chain (Solana, EVM or native Bitcoin). Gas is paid by platform gas wallets (Solana fee payer co-signing, EVM gas drops) and recovered through the network fee leg, which also carries the manager and platform fees (ADR-016); Bitcoin miner fees come from the user's PSBT inputs (ADR-014). Every leg has its own state (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`); unknown outcomes are reconciled, never retried blindly (ADR-013). Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC (a `native` deployment on `bitcoin`, linked through a BIP-322 proof), wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
 
 ## 7. Suggested persistence model
 
@@ -299,7 +301,7 @@ Current provider capabilities, supported chains, plan limits and commercial term
 ## 10. Open decisions that must not be silently assumed
 
 1. Real-key verification of LI.FI coverage per chain/asset, terms and limits, and the gas cap values (the provider, gas model and network fee are decided in ADR-014; custody, attribution and spend authority in ADR-013; rebalance routing, repair and notifications in ADR-015).
-2. Platform and manager fee collection under self-custody (proposal: explicit fee legs in the signed plan; ADR-013; the network fee leg is implemented).
+2. Platform fee rates (business decision; default 0), legal review of manager and platform fees, and revenue treasury funding (fee collection is decided in ADR-016 and implemented).
 3. Whether bridging is permitted for each RWA instrument.
 4. RWA acquisition, transfer, redemption and settlement method per issuer/instrument.
 5. Price-source hierarchy, freshness limits and fallback behavior.

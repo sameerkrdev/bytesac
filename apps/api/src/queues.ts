@@ -17,6 +17,7 @@ export const queues = {
   "track-leg": queue("track-leg"),
   "reconcile-positions": queue("reconcile-positions"),
   "gas-wallet-check": queue("gas-wallet-check"),
+  "revenue-reconcile": queue("revenue-reconcile"),
   notifications: queue("notifications"),
 };
 
@@ -30,6 +31,7 @@ interface JobData {
   "track-leg": { legId: string; recheck?: number };
   "reconcile-positions": { userId?: string };
   "gas-wallet-check": Record<string, never>;
+  "revenue-reconcile": Record<string, never>;
   /** `deliver`: email and push for one inbox row. `version-published`: cancel open plans and notify holders. `basket-notice`: tell holders of a status change. */
   notifications:
     | { job: "deliver"; notificationId: string }

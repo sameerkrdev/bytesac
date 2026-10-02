@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { ErrorBox } from "@/components/portfolio/exit-dialogs";
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,8 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
       {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
         <div className="space-y-3">
           <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying />)}</ol>
-          <p className="text-sm text-ivory">Network fee (paid to Bytesac for gas): {formatUnits(plan.networkFeeUsdc, 6)} USDC</p>
-          <p className="text-sm text-stone">No platform or manager fees are charged yet. Prices are re-quoted when you sign each step.</p>
+          <FeeLines fees={plan.fees} />
+          <p className="text-sm text-stone">Prices are re-quoted when you sign each step.</p>
           <div className="flex flex-wrap gap-3">
             <Button className="min-h-11" onClick={() => setSigning(true)}>Continue to signing</Button>
             <Button variant="secondary" className="min-h-11" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>

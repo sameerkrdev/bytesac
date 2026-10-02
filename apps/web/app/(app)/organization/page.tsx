@@ -106,6 +106,7 @@ function Workspace() {
       {org.status === "REJECTED" && create}
       <Members org={org} />
       {org.myPermissions.includes("org.read") && <Baskets org={org} />}
+      {org.myPermissions.includes("earnings.read") && <Link href={`/organization/earnings?org=${org.id}`} className="mr-4 inline-flex min-h-11 items-center text-sm text-mint underline">Earnings</Link>}
       <Link href={`/organization/membership/${row.membershipId}`} className="inline-flex min-h-11 items-center text-sm text-mint underline">Your membership</Link>
     </Shell>
   );

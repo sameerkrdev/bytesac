@@ -1,10 +1,10 @@
 "use client";
 
-import { formatUnits } from "@repo/app-core";
 import { SLIPPAGE_DEFAULT_BPS, SLIPPAGE_MAX_BPS, type OperationView } from "@repo/validator";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
+import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -54,8 +54,8 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
         {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
           <div className="space-y-4">
             <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying />)}</ol>
-            <p className="text-sm text-ivory">Network fee (paid to Bytesac for gas): {formatUnits(plan.networkFeeUsdc, 6)} USDC</p>
-            <p className="text-sm text-stone">No platform or manager fees are charged yet. Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
+            <FeeLines fees={plan.fees} />
+            <p className="text-sm text-stone">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
             <div className="flex flex-wrap gap-3">
               <Button className="min-h-11" onClick={() => setSigning(true)}>Continue to signing</Button>
               <Button variant="secondary" className="min-h-11" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
@@ -67,7 +67,7 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
               <Label htmlFor={ids[0]} className="text-xs font-medium text-ivory">Amount (USDC on Solana)</Label>
               <Input id={ids[0]} inputMode="decimal" className="min-h-11" value={amount} aria-invalid={amount !== "" && problem !== null} aria-describedby={`${ids[0]}-help`}
                 onChange={(e) => { setAmount(e.target.value.trim()); setKey(crypto.randomUUID()); }} />
-              <p id={`${ids[0]}-help`} className="text-xs text-stone">{amount !== "" && problem ? problem : `Minimum ${minimumUsdc ?? "not set"} USDC${incrementUsdc ? `, in steps of ${incrementUsdc} USDC` : ""}. The network fee is taken from this amount.`}</p>
+              <p id={`${ids[0]}-help`} className="text-xs text-stone">{amount !== "" && problem ? problem : `Minimum ${minimumUsdc ?? "not set"} USDC${incrementUsdc ? `, in steps of ${incrementUsdc} USDC` : ""}. The fees are taken from this amount.`}</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor={ids[1]} className="text-xs font-medium text-ivory">Slippage tolerance (%)</Label>

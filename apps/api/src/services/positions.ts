@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, sql } from "drizzle-orm";
 import {
-  basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationLegs, notifications, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations, type Tx,
+  basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationFees, operationLegs, notifications, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations, type Tx,
 } from "@repo/db";
 import { logger } from "@repo/logger";
 import {
@@ -58,6 +58,8 @@ const destinationToken = async (leg: Leg): Promise<string | null> =>
 async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinationTx: string | null, received: bigint | null): Promise<void> {
   await setLegStatus(tx, ctx, leg, "SETTLED", { destinationTx, amountReceived: received?.toString() ?? null });
   if (leg.kind === "network_fee") {
+    // Every charged fee of the plan is paid by this one transaction: earnings and revenue count them from now on.
+    await tx.update(operationFees).set({ settledAt: sql`now()` }).where(and(eq(operationFees.operationId, op.id), sql`${operationFees.amountMicro} > 0`));
     if (op.kind === "rebalance" && leg.routeSummary?.fromCash) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "network_fee", legId: leg.id });
   } else if (op.kind === "invest") {
     await tx.insert(positionLedgerEntries).values({ positionId: op.positionId ?? (await openPosition(tx, op)), deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest", legId: leg.id });

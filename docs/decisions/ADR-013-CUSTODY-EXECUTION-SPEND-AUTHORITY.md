@@ -1,9 +1,9 @@
 # ADR-013: Custody, Execution and Spend Authority (Release 1)
 
-- **Status:** APPROVED (user, 2026-10-01); amended in place for Spec 8 (native BTC, platform gas and network fee leg, LI.FI: ADR-014) and Spec 9 (hub routing for rebalances, user-editable shortfall split: ADR-015)
+- **Status:** APPROVED (user, 2026-10-01); amended in place for Spec 8 (native BTC, platform gas and network fee leg, LI.FI: ADR-014) and Spec 9 (hub routing for rebalances, user-editable shortfall split: ADR-015) and Spec 10 (manager and platform fee legs: ADR-016)
 - **Date:** 2026-10-01
 - **Owners:** Product + platform engineering
-- **Related:** D-002, D-009, D-013, D-022, D-023, D-024, D-028, D-030, D-033, D-067, D-068, D-076, D-080; ADR-004, ADR-010, ADR-011, ADR-014, ADR-015; `docs/source/User-Detailed-Features.txt` §9–§17; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
+- **Related:** D-002, D-009, D-013, D-022, D-023, D-024, D-028, D-030, D-033, D-067, D-068, D-076, D-080, D-085 to D-092; ADR-004, ADR-010, ADR-011, ADR-014, ADR-015, ADR-016; `docs/source/User-Detailed-Features.txt` §9–§17; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
 
 ## Context
 
@@ -80,7 +80,7 @@ Investment, rebalance, fix and withdrawal cannot be specified until the platform
 ### Security, financial and operational impact
 - Planner, route adapter and reconciliation become the critical financial components: idempotency, quote expiry, minimum-output enforcement and chain-specific finality are mandatory.
 - Never retry an unknown outcome; reconcile first.
-- Fees must be visible legs inside the signed plan; nothing is pulled from a user's wallet. The network fee leg (ADR-014) is the first such leg; platform and manager fees follow the proposal below.
+- Fees must be visible legs inside the signed plan; nothing is pulled from a user's wallet. The network fee leg (ADR-014) is the first such leg; manager and platform fees ride in the same leg (ADR-016).
 
 ## Migration / rollout
 
@@ -96,6 +96,6 @@ No existing data changes. Spec 8 (first investment and exit, ADR-014) introduced
 
 1. ~~Route provider~~ — decided: LI.FI only, behind `RouteProvider` (ADR-014). Real-key checks of coverage, terms and rate limits are pre-launch items there.
 2. ~~Gas top-up~~ — decided: platform gas wallets plus the network fee leg (ADR-014). LI.Fuel route gas top-up is future scope (`FUTURE-PLANS.md`).
-3. **Fee collection under self-custody** — proposal: platform and manager fees are explicit transfer legs inside the signed plan, paid to the platform wallet and to the organization's verified payout wallet (D-006); never pulled. To be decided in the subscriptions & fees spec.
+3. ~~Fee collection under self-custody~~ — decided: manager and platform fees are user-signed transfers in the combined fee leg, paid straight to the organization's verified payout wallet and the platform revenue treasury; never pulled (ADR-016). Subscriptions and management-fee accrual are future scope (`FUTURE-PLANS.md`).
 4. **RWA access rules** — issuer KYC, allowlists and transfer restrictions per RWA route (eligibility engine, D-025).
 5. **Legal review** — self-custody model, fee model and RWA distribution per jurisdiction.

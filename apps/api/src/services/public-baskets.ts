@@ -2,13 +2,30 @@ import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations,
+  platformFeeSchedules,
 } from "@repo/db";
-import { basketConstraintsSchema, basketFeesSchema, PERFORMANCE_LABEL, performanceMetrics, type BasketStatus, type PublicBasketListResponse, type PublicBasketResponse } from "@repo/validator";
+import {
+  basketConstraintsSchema, basketFeesSchema, microToUsdc, PERFORMANCE_LABEL, PLATFORM_FEE_OPERATIONS, performanceMetrics, resolvePlatformSchedule,
+  type BasketStatus, type PublicBasketListResponse, type PublicBasketResponse, type PublicFees,
+} from "@repo/validator";
 import { cursorSchema } from "./applications";
 import { currentDisclosures, versionDiff } from "./baskets";
 import { orgDisplayName } from "./members";
 import { PAGE_SIZE } from "./organization-review";
 import { getPrices } from "./pricing";
+
+/**
+ * The platform fee rate per operation that applies to a basket and its organization (active basket override, else organization override, else the default);
+ * with no ids it is the default schedule. Public: no reasons, no override scope. ponytail: loads every active schedule row, a handful; index by scope if overrides ever number in the thousands.
+ */
+export async function platformFeeRates(organizationId: string | null, basketId: string | null): Promise<PublicFees["platform"]> {
+  const rows = await db.select().from(platformFeeSchedules).where(isNull(platformFeeSchedules.supersededAt));
+  const now = new Date();
+  return PLATFORM_FEE_OPERATIONS.flatMap((operation) => {
+    const r = resolvePlatformSchedule(rows, { organizationId, basketId, operation, now });
+    return r ? [{ operationKind: operation, bps: r.bps, minUsdc: r.minMicro === null ? null : microToUsdc(BigInt(r.minMicro)), maxUsdc: r.maxMicro === null ? null : microToUsdc(BigInt(r.maxMicro)) }] : [];
+  });
+}
 
 /** Statuses of a published basket that appear in lists; a RETIRED basket is still served by its link. */
 export const LISTED_BASKET_STATUSES: readonly BasketStatus[] = ["ACTIVE", "PAUSED", "REASSIGNMENT_REQUIRED", "RETIREMENT_PENDING"];
@@ -87,6 +104,7 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
       constraints: basketConstraintsSchema.parse(v!.constraints), rebalance: v!.rebalance, fees: basketFeesSchema.parse(v!.fees), minimumInvestmentUsdc: v!.minimumInvestmentUsdc, minimumIncrementUsdc: v!.minimumIncrementUsdc,
     },
     allocation: assets.map(({ instrumentStatus: _status, sector: _sector, ...a }) => ({ ...a, prices: prices.filter((p) => p.instrumentId === a.instrumentId) })),
+    platformFee: await platformFeeRates(b.organizationId, b.id),
     disclosures: (await currentDisclosures(db, v!)).map((d) => ({ title: d.title, body: d.body })),
   // ponytail: one diff query set per published version on every page view; cache or precompute at publish if histories grow.
     versionHistory: await Promise.all(history.map(async (h) => ({ versionNumber: h.versionNumber, publishedAt: h.publishedAt!.toISOString(), rationale: h.rationale, diff: await versionDiff(db, h) }))),

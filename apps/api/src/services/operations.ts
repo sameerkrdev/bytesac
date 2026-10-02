@@ -3,11 +3,11 @@ import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations,
-  positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
+  operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
   ASSET_CHAINS, LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, micro, minOut, networkFeeMicro, scaleBuys, splitInvestment,
-  type AssetChain, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest,
+  type AssetChain, type BasketFees, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest, type WaivedReason,
 } from "@repo/validator";
 import { env } from "../env";
 import { bitcoinBalance, broadcastBitcoin, checkPsbt, expectedBtcTx, finalizePsbt, maxBtcMinerFee, psbtInputs, type PsbtInput, type PsbtOutput } from "../providers/bitcoin";
@@ -15,14 +15,16 @@ import { evmBalance, evmTransaction } from "../providers/evm-rpc";
 import { routeProviderById } from "../providers/routes";
 import type { LegQuote } from "../providers/routes/types";
 import { SendTransactionError } from "@solana/web3.js";
-import { buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure } from "../providers/solana-tx";
+import { SOL_USD_FALLBACK, buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure } from "../providers/solana-tx";
 import type { RequestMeta } from "../middleware/request-context";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
 import { assertWalletsCanFund, platformAddress, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
 import { getInvestability } from "./investability";
 import { notify } from "./notifications";
-import { getPrices } from "./pricing";
+import { orgDisplayName } from "./members";
+import { planFees, type PlannedFee } from "./fees";
+import { getPrices, priceToMicro } from "./pricing";
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
 type Op = typeof operations.$inferSelect;
@@ -33,8 +35,6 @@ const PLAN_TTL = "30 minutes";
 export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n;
 /** ponytail: a flat estimate for the network-fee transfer's own cost (one signature, no priority fee). */
 export const FEE_LEG_GAS_USD = 0.002;
-/** Used for the rent estimate only when LI.FI's gas costs carry no native token price. */
-const SOL_USD_FALLBACK = 150;
 const notFound = () => createHttpError("Operation not found", { code: "NOT_FOUND" });
 const invalidTransition = (message: string) => createHttpError(409, message, { code: "INVALID_TRANSITION" });
 
@@ -61,9 +61,16 @@ export function addressOn(addresses: Addresses, chain: AssetChain): string {
 
 export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> {
   const legs = await db.select().from(operationLegs).where(eq(operationLegs.operationId, op.id)).orderBy(asc(operationLegs.sequence));
+  const fees = await db.select({ f: operationFees, org: orgDisplayName }).from(operationFees).leftJoin(organizations, eq(organizations.id, operationFees.organizationId))
+    .where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFees.createdAt), asc(operationFees.id));
   return {
     id: op.id, kind: op.kind, status: op.status, basketId: op.basketId, positionId: op.positionId, amountUsdc: op.amountUsdc, sellPercent: op.sellPercent, slippageBps: op.slippageBps,
     networkFeeUsdc: op.networkFeeUsdc, expiresAt: op.expiresAt.toISOString(), createdAt: op.createdAt.toISOString(),
+    // A pre-Spec-10 operation has no fee rows: its one fee is the network fee.
+    fees: fees.length ? fees.map(({ f, org }) => ({
+      kind: f.kind, amountMicro: f.amountMicro, waivedReason: f.waivedReason as WaivedReason | null,
+      recipientLabel: f.kind === "network" ? "Bytesac (network)" : f.kind === "platform" ? "Bytesac (platform)" : (org ?? "Organization"),
+    })) : [{ kind: "network" as const, amountMicro: op.networkFeeUsdc, waivedReason: null, recipientLabel: "Bytesac (network)" }],
     legs: legs.map((l) => ({
       id: l.id, sequence: l.sequence, kind: l.kind, status: l.status, fromChain: l.fromChain, toChain: l.toChain, fromDeploymentId: l.fromDeploymentId, toDeploymentId: l.toDeploymentId,
       amountIn: l.amountIn, minOut: l.minOut, amountReceived: l.amountReceived, provider: l.provider, routeSummary: l.routeSummary, quoteExpiresAt: l.quoteExpiresAt?.toISOString() ?? null,
@@ -221,7 +228,7 @@ export function sponsoredCost(q: LegQuote): { lamports: bigint; usd: number } {
 }
 
 /** Reserves platform-paid gas, then inserts the operation and its legs, all in one transaction (a refused budget leaves no operation). */
-export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$inferInsert, "userId" | "expiresAt" | "gasReserved">; legs: LegDraft[]; gas: Map<AssetChain, bigint> }): Promise<string> {
+export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$inferInsert, "userId" | "expiresAt" | "gasReserved">; legs: LegDraft[]; gas: Map<AssetChain, bigint>; fees: PlannedFee[] }): Promise<string> {
   await assertWalletsCanFund(i.gas);
   try {
     return await db.transaction(async (tx) => {
@@ -229,10 +236,15 @@ export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$in
       for (const s of stale) await cancelIfExpired(tx, ctx, s);
       for (const [chain, amountNative] of i.gas) if (amountNative > 0n) await reserveGas(tx, { userId: ctx.userId, chain, amountNative });
       const [op] = await tx.insert(operations).values({ ...i.op, userId: ctx.userId, gasReserved: Object.fromEntries([...i.gas].filter(([, n]) => n > 0n).map(([c, n]) => [c, n.toString()])), expiresAt: sql`now() + ${PLAN_TTL}::interval` as unknown as Date }).returning({ id: operations.id });
-      await tx.insert(operationLegs).values(i.legs.map((l, n) => ({
+      const inserted = await tx.insert(operationLegs).values(i.legs.map((l, n) => ({
         operationId: op!.id, sequence: n + 1, kind: l.kind, fromChain: l.fromChain, fromDeploymentId: l.fromDeploymentId, toChain: l.toChain, toDeploymentId: l.toDeploymentId,
         amountIn: l.amountIn.toString(), minOut: l.minOut?.toString() ?? null, provider: l.kind === "network_fee" ? null : env.ROUTE_PROVIDER_ORDER[0]!, routeSummary: l.routeSummary,
         expectedTx: l.expectedTx, gasPayer: l.gasPayer,
+      }))).returning({ id: operationLegs.id, kind: operationLegs.kind });
+      const feeLeg = inserted.find((l) => l.kind === "network_fee")!;
+      await tx.insert(operationFees).values(i.fees.map((f) => ({
+        operationId: op!.id, legId: feeLeg.id, kind: f.kind, baseMicro: f.baseMicro.toString(), bps: f.bps, capMicro: f.capMicro?.toString() ?? null, amountMicro: f.amountMicro.toString(),
+        recipientAddress: f.recipientAddress, organizationId: f.organizationId, basketId: f.basketId, scheduleId: f.scheduleId, waivedReason: f.waivedReason,
       })));
       await writeAudit(tx, { ...auditBase(ctx, op!.id), action: "operation.planned", entityType: "operation", entityId: op!.id, metadata: { kind: i.op.kind, legs: i.legs.length } });
       return op!.id;
@@ -271,7 +283,8 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   const inv = await getInvestability(db, { id: body.basketId }, ctx.userId);
   assertEligible(inv);
 
-  const [version] = await db.select({ increment: basketVersions.minimumIncrementUsdc }).from(basketVersions).where(eq(basketVersions.id, inv.versionId!));
+  const [version] = await db.select({ increment: basketVersions.minimumIncrementUsdc, fees: basketVersions.fees, organizationId: baskets.organizationId }).from(basketVersions)
+    .innerJoin(baskets, eq(baskets.id, basketVersions.basketId)).where(eq(basketVersions.id, inv.versionId!));
   const invalidAmount = (message: string) => createHttpError(message, { code: "VALIDATION_FAILED" });
   if (!inv.minimumUsdc || amount < micro(inv.minimumUsdc)) throw invalidAmount(`The minimum investment is ${inv.minimumUsdc ?? "not set"} USDC.`);
   if (version?.increment && amount % micro(version.increment) !== 0n) throw invalidAmount(`The amount must be a multiple of ${version.increment} USDC.`);
@@ -286,13 +299,17 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
     fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: c.deployment.chain, toToken: c.deployment.address, amount: provisional[n]!.amountMicro, slippageBps: body.slippageBps, addresses,
   })));
   const costs = quotes.map(sponsoredCost);
-  const fee = networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], await usdcPrice());
-  if (amount - fee <= 0n) throw invalidAmount("The amount doesn't cover the network fee.");
-  const shares = splitInvestment(amount, fee, weights);
-  if (shares.some((s) => s.amountMicro <= 0n)) throw invalidAmount("The amount is too small to split across this basket.");
+  const price = await usdcPrice();
+  const fees = await planFees(db, {
+    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: "invest", platformBaseMicro: amount, usdcPrice: price, solPriceUsd: quotes.find((q) => q.nativePriceUsd)?.nativePriceUsd,
+    manager: { kind: "manager_entry", fee: (version?.fees as BasketFees | undefined)?.entry, baseMicro: amount }, organizationId: version?.organizationId ?? null, basketId: body.basketId,
+  });
+  if (amount - fees.totalMicro <= 0n) throw invalidAmount("The amount doesn't cover the fees.");
+  const shares = splitInvestment(amount, fees.totalMicro, weights);
+  if (shares.some((s) => s.amountMicro <= 0n)) throw invalidAmount("The amount doesn't cover the fees.");
 
-  const legs: LegDraft[] = [{ kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" }];
-  let solanaGas = SOLANA_FEE_TRANSFER_LAMPORTS;
+  const legs: LegDraft[] = [{ kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fees.totalMicro, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" }];
+  let solanaGas = SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports;
   inv.constituents.forEach((c, n) => {
     const estimatedOut = (quotes[n]!.estimatedOut * shares[n]!.amountMicro) / provisional[n]!.amountMicro;
     solanaGas += costs[n]!.lamports;
@@ -303,8 +320,8 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   });
 
   const id = await insertPlan(ctx, {
-    op: { basketId: body.basketId, kind: "invest", amountUsdc: amount.toString(), slippageBps: body.slippageBps, networkFeeUsdc: fee.toString(), versionId: inv.versionId!, idempotencyKey: body.idempotencyKey },
-    legs, gas: new Map([["solana", solanaGas]]),
+    op: { basketId: body.basketId, kind: "invest", amountUsdc: amount.toString(), slippageBps: body.slippageBps, networkFeeUsdc: fees.rows[0]!.amountMicro.toString(), versionId: inv.versionId!, idempotencyKey: body.idempotencyKey },
+    legs, gas: new Map([["solana", solanaGas]]), fees: fees.rows,
   });
   return getOperation(ctx, id);
 }
@@ -338,11 +355,11 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
 
   // Quantity per deployment: the smaller of the recorded holding and what the wallet still holds, never more.
   const holdings = await db.select({
-    deploymentId: positionLedgerEntries.deploymentId, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol,
+    deploymentId: positionLedgerEntries.deploymentId, instrumentId: instrumentDeployments.instrumentId, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol,
   }).from(positionLedgerEntries).innerJoin(instrumentDeployments, eq(instrumentDeployments.id, positionLedgerEntries.deploymentId)).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId))
-    .where(eq(positionLedgerEntries.positionId, position.id)).groupBy(positionLedgerEntries.deploymentId, instrumentDeployments.chain, instrumentDeployments.address, instrumentDeployments.decimals, instruments.symbol)
+    .where(eq(positionLedgerEntries.positionId, position.id)).groupBy(positionLedgerEntries.deploymentId, instrumentDeployments.instrumentId, instrumentDeployments.chain, instrumentDeployments.address, instrumentDeployments.decimals, instruments.symbol)
     .orderBy(asc(instrumentDeployments.chain), asc(positionLedgerEntries.deploymentId));
-  const sells: { deploymentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }[] = [];
+  const sells: { deploymentId: string; instrumentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }[] = [];
   for (const h of holdings) {
     const wanted = (BigInt(h.quantity) * BigInt(body.percent)) / 100n;
     if (wanted <= 0n) continue;
@@ -350,15 +367,24 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
     // Native Bitcoin pays the miner fee out of the same balance: a full sell keeps the fee ceiling back so the PSBT can be built.
     const spendable = h.chain === "bitcoin" ? (balance > maxBtcMinerFee(balance) ? balance - maxBtcMinerFee(balance) : 0n) : balance;
     const quantity = wanted < spendable ? wanted : spendable;
-    if (quantity > 0n) sells.push({ deploymentId: h.deploymentId, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity });
+    if (quantity > 0n) sells.push({ deploymentId: h.deploymentId, instrumentId: h.instrumentId, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity });
   }
   if (sells.length === 0) throw createHttpError("There is nothing to sell: your wallet holds none of this position's assets.", { code: "INSUFFICIENT_BALANCE" });
 
   const quotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
   const costs = quotes.map((q, n) => (sells[n]!.chain === "solana" ? sponsoredCost(q) : { lamports: 0n, usd: q.gasEstimateUsd }));
-  const fee = networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], await usdcPrice());
+  const price = await usdcPrice();
+  // The platform fee is charged on the planned sale value; a sell with any price missing is waived "no_price".
+  const marketPrices = new Map((await getPrices(sells.map((s) => s.instrumentId))).flatMap((p) => (p.kind === "market" && p.status === "ok" && !p.stale && p.value && priceToMicro(p.value) ? [[p.instrumentId, priceToMicro(p.value)!] as const] : [])));
+  const [org] = await db.select({ organizationId: baskets.organizationId }).from(baskets).where(eq(baskets.id, position.basketId));
+  const fees = await planFees(db, {
+    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", usdcPrice: price, manager: null, solPriceUsd: quotes.find((q, n) => sells[n]!.chain === "solana" && q.nativePriceUsd)?.nativePriceUsd,
+    platformBaseMicro: sells.every((s) => marketPrices.has(s.instrumentId)) ? sells.reduce((t, s) => t + (s.quantity * marketPrices.get(s.instrumentId)!) / 10n ** BigInt(s.decimals), 0n) : null,
+    organizationId: org?.organizationId ?? null, basketId: position.basketId,
+  });
+  const fee = fees.totalMicro;
   const legs: LegDraft[] = [];
-  const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS]]);
+  const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports]]);
   sells.forEach((s, n) => legs.push(sellLeg(s, quotes[n]!, costs[n]!, body.slippageBps, gas)));
   // The network fee goes FIRST when the wallet already holds that much USDC, so the platform is paid before it spends gas; otherwise (Solana-only
   // sells) it is last, paid from the proceeds, and a fee the user never pays is an accepted loss within the caps.
@@ -366,7 +392,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   const feeUsdc = await freeUsdcMicro(db, ctx.userId, await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT));
   // EVM gas is only ever dropped after the network fee has settled, so selling an EVM asset needs the fee in USDC on Solana up front (D-071).
   const cents = (fee + 9_999n) / 10_000n; // rounded up to whole cents: "at least"
-  if (evmSell && feeUsdc < fee) throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the network fee before selling assets on ${ASSET_CHAINS[evmSell.chain].label}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
+  if (evmSell && feeUsdc < fee) throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the ${fee === fees.rows[0]!.amountMicro ? "network fee" : "fees"} before selling assets on ${ASSET_CHAINS[evmSell.chain].label}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
   const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" };
   if (feeUsdc >= fee) legs.unshift(feeLeg);
   else legs.push(feeLeg);
@@ -374,9 +400,9 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   const id = await insertPlan(ctx, {
     op: {
       basketId: position.basketId, positionId: position.id, kind: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", sellPercent: body.percent, slippageBps: body.slippageBps,
-      networkFeeUsdc: fee.toString(), versionId: position.appliedVersionId, idempotencyKey: body.idempotencyKey,
+      networkFeeUsdc: fees.rows[0]!.amountMicro.toString(), versionId: position.appliedVersionId, idempotencyKey: body.idempotencyKey,
     },
-    legs, gas,
+    legs, gas, fees: fees.rows,
   });
   return getOperation(ctx, id);
 }
@@ -455,7 +481,16 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     ({ legId: leg.id, quoteExpiresAt: expiresAt.toISOString(), gasDrop: null, approval: null, ...r });
 
   if (leg.kind === "network_fee") {
-    const built = await buildFeeTransfer({ owner: solanaAddress, amountMicro: BigInt(leg.amountIn) });
+    // The transfers are the fees recorded with the plan (network, manager, platform), never the schedule in force now. A pre-Spec-10 operation has no fee rows:
+    // its leg is the single transfer of `amountIn` to the gas treasury, as before. With rows, they must add up to the leg, else nothing is built.
+    const rows = await db.select({ recipient: operationFees.recipientAddress, amountMicro: operationFees.amountMicro }).from(operationFees)
+      .where(eq(operationFees.operationId, op.id))
+      .orderBy(sql`array_position(array['network','manager_entry','manager_rebalance','platform']::text[], ${operationFees.kind}::text)`);
+    const charged = rows.filter((r) => BigInt(r.amountMicro) > 0n);
+    if (rows.length && charged.reduce((t, r) => t + BigInt(r.amountMicro), 0n) !== BigInt(leg.amountIn)) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
+    if (!rows.length && !env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
+    const transfers = rows.length ? charged.map((c) => ({ recipient: c.recipient!, amountMicro: BigInt(c.amountMicro) })) : [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS!, amountMicro: BigInt(leg.amountIn) }];
+    const built = await buildFeeTransfer({ owner: solanaAddress, transfers });
     await save({ builtMessageHash: built.messageHash });
     return response({ estimatedOut: null, minOut: null, transaction: { kind: "solana", serializedBase64: built.serializedBase64 } });
   }

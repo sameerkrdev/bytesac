@@ -1,8 +1,9 @@
 "use client";
 
 import { ASSET_TYPE_LABEL, BASKET_CATEGORY_LABEL, REVIEW_FREQUENCY_LABEL, formatBps } from "@repo/app-core";
-import type { AssetType, BasketVersionView, Fee } from "@repo/validator";
+import type { AssetType, BasketVersionView } from "@repo/validator";
 import type { ReactNode } from "react";
+import { feeText, PLATFORM_OPERATION_LABEL, rateText } from "@/lib/fees";
 
 /** The content fields a manager preview, an ops snapshot and the public page all share. */
 export type BasketContent = Pick<BasketVersionView,
@@ -12,8 +13,6 @@ export type BasketContent = Pick<BasketVersionView,
 export interface AllocationRow {
   key: string; name: string; symbol: string; assetType: AssetType; targetWeightBps: number; minWeightBps: number | null; maxWeightBps: number | null; rationale?: string | null; price?: ReactNode;
 }
-
-const fee = (f: Fee) => (f.type === "percent" ? formatBps(f.bps) : `${f.amountUsdc} USDC`);
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section aria-label={title} className="space-y-3">
@@ -26,7 +25,9 @@ const Text = ({ label, value }: { label: string; value: string | null }) => valu
 ) : null;
 
 /** Plain-text rendering of a basket's content. Every string is rendered as text, never as HTML. */
-export function BasketView({ content: c, allocation, disclosures }: { content: BasketContent; allocation: AllocationRow[]; disclosures: { title: string; body: string }[] }) {
+export function BasketView({ content: c, allocation, disclosures, platformFee = [] }: {
+  content: BasketContent; allocation: AllocationRow[]; disclosures: { title: string; body: string }[]; platformFee?: { operationKind: string; bps: number; minUsdc: string | null; maxUsdc: string | null }[];
+}) {
   const constraints = [
     c.constraints.maxWeightPerAssetBps !== undefined && `No asset above ${formatBps(c.constraints.maxWeightPerAssetBps)}`,
     c.constraints.maxStablecoinBps !== undefined && `Stablecoins up to ${formatBps(c.constraints.maxStablecoinBps)}`,
@@ -82,14 +83,20 @@ export function BasketView({ content: c, allocation, disclosures }: { content: B
 
       <Section title="Fees and minimums">
         <dl className="grid gap-3 sm:grid-cols-2">
-          <div><dt className="text-xs text-stone">Entry fee</dt><dd className="text-sm text-ivory">{fee(f.entry)}</dd></div>
-          <div><dt className="text-xs text-stone">Management fee (per year)</dt><dd className="text-sm text-ivory">{fee(f.management)}</dd></div>
-          <div><dt className="text-xs text-stone">Rebalance fee</dt><dd className="text-sm text-ivory">{fee(f.rebalance)}</dd></div>
-          <div><dt className="text-xs text-stone">Subscription</dt><dd className="text-sm text-ivory">{f.subscription ? `${f.subscription.amountUsdc} USDC per ${f.subscription.period === "monthly" ? "month" : "year"}` : "None"}</dd></div>
+          <div><dt className="text-xs text-stone">Entry fee</dt><dd className="text-sm text-ivory">{feeText(f.entry)}</dd></div>
+          <div><dt className="text-xs text-stone">Management fee (per year)</dt><dd className="text-sm text-ivory">{feeText(f.management)} <span className="text-stone">· Disclosed — not collected in this release</span></dd></div>
+          <div><dt className="text-xs text-stone">Rebalance fee</dt><dd className="text-sm text-ivory">{feeText(f.rebalance)}</dd></div>
+          <div><dt className="text-xs text-stone">Subscription</dt><dd className="text-sm text-ivory">{f.subscription ? <>{`${f.subscription.amountUsdc} USDC per ${f.subscription.period === "monthly" ? "month" : "year"}`} <span className="text-stone">· Disclosed — not collected in this release</span></> : "None"}</dd></div>
           <div><dt className="text-xs text-stone">Minimum investment</dt><dd className="text-sm text-ivory">{c.minimumInvestmentUsdc ? `${c.minimumInvestmentUsdc} USDC` : "Not set"}</dd></div>
           {c.minimumIncrementUsdc && <div><dt className="text-xs text-stone">Minimum increment</dt><dd className="text-sm text-ivory">{c.minimumIncrementUsdc} USDC</dd></div>}
         </dl>
-        <p className="text-xs text-stone">Fees and minimums are disclosed terms. Nothing is charged or invested here.</p>
+        {platformFee.length > 0 && (
+          <div className="space-y-1">
+            <h3 className="text-xs text-stone">Bytesac platform fee</h3>
+            <ul className="text-sm text-ivory">{platformFee.map((p) => <li key={p.operationKind}>{PLATFORM_OPERATION_LABEL[p.operationKind] ?? p.operationKind}: {rateText(p.bps, p.minUsdc, p.maxUsdc)}</li>)}</ul>
+          </div>
+        )}
+        <p className="text-xs text-stone">Entry and rebalance fees are paid up front in USDC when you invest or rebalance; nothing is charged or invested on this page.</p>
       </Section>
 
       <Section title="Risks and disclosures">

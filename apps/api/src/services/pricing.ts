@@ -1,12 +1,19 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, navObservations, priceReferences } from "@repo/db";
 import { logger } from "@repo/logger";
-import type { PriceView } from "@repo/validator";
+import { micro, type PriceView } from "@repo/validator";
 import { env } from "../env";
 import { redis } from "../middleware/rate-limit";
 import { fetchQuotes } from "../providers/coinmarketcap";
 
 const STALE_MS = 5 * 60_000;
+
+/** A market price string ("1.234567891") as micro-USD, truncated to 6 decimals; null when it is not a positive plain decimal. */
+export function priceToMicro(value: string): bigint | null {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(value);
+  const p = m ? micro(`${m[1]}.${(m[2] ?? "").slice(0, 6)}`) : 0n;
+  return p > 0n ? p : null;
+}
 
 /**
  * Informational prices for the active references of `instrumentIds`: market (CoinMarketCap, cached 60 s in Redis) and NAV (latest issuer entry) are

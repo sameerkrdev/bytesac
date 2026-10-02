@@ -1,4 +1,6 @@
 import {
+  earningsSchema, platformFeeListSchema, platformFeeScheduleViewSchema, publicFeesSchema, revenueSchema,
+  type Earnings, type EarningsQuery, type PlatformFeeList, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type PublicFees, type Revenue,
   bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, adoptionSchema, notificationsPageSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type Adoption, type NotificationsPage, type PushToken, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
   aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
   type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
@@ -314,6 +316,14 @@ export function createApiClient(options: ApiClientOptions) {
     opsHideManagerProfile: (id: string, b: HideManagerProfileRequest): Promise<ManagerProfileView> => request("POST", `/v1/ops/manager-profiles/${e(id)}/hide`, managerProfileViewSchema, b),
     opsUnhideManagerProfile: (id: string): Promise<ManagerProfileView> => request("POST", `/v1/ops/manager-profiles/${e(id)}/unhide`, managerProfileViewSchema),
 
+    getPublicFees: (): Promise<PublicFees> => request("GET", "/v1/public/fees", publicFeesSchema),
+    getEarnings: (orgId: string, q: Omit<EarningsQuery, "format"> = {}): Promise<Earnings> => request("GET", `/v1/organizations/${e(orgId)}/earnings?${qs(q)}`, earningsSchema),
+    opsListFees: (): Promise<PlatformFeeList> => request("GET", "/v1/ops/fees", platformFeeListSchema),
+    opsSaveFee: (b: PlatformFeeScheduleInput): Promise<PlatformFeeScheduleView> => request("POST", "/v1/ops/fees", platformFeeScheduleViewSchema, b),
+    opsListFeeOverrides: (): Promise<PlatformFeeList> => request("GET", "/v1/ops/fees/overrides", platformFeeListSchema),
+    opsSaveFeeOverride: (b: PlatformFeeOverrideInput): Promise<PlatformFeeScheduleView> => request("POST", "/v1/ops/fees/overrides", platformFeeScheduleViewSchema, b),
+    opsEndFeeOverride: (id: string): Promise<PlatformFeeScheduleView> => request("POST", `/v1/ops/fees/overrides/${e(id)}/end`, platformFeeScheduleViewSchema),
+    opsGetRevenue: (q: Omit<EarningsQuery, "format"> = {}): Promise<Revenue> => request("GET", `/v1/ops/revenue?${qs(q)}`, revenueSchema),
     opsListRoles: (): Promise<PlatformRolesResponse> => request("GET", "/v1/ops/roles", platformRolesResponseSchema),
     opsGrantRole: (b: GrantRoleRequest): Promise<PlatformRoleView> => request("POST", "/v1/ops/roles", platformRoleViewSchema, b),
     opsRevokeRole: (id: string): Promise<void> => request<z.ZodVoid>("DELETE", `/v1/ops/roles/${encodeURIComponent(id)}`, null),

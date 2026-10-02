@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { logger } from "@repo/logger";
 import { env } from "./env";
 import { enqueue, queues } from "./queues";
+import { reconcileRevenue } from "./services/fees";
 import { seedPlatformWallets } from "./services/gas";
 import { deliverNotification, fanOutToHolders } from "./services/notifications";
 import { onVersionPublished } from "./services/rebalance";
@@ -28,6 +29,7 @@ export async function startWorker(): Promise<Worker[]> {
     new Worker("track-leg", (job) => (job.name === "sweep" ? sweepOperations() : trackLeg(job.data.legId, job.data.recheck)), { connection }),
     new Worker("reconcile-positions", (job) => reconcilePositions(job.data.userId), { connection }),
     new Worker("gas-wallet-check", () => checkGasWallets(), { connection }),
+    new Worker("revenue-reconcile", () => reconcileRevenue(), { connection }),
     new Worker("notifications", (job) => {
       const d = job.data as Parameters<typeof enqueue<"notifications">>[1];
       return d.job === "deliver" ? deliverNotification(d.notificationId) : d.job === "version-published" ? onVersionPublished(d.basketId, d.versionId) : fanOutToHolders(d.basketId, d.kind, {}, `${d.kind}:${d.eventId}`);
@@ -42,6 +44,8 @@ export async function startWorker(): Promise<Worker[]> {
   await queues["track-leg"].upsertJobScheduler("track-claims-sweep", { every: 300_000 }, { name: "sweep", data: {}, opts: { attempts: 1 } });
   await queues["reconcile-positions"].upsertJobScheduler("reconcile-positions-nightly", { pattern: "30 2 * * *", tz: "UTC" }, { name: "reconcile-positions", data: {} });
   await queues["gas-wallet-check"].upsertJobScheduler("gas-wallet-check-15m", { every: 900_000 }, { name: "gas-wallet-check", data: {}, opts: { attempts: 1 } });
+  // 04:00 UTC: the previous UTC day's settled platform fees against the revenue treasury's inflows.
+  await queues["revenue-reconcile"].upsertJobScheduler("revenue-reconcile-daily", { pattern: "0 4 * * *", tz: "UTC" }, { name: "revenue-reconcile", data: {}, opts: { attempts: 1 } });
   logger.info("worker started");
   return workers;
 }

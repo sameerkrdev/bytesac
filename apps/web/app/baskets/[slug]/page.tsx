@@ -47,7 +47,7 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
 
       <PerformanceChart performance={b.performance} metrics={b.metrics} label={b.label} />
 
-      <BasketView content={b.version} disclosures={b.disclosures}
+      <BasketView content={b.version} disclosures={b.disclosures} platformFee={b.platformFee}
         allocation={b.allocation.map((a) => {
           const p = a.prices.find((x) => x.status === "ok" && x.value !== null);
           return {

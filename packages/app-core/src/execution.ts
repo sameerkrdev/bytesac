@@ -46,9 +46,9 @@ export function legRoute(leg: Pick<Leg, "routeSummary">): { tool?: string; estim
   };
 }
 
-/** What a leg does, in words: "Network fee", "Buy SOL", "Sell ETH". */
+/** What a leg does, in words: "Fees", "Buy SOL", "Sell ETH". */
 export function legTitle(leg: Pick<Leg, "kind" | "routeSummary" | "toChain">, buying: boolean): string {
-  if (leg.kind === "network_fee") return "Network fee";
+  if (leg.kind === "network_fee") return "Fees";
   const symbol = legRoute(leg).symbol ?? ASSET_CHAINS[leg.toChain].label;
   return `${buying ? "Buy" : "Sell"} ${symbol}`;
 }

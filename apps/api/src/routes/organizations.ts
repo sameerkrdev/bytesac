@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import {
-  changeRoleRequestSchema, createBasketRequestSchema, createOrganizationRequestSchema, enterPayoutWalletRequestSchema, inviteMemberRequestSchema, listBasketsQuerySchema, presignDocumentRequestSchema, updateDraftRequestSchema,
+  changeRoleRequestSchema, earningsQuerySchema, createBasketRequestSchema, createOrganizationRequestSchema, enterPayoutWalletRequestSchema, inviteMemberRequestSchema, listBasketsQuerySchema, presignDocumentRequestSchema, updateDraftRequestSchema,
   verifyPayoutWalletRequestSchema, z,
   type ChangeRoleRequest, type CreateBasketRequest, type CreateOrganizationRequest, type EnterPayoutWalletRequest, type InviteMemberRequest, type PresignDocumentRequest, type UpdateDraftRequest,
   type VerifyPayoutWalletRequest,
@@ -9,6 +9,7 @@ import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import { createBasket, listOrgBaskets } from "../services/baskets";
+import { getEarnings, getEarningsCsv } from "../services/fees";
 import { cancelInvite, changeRole, decideRemoval, inviteMember, listMembers, removeMember } from "../services/members";
 import {
   confirmDocument, createChangeRequest, createOrganization, getOrganizationForMember, listMyOrganizations, presignDocument, submitChangeRequest, submitOrganization,
@@ -113,4 +114,11 @@ organizationsRouter.post("/:id/baskets", validate({ params: idParam, body: creat
 
 organizationsRouter.get("/:id/baskets", validate({ params: idParam }), async (req, res) => {
   res.json(await listOrgBaskets(ctx(req), req.params.id as string, listBasketsQuerySchema.parse(req.query)));
+});
+
+/** Settled manager fees (Owner and Admin: `earnings.read`); `format=csv` downloads one row per settled fee. */
+organizationsRouter.get("/:id/earnings", validate({ params: idParam }), async (req, res) => {
+  const q = earningsQuerySchema.parse(req.query);
+  if (q.format === "csv") res.type("text/csv").attachment("earnings.csv").send(await getEarningsCsv(req.auth!.userId, req.params.id as string, q));
+  else res.json(await getEarnings(req.auth!.userId, req.params.id as string, q));
 });

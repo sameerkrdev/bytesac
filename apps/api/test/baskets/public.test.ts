@@ -50,6 +50,8 @@ const ALLOWED = new Set([
   "toBps", "bandChanged", "constraints", "rebalance", "minimums", "managers", "role", "from", "to",
   // Spec 7: handle (published profile), performance series and metrics, sectors, tags and the label.
   "handle", "performance", "available", "dataDays", "series", "day", "net", "gross", "metrics", "sinceLaunch", "d30", "d90", "y1", "volatility", "maxDrawdown", "sectors", "sector", "key", "label",
+  // Spec 10: the platform fee rate that applies to the basket (no reasons).
+  "platformFee", "operationKind", "minUsdc", "maxUsdc",
 ]);
 const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.flatMap(keysOf) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => [k, ...keysOf(x)]) : []);
 

@@ -91,6 +91,6 @@ Migration `0012_rebalance.sql` adds the operation kinds `rebalance` and `repair`
 
 1. Notification copy and sender domain (compliance review, Resend domain).
 2. Threshold defaults (50 bps, 5 USDC, 500 bps drift) after real use.
-3. Rebalance fee collection (Spec 10).
+3. ~~Rebalance fee collection~~ — decided in ADR-016 (the manager rebalance fee applies only when applying a newer version; the fee leg carries every fee).
 4. Whether adoption cells need joint masking.
 5. Moving push to Installation IDs when the token APIs are removed.

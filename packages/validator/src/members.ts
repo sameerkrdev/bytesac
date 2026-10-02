@@ -26,8 +26,8 @@ export const REVIEWED_ROLES = ["ADMIN", "MANAGER"] as const;
 
 /** The one permission matrix, shared by the API and the web app. The server is authoritative. */
 export const ROLE_PERMISSIONS: Readonly<Record<MembershipRole, readonly OrganizationPermission[]>> = {
-  OWNER: ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage"],
-  ADMIN: ["org.read", "members.manage", "analytics.read", "baskets.manage"],
+  OWNER: ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage", "earnings.read"],
+  ADMIN: ["org.read", "members.manage", "analytics.read", "baskets.manage", "earnings.read"],
   MANAGER: ["org.read", "analytics.read", "baskets.manage"],
   ANALYST: ["org.read", "analytics.read"],
   VIEWER: ["org.read"],

@@ -77,6 +77,8 @@ export const env = cleanEnv(process.env, {
   EVM_GAS_WALLET_SECRET: str({ default: "" }),
   /** Owner (public address) of the platform's USDC token account that receives network fees. */
   GAS_TREASURY_SOLANA_ADDRESS: str({ default: "" }),
+  /** Owner (public address) of the platform USDC token account that receives platform fees. Required when any platform fee above 0 is configured. */
+  REVENUE_TREASURY_SOLANA_ADDRESS: str({ default: "" }),
   /** Firebase service-account JSON for web push (a secret). Empty disables push; the inbox and email still work. */
   FIREBASE_SERVICE_ACCOUNT: str({ default: "" }),
   ROUTE_PROVIDER_ORDER: routeProviders({ default: ["lifi"] }),

@@ -32,7 +32,7 @@ export const sellLeg = (o: Partial<Leg> = {}): Leg => ({
 
 export const operation = (o: Partial<OperationView> = {}): OperationView => ({
   id: ID(20), kind: "invest", status: "PLANNED", basketId: ID(3), positionId: null, amountUsdc: "100000000", sellPercent: null, slippageBps: 100, networkFeeUsdc: "70000",
-  expiresAt: "2026-10-01T12:30:00.000Z", createdAt: "2026-10-01T12:00:00.000Z", legs: [feeLeg(), buyLeg()], ...o,
+  expiresAt: "2026-10-01T12:30:00.000Z", createdAt: "2026-10-01T12:00:00.000Z", fees: [{ kind: "network", amountMicro: "70000", recipientLabel: "Bytesac (network)", waivedReason: null }], legs: [feeLeg(), buyLeg()], ...o,
 });
 
 type Position = Portfolio["positions"][number];

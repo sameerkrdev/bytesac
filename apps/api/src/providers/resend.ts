@@ -41,7 +41,7 @@ export async function sendApplicationEmail(kind: ApplicationEmailKind, to: strin
   logger.warn("application email failed", { kind, errorName: error.name });
 }
 
-export type OrganizationEmailKind = "changes_required" | "verified" | "rejected" | "change_request_decided" | "payout_replacement_requested" | "payout_replacement_decided";
+export type OrganizationEmailKind = "changes_required" | "verified" | "rejected" | "change_request_decided" | "payout_replacement_requested" | "payout_replacement_decided" | "fee_waived";
 export interface OrganizationEmailData { message?: string | null; decision?: "approved" | "changes_required" | "rejected" }
 
 const decisionText = (d?: string) => (d === "approved" ? "approved" : d === "rejected" ? "not approved" : "returned to you for changes");
@@ -53,6 +53,7 @@ const ORGANIZATION_EMAILS: Record<OrganizationEmailKind, (d: OrganizationEmailDa
   change_request_decided: (d) => ({ subject: "Bytesac profile change decision", text: `Your profile change request was ${decisionText(d.decision)}.${withMessage(d.message)}` }),
   payout_replacement_requested: () => ({ subject: "Bytesac payout wallet change received", text: "Your new payout wallet was proven and is awaiting review. Your current payout wallet stays active until the change is approved." }),
   payout_replacement_decided: (d) => ({ subject: "Bytesac payout wallet change decision", text: `Your payout wallet change was ${decisionText(d.decision)}.` }),
+  fee_waived: () => ({ subject: "Bytesac manager fees are being waived", text: "Your organization has no verified payout wallet, so manager fees on your baskets are being waived. Verify a payout wallet to receive fees." }),
 };
 
 /** Sends an organization email. Failures only log: a state change never rolls back for an undelivered notice. */

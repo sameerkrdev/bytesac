@@ -40,7 +40,7 @@ describe("RebalanceReview", () => {
     expect(screen.getByRole("heading", { name: "Sells" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Buys" })).toBeInTheDocument();
     expect(screen.getByText("Buy amounts are resized to what your sales actually return.")).toBeInTheDocument();
-    expect(screen.getByText(/No platform or manager fees are charged yet/)).toBeInTheDocument();
+    expect(screen.getByText("Fees are not refunded if the operation does not complete.")).toBeInTheDocument();
     expect(rebalance).toHaveBeenCalledWith(expect.objectContaining({ positionId: ID(40), target: "latest", idempotencyKey: expect.any(String) }));
   });
 

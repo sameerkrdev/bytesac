@@ -45,15 +45,15 @@ describe("InvestWizard", () => {
     expect(preview()).toBeDisabled();
   });
 
-  it("the preview lists the legs, the network fee and that no other fees are charged", async () => {
+  it("the preview lists the legs, the fees and the no-refund note", async () => {
     api.investPlan.mockResolvedValue(operation());
     open();
     await type(slippage(), "2");
     await userEvent.click(preview());
     expect(api.investPlan).toHaveBeenCalledWith({ basketId: "b", amountUsdc: "250", slippageBps: 200, idempotencyKey: expect.any(String) });
-    expect(await screen.findByText("Network fee (paid to Bytesac for gas): 0.07 USDC")).toBeInTheDocument();
-    expect(screen.getByText(/No platform or manager fees are charged yet/)).toBeInTheDocument();
-    expect(screen.getByText("1. Network fee")).toBeInTheDocument();
+    expect(await screen.findByText("Network fee (paid to Bytesac for gas)")).toBeInTheDocument();
+    expect(screen.getByText("Fees are not refunded if the operation does not complete.")).toBeInTheDocument();
+    expect(screen.getByText("1. Fees")).toBeInTheDocument();
     expect(screen.getByText("2. Buy ETH")).toBeInTheDocument();
     expect(screen.getByText("99.93 USDC → about 0.03 ETH (at least 0.0297 ETH)")).toBeInTheDocument();
   });

@@ -8,7 +8,8 @@ import {
   basketApprovalRequestSchema, basketReasonRequestSchema, basketReviewDecisionRequestSchema, createDisclosureTemplateRequestSchema, listOpsBasketsQuerySchema,
   applicationNoteRequestSchema, decideMemberVerificationRequestSchema, grantRoleRequestSchema, listApplicationsQuerySchema, listMemberReviewQuerySchema, listOrganizationsQuerySchema,
   organizationNoteRequestSchema, payoutWalletDecisionRequestSchema, transferOwnershipRequestSchema, transitionApplicationRequestSchema, transitionOrganizationRequestSchema,
-  versionDecisionRequestSchema, resolveLegRequestSchema, z, type ResolveLegRequest,
+  versionDecisionRequestSchema, resolveLegRequestSchema, z, type ResolveLegRequest, earningsQuerySchema, platformFeeOverrideInputSchema, platformFeeScheduleInputSchema,
+  type PlatformFeeOverrideInput, type PlatformFeeScheduleInput,
   createAssetTagRequestSchema, hideManagerProfileRequestSchema, listOpsManagerProfilesQuerySchema, type CreateAssetTagRequest, type HideManagerProfileRequest,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest,
   type ApplicationNoteRequest, type DecideMemberVerificationRequest, type GrantRoleRequest, type TransferOwnershipRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
@@ -16,6 +17,7 @@ import {
 } from "@repo/validator";
 import { requireRole, requireSession } from "../middleware/auth";
 import { resolveLeg } from "../services/positions";
+import { endOverride, getRevenue, getRevenueCsv, listSchedules, saveSchedule } from "../services/fees";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import {
@@ -309,4 +311,32 @@ opsRouter.post("/manager-profiles/:id/unhide", reviewer, validate({ params: idPa
 /** A leg stuck UNKNOWN: ops settle or fail it from on-chain evidence (verified server-side where possible), audited. */
 opsRouter.post("/operations/:id/legs/:legId/resolve", requireRole("ops_admin"), validate({ params: z.object({ id: z.uuid(), legId: z.uuid() }), body: resolveLegRequestSchema }), async (req, res) => {
   res.json(await resolveLeg({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx }, req.params.id as string, req.params.legId as string, req.body as ResolveLegRequest));
+});
+
+// Platform fee schedules: the default per operation type, and organization / basket overrides. Reviewers read; only ops_admin changes them.
+opsRouter.get("/fees", reviewer, async (_req, res) => {
+  res.json(await listSchedules(false));
+});
+
+opsRouter.post("/fees", requireRole("ops_admin"), validate({ body: platformFeeScheduleInputSchema }), async (req, res) => {
+  res.status(201).json(await saveSchedule(actor(req), req.body as PlatformFeeScheduleInput));
+});
+
+opsRouter.get("/fees/overrides", reviewer, async (_req, res) => {
+  res.json(await listSchedules(true));
+});
+
+opsRouter.post("/fees/overrides", requireRole("ops_admin"), validate({ body: platformFeeOverrideInputSchema }), async (req, res) => {
+  res.status(201).json(await saveSchedule(actor(req), req.body as PlatformFeeOverrideInput));
+});
+
+opsRouter.post("/fees/overrides/:id/end", requireRole("ops_admin"), validate({ params: idParam }), async (req, res) => {
+  res.json(await endOverride(actor(req), req.params.id as string));
+});
+
+/** Platform revenue from settled fees (and waived manager fees by reason); `format=csv` downloads one row per settled fee. */
+opsRouter.get("/revenue", reviewer, async (req, res) => {
+  const q = earningsQuerySchema.parse(req.query);
+  if (q.format === "csv") res.type("text/csv").attachment("revenue.csv").send(await getRevenueCsv(q));
+  else res.json(await getRevenue(q));
 });

@@ -24,39 +24,41 @@ export function describeUnsigned(serializedBase64: string): { serializedBase64: 
   return { serializedBase64, messageHash: messageHash(VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64"))) };
 }
 
-const ata = (owner: PublicKey, mint: PublicKey) => PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROGRAM.toBuffer(), mint.toBuffer()], ATA_PROGRAM)[0];
+export const ata = (owner: PublicKey, mint: PublicKey) => PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROGRAM.toBuffer(), mint.toBuffer()], ATA_PROGRAM)[0];
 
 /**
- * The network fee leg: a USDC TransferChecked from the user's token account to the platform treasury's, fee payer = platform (which also creates
- * the treasury token account if it is missing). Server-built, so the planner knows every byte.
+ * The fee leg: one USDC TransferChecked per recorded fee from the user's token account to each recipient's (network, manager, platform, in that order),
+ * fee payer = platform (which also creates a recipient token account that is missing). Server-built, so the planner knows every byte.
  */
-export async function buildFeeTransfer(i: { owner: string; amountMicro: bigint }): Promise<{ serializedBase64: string; messageHash: string }> {
-  if (!env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError("The gas treasury is not configured.", { code: "ROUTE_UNAVAILABLE" });
-  const [payer, owner, treasury, mint] = [feePayer().publicKey, new PublicKey(i.owner), new PublicKey(env.GAS_TREASURY_SOLANA_ADDRESS), new PublicKey(USDC_SOLANA_MINT)];
-  const [from, to] = [ata(owner, mint), ata(treasury, mint)];
-  const amount = Buffer.alloc(10);
-  amount[0] = 12; // TransferChecked
-  amount.writeBigUInt64LE(i.amountMicro, 1);
-  amount[9] = USDC_DECIMALS;
-  const { blockhash } = await connection.getLatestBlockhash("confirmed");
-  const message = new TransactionMessage({
-    payerKey: payer,
-    recentBlockhash: blockhash,
-    instructions: [
+export async function buildFeeTransfer(i: { owner: string; transfers: { recipient: string; amountMicro: bigint }[] }): Promise<{ serializedBase64: string; messageHash: string }> {
+  const [payer, owner, mint] = [feePayer().publicKey, new PublicKey(i.owner), new PublicKey(USDC_SOLANA_MINT)];
+  const from = ata(owner, mint);
+  const instructions = i.transfers.flatMap((t) => {
+    const recipient = new PublicKey(t.recipient);
+    const to = ata(recipient, mint);
+    const amount = Buffer.alloc(10);
+    amount[0] = 12; // TransferChecked
+    amount.writeBigUInt64LE(t.amountMicro, 1);
+    amount[9] = USDC_DECIMALS;
+    return [
       new TransactionInstruction({ programId: ATA_PROGRAM, data: Buffer.from([1]), keys: [ // CreateIdempotent
-        { pubkey: payer, isSigner: true, isWritable: true }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: treasury, isSigner: false, isWritable: false },
+        { pubkey: payer, isSigner: true, isWritable: true }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: recipient, isSigner: false, isWritable: false },
         { pubkey: mint, isSigner: false, isWritable: false }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
       ] }),
       new TransactionInstruction({ programId: TOKEN_PROGRAM, data: amount, keys: [
         { pubkey: from, isSigner: false, isWritable: true }, { pubkey: mint, isSigner: false, isWritable: false }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: owner, isSigner: true, isWritable: false },
       ] }),
-    ],
-  }).compileToV0Message();
+    ];
+  });
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  const message = new TransactionMessage({ payerKey: payer, recentBlockhash: blockhash, instructions }).compileToV0Message();
   return describeUnsigned(Buffer.from(new VersionedTransaction(message).serialize()).toString("base64"));
 }
 
 /** Token-program account rent (165 bytes): what the fee payer funds for each `CreateIdempotent` that creates an account. */
 export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
+/** Used for the rent estimate only when LI.FI's gas costs carry no native token price. */
+export const SOL_USD_FALLBACK = 150;
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
 const LAMPORTS_PER_SIGNATURE = 5_000n;
 /** Priority fee the platform will pay for one transaction (price x limit), the instruction and static-account counts it accepts. */
