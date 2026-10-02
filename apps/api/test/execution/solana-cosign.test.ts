@@ -3,6 +3,7 @@ import { Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionM
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USDC_SOLANA_MINT } from "@repo/validator";
+import { env } from "../../src/env";
 import { buildFeeTransfer, connection, cosign, describeUnsigned, feePayer, sendSolana, solanaFinality, sponsorExposure } from "../../src/providers/solana-tx";
 
 const BLOCKHASH = bs58.encode(Buffer.alloc(32, 7));
@@ -117,7 +118,7 @@ describe("fee-payer exposure (I4)", () => {
 describe("network fee transfer", () => {
   it("builds a USDC TransferChecked from the user to the treasury with the platform as fee payer", async () => {
     vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
-    const built = await buildFeeTransfer({ owner: user.publicKey.toBase58(), amountMicro: 123_456n });
+    const built = await buildFeeTransfer({ owner: user.publicKey.toBase58(), transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 123_456n }] });
     const tx = VersionedTransaction.deserialize(Buffer.from(built.serializedBase64, "base64"));
     expect(describeUnsigned(built.serializedBase64).messageHash).toBe(built.messageHash);
     expect(tx.message.staticAccountKeys[0]!.equals(feePayer().publicKey)).toBe(true);

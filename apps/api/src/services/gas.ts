@@ -33,6 +33,7 @@ export async function seedPlatformWallets(): Promise<void> {
   const rows: { chain: AssetChain; purpose: Purpose; address: string }[] = [];
   if (env.SOLANA_FEE_PAYER_SECRET) rows.push({ chain: "solana", purpose: "solana_fee_payer", address: feePayer().publicKey.toBase58() });
   if (env.GAS_TREASURY_SOLANA_ADDRESS) rows.push({ chain: "solana", purpose: "gas_treasury", address: env.GAS_TREASURY_SOLANA_ADDRESS });
+  if (env.REVENUE_TREASURY_SOLANA_ADDRESS) rows.push({ chain: "solana", purpose: "revenue_treasury", address: env.REVENUE_TREASURY_SOLANA_ADDRESS });
   if (env.EVM_GAS_WALLET_SECRET) for (const chain of EVM_CHAINS) rows.push({ chain, purpose: "evm_gas", address: gasWalletAddress() });
   for (const r of rows) await db.insert(platformWallets).values(r).onConflictDoUpdate({ target: [platformWallets.chain, platformWallets.purpose], set: { address: r.address } });
 }

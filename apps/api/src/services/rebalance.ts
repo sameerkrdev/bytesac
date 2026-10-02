@@ -7,18 +7,19 @@ import {
 import { logger } from "@repo/logger";
 import {
   ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, MIN_TRADE_USDC_DEFAULT, USDC_SOLANA_MINT, feePlacement, micro, minOut, networkFeeMicro, planRebalance,
-  type AssetChain, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult,
+  type AssetChain, type BasketFees, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult,
 } from "@repo/validator";
 import { maxBtcMinerFee } from "../providers/bitcoin";
 import { solanaBalance } from "../providers/solana-tx";
 import { writeAudit } from "./audit";
+import { planFees } from "./fees";
 import { getInvestability } from "./investability";
 import {
   FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, addressOn, applyVersion, assertEligible, assertNoneInFlight, auditBase, basketCashMicro, findByKey, freeUsdcMicro, getOperation, insertPlan, operationView,
   lockOperation, planQuote, reused, sellLeg, setOperationStatus, sponsoredCost, usdcPrice, userAddresses, type LegDraft, type OpCtx,
 } from "./operations";
 import { fanOutToHolders } from "./notifications";
-import { getPrices } from "./pricing";
+import { getPrices, priceToMicro } from "./pricing";
 import { reconcilePositions } from "./positions";
 
 /** Reconciliation rows older than this at plan time mean the balance could not be read just now. */
@@ -52,13 +53,6 @@ export interface ValuedHolding {
   priceMicro: bigint | null; valueMicro: bigint; weightBps: number;
 }
 export interface Valuation { holdings: ValuedHolding[]; cashMicro: bigint; valueMicro: bigint; fresh: boolean; priceByInstrument: Map<string, bigint> }
-
-/** A market price string ("1.234567891") as micro-USD, truncated to 6 decimals; null when it is not a positive plain decimal. */
-function priceToMicro(value: string): bigint | null {
-  const m = /^(\d+)(?:\.(\d+))?$/.exec(value);
-  const p = m ? micro(`${m[1]}.${(m[2] ?? "").slice(0, 6)}`) : 0n;
-  return p > 0n ? p : null;
-}
 
 /**
  * The one valuation of a position: allocated quantity x fresh market price per held deployment, the basket cash, and each holding's weight in bps of the
@@ -106,7 +100,7 @@ async function ownOpenPosition(userId: string, positionId: string) {
 export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): Promise<OperationView | { aligned: true }> {
   return withPlanLock(ctx.userId, async () => {
     const [position] = await db.select().from(basketPositions).where(and(eq(basketPositions.id, body.positionId), eq(basketPositions.userId, ctx.userId)));
-    const [basket] = position ? await db.select({ currentVersionId: baskets.currentVersionId }).from(baskets).where(eq(baskets.id, position.basketId)) : [];
+    const [basket] = position ? await db.select({ currentVersionId: baskets.currentVersionId, organizationId: baskets.organizationId }).from(baskets).where(eq(baskets.id, position.basketId)) : [];
     const existing = await findByKey(ctx.userId, body.idempotencyKey);
     if (existing) {
       if (existing.kind !== "rebalance" || existing.positionId !== body.positionId || existing.versionId !== (body.target === "latest" ? basket?.currentVersionId : position?.appliedVersionId)) throw reused();
@@ -123,7 +117,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     assertEligible(inv);
     const targetVersionId = inv.versionId!;
 
-    const [version] = await db.select({ rebalance: basketVersions.rebalance }).from(basketVersions).where(eq(basketVersions.id, targetVersionId));
+    const [version] = await db.select({ rebalance: basketVersions.rebalance, fees: basketVersions.fees }).from(basketVersions).where(eq(basketVersions.id, targetVersionId));
     const val = await valuePosition(db, position.id, inv.constituents.map((c) => c.instrumentId));
     if (!val.fresh || inv.constituents.some((c) => !val.priceByInstrument.has(c.instrumentId))) throw stale("A market price is unavailable right now. Try again in a moment.");
     if (val.holdings.some((h) => !h.reconciledAt || h.reconciledAt.getTime() < startedAt - FRESH_MS)) throw stale("Your wallet balances could not be confirmed right now. Try again in a moment.");
@@ -159,20 +153,28 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     })));
     const sellCosts = sellQuotes.map((q, n) => (sells[n]!.chain === "solana" ? sponsoredCost(q) : { lamports: 0n, usd: q.gasEstimateUsd }));
     const buyCosts = buyQuotes.map(sponsoredCost);
-    const fee = networkFeeMicro([FEE_LEG_GAS_USD, ...sellCosts.map((c) => c.usd), ...buyCosts.map((c) => c.usd)], await usdcPrice());
+    // The traded value T: planned sells plus the buys funded from existing basket cash. Only applying a newer manager version carries the manager's rebalance fee.
+    const traded = sum(plan.sells.map((s) => s.valueMicro)) + (val.cashMicro < sum(plan.buys.map((b) => b.amountMicro)) ? val.cashMicro : sum(plan.buys.map((b) => b.amountMicro)));
+    const price = await usdcPrice();
+    const fees = await planFees(db, {
+      networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...sellCosts.map((c) => c.usd), ...buyCosts.map((c) => c.usd)], price), operation: body.target === "latest" ? "rebalance_apply" : "rebalance_drift",
+      platformBaseMicro: traded, usdcPrice: price, manager: body.target === "latest" && targetVersionId !== position.appliedVersionId ? { kind: "manager_rebalance", fee: (version!.fees as BasketFees).rebalance, baseMicro: traded } : null,
+      organizationId: basket!.organizationId, basketId: position.basketId,
+    });
+    const fee = fees.totalMicro;
 
     const walletUsdc = await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT);
     const placement = feePlacement({ freeMicro: await freeUsdcMicro(db, ctx.userId, walletUsdc), cashMicro: val.cashMicro, feeMicro: fee, sellChains: sells.map((s) => s.chain) });
     if (!placement) {
       const cents = (fee + 9_999n) / 10_000n; // rounded up to whole cents: "at least"
       const off = sells.find((s) => s.chain !== "solana");
-      throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the network fee${off ? ` before selling assets on ${ASSET_CHAINS[off.chain].label}` : ""}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
+      throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the ${fee === fees.rows[0]!.amountMicro ? "network fee" : "fees"}${off ? ` before selling assets on ${ASSET_CHAINS[off.chain].label}` : ""}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
     }
-    // A fee paid from basket cash is held back from the buys.
+    // Fees paid from basket cash are held back from the buys.
     const buys = placement.fromCash ? planRebalance({ ...input, reserveMicro: fee }).buys : plan.buys;
-    if (sells.length === 0 && buys.length === 0) throw createHttpError("Nothing left to trade once the network fee is paid.", { code: "VALIDATION_FAILED" });
+    if (sells.length === 0 && buys.length === 0) throw createHttpError("Nothing left to trade once the fees are paid.", { code: "VALIDATION_FAILED" });
 
-    const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS]]);
+    const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports]]);
     const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: placement.fromCash ? { fromCash: true } : null, expectedTx: null, gasPayer: "platform_fee_payer" };
     const legs: LegDraft[] = placement.at === "first" ? [feeLeg] : [];
     sells.forEach((s, n) => legs.push(sellLeg(s, sellQuotes[n]!, sellCosts[n]!, body.slippageBps, gas)));
@@ -190,8 +192,8 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     }
 
     const id = await insertPlan(ctx, {
-      op: { basketId: position.basketId, positionId: position.id, kind: "rebalance", sellPercent: null, amountUsdc: null, slippageBps: body.slippageBps, networkFeeUsdc: fee.toString(), versionId: targetVersionId, idempotencyKey: body.idempotencyKey },
-      legs, gas,
+      op: { basketId: position.basketId, positionId: position.id, kind: "rebalance", sellPercent: null, amountUsdc: null, slippageBps: body.slippageBps, networkFeeUsdc: fees.rows[0]!.amountMicro.toString(), versionId: targetVersionId, idempotencyKey: body.idempotencyKey },
+      legs, gas, fees: fees.rows,
     });
     return getOperation(ctx, id);
   });
@@ -231,9 +233,11 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
     const addresses = await userAddresses(db, ctx.userId);
     const q = await planQuote({ fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: d.chain, toToken: d.address, amount: buy, slippageBps: body.slippageBps, addresses });
     const cost = sponsoredCost(q);
-    const fee = networkFeeMicro([FEE_LEG_GAS_USD, cost.usd], await usdcPrice());
+    const usdc = await usdcPrice();
+    const fees = await planFees(db, { networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, cost.usd], usdc), operation: "repair", platformBaseMicro: buy, usdcPrice: usdc, manager: null, organizationId: null, basketId: null });
+    const fee = fees.totalMicro;
     const free = await freeUsdcMicro(db, ctx.userId, await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT));
-    if (free < fee + buy) throw createHttpError(409, "Your Solana wallet doesn't hold enough free USDC for the buy-back and the network fee (basket cash is not available).", { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: (fee + buy).toString() } });
+    if (free < fee + buy) throw createHttpError(409, "Your Solana wallet doesn't hold enough free USDC for the buy-back and the fees (basket cash is not available).", { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: (fee + buy).toString() } });
 
     const legs: LegDraft[] = [
       { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" },
@@ -243,8 +247,8 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
       },
     ];
     const id = await insertPlan(ctx, {
-      op: { basketId: null, positionId: null, deploymentId: body.deploymentId, repairShares: shares, kind: "repair", slippageBps: body.slippageBps, networkFeeUsdc: fee.toString(), versionId: short[0]!.appliedVersionId, idempotencyKey: body.idempotencyKey },
-      legs, gas: new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + cost.lamports]]),
+      op: { basketId: null, positionId: null, deploymentId: body.deploymentId, repairShares: shares, kind: "repair", slippageBps: body.slippageBps, networkFeeUsdc: fees.rows[0]!.amountMicro.toString(), versionId: short[0]!.appliedVersionId, idempotencyKey: body.idempotencyKey },
+      legs, gas: new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + cost.lamports + fees.rentLamports]]), fees: fees.rows,
     });
     return getOperation(ctx, id);
   });
