@@ -85,7 +85,7 @@ A manager fee for an organization without a `VERIFIED` payout wallet is waived (
 - Fees are not refunded when an operation stops early.
 - A manager without a verified payout wallet loses the fee (waived) rather than blocking the user.
 - The fee leg builds from recorded recipient addresses and does not re-read the payout wallet (snapshot at plan time; plans live 30 minutes).
-- If a recipient's token account is closed between plan and signing, the platform pays its rent (about 0.002 SOL), covered by the gas reservation.
+- If a recipient's token account is closed between plan and signing, the platform absorbs the token-account rent (about 0.002 SOL per recipient); it is not part of the gas reservation, which counts rent only for accounts missing at plan time.
 
 ### Security, financial and operational impact
 - Fee-payer validation refuses a fee transaction with any transfer other than the recorded recipients and amounts. Payout addresses come only from `VERIFIED` wallets. Ops edits need `ops_admin` and a reason.

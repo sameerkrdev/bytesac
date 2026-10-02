@@ -40,8 +40,10 @@ export interface PlannedFees {
  * A fee below the dust threshold, a manager fee without a verified payout wallet and a platform fee without a price are recorded with a waiver, not charged.
  * The network row also carries the token-account rent of each charged manager/platform recipient whose account is missing (the platform creates it).
  */
+const validAddress = (a: string | undefined | null) => { try { return !!a && !!new PublicKey(a); } catch { return false; } };
+
 export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedFees> {
-  if (!env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError("The gas treasury is not configured.", { code: "ROUTE_UNAVAILABLE" });
+  if (!validAddress(env.GAS_TREASURY_SOLANA_ADDRESS)) throw createHttpError(503, "The gas treasury is not configured.", { code: "ROUTE_UNAVAILABLE" });
   const scope = { organizationId: i.organizationId, basketId: i.basketId };
   const row = (r: Pick<PlannedFee, "kind" | "baseMicro" | "amountMicro"> & Partial<PlannedFee>): PlannedFee => ({ bps: null, capMicro: null, recipientAddress: null, scheduleId: null, waivedReason: null, ...scope, ...r });
   const network = row({ kind: "network", baseMicro: 0n, amountMicro: i.networkMicro, recipientAddress: env.GAS_TREASURY_SOLANA_ADDRESS });
@@ -54,7 +56,7 @@ export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedF
     if (amount > 0n) {
       const [wallet] = await conn.select({ address: organizationPayoutWallets.address }).from(organizationPayoutWallets)
         .where(and(eq(organizationPayoutWallets.organizationId, i.organizationId), eq(organizationPayoutWallets.status, "VERIFIED"), eq(organizationPayoutWallets.chain, "solana")));
-      if (!wallet) {
+      if (!wallet || !validAddress(wallet.address)) {
         rows.push(row({ kind, baseMicro, amountMicro: 0n, ...terms, waivedReason: "payout_wallet_unavailable" }));
         logger.warn("manager fee waived: no verified payout wallet", { organizationId: i.organizationId });
         // Log-only; one email per organization per UTC day (Resend dedupes on the key), so a plan that later fails is harmless.
@@ -71,7 +73,7 @@ export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedF
     if (i.platformBaseMicro === null) rows.push(row({ ...common, baseMicro: 0n, amountMicro: 0n, waivedReason: "no_price" }));
     else {
       const amount = platformFeeMicro({ bps: schedule.bps, minMicro: schedule.minMicro === null ? null : BigInt(schedule.minMicro), maxMicro: common.capMicro }, i.platformBaseMicro);
-      if (amount >= FEE_DUST_MICRO && !env.REVENUE_TREASURY_SOLANA_ADDRESS) throw createHttpError("The revenue treasury is not configured.", { code: "ROUTE_UNAVAILABLE" });
+      if (amount >= FEE_DUST_MICRO && !validAddress(env.REVENUE_TREASURY_SOLANA_ADDRESS)) throw createHttpError(503, "The revenue treasury is not configured.", { code: "ROUTE_UNAVAILABLE" });
       rows.push(row({ ...common, baseMicro: i.platformBaseMicro, amountMicro: amount < FEE_DUST_MICRO ? 0n : amount, recipientAddress: env.REVENUE_TREASURY_SOLANA_ADDRESS || null, waivedReason: amount < FEE_DUST_MICRO ? "dust" : null }));
     }
   }

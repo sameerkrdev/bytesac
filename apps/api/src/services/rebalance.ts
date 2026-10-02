@@ -158,7 +158,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     const price = await usdcPrice();
     const fees = await planFees(db, {
       networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...sellCosts.map((c) => c.usd), ...buyCosts.map((c) => c.usd)], price), operation: targetVersionId !== position.appliedVersionId ? "rebalance_apply" : "rebalance_drift",
-      platformBaseMicro: traded, usdcPrice: price, solPriceUsd: [...sellQuotes, ...buyQuotes].find((q) => q.nativePriceUsd)?.nativePriceUsd, manager: body.target === "latest" && targetVersionId !== position.appliedVersionId ? { kind: "manager_rebalance", fee: (version!.fees as BasketFees).rebalance, baseMicro: traded } : null,
+      platformBaseMicro: traded, usdcPrice: price, solPriceUsd: [...sellQuotes.filter((_, n) => sells[n]!.chain === "solana"), ...buyQuotes].find((q) => q.nativePriceUsd)?.nativePriceUsd, manager: body.target === "latest" && targetVersionId !== position.appliedVersionId ? { kind: "manager_rebalance", fee: (version!.fees as BasketFees).rebalance, baseMicro: traded } : null,
       organizationId: basket!.organizationId, basketId: position.basketId,
     });
     const fee = fees.totalMicro;

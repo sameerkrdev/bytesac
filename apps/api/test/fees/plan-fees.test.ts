@@ -3,6 +3,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../../src/app";
 import { env } from "../../src/env";
+import { lifi } from "../../src/providers/routes/lifi";
 import { seedPlatformWallets } from "../../src/services/gas";
 import { trackLeg } from "../../src/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
@@ -360,5 +361,58 @@ describe("repair and sell fees", () => {
     revenue.address = solanaTestWallet().address;
     const unpriced = await mk(false);
     expect((await feeRows(unpriced.body.id)).map((r) => [r.kind, r.amount_micro, r.waived_reason]).slice(1)).toEqual([["platform", "0", "no_price"]]);
+  });
+});
+
+describe("token-account rent price", () => {
+  /** EVM-sourced quotes carry the ETH price; the rent of a missing recipient account must not be priced with it. */
+  const withEvmPrice = (price: number | null) => {
+    const base = vi.mocked(lifi.quote).getMockImplementation()!;
+    vi.mocked(lifi.quote).mockImplementation(async (i) => ({ ...(await base(i)), nativePriceUsd: i.fromChain === "solana" ? null : price }));
+  };
+  const networkFee = async (opId: string) => BigInt((await feeRows(opId)).find((r) => r.kind === "network")!.amount_micro);
+
+  it("an ETH sell with a missing recipient account prices the rent at SOL's price, not ETH's", async () => {
+    const run = async (price: number | null) => {
+      await resetDb();
+      revenue.address = solanaTestWallet().address;
+      const chain = mockChains();
+      withEvmPrice(price);
+      await seedPlatformWallets();
+      const basket = await seedBasket({ assets: [ETH] });
+      await configure(basket, { schedules: [{ op: "sell_to_usdc", bps: 25 }] });
+      const user = await seedUser({ wallet: solanaTestWallet() });
+      await seedPrices(basket.deployments, ["3000"]);
+      const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 4n * 10n ** 18n }]);
+      fakes.evm.balances.set(`ethereum:${user.evmAddress}`, 4n * 10n ** 18n);
+      chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 50_000_000n);
+      const res = await post(user.h, "/v1/operations/sell", { positionId, percent: 50, slippageBps: 100, idempotencyKey: "sell-aaaaaaaa" });
+      expect(res.status).toBe(201);
+      return networkFee(res.body.id);
+    };
+    expect(await run(3000)).toBe(await run(null));
+  });
+
+  it("a rebalance with an EVM sell prices the rent at SOL's price, not ETH's", async () => {
+    const run = async (price: number | null) => {
+      await resetDb();
+      revenue.address = solanaTestWallet().address;
+      const { user, positionId, chain } = await arrangeRebalance({ assets: [SOL, ETH], v2: [7000, 3000] });
+      withEvmPrice(price);
+      expect(chain).toBeDefined();
+      const res = await rebalance(user.h, positionId);
+      expect(res.status).toBe(201);
+      return networkFee(res.body.id);
+    };
+    expect(await run(3000)).toBe(await run(null));
+  });
+
+  it("an invalid stored payout address waives the manager fee instead of crashing the plan", async () => {
+    const { basket, user } = await arrange();
+    await configure(basket, { entry: { type: "percent", bps: 100 } });
+    await adminSql`UPDATE app.organization_payout_wallets SET address = 'not-a-solana-address'`;
+    const res = await invest(user.h, basket.basketId);
+    expect(res.status).toBe(201);
+    expect((await feeRows(res.body.id)).map((r) => [r.kind, r.waived_reason])).toEqual([["network", null], ["manager_entry", "payout_wallet_unavailable"]]);
   });
 });
