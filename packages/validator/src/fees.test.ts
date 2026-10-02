@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { feeSchema, managerFeeMicro, platformFeeMicro, platformFeeOverrideInputSchema, platformFeeScheduleInputSchema, resolvePlatformSchedule, type ScheduleRow } from "./index";
+import { feeSchema, managerFeeMicro, microToUsdc, platformFeeMicro, platformFeeOverrideInputSchema, platformFeeScheduleInputSchema, resolvePlatformSchedule, type ScheduleRow } from "./index";
 
 describe("managerFeeMicro", () => {
   const base = 1_000_000_000n; // 1 000 USDC
@@ -9,6 +9,12 @@ describe("managerFeeMicro", () => {
     expect(managerFeeMicro({ type: "fixed", amountUsdc: "2.5" }, base)).toBe(2_500_000n);
     expect(managerFeeMicro(undefined, base)).toBe(0n);
     expect(managerFeeMicro({ type: "percent", bps: 33 }, 1n)).toBe(0n);
+  });
+});
+
+describe("microToUsdc", () => {
+  it("drops trailing zeros only", () => {
+    expect([100_000n, 50_000_000n, 2_500_000n, 0n, 10_000_000n, 1n].map(microToUsdc)).toEqual(["0.1", "50", "2.5", "0", "10", "0.000001"]);
   });
 });
 

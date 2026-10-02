@@ -435,6 +435,8 @@ export const publicBasketDetailSchema = publicBasketResearchSchema.extend({
     instrumentId: z.string(), name: z.string(), symbol: z.string(), assetType: assetTypeSchema, chains: z.array(z.string()), targetWeightBps: z.number(),
     minWeightBps: z.number().nullable(), maxWeightBps: z.number().nullable(), prices: z.array(publicPriceSchema),
   })),
+  /** The platform fee that applies to this basket per operation (an organization or basket override included; no reason text). */
+  platformFee: z.array(z.object({ operationKind: z.string(), bps: z.number().int(), minUsdc: z.string().nullable(), maxUsdc: z.string().nullable() })),
   disclosures: z.array(z.object({ title: z.string(), body: z.string() })),
   versionHistory: z.array(z.object({ versionNumber: z.number(), publishedAt: iso, rationale: z.string().nullable(), diff: basketDiffSchema })),
   managers: z.array(z.object({ displayName: z.string(), handle: z.string().nullable(), role: basketAssignmentRoleSchema, from: iso, to: iso.nullable() })),

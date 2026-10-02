@@ -11,6 +11,9 @@ export const WAIVED_REASONS = ["payout_wallet_unavailable", "dust", "no_price"] 
 export type WaivedReason = (typeof WAIVED_REASONS)[number];
 export const FEE_SCOPES = ["default", "organization", "basket"] as const;
 
+/** Micro-USDC as a plain decimal string without trailing zeros ("2.5", "0.1", "5"). */
+export const microToUsdc = (m: bigint): string => `${m / 1_000_000n}.${String(m % 1_000_000n).padStart(6, "0")}`.replace(/\.?0+$/, "");
+
 /** Manager entry/rebalance fee on `baseMicro`: percent floors and is capped by `maxUsdc`; fixed is the amount. */
 export function managerFeeMicro(fee: Fee | undefined, baseMicro: bigint): bigint {
   if (!fee) return 0n;
@@ -79,6 +82,8 @@ export const platformFeeScheduleViewSchema = z.object({
   supersededAt: z.iso.datetime({ offset: true }).nullable(),
 });
 export type PlatformFeeScheduleView = z.infer<typeof platformFeeScheduleViewSchema>;
+export const platformFeeListSchema = z.object({ items: z.array(platformFeeScheduleViewSchema) });
+export type PlatformFeeList = z.infer<typeof platformFeeListSchema>;
 
 export const operationFeeViewSchema = z.object({
   kind: z.enum(FEE_KINDS),
@@ -103,7 +108,7 @@ export type EarningsQuery = z.infer<typeof earningsQuerySchema>;
 export const earningsSchema = z.object({
   totalMicro: z.string(),
   waivedCount: z.number().int(),
-  groups: z.array(z.object({ basketId: z.uuid().nullable(), basketName: z.string().nullable(), versionId: z.uuid().nullable(), kind: z.enum(FEE_KINDS), month: z.string(), amountMicro: z.string() })),
+  groups: z.array(z.object({ basketId: z.uuid().nullable(), basketName: z.string().nullable(), versionNumber: z.number().int().nullable(), kind: z.enum(FEE_KINDS), month: z.string(), amountMicro: z.string() })),
   recent: z.array(z.object({ settledAt: z.iso.datetime({ offset: true }), basketId: z.uuid().nullable(), kind: z.enum(FEE_KINDS), amountMicro: z.string(), tx: z.string().nullable(), explorerUrl: z.string().nullable() })),
 });
 export type Earnings = z.infer<typeof earningsSchema>;
