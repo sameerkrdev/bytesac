@@ -54,7 +54,7 @@ The subscription feature (prepaid signed periods, auto-renew through token deleg
 
 ## 5. The fee leg
 
-- `leg_kind` gains `fees`. New plans use one `fees` leg instead of `network_fee`; existing `network_fee` legs keep their kind (history untouched, code paths keep handling both).
+- The existing `network_fee` leg becomes the combined fee leg (kind name kept, so every existing code path and history row stays valid; the UI labels it "Fees"). Its `amountIn` is the total of the charged fees.
 - The leg is one server-built Solana transaction: for each charged fee, an idempotent ATA `CreateIdempotent` for the recipient's USDC account (funded by the platform fee payer, rent counted in the gas reservation and the network fee as today) and one USDC `TransferChecked` from the user's token account. Order: network (gas treasury), manager (payout wallet), platform (revenue treasury). The user signs once; the fee payer co-signs only the byte-identical stored message (existing `TX_MISMATCH` flow).
 - Validation extends the existing fee-payer rules: the transaction must contain exactly the expected transfers (recipient token account derived from the recorded recipient address and the USDC mint, amount equal to the recorded fee) and nothing else.
 - Placement: invest → first. Rebalance and sell → the D-079/D-071 rules applied to the **total** fee. Repair → first from free USDC (balance check `free ≥ fees + buy`). When paid from basket cash, the cash entry `network_fee` (renamed in display as "fees") debits the total.
@@ -73,7 +73,6 @@ The subscription feature (prepaid signed periods, auto-renew through token deleg
 
 ## 8. Data model (`@repo/db`, migration `0013_fees.sql`)
 
-- `leg_kind` + `fees` (use `::text` in any check that references it, as `0012`).
 - `operation_fees` (append-only except `settled_at`): `id, operation_id, leg_id?, kind (network | manager_entry | manager_rebalance | platform), base_micro, bps?, cap_micro?, amount_micro, recipient_address?, organization_id?, basket_id?, schedule_id? (platform), waived_reason?, settled_at, created_at`; index `(organization_id, settled_at)`, `(kind, settled_at)`.
 - `platform_fee_schedules` as §6; partial unique `(scope, coalesce(scope_id), operation_kind) where superseded_at is null`.
 - `platform_wallet_purpose` + `revenue_treasury`; env `REVENUE_TREASURY_SOLANA_ADDRESS` (required when any platform fee > 0 is configured; a plan with a platform fee and no treasury → 503 `ROUTE_UNAVAILABLE`).
@@ -109,11 +108,11 @@ Transfers only to recorded recipients with recorded amounts; fee-payer validatio
 
 ## 13. Testing
 
-Validator: manager fee (percent, cap, fixed, rounding down), platform fee (min/max clamp), dust, deployable after fees, override resolution and expiry, schema cap bounds. API: invest plan with manager and platform fees (one fees leg, three transfers, correct recipients), tampered fee transaction → `TX_MISMATCH`, fees in all D-079 branches (first, between from cash, refused), drift fix / repair / sell carry no manager fee but the configured platform fee, waived payout wallet (no transfer, row recorded, email once), schedule edit after plan creation leaves the plan unchanged, settledAt only after settlement, earnings permission (Owner/Admin yes; Manager/Analyst/Viewer 403) and CSV, ops revenue and CSV, revenue reconciliation mismatch logged, `network_fee` legacy legs still settle. Web: fee lines in previews, waived label, cap input, ops fees admin, earnings page, public fees page.
+Validator: manager fee (percent, cap, fixed, rounding down), platform fee (min/max clamp), dust, deployable after fees, override resolution and expiry, schema cap bounds. API: invest plan with manager and platform fees (one fees leg, three transfers, correct recipients), tampered fee transaction → `TX_MISMATCH`, fees in all D-079 branches (first, between from cash, refused), drift fix / repair / sell carry no manager fee but the configured platform fee, waived payout wallet (no transfer, row recorded, email once), schedule edit after plan creation leaves the plan unchanged, settledAt only after settlement, earnings permission (Owner/Admin yes; Manager/Analyst/Viewer 403) and CSV, ops revenue and CSV, revenue reconciliation mismatch logged, a plan with only a network fee (no manager or platform fee) is unchanged from Spec 9. Web: fee lines in previews, waived label, cap input, ops fees admin, earnings page, public fees page.
 
 ## 14. Execution shape
 
-Five tasks: (1) data, validator, fee math and schema cap; (2) the `fees` leg (build, validation, settlement) and fee integration into invest, rebalance, repair and sell plans with waivers; (3) ops schedules and overrides, public fees, earnings and revenue APIs, reconciliation job, waiver email; (4) web; (5) web tests and docs (ADR-016, ADR-013 open question 3 closed, ADR-011/D-058 cap, D-079 rewritten, D-085 onward, FUTURE-PLANS, READMEs).
+Five tasks: (1) data, validator, fee math and schema cap; (2) the combined fee leg (build, validation, settlement) and fee integration into invest, rebalance, repair and sell plans with waivers; (3) ops schedules and overrides, public fees, earnings and revenue APIs, reconciliation job, waiver email; (4) web; (5) web tests and docs (ADR-016, ADR-013 open question 3 closed, ADR-011/D-058 cap, D-079 rewritten, D-085 onward, FUTURE-PLANS, READMEs).
 
 ## 15. Open items
 
