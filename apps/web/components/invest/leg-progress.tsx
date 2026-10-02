@@ -24,7 +24,7 @@ const IN_FLIGHT = ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"];
 type Prepared = { leg: Leg; q: LegQuoteResponse & { transaction: NonNullable<LegQuoteResponse["transaction"]> } };
 
 /** The leg the user signs next: the first planned one whose predecessors settled (a network fee that is already on chain does not hold up the first asset leg). */
-const nextLeg = (legs: Leg[]) => legs.find((l, i) => l.status === "PLANNED" && legs.slice(0, i).every((p) => p.status === "SETTLED" || (p.kind === "network_fee" && p.status === "PENDING_CHAIN")));
+const nextLeg = (legs: Leg[]) => legs.find((l, i) => l.status === "PLANNED" && legs.slice(0, i).every((p) => p.status === "SETTLED" || p.recoveryToken || (p.kind === "network_fee" && p.status === "PENDING_CHAIN")));
 
 /** One leg: what it does, amounts, status and explorer links. */
 export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
@@ -142,7 +142,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
         <div className="flex flex-wrap gap-3">
           {next && !busy && !fresh && <Button className="min-h-11" onClick={() => prepare.mutate(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>}
           {fresh && !busy && <Button className="min-h-11" onClick={() => sign.mutate(fresh)}>Approve step {fresh.leg.sequence} in your wallet</Button>}
-          {!inFlight && !busy && <Button variant="secondary" className="min-h-11" disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown ? "Stop here" : "Cancel"}</Button>}
+          {!inFlight && !busy && <Button variant="secondary" className="min-h-11" disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
         </div>
       )}
 
