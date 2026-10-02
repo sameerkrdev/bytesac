@@ -1,6 +1,6 @@
 # Bytesac — Continuation Guide (for a new session or a different AI model)
 
-Written 2026-10-02 after Spec 9 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
+Written 2026-10-02 after Spec 10 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
 
 Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Local path: `D:\Coding\projects\bytesac` (Windows 11; Git Bash + PowerShell; **Python is not installed** — edit files with your editor tools or `node -e`).
 
@@ -26,8 +26,9 @@ Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Lo
 | ADR-013 | Custody/execution/spend authority decided (self-custody, no delegation, pro-rata `SHORT`) | ADR-013 |
 | 8 First investment + exit | LI.FI legs via `RouteProvider`, Solana fee-payer co-signing (`svmSponsor`), EVM gas drops, network-fee leg, native BTC (BIP-322 linking, PSBTs), positions ledger, tracking, reconciliation, portfolio, leave/sell | ADR-014, D-067..D-075 |
 | 9 Rebalance, skip, drift, repair, notifications | Apply/skip versions (one plan via the USDC-on-Solana hub, buys rescaled to actual proceeds), drift fix + keep custom, `SHORT` Buy back / Sync, basket cash sub-ledger, trade thresholds, portfolio states, inbox + email + FCM web push, investor basket notices, manager adoption counts | ADR-015, D-076..D-084 |
+| 10 Manager fees, platform fees, earnings | Manager entry/rebalance fees to the org payout wallet, ops-configured platform fee per operation (overrides), one user-signed fee leg with all transfers, waivers, earnings (Owner/Admin) and ops revenue with CSV, daily revenue reconciliation, public fees page | ADR-016, D-085..D-092 |
 
-Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`. Migrations `0000..0012`. Decision register up to **D-084**; ADRs up to **ADR-015**.
+Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`. Migrations `0000..0013`. Decision register up to **D-092**; ADRs up to **ADR-016**.
 
 Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (Spec 9 review artifacts lived in the git-ignored SDD workspace and were deleted after merge; findings and rulings are summarized in HANDOFF §5).
 
@@ -69,38 +70,39 @@ Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 r
 
 ---
 
-## 5. Next phase — Spec 10: Subscriptions, fees, manager payouts
+## 5. Next phase — Spec 11: RWAs and tokenized ETFs/equities
 
-**Start only after the user's go-ahead.** Sources: `docs/source/User-Detailed-Features.txt` §18 (subscription fees), §19 (subscription management), §25 (rebalance fees), §45 (fees); `docs/source/Fund-Manager-Detailed-Features.txt` §30–§36 (revenue model, subscription fee, investment-based fee, rebalance-based fee, fee transparency, revenue flow, payout wallet) and the basket "Fees" section; `docs/domains/USER-FEATURES.md`, `FUND-MANAGER-FEATURES.md`, `BASKET-CREATION.md`; ADR-011 (fee schedule disclosures, D-058 caps), ADR-013 open question 3 (fee collection), ADR-014 (network fee leg), ADR-015 (rebalance plans, basket cash, fee placement); Spec 8/9 code (`apps/api/src/services/{operations,rebalance,positions}.ts`).
+**Start only after the user's go-ahead.** Sources: `docs/source/Assets-Registry.txt` (RWA onboarding, §6 RWA execution routes, §7 eligibility and compliance), `docs/source/First-Investment,-Rebalancing,-Drift-&-Fix.txt` §5.6 (RWA adapter boundary), §9.5 (first investment with an RWA), Case 3, Scenarios D and J, §20 (RWA states), §33 (eligibility is route-specific), `docs/source/User-Detailed-Features.txt` §9 (investment eligibility), `docs/source/Basket-Creation.txt` §12 (minimum investment and eligibility); `docs/domains/ASSET-REGISTRY.md`, `INVESTMENT-REBALANCING-DRIFT-FIX.md`; D-025 (eligibility), D-026 (RWA execution, OPEN), ADR-010 (registry: RWA issuer terms already stored), ADR-013/014/015/016; Spec 8–10 code (`services/{investability,operations,rebalance,positions,fees}.ts`, `providers/routes/*`).
 
-**Fixed constraints already decided (do not re-ask):** self-custody, user signs every leg, nothing is ever pulled from a wallet (ADR-013); the network fee leg stays as is (ADR-014, D-067); the Spec 6 fee schedule exists on each version (entry/management/rebalance percent 0–100 bps or fixed ≤ 1% of the minimum, subscription fixed per period; D-058 caps await compliance confirmation); payouts go to the organization's verified Solana payout wallet (D-006, Spec 3); rebalance plans already carry a fee leg position (first / between sells and buys) and a basket cash sub-ledger.
+**Fixed constraints already decided (do not re-ask):** self-custody and user-signed legs (ADR-013); `RouteProvider` abstraction with LI.FI first (ADR-014); eligibility is evaluated per user + instrument + provider + route + jurisdiction + action, never one global KYC flag (D-025); no fictional immediate sells for illiquid RWAs (Scenario D); unsettled RWA orders never count as holdings (Scenario J); fees and the network fee leg as Spec 10 (ADR-016); conventional broker-held ETFs/stocks are a future plan needing a custody ADR.
 
 **Likely brainstorm questions (one at a time, recommended first):**
-1. Collection model: explicit fee legs inside the user-signed plan (ADR-013 proposal) — one transfer to the platform treasury and one to the payout wallet, or one to the platform with periodic platform → manager payouts?
-2. Which fees in release 1: entry fee on invest, rebalance fee on rebalance, management fee (accrual base, period, how collected without pulling funds — e.g., at the next signed operation or a monthly signed charge), subscription (per period, renewal reminder, lapse effect: no rebalance offers? only a notice?).
-3. Fee base and timing: percent of amount invested / of rebalance traded value / of basket value; taken from the USDC input (like the network fee) or from basket cash; rounding in micro-USDC.
-4. Platform fee: platform share and recipient split (platform vs manager), and whether the platform charges its own fee.
-5. Refunds and failures: fee charged when an operation ends `PARTIAL`/`FAILED`? refund policy (none, as the network fee)?
-6. Unpaid subscription / management fee: what the user loses (rebalance notifications, apply) — never the assets (no lock-in).
-7. Manager payout reporting: earnings per basket/version/period in the manager dashboard; ops reconciliation of treasury vs payouts; tax/export.
-8. Fee cap confirmation and disclosure wording (compliance), fee changes requiring a new version and user notice.
+1. Scope: which RWA classes in release 1 (tokenized treasuries/money-market funds, tokenized equities/ETFs, others) and which providers/routes (LI.FI where it supports them, issuer subscription APIs, 0x xStocks — opt-in, geo-restricted, enablement paused Sept 2026).
+2. Eligibility engine: data to collect (jurisdiction, accredited/qualified status, issuer KYC/allowlist status), who verifies (self-declared vs provider KYC), where it runs (plan time and per leg), how ineligibility shows on baskets and in rebalances.
+3. Async settlement states (`ELIGIBILITY_PENDING`, `SETTLEMENT_PENDING`, `ISSUANCE_PENDING`, `REDEEMING`, `SETTLED`) for legs and operations; how a plan mixing instant crypto and pending RWA legs reports progress; timeouts.
+4. Redemptions and removed RWAs in rebalances: redemption windows, retain-as-legacy vs wait, partial exits.
+5. Pricing: NAV (ops-entered today) vs a data vendor; staleness rules for planning.
+6. Transfer restrictions: allowlisted wallets (the user's linked addresses), what happens when a user moves an RWA token outside (reconciliation, `SHORT`).
 
-Money/permission/custody questions must go to the user. Expect 5 tasks: (1) data + validator (fee math, accrual, states); (2) fee legs in invest/rebalance/sell plans + subscription charges; (3) payouts, reporting, ops reconciliation, notifications; (4) web (fee previews, subscription management, manager earnings); (5) web tests + docs (new ADR-016, register rows from D-085).
+Money/permission/custody/eligibility questions must go to the user. Expect 5 tasks: (1) data + validator (eligibility rules, RWA leg states); (2) eligibility engine + RWA route provider adapter(s); (3) async settlement tracking, redemptions, rebalance/repair integration; (4) web (eligibility capture, RWA disclosures, pending states); (5) web tests + docs (ADR-017, register rows from D-093).
 
 ---
 
-## 6. Remaining roadmap after Spec 10 (each a full cycle; start only with the user's go-ahead)
+## 6. Remaining roadmap after Spec 11 (each a full cycle; start only with the user's go-ahead)
 
-| Phase | Scope (agreed with the user) |
+| Phase | Scope |
 |---|---|
-| **Spec 11 — RWAs and tokenized ETFs/equities** | Eligibility engine (user + instrument + provider + route + jurisdiction + action; KYC/allowlists; D-025); RWA routes via LI.FI or other providers through `RouteProvider`; async settlement states (`PENDING_SETTLEMENT`, `ISSUANCE_PENDING`, …); removed-RWA disposition in rebalances (redemption windows); RWA data vendor selection; collect user jurisdiction. 0x xStocks are Swap-API-only, opt-in, not for US/Canada/UK/Australia, and enablement was paused (Sept 2026) — only if the user decides to add 0x. |
-| **Future plans** (`docs/domains/FUTURE-PLANS.md`; only with explicit approval) | Direct sell→buy pairing in rebalances; one combined repair plan across all short assets (one network fee); Alchemy address-activity webhooks for drift; mobile investing screens and mobile push; Firebase Installation ID migration; LI.Fuel route gas top-up; conventional ETFs/stocks (broker-held; needs a new custody ADR); multiple independent wallets and wallet migration; delegated signing / session keys (needs an ADR); price backfill; investor counts; jobs dashboard. |
+| **Future plans** (`docs/domains/FUTURE-PLANS.md`; only with explicit approval) | Subscriptions (prepaid signed periods, auto-renew through token delegation with an ADR, lapse effects); management-fee accrual; manager and platform fees always up front; fee credits/refunds; platform take rate; tax statements; direct sell→buy pairing; one combined repair plan; Alchemy webhooks; mobile investing screens and push; Firebase Installation ID migration; LI.Fuel gas top-up; conventional ETFs/stocks (custody ADR); multiple wallets and wallet migration; delegated signing / session keys (ADR); price backfill; investor counts; jobs dashboard. |
 
 ---
 
 ## 7. Open items to keep raising (never decide silently)
 
 **Spec 8 pre-launch (user actions; not machine-verifiable):** LI.FI key + terms + integrator fee; confirm `svmSponsor`, `toAddress` echo and Solana transaction encoding with a real key; Alchemy Bitcoin `/tx` and `/sendtx` shapes; Phantom/Solflare manual test (wallets that add instructions get `TX_MISMATCH` by design); Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction; fund platform wallets (Solana fee payer, EVM gas wallet per chain, gas treasury); move platform keys to a KMS; review gas caps (0.02 SOL/user/day may be too low once rent is counted); legal review of the network fee and self-custody flows; small-amount mainnet checklist in `apps/api/README.md`.
+
+**Spec 10 pre-launch (user actions):** fee caps and disclosure wording (compliance); platform fee rates; revenue treasury address (`REVENUE_TREASURY_SOLANA_ADDRESS`) and its USDC token account; legal review of manager fees paid directly to organizations and of the platform fee; tax/reporting; CSV downloads in a browser; small mainnet run with fees.
+
+**Spec 10 leftovers:** no "last changed by" on `/ops/fees`; override form takes raw ids; revenue reconciliation buckets by `settled_at` (false mismatch near midnight possible); cosmetic review minors (HANDOFF §5).
 
 **Spec 9 pre-launch (user actions):** create the Firebase project, VAPID key and service account (`FIREBASE_SERVICE_ACCOUNT`, `NEXT_PUBLIC_FIREBASE_*`) and test web push end to end in each browser; notification copy and the Resend sender domain; tune trade thresholds (50 bps / $5) and the 500 bps drift default; adoption masking (per-cell "<5", differencing possible — accepted for launch, joint masking with compliance); small mainnet run of rebalance, drift fix, buy back and sync.
 
