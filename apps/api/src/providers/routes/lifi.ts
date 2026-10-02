@@ -9,7 +9,7 @@ const BASE_URL = "https://li.quest/v1";
 export const MAX_PRICE_IMPACT = 0.05;
 
 /** LI.FI chain ids (docs.li.fi: EVM chains use their chain id; Solana 1151111081099710; Bitcoin 20000000000001). */
-const CHAIN_IDS: Readonly<Record<AssetChain, number>> = {
+export const CHAIN_IDS: Readonly<Record<AssetChain, number>> = {
   ethereum: 1, base: 8453, bnb: 56, arbitrum: 42161, polygon: 137, solana: 1151111081099710, bitcoin: 20000000000001,
 };
 /** LI.FI native token conventions: EVM zero address, Solana System Program id, Bitcoin "bitcoin". */

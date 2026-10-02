@@ -1,4 +1,9 @@
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
+
+// No test reaches a real network: fetch fails like an outage unless a test stubs it (the stub is dropped again by `vi.unstubAllGlobals()`).
+beforeEach(() => {
+  vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed (network disabled in tests)"); });
+});
 
 // Third-party providers are replaced by in-memory fakes; tests drive them through `fakes`.
 vi.mock("../src/providers/resend", async () => {

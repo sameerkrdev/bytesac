@@ -224,3 +224,15 @@ export type LegQuoteResponse = z.infer<typeof legQuoteResponseSchema>;
 export const ROUTE_TOOL_KINDS = ["bridge", "exchange"] as const;
 export const routePolicyInputSchema = z.object({ kind: z.enum(ROUTE_TOOL_KINDS), toolKey: z.string().trim().min(1).max(100), reason: z.string().trim().min(1).max(500) });
 export type RoutePolicyInput = z.infer<typeof routePolicyInputSchema>;
+
+const routeToolView = z.object({ key: z.string(), name: z.string(), denyEntryId: z.uuid().nullable() });
+export const routePolicyEntrySchema = z.object({
+  id: z.uuid(), kind: z.enum(ROUTE_TOOL_KINDS), toolKey: z.string(), reason: z.string(), createdBy: z.uuid(), createdAt: z.iso.datetime({ offset: true }), removedBy: z.uuid().nullable(), removedAt: z.iso.datetime({ offset: true }).nullable(),
+});
+export type RoutePolicyEntry = z.infer<typeof routePolicyEntrySchema>;
+/** `GET /v1/ops/routing`: LI.FI bridges and exchanges with their deny state, and the deny/allow history. */
+export const routingViewSchema = z.object({ bridges: z.array(routeToolView), exchanges: z.array(routeToolView), entries: z.array(routePolicyEntrySchema) });
+export type RoutingView = z.infer<typeof routingViewSchema>;
+/** `GET /v1/ops/operations/:id/legs/:legId/lifi-transfers`: LI.FI's records (untrusted, provider shape) of the leg's source wallet within 24 h of the submission. */
+export const lifiTransfersSchema = z.object({ wallet: z.string(), transfers: z.array(z.record(z.string(), z.unknown())) });
+export type LifiTransfers = z.infer<typeof lifiTransfersSchema>;
