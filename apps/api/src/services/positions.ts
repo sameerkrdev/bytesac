@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operationFees, operationLegs, notifications, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations, type Tx,
 } from "@repo/db";
@@ -15,11 +15,12 @@ import { feePayer, solanaBalance, solanaFinality, solanaReceived } from "../prov
 import { redis } from "../middleware/rate-limit";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { activeCustom, addressOn, basketCashMicro, cancelIfExpired, inFlightAssets, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
+import { activeCustom, addressOn, gasPayerFor, basketCashMicro, cancelIfExpired, inFlightAssets, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
 import { versionDiff } from "./baskets";
 import { notify } from "./notifications";
 import { getPrices } from "./pricing";
 import { latestRecon, valuePosition } from "./rebalance";
+import { routeDenyList } from "./routing";
 
 const TRACK_WINDOW_MS = 30 * 60_000;
 const MAX_RECHECKS = 168; // hourly, seven days
@@ -54,6 +55,25 @@ async function receivedOnChain(chain: AssetChain, owner: string, token: string |
 const destinationToken = async (leg: Leg): Promise<string | null> =>
   leg.toDeploymentId ? (await db.select({ a: instrumentDeployments.address }).from(instrumentDeployments).where(eq(instrumentDeployments.id, leg.toDeploymentId)))[0]!.a : USDC_SOLANA_MINT;
 
+/**
+ * What leaves the position when a leg's funds are spent: a sale debits the sold asset (a plain sell also releases that share of basket cash, once per
+ * operation), a rebalance buy spends basket cash. Invest and repair buys spend free USDC: no entry. Written when the leg settles, or, for a leg that
+ * failed with a recovery (the funds left the wallet but arrived as another token), when it fails: once either way.
+ */
+async function writeSourceSide(tx: Tx, op: Op, leg: Leg): Promise<void> {
+  if (op.kind === "invest" || op.kind === "repair") return;
+  if (leg.fromDeploymentId) {
+    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId!, deploymentId: leg.fromDeploymentId, quantityDelta: (-BigInt(leg.amountIn)).toString(), reason: op.kind === "rebalance" ? "rebalance" : "sell", legId: leg.id });
+    if (op.kind === "rebalance") return;
+    // A sale to USDC releases that share of the basket cash (the USDC is in the wallet already), once, when the operation's first sell leg is spent.
+    const [earlier] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, op.id), or(eq(operationLegs.status, "SETTLED"), isNotNull(operationLegs.recoveryToken)), isNotNull(operationLegs.fromDeploymentId), ne(operationLegs.id, leg.id))).limit(1);
+    const released = earlier ? 0n : ((await basketCashMicro(tx, op.positionId!)) * BigInt(op.sellPercent!)) / 100n;
+    if (released > 0n) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-released).toString(), reason: "sell", legId: leg.id }).onConflictDoNothing();
+  } else if (op.kind === "rebalance") {
+    await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "rebalance_buy", legId: leg.id });
+  }
+}
+
 /** Marks the leg SETTLED and, for asset legs, writes the ledger entry and recomputes the operation, in the caller's transaction (which holds the operation lock). */
 async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinationTx: string | null, received: bigint | null): Promise<void> {
   await setLegStatus(tx, ctx, leg, "SETTLED", { destinationTx, amountReceived: received?.toString() ?? null });
@@ -61,27 +81,26 @@ async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinatio
     // Every charged fee of the plan is paid by this one transaction: earnings and revenue count them from now on.
     await tx.update(operationFees).set({ settledAt: sql`now()` }).where(and(eq(operationFees.operationId, op.id), sql`${operationFees.amountMicro} > 0`));
     if (op.kind === "rebalance" && leg.routeSummary?.fromCash) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "network_fee", legId: leg.id });
-  } else if (op.kind === "invest") {
-    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId ?? (await openPosition(tx, op)), deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest", legId: leg.id });
-  } else if (op.kind === "repair") {
-    // What arrived is shared by shortfall; the excess stays outside baskets and any deficit stays SHORT.
-    const shares = Object.entries(op.repairShares!).map(([positionId, s]) => ({ positionId, shortfall: BigInt(s) }));
-    const parts = [...splitRepair(received!, shares)].filter(([, q]) => q > 0n);
-    if (parts.length) await tx.insert(positionLedgerEntries).values(parts.map(([positionId, q]) => ({ positionId, deploymentId: leg.toDeploymentId!, quantityDelta: q.toString(), reason: "repair" as const, legId: leg.id })));
-  } else if (leg.fromDeploymentId) {
-    // Sell side (sell_to_usdc, sell_former, rebalance sell).
-    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId!, deploymentId: leg.fromDeploymentId, quantityDelta: (-BigInt(leg.amountIn)).toString(), reason: op.kind === "rebalance" ? "rebalance" : "sell", legId: leg.id });
-    if (op.kind === "rebalance") await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: received!.toString(), reason: "rebalance_sell", legId: leg.id });
-    else {
-      // A sale to USDC releases that share of the basket cash (the USDC is in the wallet already), once, when the operation's first sell leg settles.
-      const [earlier] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, op.id), eq(operationLegs.status, "SETTLED"), isNotNull(operationLegs.fromDeploymentId), ne(operationLegs.id, leg.id))).limit(1);
-      const released = earlier ? 0n : ((await basketCashMicro(tx, op.positionId!)) * BigInt(op.sellPercent!)) / 100n;
-      if (released > 0n) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-released).toString(), reason: "sell", legId: leg.id }).onConflictDoNothing();
-    }
   } else {
-    // Rebalance buy.
-    await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "rebalance_buy", legId: leg.id });
-    await tx.insert(positionLedgerEntries).values({ positionId: op.positionId!, deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "rebalance", legId: leg.id });
+    // A recovery completes the leg it recovers (the leg whose destination swap failed): that leg's source side was written when it failed, so only the
+    // destination side follows here, by that leg's role, from what the recovery received.
+    const [origin] = leg.recoveryOf ? await tx.select().from(operationLegs).where(eq(operationLegs.id, leg.recoveryOf)) : [];
+    if (!origin) await writeSourceSide(tx, op, leg);
+    const role = origin ?? leg;
+    if (op.kind === "invest") {
+      await tx.insert(positionLedgerEntries).values({ positionId: op.positionId ?? (await openPosition(tx, op)), deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "invest", legId: leg.id });
+    } else if (op.kind === "repair") {
+      // What arrived is shared by shortfall; the excess stays outside baskets and any deficit stays SHORT.
+      const shares = Object.entries(op.repairShares!).map(([positionId, s]) => ({ positionId, shortfall: BigInt(s) }));
+      const parts = [...splitRepair(received!, shares)].filter(([, q]) => q > 0n);
+      if (parts.length) await tx.insert(positionLedgerEntries).values(parts.map(([positionId, q]) => ({ positionId, deploymentId: leg.toDeploymentId!, quantityDelta: q.toString(), reason: "repair" as const, legId: leg.id })));
+    } else if (role.fromDeploymentId) {
+      // Sell side: a rebalance sale's proceeds become basket cash; a plain sell's proceeds are wallet USDC already.
+      if (op.kind === "rebalance") await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: received!.toString(), reason: "rebalance_sell", legId: leg.id });
+    } else {
+      // Rebalance buy.
+      await tx.insert(positionLedgerEntries).values({ positionId: op.positionId!, deploymentId: leg.toDeploymentId!, quantityDelta: received!.toString(), reason: "rebalance", legId: leg.id });
+    }
   }
   await refreshOperationStatus(tx, ctx, op.id);
 }
@@ -186,7 +205,54 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
       leg = { ...leg, providerSubstatus: status.substatus };
     }
     if (status.state === "FAILED") return fail(`The route failed: ${status.reason}.`);
-    if (status.state === "UNKNOWN") return goUnknown();
+    if (status.state === "UNKNOWN") {
+      // LI.FI finished the transfer but delivered a different token: the destination swap failed. With chain evidence of what arrived, the operation gets a
+      // user-signed recovery leg (delivered token -> the intended asset); without it, or for a recovery leg itself, a person resolves it as before.
+      const delivered = status.receiving;
+      const evmOrSolana = leg.toChain !== "bitcoin";
+      if (status.substatus === "PARTIAL" && delivered && leg.kind === "cross_chain" && !leg.recoveryOf && evmOrSolana && op.status === "IN_PROGRESS") {
+        if ((await finality(leg.toChain, delivered.txHash)) !== "finalized") return notFinal();
+        const addresses = await userAddresses(db, op.userId);
+        const owner = addressOn(addresses, leg.toChain);
+        const native = /^0x0{40}$/.test(delivered.token.address) || delivered.token.address === "11111111111111111111111111111111";
+        const evidenced = await receivedOnChain(leg.toChain, owner, native ? null : delivered.token.address, delivered.txHash);
+        if (evidenced !== null && evidenced > 0n) {
+          // Network calls stay outside the database transaction: the estimate first, then the writes under the operation lock.
+          const [target] = leg.toDeploymentId ? await db.select({ address: instrumentDeployments.address }).from(instrumentDeployments).where(eq(instrumentDeployments.id, leg.toDeploymentId)) : [];
+          const toToken = leg.toDeploymentId ? target!.address : USDC_SOLANA_MINT; // a sell's proceeds are USDC on Solana
+          const estimate = await routeProviderById(leg.provider ?? "")!.estimate({
+            fromChain: leg.toChain, fromToken: native ? null : delivered.token.address, toChain: leg.toChain, toToken, fromAmount: evidenced, toAddress: owner, slippageBps: op.slippageBps, deny: await routeDenyList(leg.toChain, owner),
+          }).catch((err: unknown) => {
+            logger.warn("recovery estimate failed; the leg stays unknown", { legId, errMessage: err instanceof Error ? err.message : "unknown" });
+            return null;
+          });
+          if (estimate) {
+            const created = await db.transaction(async (tx) => {
+              const locked = await lockOperation(tx, op.id);
+              const [again] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(eq(operationLegs.recoveryOf, leg.id));
+              const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, leg.id));
+              if (again) return true; // an earlier run created it
+              if (locked.status !== "IN_PROGRESS" || !["PENDING_CHAIN", "UNKNOWN"].includes(current!.status)) return false; // the operation was stopped: ops resolve the leg
+              const recoveryToken = { chain: leg.toChain, address: native ? null : delivered.token.address, decimals: delivered.token.decimals, symbol: delivered.token.symbol, amount: evidenced.toString() };
+              await setLegStatus(tx, null, current!, "FAILED", { failureReason: "DESTINATION_SWAP_FAILED", destinationTx: delivered.txHash, recoveryToken });
+              await writeSourceSide(tx, locked, current!);
+              const [{ next }] = await tx.select({ next: sql<number>`max(${operationLegs.sequence}) + 1` }).from(operationLegs).where(eq(operationLegs.operationId, op.id)) as [{ next: number }];
+              const payer = gasPayerFor(leg.toChain);
+              await tx.insert(operationLegs).values({
+                operationId: op.id, sequence: next, kind: "swap", fromChain: leg.toChain, fromDeploymentId: null, toChain: leg.toChain, toDeploymentId: leg.toDeploymentId, amountIn: evidenced.toString(), minOut: estimate.minOut.toString(),
+                provider: leg.provider, gasPayer: payer, recoveryOf: leg.id,
+                routeSummary: { fromToken: recoveryToken.address, symbol: recoveryToken.symbol, decimals: recoveryToken.decimals, tool: estimate.toolSummary, estimatedOut: estimate.estimatedOut.toString(), routeFees: estimate.routeFees, priceImpact: estimate.priceImpact },
+                // The gas is reserved when the recovery is quoted, under the per-chain lock and the daily caps (an EVM drop is sized here, x1.5 x2 like an ERC-20 sell).
+                expectedTx: payer === "platform_gas_drop" ? { gasReserved: false, gasDropNative: ((estimate.gasNative * (native ? 3n : 4n)) / 2n).toString() } : { gasReserved: false },
+              });
+              return true;
+            });
+            if (created) return false;
+          }
+        }
+      }
+      return goUnknown();
+    }
     if (status.state === "PENDING") return notFinal();
     // Every ledger amount rests on a destination transaction we can read: without its hash the leg waits (and becomes UNKNOWN), never guesses.
     if (!status.destinationTx) return notFinal();

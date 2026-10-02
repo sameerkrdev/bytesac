@@ -20,7 +20,7 @@ import { LAMPORTS_PER_SIGNATURE, MAX_PRIORITY_LAMPORTS, SOL_USD_FALLBACK, TOKEN_
 import type { RequestMeta } from "../middleware/request-context";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { assertWalletsCanFund, platformAddress, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
+import { assertWalletsCanFund, platformAddress, releaseRecoveryGas, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
 import { getInvestability } from "./investability";
 import { notify } from "./notifications";
 import { orgDisplayName } from "./members";
@@ -166,11 +166,16 @@ export async function assertNoneInFlight(conn: DbOrTx, userId: string, asset: st
   if ((await inFlightAssets(conn, userId)).get(userId)?.has(asset)) throw createHttpError(409, "A transaction involving this asset is still pending. Wait for it to finish.", { code: "OPERATION_IN_PROGRESS" });
 }
 
-/** After a leg ends: COMPLETED when every leg settled; PARTIAL when an asset leg settled and another failed; FAILED when a leg failed and no asset leg settled. */
+/**
+ * After a leg ends: COMPLETED when every leg settled; PARTIAL when an asset leg settled and another failed; FAILED when a leg failed and no asset leg settled.
+ * A leg that failed with a recovery that is still alive (not itself failed or unknown) counts as neither: the recovery stands in for it.
+ */
 export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: string): Promise<void> {
   const op = await lockOperation(tx, opId);
   if (op.status !== "IN_PROGRESS") return;
-  const legs = await tx.select({ kind: operationLegs.kind, status: operationLegs.status }).from(operationLegs).where(eq(operationLegs.operationId, opId));
+  const all = await tx.select({ id: operationLegs.id, kind: operationLegs.kind, status: operationLegs.status, recoveryOf: operationLegs.recoveryOf }).from(operationLegs).where(eq(operationLegs.operationId, opId));
+  const recovered = new Set(all.filter((l) => l.recoveryOf && l.status !== "FAILED" && l.status !== "UNKNOWN").map((l) => l.recoveryOf));
+  const legs = all.filter((l) => !recovered.has(l.id));
   if (legs.every((l) => l.status === "SETTLED")) {
     await setOperationStatus(tx, ctx, op, "COMPLETED");
     if (op.kind === "rebalance") await applyVersion(tx, ctx, { positionId: op.positionId!, userId: op.userId, versionId: op.versionId });
@@ -451,10 +456,13 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
   await assertOperable(ctx, op);
   if (leg.status !== "PLANNED") throw invalidTransition("This leg was already submitted.");
   // Strictly sequential: each earlier leg is settled, except that the first asset leg may follow a network fee that is on-chain.
-  if (legs.some((l) => l.sequence < leg.sequence && !(l.status === "SETTLED" || (l.kind === "network_fee" && l.status === "PENDING_CHAIN")))) throw invalidTransition("Finish the previous leg first.");
+  // A leg that failed with a recovery (the funds arrived as another token) does not hold the legs after it back; its recovery goes last, once every other leg is final.
+  if (leg.recoveryOf
+    ? legs.some((l) => l.id !== leg.id && !l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")
+    : legs.some((l) => l.sequence < leg.sequence && !(l.status === "SETTLED" || l.recoveryToken || (l.kind === "network_fee" && l.status === "PENDING_CHAIN")))) throw invalidTransition("Finish the previous leg first.");
 
   // A rebalance's buys are sized once, at the first buy's quote, from the basket cash that actually arrived (spec section 4.3).
-  const isBuy = leg.fromDeploymentId === null && leg.kind !== "network_fee";
+  const isBuy = leg.fromDeploymentId === null && leg.kind !== "network_fee" && !leg.recoveryOf;
   if (op.kind === "rebalance" && !op.buyScale && isBuy) {
     const nothing = await db.transaction(async (tx) => {
       const locked = await lockOperation(tx, op.id);
@@ -516,6 +524,9 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
   }
 
   const [from, to] = await Promise.all([legDeployment(leg.fromDeploymentId), legDeployment(leg.toDeploymentId)]);
+  // A recovery leg swaps the token that arrived (not a registry deployment: its address is in the route summary; null = the chain's native asset).
+  const recoveryFrom = leg.recoveryOf ? ((leg.routeSummary?.fromToken ?? null) as string | null) : undefined;
+  const fromToken = recoveryFrom !== undefined ? recoveryFrom : from ? from.address : USDC_SOLANA_MINT;
   const planned = (leg.expectedTx ?? {}) as { gasDropNative?: string; gasReserved?: boolean };
   let gasDrop: LegQuoteResponse["gasDrop"] = null;
   if (leg.gasPayer === "platform_gas_drop") {
@@ -523,31 +534,47 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     const fee = legs.find((l) => l.kind === "network_fee");
     if (fee?.status !== "SETTLED") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop: { status: "pending", txHash: null } };
     // Selling the native asset: the wallet needs the amount sold plus gas.
-    gasDrop = await sendGasDrop(leg.id, leg.fromChain, addressOn(addresses, leg.fromChain), BigInt(planned.gasDropNative ?? 0), from?.address ? 0n : BigInt(leg.amountIn));
+    gasDrop = await sendGasDrop(leg.id, leg.fromChain, addressOn(addresses, leg.fromChain), BigInt(planned.gasDropNative ?? 0), fromToken ? 0n : BigInt(leg.amountIn));
     if (gasDrop.status !== "confirmed" && gasDrop.status !== "skipped") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop };
   }
 
   const provider = routeProviderById(leg.provider ?? "")!;
   const q = await provider.quote({
-    fromChain: leg.fromChain, fromToken: from ? from.address : USDC_SOLANA_MINT, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, fromAmount: BigInt(leg.amountIn),
+    fromChain: leg.fromChain, fromToken, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, fromAmount: BigInt(leg.amountIn),
     slippageBps: op.slippageBps, fromAddress: addressOn(addresses, leg.fromChain), toAddress: addressOn(addresses, leg.toChain),
     svmSponsor: leg.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,
     deny: await routeDenyList(leg.toChain, addressOn(addresses, leg.toChain)),
   });
   // The plan's minimum is what the user agreed to: a fresh quote that returns less means the price moved, and a new plan (and consent) is needed.
-  if (leg.minOut !== null && q.minOut < BigInt(leg.minOut)) throw createHttpError(409, "The price moved since the plan was made. Plan again.", { code: "PRICE_MOVED", details: { plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() } });
+  // A recovery has no plan to renew: the user signs this quote, bounded by the operation's slippage (the adapter checks it), and its minimum replaces the estimate's.
+  if (leg.recoveryOf) await db.update(operationLegs).set({ minOut: q.minOut.toString() }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "PLANNED")));
+  else if (leg.minOut !== null && q.minOut < BigInt(leg.minOut)) throw createHttpError(409, "The price moved since the plan was made. Plan again.", { code: "PRICE_MOVED", details: { plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() } });
   const base = { routeSummary: { ...(leg.routeSummary ?? {}), tool: q.toolSummary, routeFees: q.routeFees, priceImpact: q.priceImpact } };
   if (q.transaction.kind === "solana") {
-    sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent
+    const exposure = sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent
+    // A recovery's Solana fees were not reserved with the plan: reserve them now (per-chain lock and daily caps; refusal is 409 GAS_BUDGET_EXHAUSTED), once per leg.
+    if (leg.recoveryOf && planned.gasReserved === false) await reserveRecoveryGas(op, leg, "solana", exposure.lamports > q.gasNative ? exposure.lamports : q.gasNative);
     await save({ ...base, builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash });
   } else if (q.transaction.kind === "evm") {
     await save({ ...base, expectedTx: { ...planned, to: q.transaction.to.toLowerCase(), dataHash: sha256Hex(q.transaction.data), value: q.transaction.value } });
   } else {
     await save({ ...base, expectedTx: { ...planned, ...expectedBtcTx(q.transaction.psbtBase64, addressOn(addresses, "bitcoin"), BigInt(leg.amountIn)) } });
   }
-  const approval = q.approvalAddress && from?.address ? { token: from.address, spender: q.approvalAddress, amount: leg.amountIn } : null;
+  const approval = q.approvalAddress && fromToken ? { token: fromToken, spender: q.approvalAddress, amount: leg.amountIn } : null;
   const inputCount = q.transaction.kind === "bitcoin" ? psbtInputs(q.transaction.psbtBase64).length : 0;
   return { ...response({ estimatedOut: q.estimatedOut.toString(), minOut: q.minOut.toString(), transaction: q.transaction.kind === "bitcoin" ? { ...q.transaction, inputCount } : q.transaction, approval }), gasDrop };
+}
+
+/** Reserves platform gas for a recovery leg (planned legs reserve with their plan), adding it to the operation's reservation so a later release stays exact, and marks the leg. */
+async function reserveRecoveryGas(op: Op, leg: Leg, chain: AssetChain, amountNative: bigint): Promise<void> {
+  await db.transaction(async (tx) => {
+    const locked = await lockOperation(tx, op.id);
+    const [current] = await tx.select({ expectedTx: operationLegs.expectedTx, status: operationLegs.status }).from(operationLegs).where(eq(operationLegs.id, leg.id));
+    if (current!.status !== "PLANNED" || (current!.expectedTx as { gasReserved?: boolean } | null)?.gasReserved !== false) return;
+    await reserveGas(tx, { userId: op.userId, chain, amountNative });
+    await tx.update(operations).set({ gasReserved: { ...locked.gasReserved, [chain]: (BigInt(locked.gasReserved[chain] ?? 0) + amountNative).toString() } }).where(eq(operations.id, op.id));
+    await tx.update(operationLegs).set({ expectedTx: { ...(current!.expectedTx ?? {}), gasReserved: true, reservedNative: amountNative.toString() } }).where(eq(operationLegs.id, leg.id));
+  });
 }
 
 async function legDeployment(id: string | null) {
@@ -646,10 +673,13 @@ export async function cancelOperation(ctx: OpCtx, opId: string): Promise<Operati
   await db.transaction(async (tx) => {
     const op = await lockOperation(tx, opId);
     if (op.userId !== ctx.userId) throw notFound();
-    const legs = await tx.select({ kind: operationLegs.kind, status: operationLegs.status }).from(operationLegs).where(eq(operationLegs.operationId, opId));
+    const legs = await tx.select({ kind: operationLegs.kind, status: operationLegs.status, recoveryToken: operationLegs.recoveryToken }).from(operationLegs).where(eq(operationLegs.operationId, opId));
     if (legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"].includes(l.status))) throw invalidTransition("A transaction is still pending. Wait for it to finish.");
     if (op.status === "PLANNED") return setOperationStatus(tx, ctx, op, "CANCELLED");
-    if (op.status === "IN_PROGRESS") return setOperationStatus(tx, ctx, op, legs.some((l) => l.status === "UNKNOWN" || (l.kind !== "network_fee" && l.status === "SETTLED")) ? "PARTIAL" : "FAILED");
+    if (op.status === "IN_PROGRESS") {
+      await releaseRecoveryGas(tx, opId); // a recovery leg that was never sent gives back the gas reserved for it
+      return setOperationStatus(tx, ctx, op, legs.some((l) => l.status === "UNKNOWN" || l.recoveryToken || (l.kind !== "network_fee" && l.status === "SETTLED")) ? "PARTIAL" : "FAILED");
+    }
     throw invalidTransition(`This operation is ${op.status.toLowerCase()}.`);
   });
   return getOperation(ctx, opId);
