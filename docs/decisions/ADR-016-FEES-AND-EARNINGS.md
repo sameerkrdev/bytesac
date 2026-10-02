@@ -47,7 +47,8 @@ The percent variant of an entry or rebalance fee gains an optional `maxUsdc` cap
 ### 5. One combined fee leg (D-089)
 
 - The `network_fee` leg keeps its kind name (existing paths and history stay valid) and becomes the combined fee leg; its `amountIn` is the total of the charged fees and the UI labels it "Fees". `operationView.fees[]` carries every fee (`kind`, `amountMicro`, `recipientLabel`, `waivedReason`); `networkFeeUsdc` stays the network row only.
-- One server-built Solana transaction: for each charged fee an idempotent token-account creation for the recipient (funded by the platform fee payer) and one USDC `TransferChecked` from the user, in the order network, manager, platform. The fee payer co-signs only the byte-identical stored message (`TX_MISMATCH` otherwise). The network fee includes the token-account rent of each charged manager and platform recipient, so the platform does not subsidize it; the estimate is not corrected when the account already exists.
+- One server-built Solana transaction: for each charged fee an idempotent token-account creation for the recipient (funded by the platform fee payer) and one USDC `TransferChecked` from the user, in the order network, manager, platform. The fee payer co-signs only the byte-identical stored message (`TX_MISMATCH` otherwise). At plan time the API checks each charged manager and platform recipient's USDC token account (`getAccountInfo`); the network fee and the gas reservation include the token-account rent (priced with the plan's SOL quote, a fixed fallback only when no quote carries a price) only for accounts that do not exist, and an RPC error counts as missing. If an account is closed between plan and signing, the platform pays that rent within its gas reservation.
+- A fee leg quotes from the stored fee rows, whose charged sum must equal the leg's `amountIn` (otherwise 503 `ROUTE_UNAVAILABLE`, nothing built). An operation without fee rows (planned before this release) quotes the single transfer of `amountIn` to the gas treasury and its view lists one network fee.
 - Placement uses the total: invest first; rebalance and sell follow D-079 and D-071; repair first from free USDC (`free >= fees + buy`). Paid from basket cash, the cash entry debits the total.
 - When a plan has a platform fee above the dust threshold and no revenue treasury is configured, planning is refused with 503 `ROUTE_UNAVAILABLE`; the plan is also refused when no gas treasury is configured.
 
@@ -61,7 +62,7 @@ A manager fee for an organization without a `VERIFIED` payout wallet is waived (
 
 ### 8. Reporting and reconciliation (D-092)
 
-- `earnings.read` (Owner and Admin): `/organization/earnings` and `GET /v1/organizations/:id/earnings` show settled manager fees by basket, version, kind and month, recent transactions with explorer links and a waived count; CSV export.
+- `earnings.read` (Owner and Admin): `/organization/earnings` and `GET /v1/organizations/:id/earnings` show settled manager fees by basket, version, kind and month, recent transactions with explorer links and a waived count; CSV export (a cell starting with `=`, `+`, `-`, `@`, tab or CR is prefixed with an apostrophe so a spreadsheet does not run it).
 - Ops roles: `/ops/revenue` and `GET /v1/ops/revenue` show settled platform fees by operation type and month and waived manager fees by reason; CSV export. Ops edit schedules at `/ops/fees`.
 - Reports read only fees whose leg settled (`settled_at` is stamped when the fee leg settles).
 - Daily worker job `revenue-reconcile` (04:00 UTC) compares settled platform fees with the revenue treasury's USDC inflows for the previous UTC day and logs a mismatch; it is read-only. It buckets fees by `settled_at` (when the tracker recorded it), not by block time, so a settlement recorded just after midnight can cause a false warning.
@@ -84,7 +85,7 @@ A manager fee for an organization without a `VERIFIED` payout wallet is waived (
 - Fees are not refunded when an operation stops early.
 - A manager without a verified payout wallet loses the fee (waived) rather than blocking the user.
 - The fee leg builds from recorded recipient addresses and does not re-read the payout wallet (snapshot at plan time; plans live 30 minutes).
-- The network fee is conservative by about the rent of a token account per charged recipient when the account already exists.
+- If a recipient's token account is closed between plan and signing, the platform pays its rent (about 0.002 SOL), covered by the gas reservation.
 
 ### Security, financial and operational impact
 - Fee-payer validation refuses a fee transaction with any transfer other than the recorded recipients and amounts. Payout addresses come only from `VERIFIED` wallets. Ops edits need `ops_admin` and a reason.
@@ -92,7 +93,7 @@ A manager fee for an organization without a `VERIFIED` payout wallet is waived (
 
 ## Migration / rollout
 
-Migration `0013_fees.sql`: enums `fee_kind`, `platform_fee_operation`, `fee_scope`; tables `operation_fees` and `platform_fee_schedules`; `platform_wallet_purpose` gains `revenue_treasury`; permission `earnings.read` for Owner and Admin. Existing operations have no fee rows (their network fee is unchanged). Mobile is unchanged.
+Migration `0013_fees.sql`: enums `fee_kind`, `platform_fee_operation`, `fee_scope`; tables `operation_fees` and `platform_fee_schedules`; `platform_wallet_purpose` gains `revenue_treasury`; permission `earnings.read` for Owner and Admin. Existing operations have no fee rows and need no backfill: their fee leg is the single transfer to the gas treasury as before, and their view shows one network fee from `networkFeeUsdc`. Mobile is unchanged.
 
 ## Validation
 
@@ -103,4 +104,3 @@ Migration `0013_fees.sql`: enums `fee_kind`, `platform_fee_operation`, `fee_scop
 
 1. Platform fee rates (business decision; default 0).
 2. Legal review of both fee kinds and any tax statements.
-3. Whether to correct the network fee estimate when a recipient token account already exists.

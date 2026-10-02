@@ -22,6 +22,8 @@ export interface PlanFeesInput {
   organizationId: string | null;
   basketId: string | null;
   usdcPrice: string;
+  /** SOL price from the plan's route quotes, for the token-account rent; the fallback applies only when no quote carries one. */
+  solPriceUsd?: number | null;
 }
 export interface PlannedFee {
   kind: FeeKind; baseMicro: bigint; bps: number | null; capMicro: bigint | null; amountMicro: bigint; recipientAddress: string | null;
@@ -36,7 +38,7 @@ export interface PlannedFees {
 /**
  * Every fee of a plan, snapshotted now: network (always), manager (to the organization's VERIFIED payout wallet) and platform (the schedule in force now).
  * A fee below the dust threshold, a manager fee without a verified payout wallet and a platform fee without a price are recorded with a waiver, not charged.
- * The network row also carries the token-account rent of each charged manager/platform recipient (the platform may have to create that account).
+ * The network row also carries the token-account rent of each charged manager/platform recipient whose account is missing (the platform creates it).
  */
 export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedFees> {
   if (!env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError("The gas treasury is not configured.", { code: "ROUTE_UNAVAILABLE" });
@@ -74,8 +76,12 @@ export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedF
     }
   }
 
-  const extra = BigInt(rows.filter((r) => r.kind !== "network" && r.amountMicro > 0n).length);
-  if (extra > 0n) network.amountMicro += networkFeeMicro([(Number(TOKEN_ACCOUNT_RENT_LAMPORTS * extra) / 1e9) * SOL_USD_FALLBACK], i.usdcPrice);
+  // Rent only for a recipient whose USDC token account does not exist yet (an RPC error counts as missing: the estimate stays conservative).
+  const mint = new PublicKey(USDC_SOLANA_MINT);
+  const charged = rows.filter((r) => r.kind !== "network" && r.amountMicro > 0n);
+  const missing = await Promise.all([...new Set(charged.map((r) => r.recipientAddress!))].map((a) => connection.getAccountInfo(ata(new PublicKey(a), mint), "confirmed").then((info) => !info, () => true)));
+  const extra = BigInt(missing.filter(Boolean).length);
+  if (extra > 0n) network.amountMicro += networkFeeMicro([(Number(TOKEN_ACCOUNT_RENT_LAMPORTS * extra) / 1e9) * (i.solPriceUsd ?? SOL_USD_FALLBACK)], i.usdcPrice);
   const transfers = rows.filter((r) => r.amountMicro > 0n).map((r) => ({ recipient: r.recipientAddress!, amountMicro: r.amountMicro }));
   return { rows, totalMicro: transfers.reduce((s, t) => s + t.amountMicro, 0n), transfers, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS * extra };
 }
@@ -150,8 +156,11 @@ export async function endOverride(actor: Actor, id: string): Promise<PlatformFee
 const MANAGER_KINDS = ["manager_entry", "manager_rebalance"] as const;
 const month = sql<string>`to_char(date_trunc('month', ${operationFees.settledAt} at time zone 'UTC'), 'YYYY-MM')`;
 const settledBetween = (q: EarningsQuery) => and(isNotNull(operationFees.settledAt), q.from ? gte(operationFees.settledAt, new Date(q.from)) : undefined, q.to ? lte(operationFees.settledAt, new Date(q.to)) : undefined);
-/** One CSV line: a value with a comma, quote or line break is quoted, quotes doubled. */
-const csvLine = (cols: (string | null)[]) => cols.map((c) => (c !== null && /[",\r\n]/.test(c) ? `"${c.replaceAll('"', '""')}"` : (c ?? ""))).join(",");
+/** One CSV line: a value starting with = + - @ tab or CR gets a leading ', one with a comma, quote or line break is quoted, quotes doubled. */
+const csvLine = (cols: (string | null)[]) => cols.map((raw) => {
+  const c = raw !== null && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw; // a spreadsheet would run it as a formula
+  return c !== null && /[",\r\n]/.test(c) ? `"${c.replaceAll('"', '""')}"` : (c ?? "");
+}).join(",");
 const explorer = (tx: string | null) => (tx ? `https://solscan.io/tx/${tx}` : null);
 
 /** Settled manager fees of the organization (the caller needs `earnings.read`); waived and unsettled fees are not in the totals. */

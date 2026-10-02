@@ -53,7 +53,7 @@ describe("InvestWizard", () => {
     expect(api.investPlan).toHaveBeenCalledWith({ basketId: "b", amountUsdc: "250", slippageBps: 200, idempotencyKey: expect.any(String) });
     expect(await screen.findByText("Network fee (paid to Bytesac for gas)")).toBeInTheDocument();
     expect(screen.getByText("Fees are not refunded if the operation does not complete.")).toBeInTheDocument();
-    expect(screen.getByText("1. Network fee")).toBeInTheDocument();
+    expect(screen.getByText("1. Fees")).toBeInTheDocument();
     expect(screen.getByText("2. Buy ETH")).toBeInTheDocument();
     expect(screen.getByText("99.93 USDC → about 0.03 ETH (at least 0.0297 ETH)")).toBeInTheDocument();
   });

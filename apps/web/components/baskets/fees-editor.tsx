@@ -67,7 +67,7 @@ export function FeesEditor({ value, onChange, readOnly }: { value: FeesState; on
             </div>
             {fee.type === "percent" ? (
               <div className="space-y-1">
-                <PercentInput id={`${key}-pct`} label={`${label} percent`} value={fee.bps} disabled={readOnly} onChange={(bps) => setFee(key, { type: "percent", bps: bps ?? 0 })} />
+                <PercentInput id={`${key}-pct`} label={`${label} percent`} value={fee.bps} disabled={readOnly} onChange={(bps) => setFee(key, { ...fee, type: "percent", bps: bps ?? 0 })} />
                 <p className="text-xs text-stone">Up to {rateText(100)}</p>
                 <Label htmlFor={`${key}-cap`} className="text-xs font-medium text-ivory">Maximum (USDC, optional)</Label>
                 <div className="flex items-center gap-2">

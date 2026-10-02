@@ -42,7 +42,7 @@ describe("Sell to USDC", () => {
     expect(screen.getByText("Fees are taken from your proceeds.")).toBeInTheDocument();
     expect(screen.getByText("1. Sell ETH")).toBeInTheDocument();
     expect(screen.getByText("0.03 ETH → about 75 USDC (at least 74 USDC)")).toBeInTheDocument();
-    expect(screen.getByText("2. Network fee")).toBeInTheDocument();
+    expect(screen.getByText("2. Fees")).toBeInTheDocument();
   });
 
   it("previews a fee that is paid first when the plan starts with it", async () => {

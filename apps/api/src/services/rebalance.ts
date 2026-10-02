@@ -157,8 +157,8 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     const traded = sum(plan.sells.map((s) => s.valueMicro)) + (val.cashMicro < sum(plan.buys.map((b) => b.amountMicro)) ? val.cashMicro : sum(plan.buys.map((b) => b.amountMicro)));
     const price = await usdcPrice();
     const fees = await planFees(db, {
-      networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...sellCosts.map((c) => c.usd), ...buyCosts.map((c) => c.usd)], price), operation: body.target === "latest" ? "rebalance_apply" : "rebalance_drift",
-      platformBaseMicro: traded, usdcPrice: price, manager: body.target === "latest" && targetVersionId !== position.appliedVersionId ? { kind: "manager_rebalance", fee: (version!.fees as BasketFees).rebalance, baseMicro: traded } : null,
+      networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...sellCosts.map((c) => c.usd), ...buyCosts.map((c) => c.usd)], price), operation: targetVersionId !== position.appliedVersionId ? "rebalance_apply" : "rebalance_drift",
+      platformBaseMicro: traded, usdcPrice: price, solPriceUsd: [...sellQuotes, ...buyQuotes].find((q) => q.nativePriceUsd)?.nativePriceUsd, manager: body.target === "latest" && targetVersionId !== position.appliedVersionId ? { kind: "manager_rebalance", fee: (version!.fees as BasketFees).rebalance, baseMicro: traded } : null,
       organizationId: basket!.organizationId, basketId: position.basketId,
     });
     const fee = fees.totalMicro;
@@ -234,7 +234,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
     const q = await planQuote({ fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: d.chain, toToken: d.address, amount: buy, slippageBps: body.slippageBps, addresses });
     const cost = sponsoredCost(q);
     const usdc = await usdcPrice();
-    const fees = await planFees(db, { networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, cost.usd], usdc), operation: "repair", platformBaseMicro: buy, usdcPrice: usdc, manager: null, organizationId: null, basketId: null });
+    const fees = await planFees(db, { networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, cost.usd], usdc), operation: "repair", platformBaseMicro: buy, usdcPrice: usdc, solPriceUsd: q.nativePriceUsd, manager: null, organizationId: null, basketId: null });
     const fee = fees.totalMicro;
     const free = await freeUsdcMicro(db, ctx.userId, await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT));
     if (free < fee + buy) throw createHttpError(409, "Your Solana wallet doesn't hold enough free USDC for the buy-back and the fees (basket cash is not available).", { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: (fee + buy).toString() } });

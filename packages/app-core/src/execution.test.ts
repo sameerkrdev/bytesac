@@ -14,7 +14,7 @@ describe("execution formatting", () => {
   it("describes buy and sell legs from the plan summary", () => {
     expect(legTitle(leg(), true)).toBe("Buy ETH");
     expect(legTitle(leg(), false)).toBe("Sell ETH");
-    expect(legTitle({ ...leg(), kind: "network_fee" }, true)).toBe("Network fee");
+    expect(legTitle({ ...leg(), kind: "network_fee" }, true)).toBe("Fees");
     expect(legAmounts(leg(), true)).toEqual({ in: "25 USDC", estimatedOut: "0.01 ETH", minOut: "0.0099 ETH" });
     expect(legAmounts(leg({ amountIn: "10000000000000000", minOut: "24000000", routeSummary: { estimatedOut: "25000000", symbol: "ETH", decimals: 18 } }), false)).toEqual({ in: "0.01 ETH", estimatedOut: "25 USDC", minOut: "24 USDC" });
   });

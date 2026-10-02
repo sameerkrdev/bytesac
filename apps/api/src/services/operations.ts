@@ -66,10 +66,11 @@ export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> 
   return {
     id: op.id, kind: op.kind, status: op.status, basketId: op.basketId, positionId: op.positionId, amountUsdc: op.amountUsdc, sellPercent: op.sellPercent, slippageBps: op.slippageBps,
     networkFeeUsdc: op.networkFeeUsdc, expiresAt: op.expiresAt.toISOString(), createdAt: op.createdAt.toISOString(),
-    fees: fees.map(({ f, org }) => ({
+    // A pre-Spec-10 operation has no fee rows: its one fee is the network fee.
+    fees: fees.length ? fees.map(({ f, org }) => ({
       kind: f.kind, amountMicro: f.amountMicro, waivedReason: f.waivedReason as WaivedReason | null,
       recipientLabel: f.kind === "network" ? "Bytesac (network)" : f.kind === "platform" ? "Bytesac (platform)" : (org ?? "Organization"),
-    })),
+    })) : [{ kind: "network" as const, amountMicro: op.networkFeeUsdc, waivedReason: null, recipientLabel: "Bytesac (network)" }],
     legs: legs.map((l) => ({
       id: l.id, sequence: l.sequence, kind: l.kind, status: l.status, fromChain: l.fromChain, toChain: l.toChain, fromDeploymentId: l.fromDeploymentId, toDeploymentId: l.toDeploymentId,
       amountIn: l.amountIn, minOut: l.minOut, amountReceived: l.amountReceived, provider: l.provider, routeSummary: l.routeSummary, quoteExpiresAt: l.quoteExpiresAt?.toISOString() ?? null,
@@ -300,7 +301,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   const costs = quotes.map(sponsoredCost);
   const price = await usdcPrice();
   const fees = await planFees(db, {
-    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: "invest", platformBaseMicro: amount, usdcPrice: price,
+    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: "invest", platformBaseMicro: amount, usdcPrice: price, solPriceUsd: quotes.find((q) => q.nativePriceUsd)?.nativePriceUsd,
     manager: { kind: "manager_entry", fee: (version?.fees as BasketFees | undefined)?.entry, baseMicro: amount }, organizationId: version?.organizationId ?? null, basketId: body.basketId,
   });
   if (amount - fees.totalMicro <= 0n) throw invalidAmount("The amount doesn't cover the fees.");
@@ -377,7 +378,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   const marketPrices = new Map((await getPrices(sells.map((s) => s.instrumentId))).flatMap((p) => (p.kind === "market" && p.status === "ok" && !p.stale && p.value && priceToMicro(p.value) ? [[p.instrumentId, priceToMicro(p.value)!] as const] : [])));
   const [org] = await db.select({ organizationId: baskets.organizationId }).from(baskets).where(eq(baskets.id, position.basketId));
   const fees = await planFees(db, {
-    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", usdcPrice: price, manager: null,
+    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", usdcPrice: price, manager: null, solPriceUsd: quotes.find((q) => q.nativePriceUsd)?.nativePriceUsd,
     platformBaseMicro: sells.every((s) => marketPrices.has(s.instrumentId)) ? sells.reduce((t, s) => t + (s.quantity * marketPrices.get(s.instrumentId)!) / 10n ** BigInt(s.decimals), 0n) : null,
     organizationId: org?.organizationId ?? null, basketId: position.basketId,
   });
@@ -480,11 +481,16 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     ({ legId: leg.id, quoteExpiresAt: expiresAt.toISOString(), gasDrop: null, approval: null, ...r });
 
   if (leg.kind === "network_fee") {
-    // The transfers are the fees recorded with the plan (network, manager, platform), never the schedule in force now.
-    const charged = await db.select({ recipient: operationFees.recipientAddress, amountMicro: operationFees.amountMicro }).from(operationFees)
-      .where(and(eq(operationFees.operationId, op.id), sql`${operationFees.amountMicro} > 0`))
+    // The transfers are the fees recorded with the plan (network, manager, platform), never the schedule in force now. A pre-Spec-10 operation has no fee rows:
+    // its leg is the single transfer of `amountIn` to the gas treasury, as before. With rows, they must add up to the leg, else nothing is built.
+    const rows = await db.select({ recipient: operationFees.recipientAddress, amountMicro: operationFees.amountMicro }).from(operationFees)
+      .where(eq(operationFees.operationId, op.id))
       .orderBy(sql`array_position(array['network','manager_entry','manager_rebalance','platform']::text[], ${operationFees.kind}::text)`);
-    const built = await buildFeeTransfer({ owner: solanaAddress, transfers: charged.map((c) => ({ recipient: c.recipient!, amountMicro: BigInt(c.amountMicro) })) });
+    const charged = rows.filter((r) => BigInt(r.amountMicro) > 0n);
+    if (rows.length && charged.reduce((t, r) => t + BigInt(r.amountMicro), 0n) !== BigInt(leg.amountIn)) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
+    if (!rows.length && !env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
+    const transfers = rows.length ? charged.map((c) => ({ recipient: c.recipient!, amountMicro: BigInt(c.amountMicro) })) : [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS!, amountMicro: BigInt(leg.amountIn) }];
+    const built = await buildFeeTransfer({ owner: solanaAddress, transfers });
     await save({ builtMessageHash: built.messageHash });
     return response({ estimatedOut: null, minOut: null, transaction: { kind: "solana", serializedBase64: built.serializedBase64 } });
   }

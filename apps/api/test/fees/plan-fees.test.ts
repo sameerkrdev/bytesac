@@ -134,6 +134,47 @@ describe("invest fees", () => {
     expect(BigInt(usage!.amount_native)).toBeGreaterThanOrEqual(2n * 2_039_280n);
   });
 
+  it("no rent is charged for a recipient whose token account already exists", async () => {
+    const plain = await arrange();
+    const base = BigInt((await invest(plain.user.h, plain.basket.basketId)).body.networkFeeUsdc);
+    await resetDb();
+    revenue.address = solanaTestWallet().address;
+    const { basket, user, chain } = await arrange();
+    const { payout } = await configure(basket, { entry: { type: "percent", bps: 100 }, schedules: [{ op: "invest", bps: 25 }] });
+    chain.tokenAccounts.add(ata(payout));
+    chain.tokenAccounts.add(ata(revenue.address));
+    const res = await invest(user.h, basket.basketId);
+    expect(BigInt(res.body.networkFeeUsdc)).toBe(base);
+    const [usage] = await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} AND chain = 'solana'`;
+    expect(BigInt(usage!.amount_native)).toBeLessThan(2_039_280n);
+  });
+
+  it("a pre-Spec-10 operation (no fee rows) quotes one transfer of the leg amount to the gas treasury, shows one network fee and settles", async () => {
+    const { basket, user, chain } = await arrange();
+    const res = await invest(user.h, basket.basketId);
+    await adminSql`DELETE FROM app.operation_fees WHERE operation_id = ${res.body.id}`;
+    const leg = (await legsOf(res.body.id))[0]!;
+    const q = await quote(user.h, res.body.id, leg.id);
+    expect(q.status).toBe(200);
+    expect(decode(q.body.transaction.serializedBase64).transfers).toEqual([{ to: ata(env.GAS_TREASURY_SOLANA_ADDRESS), amount: BigInt(leg.amount_in) }]);
+    const view = await request(app).get(`/v1/operations/${res.body.id}`).set(user.h);
+    expect(view.body.fees).toEqual([{ kind: "network", amountMicro: res.body.networkFeeUsdc, waivedReason: null, recipientLabel: "Bytesac (network)" }]);
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${res.body.id}`;
+    await adminSql`UPDATE app.operation_legs SET status = 'SUBMITTED', source_tx = 'sig-legacy', submitted_at = now() WHERE id = ${leg.id}`;
+    chain.solanaFinality.set("sig-legacy", "finalized");
+    await trackLeg(leg.id);
+    expect((await legsOf(res.body.id))[0]).toMatchObject({ status: "SETTLED" });
+  });
+
+  it("fee rows that don't add up to the fee leg are ROUTE_UNAVAILABLE and nothing is built", async () => {
+    const { basket, user } = await arrange();
+    const res = await invest(user.h, basket.basketId);
+    await adminSql`UPDATE app.operation_fees SET amount_micro = amount_micro::bigint + 1 WHERE operation_id = ${res.body.id}`;
+    const q = await quote(user.h, res.body.id, (await legsOf(res.body.id))[0]!.id);
+    expect(q.status).toBe(503);
+    expect(q.body.error.code).toBe("ROUTE_UNAVAILABLE");
+  });
+
   it("an amount whose fees leave nothing to invest is VALIDATION_FAILED", async () => {
     const { basket, user } = await arrange();
     await configure(basket, { entry: { type: "fixed", amountUsdc: "1" }, schedules: [{ op: "invest", bps: 100, min: "100" }] });
