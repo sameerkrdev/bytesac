@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { notificationText } from "@repo/validator";
 import { fanOutToHolders } from "../../src/services/notifications";
 import { trackLeg } from "../../src/services/positions";
 import { onVersionPublished } from "../../src/services/rebalance";
@@ -58,6 +59,16 @@ describe("a new version", () => {
     expect(deliverJobs()).toHaveLength(3);
   });
 
+  it("a PLANNED rebalance that already targets the new version is not superseded", async () => {
+    const { basket, users } = await holders(2);
+    const old = await openPlan(users[0]!.user.userId, users[0]!.positionId, basket, "PLANNED");
+    const v3 = await seedVersion(basket, 3, [3000, 7000]);
+    const current = await openPlan(users[1]!.user.userId, users[1]!.positionId, { basketId: basket.basketId, versionId: v3 }, "PLANNED");
+    await onVersionPublished(basket.basketId, v3);
+    expect((await adminSql`SELECT status FROM app.operations WHERE id = ${old}`)[0]).toEqual({ status: "CANCELLED" });
+    expect((await adminSql`SELECT status FROM app.operations WHERE id = ${current}`)[0]).toEqual({ status: "PLANNED" });
+  });
+
   it("a plan whose first leg is already claimed is left running", async () => {
     const { basket, users } = await holders(1);
     const planned = await openPlan(users[0]!.user.userId, users[0]!.positionId, basket, "PLANNED");
@@ -95,6 +106,23 @@ describe("an unfinished rebalance", () => {
     await trackLeg(buy!.id);
     expect((await adminSql`SELECT status FROM app.operations WHERE id = ${op}`)[0]).toEqual({ status: "PARTIAL" });
     expect((await inbox()).map((n) => [n.user_id, n.kind, n.dedupe_key])).toEqual([[user.userId, "execution_incomplete", `incomplete:${op}`]]);
+    expect(deliverJobs()).toHaveLength(1);
+  });
+
+  it("a FAILED repair tells the user once, linking to the repair page", async () => {
+    const { chain, basket, users } = await holders(1);
+    const { user, positionId } = users[0]!;
+    const deploymentId = basket.deployments[0]!.deploymentId;
+    const [op] = await adminSql<{ id: string }[]>`INSERT INTO app.operations (id, user_id, basket_id, position_id, kind, status, deployment_id, repair_shares, slippage_bps, network_fee_usdc, version_id, idempotency_key, expires_at)
+      VALUES (gen_random_uuid(), ${user.userId}, NULL, NULL, 'repair', 'IN_PROGRESS', ${deploymentId}, ${adminSql.json({ [positionId]: "5" })}, 100, 10000, ${basket.versionId}, 'k-repair-12345', now() + interval '30 minutes') RETURNING id`;
+    const [buy] = await adminSql<{ id: string }[]>`INSERT INTO app.operation_legs (id, operation_id, sequence, kind, from_chain, to_chain, to_deployment_id, amount_in, provider, status, source_tx, submitted_at)
+      VALUES (gen_random_uuid(), ${op!.id}, 1, 'swap', 'solana', 'solana', ${deploymentId}, 1000000, 'lifi', 'SUBMITTED', 'sig-bad', now()) RETURNING id`;
+    chain.solanaFinality.set("sig-bad", "failed");
+    await trackLeg(buy!.id);
+    expect((await adminSql`SELECT status FROM app.operations WHERE id = ${op!.id}`)[0]).toEqual({ status: "FAILED" });
+    const [n] = await adminSql<{ user_id: string; kind: string; dedupe_key: string; basket_id: string | null; data: { asset: string } }[]>`SELECT user_id, kind, dedupe_key, basket_id, data FROM app.notifications`;
+    expect(n).toMatchObject({ user_id: user.userId, kind: "execution_incomplete", dedupe_key: `incomplete:${op!.id}`, basket_id: null, data: { asset: deploymentId } });
+    expect(notificationText("execution_incomplete", { asset: deploymentId }).link).toBe(`/portfolio/repair/${deploymentId}`);
     expect(deliverJobs()).toHaveLength(1);
   });
 });

@@ -44,13 +44,13 @@ export function PositionActions({ position: p, repairAsset }: { position: Positi
         {(p.headline === "REBALANCE_AVAILABLE" || skipped) && p.latestVersion && <Link href={`${base}?target=latest`} className={link}>Review update</Link>}
         {p.headline === "DRIFTED" && (
           <>
-            <Link href={`${base}?target=applied`} className={link}>Rebalance to target</Link>
+            <Link href={`${base}?target=${p.states.version === "CURRENT" ? "applied" : "latest"}`} className={link}>Rebalance to target</Link>
             <Button variant="secondary" className="min-h-11" disabled={keep.isPending} onClick={() => keep.mutate()}>Keep custom</Button>
           </>
         )}
         {p.headline === "CUSTOMIZED" && <Button variant="secondary" className="min-h-11" disabled={revert.isPending} onClick={() => revert.mutate()}>Revert custom</Button>}
         {p.headline === "REPAIR_REQUIRED" && <Link href={`/portfolio/repair/${repairAsset ?? "cash"}`} className={link}><GitCompareArrows aria-hidden className="mr-2 size-4" />Repair</Link>}
-        {p.headline === "EXECUTION_INCOMPLETE" && <Link href={`${base}?target=${p.states.version === "OUT_OF_DATE" ? "latest" : "applied"}`} className={link}>Continue</Link>}
+        {p.headline === "EXECUTION_INCOMPLETE" && <Link href={`${base}?target=${p.states.version === "CURRENT" ? "applied" : "latest"}`} className={link}>Continue</Link>}
         {p.headline === "EXECUTION_PENDING" && <Link href="#open-operations" className={link}>View operation</Link>}
       </div>
       {err && <ErrorBox error={err} />}

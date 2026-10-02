@@ -64,6 +64,44 @@ describe("basket cash reconciliation", () => {
   });
 });
 
+describe("a leg in flight", () => {
+  const post = (h: Record<string, string>, path: string, body: object) => request(app).post(path).set(h).send(body);
+
+  it("its deployments and the basket cash are not reconciled (no SHORT row, no notice) while the user's other deployments are; sync and repair wait; the leg settling resumes it", async () => {
+    const { chain, user, positionId, basket, sol, tkn } = await holder();
+    await seedCash(user.userId, basket, positionId, 100_000_000n);
+    // A sell of all the SOL has landed (the wallet is debited) but is not settled (the ledger is not).
+    const [op] = await adminSql<{ id: string }[]>`INSERT INTO app.operations (id, user_id, basket_id, position_id, kind, status, sell_percent, slippage_bps, network_fee_usdc, version_id, idempotency_key, expires_at)
+      VALUES (gen_random_uuid(), ${user.userId}, ${basket.basketId}, ${positionId}, 'sell_to_usdc', 'IN_PROGRESS', 100, 100, 10000, ${basket.versionId}, 'k-flight-12345', now() + interval '30 minutes') RETURNING id`;
+    const [leg] = await adminSql<{ id: string }[]>`INSERT INTO app.operation_legs (id, operation_id, sequence, kind, from_chain, to_chain, from_deployment_id, amount_in, provider, status, source_tx, submitted_at)
+      VALUES (gen_random_uuid(), ${op!.id}, 1, 'swap', 'solana', 'solana', ${sol.deploymentId}, 10000000000, 'lifi', 'PENDING_CHAIN', 'sig-flight', now()) RETURNING id`;
+    chain.balances.set(balanceKey(user.solanaAddress, null), 0n);
+    chain.balances.set(balanceKey(user.solanaAddress, tkn.address), 500_000_000n); // an unrelated loss of half the TKN
+    chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 0n); // the USDC would also look short
+    await reconcilePositions(user.userId);
+    const rows = await adminSql<{ deployment_id: string | null; status: string }[]>`SELECT deployment_id, status FROM app.position_reconciliations`;
+    expect(rows.map((r) => [r.deployment_id, r.status])).toEqual([[tkn.deploymentId, "SHORT"]]); // SOL (on the leg) and cash are skipped, TKN is not
+    expect(await inbox("repair_required")).toHaveLength(1);
+    expect(deliverJobs()).toHaveLength(1);
+
+    const asset = (a: object) => ({ asset: a, split: [{ positionId, quantity: "1" }], idempotencyKey: "sync-flight-1" });
+    for (const res of [
+      await post(user.h, "/v1/portfolio/sync", asset({ deploymentId: sol.deploymentId })),
+      await post(user.h, "/v1/portfolio/sync", { ...asset({}), asset: "cash" }),
+      await post(user.h, "/v1/operations/repair", { deploymentId: sol.deploymentId, slippageBps: 100, idempotencyKey: "rep-flight-1" }),
+    ]) {
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe("OPERATION_IN_PROGRESS");
+    }
+    expect(await adminSql`SELECT 1 FROM app.position_decisions WHERE kind = 'sync'`).toHaveLength(0);
+
+    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${leg!.id}`;
+    await reconcilePositions(user.userId);
+    const after = await adminSql<{ deployment_id: string | null }[]>`SELECT deployment_id FROM app.position_reconciliations WHERE deployment_id IS NULL OR deployment_id = ${sol.deploymentId}`;
+    expect(after.map((r) => r.deployment_id).sort()).toEqual([null, sol.deploymentId].sort());
+  });
+});
+
 describe("weight drift", () => {
   it("600 bps off the target with the default threshold: WEIGHT_DRIFT and one drifted notice per day", async () => {
     const { user, positionId } = await holder({ solUnits: 11.2, tkn: 880_000_000n }); // 56% / 44% against 50 / 50

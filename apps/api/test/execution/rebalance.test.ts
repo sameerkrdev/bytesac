@@ -227,17 +227,44 @@ describe("basket cash is not free USDC", () => {
     expect(res.body.error.code).toBe("INSUFFICIENT_BALANCE");
   });
 
-  it("selling 50% to USDC releases 50% of the basket cash when the first leg is claimed", async () => {
-    const { user, wallet, positionId, basket } = await arrange({ v2: null, usdc: 500_000_000n });
-    await seedCash(user.userId, basket, positionId, 200_000_000n);
-    const op = (await post(user.h, "/v1/operations/sell", { positionId, percent: 50, slippageBps: 100, idempotencyKey: "sell-aaaaaaaa" })).body;
+  async function sellHalf() {
+    const a = await arrange({ v2: null, usdc: 500_000_000n });
+    await seedCash(a.user.userId, a.basket, a.positionId, 200_000_000n);
+    const op = (await post(a.user.h, "/v1/operations/sell", { positionId: a.positionId, percent: 50, slippageBps: 100, idempotencyKey: "sell-aaaaaaaa" })).body;
+    return { ...a, op, legs: await legsOf(op.id) };
+  }
+
+  it("selling 50% to USDC releases 50% of the basket cash when the first sell leg settles, once", async () => {
+    const { user, wallet, chain, positionId, op, legs } = await sellHalf();
     expect(await cash(positionId)).toHaveLength(1); // planning releases nothing
-    const fee = (await legsOf(op.id))[0]!;
-    const q = await quote(user.h, op.id, fee.id);
+    const [fee, sellA, sellB] = legs;
+    const q = await quote(user.h, op.id, fee!.id);
     const tx = VersionedTransaction.deserialize(Buffer.from(q.body.transaction.serializedBase64, "base64"));
     tx.sign([wallet.keypair]);
     const signedTx = Buffer.from(tx.serialize()).toString("base64");
-    expect((await post(user.h, `/v1/operations/${op.id}/legs/${fee.id}/submit`, { signedTx })).status).toBe(200);
+    expect((await post(user.h, `/v1/operations/${op.id}/legs/${fee!.id}/submit`, { signedTx })).status).toBe(200);
+    expect(await cash(positionId)).toHaveLength(1); // a claimed fee leg releases nothing
+    await settle(chain, user.solanaAddress, op.id, sellA!.id, 100_000_000n);
     expect(await cash(positionId)).toEqual([{ amount_micro: "200000000", reason: "rebalance_sell" }, { amount_micro: "-100000000", reason: "sell" }]);
+    await settle(chain, user.solanaAddress, op.id, sellB!.id, 50_000_000n);
+    expect(await cash(positionId)).toHaveLength(2); // the second sell leg releases nothing more
+  });
+
+  it("a sell whose first leg fails, and a cancelled plan, release nothing", async () => {
+    const { user, chain, positionId, op, legs } = await sellHalf();
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${legs[0]!.id}`;
+    await adminSql`UPDATE app.operation_legs SET status = 'SUBMITTED', source_tx = 'sig-bad', submitted_at = now() WHERE id = ${legs[1]!.id}`;
+    chain.solanaFinality.set("sig-bad", "failed");
+    await trackLeg(legs[1]!.id);
+    expect((await operationRow(op.id)).status).toBe("FAILED");
+    expect(await cash(positionId)).toHaveLength(1);
+    void user;
+  });
+
+  it("a plan cancelled before any leg is sent releases nothing", async () => {
+    const { user, positionId, op } = await sellHalf();
+    expect((await post(user.h, `/v1/operations/${op.id}/cancel`)).status).toBe(200);
+    expect(await cash(positionId)).toHaveLength(1);
   });
 });

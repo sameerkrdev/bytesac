@@ -112,7 +112,7 @@ export function notificationText(kind: NotificationKind, data: { basketName?: st
     case "rebalance_available": return { title: `${basket}: new version available`, body: "A new basket version is available. Applying creates a plan you review and sign; skipping changes nothing.", link: rebalance };
     case "drifted": return { title: `${basket} has drifted`, body: "Your basket has drifted from its target. You can review a rebalance plan or keep your allocation.", link: rebalance };
     case "repair_required": return { title: `${basket} needs attention`, body: "Wallet activity changed this basket's holdings. Review to buy back or update your baskets.", link: `/portfolio/repair/${data.asset ?? "cash"}` };
-    case "execution_incomplete": return { title: `${basket}: plan incomplete`, body: "Your last plan did not finish. Review where it stopped and continue when you are ready.", link: rebalance };
+    case "execution_incomplete": return { title: `${basket}: plan incomplete`, body: "Your last plan did not finish. Review where it stopped and continue when you are ready.", link: data.asset ? `/portfolio/repair/${data.asset}` : rebalance };
     case "basket_paused": return { title: `${basket} is paused`, body: "The basket is paused. Your holdings are unchanged.", link: basketLink };
     case "basket_unpaused": return { title: `${basket} is active again`, body: "The basket is no longer paused.", link: basketLink };
     case "basket_retirement_pending": return { title: `${basket} is being retired`, body: "The basket is pending retirement. Your holdings are unchanged; nothing happens without your signature.", link: basketLink };

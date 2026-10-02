@@ -55,19 +55,34 @@ describe("sync", () => {
     expect((await sync(user.h, { ...body, split: [{ positionId: pA, quantity: "7" }, { positionId: pB, quantity: "8" }] })).status).toBe(400);
   });
 
-  it("a sum that is not the shortfall, an omitted position or a foreign one is VALIDATION_FAILED", async () => {
+  it("a quantity above what the basket records, or a basket listed twice, is VALIDATION_FAILED against unchanged figures", async () => {
+    const { user, shared, pA, pB } = await arrange();
+    const asset = { deploymentId: shared.deploymentId };
+    const bad = [
+      [{ positionId: pA, quantity: "11" }, { positionId: pB, quantity: "4" }], // more than A records
+      [{ positionId: pA, quantity: "6" }, { positionId: pA, quantity: "9" }],
+    ];
+    for (const split of bad) {
+      const res = await sync(user.h, { asset, split });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("VALIDATION_FAILED");
+    }
+    expect(await decisions("sync")).toHaveLength(0);
+  });
+
+  it("a split that does not match the shortfall (another total, an omitted or a foreign position) is SHORTFALL_CHANGED with the figures", async () => {
     const { user, shared, pA, pB } = await arrange();
     const asset = { deploymentId: shared.deploymentId };
     const bad = [
       [{ positionId: pA, quantity: "6" }, { positionId: pB, quantity: "8" }],
       [{ positionId: pA, quantity: "10" }],
       [{ positionId: pA, quantity: "6" }, { positionId: "0190f3a0-0000-7000-8000-000000000001", quantity: "9" }],
-      [{ positionId: pA, quantity: "11" }, { positionId: pB, quantity: "4" }], // more than A records
     ];
     for (const split of bad) {
       const res = await sync(user.h, { asset, split });
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe("VALIDATION_FAILED");
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe("SHORTFALL_CHANGED");
+      expect(res.body.error.details.totalShortfall).toBe("15");
     }
     expect(await decisions("sync")).toHaveLength(0);
   });
@@ -82,6 +97,17 @@ describe("sync", () => {
     expect(res.body.error.details.positions).toEqual(expect.arrayContaining([{ positionId: pA, ledger: "10", shortfall: "8" }, { positionId: pB, ledger: "15", shortfall: "12" }]));
     expect(await decisions("sync")).toHaveLength(0);
     expect(await adminSql`SELECT 1 FROM app.position_ledger_entries WHERE reason = 'sync'`).toHaveLength(0);
+  });
+
+  it("a reconciliation between opening the form and saving (a portfolio read) does not hide the change: still SHORTFALL_CHANGED", async () => {
+    const { user, shared, pA, pB, setWallet } = await arrange();
+    setWallet(5n);
+    await reconcilePositions(user.userId); // what a portfolio refetch does: the stored rows now hold the new figures
+    const res = await sync(user.h, { asset: { deploymentId: shared.deploymentId }, split: [{ positionId: pA, quantity: "6" }, { positionId: pB, quantity: "9" }] });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("SHORTFALL_CHANGED");
+    expect(res.body.error.details.totalShortfall).toBe("20");
+    expect(await decisions("sync")).toHaveLength(0);
   });
 
   it("basket cash that left the wallet is synced with negative cash entries", async () => {
@@ -101,7 +127,8 @@ describe("sync", () => {
     const { shared, pA } = await arrange();
     const stranger = await seedUser({ wallet: solanaTestWallet() });
     const res = await sync(stranger.h, { asset: { deploymentId: shared.deploymentId }, split: [{ positionId: pA, quantity: "6" }] });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
+    expect(res.body.error.details).toEqual({ totalShortfall: "0", positions: [] }); // nothing of another user's is shown
     expect(await decisions("sync")).toHaveLength(0);
   });
 });

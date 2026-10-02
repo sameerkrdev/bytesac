@@ -134,11 +134,24 @@ export async function lockOperation(tx: Tx, id: string): Promise<Op> {
   return op;
 }
 
-/** An unfinished rebalance is told to the user once (the id is enqueued right away: delivery retries until the row is committed). */
-async function tellIncomplete(tx: Tx, op: Op): Promise<void> {
-  const [b] = await tx.select({ slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, op.basketId!));
-  const id = await notify(tx, { userId: op.userId, kind: "execution_incomplete", basketId: op.basketId!, positionId: op.positionId!, data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id }, dedupeKey: `incomplete:${op.id}` });
-  if (id) await enqueue("notifications", { job: "deliver", notificationId: id });
+/**
+ * The user's assets that have a leg in flight (SUBMITTING, SUBMITTED, PENDING_CHAIN or UNKNOWN), per user: every deployment on such a leg, and "cash"
+ * (USDC on Solana, which every leg touches). While the chain and the ledger disagree on these, reconciling them would report a loss that is not one.
+ */
+export async function inFlightAssets(conn: DbOrTx, userId?: string): Promise<Map<string, Set<string>>> {
+  const rows = await conn.select({ userId: operations.userId, from: operationLegs.fromDeploymentId, to: operationLegs.toDeploymentId }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId))
+    .where(and(inArray(operationLegs.status, ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"]), userId ? eq(operations.userId, userId) : undefined));
+  const out = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const assets = out.get(r.userId) ?? out.set(r.userId, new Set(["cash"])).get(r.userId)!;
+    for (const d of [r.from, r.to]) if (d) assets.add(d);
+  }
+  return out;
+}
+
+/** A sync or repair of an asset with a leg in flight waits for that leg. */
+export async function assertNoneInFlight(conn: DbOrTx, userId: string, asset: string): Promise<void> {
+  if ((await inFlightAssets(conn, userId)).get(userId)?.has(asset)) throw createHttpError(409, "A transaction involving this asset is still pending. Wait for it to finish.", { code: "OPERATION_IN_PROGRESS" });
 }
 
 /** After a leg ends: COMPLETED when every leg settled; PARTIAL when an asset leg settled and another failed; FAILED when a leg failed and no asset leg settled. */
@@ -153,7 +166,15 @@ export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: st
   }
   if (legs.some((l) => l.status === "FAILED")) {
     await setOperationStatus(tx, ctx, op, legs.some((l) => l.kind !== "network_fee" && l.status === "SETTLED") ? "PARTIAL" : "FAILED");
-    if (op.kind === "rebalance") await tellIncomplete(tx, op);
+    if (op.kind === "rebalance" || op.kind === "repair") {
+      // Told to the user once (the id is enqueued right away: delivery retries until the row is committed). A repair has no basket; its notice links to the repair page.
+      const [b] = op.basketId ? await tx.select({ slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, op.basketId)) : [];
+      const id = await notify(tx, {
+        userId: op.userId, kind: "execution_incomplete", basketId: op.basketId ?? undefined, positionId: op.positionId ?? undefined,
+        data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id, asset: op.deploymentId ?? undefined }, dedupeKey: `incomplete:${op.id}`,
+      });
+      if (id) await enqueue("notifications", { job: "deliver", notificationId: id });
+    }
   }
 }
 
@@ -535,12 +556,6 @@ export async function submitLeg(ctx: OpCtx, opId: string, legId: string, body: L
       const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, leg.id));
       if (current!.status !== "PLANNED" || current!.builtMessageHash !== leg.builtMessageHash || JSON.stringify(current!.expectedTx) !== JSON.stringify(leg.expectedTx)) throw invalidTransition("This leg changed. Get a new quote.");
       await setLegStatus(tx, ctx, current!, "SUBMITTING", { sourceTx, submittedAt: sql`now()` as unknown as Date, expectedTx: recentBlockhash ? { ...(current!.expectedTx ?? {}), recentBlockhash } : current!.expectedTx });
-      // Selling to USDC releases that share of the position's basket cash (the USDC is already in the wallet). Taken at the first claim, the moment the plan
-      // stops being cancellable; the unique (leg, position, reason) makes a re-claim after a refused send a no-op.
-      if (current!.sequence === 1 && (locked.kind === "sell_to_usdc" || locked.kind === "sell_former")) {
-        const released = ((await basketCashMicro(tx, locked.positionId!)) * BigInt(locked.sellPercent!)) / 100n;
-        if (released > 0n) await tx.insert(positionCashEntries).values({ positionId: locked.positionId!, amountMicro: (-released).toString(), reason: "sell", legId: current!.id }).onConflictDoNothing();
-      }
     });
   } catch (err) {
     if (isUniqueViolation(err, "operation_legs_source_tx")) throw invalidTransition("That transaction is already recorded for another leg.");

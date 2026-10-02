@@ -24,14 +24,17 @@ export const positionsRouter = Router();
 positionsRouter.use(requireSession);
 const positionParam = validate({ params: z.object({ id: z.uuid() }) });
 positionsRouter.post("/:id/skip", validate({ params: z.object({ id: z.uuid() }), body: skipRequestSchema }), async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
   await skipVersion(ctx(req), req.params.id as string, req.body as SkipRequest);
   res.status(204).end();
 });
 positionsRouter.post("/:id/custom", positionParam, async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
   await keepCustom(ctx(req), req.params.id as string);
   res.status(204).end();
 });
 positionsRouter.post("/:id/custom/revert", positionParam, async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
   await revertCustom(ctx(req), req.params.id as string);
   res.status(204).end();
 });

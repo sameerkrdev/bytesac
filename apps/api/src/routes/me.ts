@@ -107,11 +107,13 @@ meRouter.post("/notifications/read", validate({ body: markReadSchema }), async (
 });
 
 meRouter.post("/push-tokens", validate({ body: pushTokenSchema }), async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
   await registerPushToken(req.auth!.userId, req.body as z.infer<typeof pushTokenSchema>);
   res.status(204).end();
 });
 
 meRouter.post("/push-tokens/revoke", validate({ body: pushTokenSchema.pick({ token: true }) }), async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
   await revokePushToken(req.auth!.userId, (req.body as { token: string }).token);
   res.status(204).end();
 });
