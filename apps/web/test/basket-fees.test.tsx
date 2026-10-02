@@ -41,4 +41,26 @@ describe("Fees editor", () => {
     await userEvent.click(screen.getByLabelText("Charge a subscription"));
     expect(onChange).toHaveBeenCalledWith({ fees: expect.objectContaining({ subscription: { amountUsdc: "0", period: "monthly" } }) });
   });
+
+  it("sets the optional maximum of a percent fee and shows it as 1% up to $50", async () => {
+    const onChange = vi.fn();
+    const fees = { ...basketVersion().fees, entry: { type: "percent" as const, bps: 100, maxUsdc: "50" } };
+    render(<FeesEditor value={state({ fees })} onChange={onChange} readOnly={false} />);
+    expect(screen.getByText("Shown as 1% up to $50")).toBeInTheDocument();
+    await userEvent.clear(screen.getAllByLabelText("Maximum (USDC, optional)")[0]!);
+    expect(onChange).toHaveBeenCalledWith({ fees: expect.objectContaining({ entry: { type: "percent", bps: 100 } }) });
+  });
+
+  it("flags a maximum of zero or text", () => {
+    const fees = { ...basketVersion().fees, entry: { type: "percent" as const, bps: 100, maxUsdc: "0" } };
+    const { rerender } = render(<FeesEditor value={state({ fees })} onChange={vi.fn()} readOnly={false} />);
+    expect(screen.getByText("Enter an amount above zero with up to 6 decimals.")).toBeInTheDocument();
+    rerender(<FeesEditor value={state({ fees: { ...fees, entry: { type: "percent", bps: 100, maxUsdc: "abc" } } })} onChange={vi.fn()} readOnly={false} />);
+    expect(screen.getByText("Enter an amount above zero with up to 6 decimals.")).toBeInTheDocument();
+  });
+
+  it("says management and subscription are disclosed, not collected", () => {
+    render(<FeesEditor value={state()} onChange={vi.fn()} readOnly={false} />);
+    expect(screen.getAllByText("Disclosed — not collected in this release.")).toHaveLength(2);
+  });
 });

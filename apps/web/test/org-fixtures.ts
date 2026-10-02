@@ -21,8 +21,8 @@ export const wallet = (over: Partial<OrganizationDetail["payoutWallets"][number]
 });
 
 export const PERMISSIONS: Record<MembershipRole, OrganizationDetail["myPermissions"]> = {
-  OWNER: ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage"],
-  ADMIN: ["org.read", "members.manage", "analytics.read", "baskets.manage"],
+  OWNER: ["org.read", "org.edit", "payout.manage", "members.manage", "members.manage_admins", "analytics.read", "baskets.manage", "earnings.read"],
+  ADMIN: ["org.read", "members.manage", "analytics.read", "baskets.manage", "earnings.read"],
   MANAGER: ["org.read", "analytics.read", "baskets.manage"],
   ANALYST: ["org.read", "analytics.read"],
   VIEWER: ["org.read"],
