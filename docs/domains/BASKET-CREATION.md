@@ -3,7 +3,7 @@
 Source: `Basket-Creation.txt`, `Fund-Manager-Detailed-Features.txt`. Implemented in Spec 6 (ADR-011, D-007, D-008, D-057 to D-061).
 
 ## Purpose
-A basket is a versioned investment strategy owned by a verified organization. It is not a manager's personal wallet or a single transaction. Nothing in it invests, executes, charges or moves assets: fees and minimums are disclosed terms and the public "Invest" button is disabled.
+A basket is a versioned investment strategy owned by a verified organization. It is not a manager's personal wallet or a single transaction. Creating or publishing a basket invests, executes and moves nothing; fees and minimums are terms that apply when a user invests (ADR-016).
 
 ## Lifecycle
 Basket and version are separate state machines.
@@ -17,7 +17,7 @@ A member holding `baskets.manage` in a `VERIFIED` organization creates a basket 
 ## Allocation, constraints, fees
 - 1 to 20 `ACTIVE` registry instruments with an `ACTIVE` deployment; whole-bps weights of at least 100 that add up to exactly 10000; no duplicates; optional weight band; warnings for one asset above 50% and for paused or deprecated instruments. Nothing is normalized for the manager.
 - Optional constraints: maximum weight per asset, maximum stablecoin and tokenized-asset share.
-- Fees: entry, management (annual) and rebalance as percent (0 to 1%) or fixed USDC; subscription as fixed USDC per month or year or none. Every fixed amount is at most 1% of the minimum investment (exact micro-USDC comparison). A minimum investment above zero is required.
+- Fees: entry, management (annual) and rebalance as percent (0 to 1%, with an optional "Maximum (USDC, optional)" cap, shown as "1% up to $50") or fixed USDC; subscription as fixed USDC per month or year or none. Every fixed amount is at most 1% of the minimum investment (exact micro-USDC comparison). Entry and rebalance fees are charged to investors (Spec 10); management and subscription are disclosed only ("Disclosed — not collected in this release"). A minimum investment above zero is required.
 - Rebalance configuration (`none`, `monthly`, `quarterly`, optional drift threshold) is a disclosure only. A rebalance is a manager-proposed new version that needs a rationale and review; users always consent explicitly.
 
 ## Disclosures
@@ -35,7 +35,7 @@ Assignment lockdown: nobody changes their own flags or ends their own lead role 
 Version history shows each version's rationale and a computed diff (added and removed assets, weight and band changes, constraint, rebalance, fee and minimum changes). The manager can pause immediately and resume; a platform pause only ops lift. The public page shows status notices (paused, manager change in progress, retirement pending, retired) and a notice when an asset was later paused or deprecated in the registry; nothing changes automatically. Investor notifications, commentary and performance are later specs (events are already recorded).
 
 ## Public and private
-`/baskets` and `/baskets/[slug]` need no sign-in and show only the current published version: content, allocation with prices (stale or unavailable flagged), constraints, rebalance disclosures, fees and minimums, pinned disclosures, version history and manager history. Drafts, reviews, internal notes, user ids, wallets and emails are never public. All text is plain text.
+`/baskets` and `/baskets/[slug]` need no sign-in and show only the current published version: content, allocation with prices (stale or unavailable flagged), constraints, rebalance disclosures, fees and minimums (with the Bytesac platform rate that applies to the basket), pinned disclosures, version history and manager history. Drafts, reviews, internal notes, user ids, wallets and emails are never public. All text is plain text.
 
 ## Key invariants
 - Draft/unapproved baskets are not public or investable.
