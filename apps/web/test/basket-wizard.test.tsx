@@ -9,6 +9,25 @@ import { BID, T, basketAsset, basketAssignment, basketClient, basketDetail, bask
 const wizard = (client: ReturnType<typeof basketClient>) => render(<QueryClientProvider client={new QueryClient()}><BasketWizard bid={BID} client={client} /></QueryClientProvider>);
 
 describe("Basket wizard", () => {
+  it("saves optional minimum-trade thresholds and flags values outside the bounds", async () => {
+    const client = basketClient();
+    wizard(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Rebalanc/ }));
+    const bps = screen.getByLabelText(/Minimum trade \(bps\)/);
+    await userEvent.type(bps, "5");
+    expect(screen.getByText("Enter a whole number from 10 to 1000.")).toBeInTheDocument();
+    await userEvent.clear(bps);
+    await userEvent.type(bps, "75");
+    expect(screen.queryByText("Enter a whole number from 10 to 1000.")).toBeNull();
+    const usdc = screen.getByLabelText(/Minimum trade \(USDC\)/);
+    await userEvent.type(usdc, "500");
+    expect(screen.getByText(/between 1 and 100 USDC/)).toBeInTheDocument();
+    await userEvent.clear(usdc);
+    await userEvent.type(usdc, "10");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(client.saveBasketDraft).toHaveBeenCalledWith(BID, expect.objectContaining({ rebalance: expect.objectContaining({ minTradeBps: 75, minTradeUsdc: "10" }) }));
+  });
+
   it("saves with the version's updatedAt as expectedUpdatedAt", async () => {
     const client = basketClient();
     wizard(client);

@@ -7,8 +7,11 @@ import { app } from "./enums";
 import { users } from "./identity";
 
 export const positionStatus = app.enum("position_status", ["OPEN", "CLOSED"]);
-export const ledgerReason = app.enum("ledger_reason", ["invest", "sell"]);
-export const operationKind = app.enum("operation_kind", ["invest", "sell_to_usdc", "sell_former"]);
+export const ledgerReason = app.enum("ledger_reason", ["invest", "sell", "rebalance", "repair", "sync"]);
+export const cashReason = app.enum("cash_reason", ["rebalance_sell", "rebalance_buy", "network_fee", "sell", "sync"]);
+export const decisionKind = app.enum("decision_kind", ["skip", "keep_custom", "revert_custom", "sync"]);
+export const allocationStatus = app.enum("allocation_status", ["ALIGNED", "WEIGHT_DRIFT", "CUSTOMIZED"]);
+export const operationKind = app.enum("operation_kind", ["invest", "sell_to_usdc", "sell_former", "rebalance", "repair"]);
 export const operationStatus = app.enum("operation_status", ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"]);
 export const legKind = app.enum("leg_kind", ["network_fee", "swap", "cross_chain"]);
 export const legStatus = app.enum("leg_status", ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"]);
@@ -30,6 +33,8 @@ export const basketPositions = app.table(
     appliedVersionId: uuid("applied_version_id").notNull().references(() => basketVersions.id),
     openedAt: ts("opened_at").notNull().defaultNow(),
     closedAt: ts("closed_at"),
+    allocationStatus: allocationStatus("allocation_status").notNull().default("ALIGNED"),
+    allocationCheckedAt: ts("allocation_checked_at"),
   },
   (t) => [
     uniqueIndex("basket_positions_one_open").on(t.userId, t.basketId).where(sql`${t.status} = 'OPEN'`),
@@ -44,8 +49,14 @@ export const operations = app.table(
   {
     id: id(),
     userId: uuid("user_id").notNull().references(() => users.id),
-    basketId: uuid("basket_id").notNull().references(() => baskets.id),
+    /** Null for a repair (it spans baskets). */
+    basketId: uuid("basket_id").references(() => baskets.id),
     positionId: uuid("position_id").references(() => basketPositions.id),
+    /** Repair only: the short deployment, and each position's shortfall (raw units) the received amount is split by. */
+    deploymentId: uuid("deployment_id").references(() => instrumentDeployments.id),
+    repairShares: jsonb("repair_shares").$type<Record<string, string>>(),
+    /** Rebalance only: `available / planned` buy total, fixed once at the first buy quote. */
+    buyScale: jsonb("buy_scale").$type<{ num: string; den: string }>(),
     kind: operationKind("kind").notNull(),
     status: operationStatus("status").notNull().default("PLANNED"),
     /** Invest only. */
@@ -66,6 +77,8 @@ export const operations = app.table(
     uniqueIndex("operations_user_idempotency_key").on(t.userId, t.idempotencyKey),
     uniqueIndex("operations_one_active_per_user").on(t.userId).where(sql`${t.status} in ('PLANNED', 'IN_PROGRESS')`),
     check("operations_slippage_range", sql`${t.slippageBps} between 1 and 300`),
+    // `::text` casts: a new enum value cannot be used as an enum literal in the transaction that adds it.
+    check("operations_repair_basket", sql`(${t.kind}::text = 'repair') = (${t.basketId} is null)`),
     check("operations_sell_percent_range", sql`${t.sellPercent} is null or ${t.sellPercent} between 1 and 100`),
   ],
 );
@@ -109,7 +122,25 @@ export const operationLegs = app.table(
   ],
 );
 
-/** Append-only. A holding is the sum of `quantity_delta` per deployment; one entry per leg and deployment. */
+/** Append-only user choices on a position. */
+export const positionDecisions = app.table(
+  "position_decisions",
+  {
+    id: id(),
+    positionId: uuid("position_id").notNull().references(() => basketPositions.id),
+    kind: decisionKind("kind").notNull(),
+    versionId: uuid("version_id").references(() => basketVersions.id),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("position_decisions_skip_once").on(t.positionId, t.versionId).where(sql`${t.kind} = 'skip'`),
+    index("position_decisions_position_idx").on(t.positionId, t.createdAt),
+  ],
+);
+
+/** Append-only. A holding is the sum of `quantity_delta` per deployment; entries come from a leg or (sync) a decision. */
 export const positionLedgerEntries = app.table(
   "position_ledger_entries",
   {
@@ -119,10 +150,36 @@ export const positionLedgerEntries = app.table(
     /** Raw base units, signed. */
     quantityDelta: numeric("quantity_delta").notNull(),
     reason: ledgerReason("reason").notNull(),
-    legId: uuid("leg_id").notNull().references(() => operationLegs.id),
+    legId: uuid("leg_id").references(() => operationLegs.id),
+    decisionId: uuid("decision_id").references(() => positionDecisions.id),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("position_ledger_leg_deployment").on(t.legId, t.deploymentId), index("position_ledger_position_idx").on(t.positionId, t.deploymentId)],
+  (t) => [
+    // A repair leg writes one entry per position.
+    uniqueIndex("position_ledger_leg_position_deployment").on(t.legId, t.positionId, t.deploymentId),
+    uniqueIndex("position_ledger_decision_position_deployment").on(t.decisionId, t.positionId, t.deploymentId),
+    index("position_ledger_position_idx").on(t.positionId, t.deploymentId),
+    check("position_ledger_source", sql`num_nonnulls(${t.legId}, ${t.decisionId}) = 1`),
+  ],
+);
+
+/** Append-only basket cash in micro-USDC (signed): what rebalance sells credited and buys spent. */
+export const positionCashEntries = app.table(
+  "position_cash_entries",
+  {
+    id: id(),
+    positionId: uuid("position_id").notNull().references(() => basketPositions.id),
+    amountMicro: numeric("amount_micro").notNull(),
+    reason: cashReason("reason").notNull(),
+    legId: uuid("leg_id").references(() => operationLegs.id),
+    decisionId: uuid("decision_id").references(() => positionDecisions.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("position_cash_leg_position_reason").on(t.legId, t.positionId, t.reason),
+    index("position_cash_position_idx").on(t.positionId),
+    check("position_cash_source", sql`num_nonnulls(${t.legId}, ${t.decisionId}) = 1`),
+  ],
 );
 
 export const platformWallets = app.table(
@@ -172,7 +229,8 @@ export const positionReconciliations = app.table(
   {
     id: id(),
     positionId: uuid("position_id").notNull().references(() => basketPositions.id),
-    deploymentId: uuid("deployment_id").notNull().references(() => instrumentDeployments.id),
+    /** Null = the basket-cash row (wallet USDC on Solana against the cash entries). */
+    deploymentId: uuid("deployment_id").references(() => instrumentDeployments.id),
     ledgerQuantity: numeric("ledger_quantity").notNull(),
     allocatedQuantity: numeric("allocated_quantity").notNull(),
     walletBalance: numeric("wallet_balance").notNull(),

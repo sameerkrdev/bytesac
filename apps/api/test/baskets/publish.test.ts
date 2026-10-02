@@ -38,6 +38,7 @@ describe("publish", () => {
     expect(row.published_at).toBeTruthy();
     expect((await basketRow(r.id)).current_version_id).toBe(r.vid);
     expect(fakes.email.basket.filter((e) => e.kind === "published")).toHaveLength(1);
+    expect(fakes.queue.jobs.filter((j) => j.name === "notifications" && j.data.basketId === r.id)).toEqual([]); // the first publish has no holders
     const events = await eventKinds(r.id);
     const again = await publishBasket(ctx.owner.h, r.id);
     expect(again.status).toBe(200);
@@ -116,6 +117,8 @@ describe("next versions", () => {
     expect((await versionRow(r.vid)).status).toBe("superseded");
     expect((await versionRow(v3.id)).status).toBe("published");
     expect((await basketRow(r.id)).current_version_id).toBe(v3.id);
+    // A version that replaced a current one tells the holders (the worker cancels open plans and fans out the notices).
+    expect(fakes.queue.jobs.filter((j) => j.name === "notifications" && j.data.basketId === r.id)).toEqual([{ name: "notifications", data: { job: "version-published", basketId: r.id, versionId: v3.id } }]);
   });
 
   it("gives a renamed version a new slug and keeps the old one as an alias", async () => {

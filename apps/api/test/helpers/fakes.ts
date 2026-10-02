@@ -93,9 +93,27 @@ class FakeEmail {
   };
   profile: Array<{ kind: string; to: string; data: { message?: string | null }; idempotencyKey: string }> = [];
   sendProfile = async (kind: string, to: string, data: { message?: string | null }, idempotencyKey: string): Promise<void> => { this.profile.push({ kind, to, data, idempotencyKey }); };
+  notification: Array<{ to: string; title: string; body: string; link: string; idempotencyKey: string }> = [];
+  failNotification = false;
+  sendNotification = async (to: string, n: { title: string; body: string; link: string }, idempotencyKey: string): Promise<void> => {
+    if (this.failNotification) throw deliveryFailure("resend down");
+    this.notification.push({ to, ...n, idempotencyKey });
+  };
   sendOtp = async (to: string, code: string, verificationId: string): Promise<void> => {
     if (this.fail) throw deliveryFailure("resend down");
     this.sent.push({ to, code, verificationId });
+  };
+}
+
+/** Firebase Cloud Messaging: records pushes and reports the tokens listed in `dead` as unregistered. */
+class FakeFcm {
+  sent: Array<{ tokens: string[]; title: string; body: string; link: string }> = [];
+  dead = new Set<string>();
+  fail = false;
+  sendPush = async (tokens: string[], n: { title: string; body: string; link: string }): Promise<string[]> => {
+    if (this.fail) throw new Error("fcm down");
+    this.sent.push({ tokens, ...n });
+    return tokens.filter((t) => this.dead.has(t));
   };
 }
 
@@ -181,7 +199,7 @@ class FakeQueue {
   enqueue = async (name: string, data: Record<string, unknown>): Promise<void> => { this.jobs.push({ name, data }); };
 }
 
-export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), sms: new FakeSms(), r2: new FakeR2() };
+export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), fcm: new FakeFcm(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [], balances: new Map(), transactions: new Map(), receipts: new Map(), nativeReceived: new Map(), sentNative: [], sendFails: false, sendRefused: false });
@@ -189,7 +207,8 @@ export function resetFakes(): void {
   fakes.queue.jobs = [];
   Object.assign(fakes.gemini, { search: async () => null, embedFails: false, vector: unitVector(0), searchCalls: [], embedCalls: [] });
   Object.assign(fakes.cmc, { quotes: new Map(), calls: [], fail: false });
-  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], profile: [], fail: false });
+  Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], profile: [], notification: [], failNotification: false, fail: false });
+  Object.assign(fakes.fcm, { sent: [], dead: new Set<string>(), fail: false });
   fakes.r2.objects.clear();
   fakes.r2.signed = [];
   Object.assign(fakes.sms, { started: [], approveCode: "123456", fail: false, checkFail: false });

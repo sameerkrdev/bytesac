@@ -20,8 +20,14 @@ Decided (ADR-013): assets stay in the user's own wallets and every transaction i
 ## Basket updates
 Users receive manager version updates and can choose to participate or skip. No silent asset movement. Rebalance preview should show changes, costs and impact. Skips and customizations must be represented distinctly.
 
+**Implemented (Spec 9, ADR-015):** a holder of an open position sees "New version available" on the portfolio and a notification. **Review update** (`/portfolio/<position>/rebalance`) shows the version change, the manager's reason, the diff and current against target weights; **Create plan** previews sells, the network fee and its source, and buys (sized from what the sells actually return), then the usual signer; **Skip this version** changes nothing in the wallet. When nothing needs trading the version is recorded as "Already aligned". Drifted positions offer **Rebalance to target** or **Keep custom** (and **Revert custom**).
+
 ## Portfolio
 Display states such as aligned, rebalance available, drifted, customized, execution pending and execution failed as supported by the detailed domain state model. Show external activity and discrepancies accurately. Fix requires an explicit, understandable action and authorization.
 
+**Implemented (Spec 9):** each position shows one headline (operation in progress, needs repair, plan incomplete, new version available, drifted, custom allocation, aligned) with its action: Review update, Rebalance to target, Keep custom, Revert custom, Repair, Continue or View operation. Unspent sale proceeds appear as a "Cash (USDC)" row. **Repair** (`/portfolio/repair/<asset>`) handles a wallet that holds less than the baskets record: Buy back (one plan for the asset) or Sync (record the new reality across the baskets with no transaction).
+
 ## Notifications
 Support relevant investment, basket, rebalance, portfolio/drift and subscription notifications. Avoid claiming settlement or completion before verified state.
+
+**Implemented (Spec 9):** a header bell and `/notifications` inbox (unread count, mark read, links), email and browser push (Profile, notifications section; asks the browser for permission), gated by the existing preferences. Events: new version, drift, shortfall, incomplete plan, basket paused or resumed, retirement pending or retired, lead manager changed.

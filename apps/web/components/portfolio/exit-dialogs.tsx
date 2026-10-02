@@ -15,7 +15,7 @@ import { toDisplayError } from "@/lib/errors";
 
 type Position = Portfolio["positions"][number];
 
-const ErrorBox = ({ error }: { error: unknown }) => {
+export const ErrorBox = ({ error }: { error: unknown }) => {
   const e = toDisplayError(error);
   return <div role="alert" className="rounded-xl border border-danger/40 p-3 text-sm text-ivory"><p className="font-medium">{e.title}</p><p className="text-stone">{e.message}</p></div>;
 };

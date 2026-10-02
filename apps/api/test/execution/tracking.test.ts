@@ -25,8 +25,8 @@ async function seed(legSpecs: LegSpec[], over: { kind?: "invest" | "sell_to_usdc
   const user = await seedUser({ wallet: solanaTestWallet() });
   const positionId = over.holding ? await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: over.holding }]) : null;
   const [op] = await adminSql<{ id: string }[]>`
-    INSERT INTO app.operations (id, user_id, basket_id, position_id, kind, status, amount_usdc, slippage_bps, network_fee_usdc, version_id, idempotency_key, expires_at)
-    VALUES (gen_random_uuid(), ${user.userId}, ${basket.basketId}, ${positionId}, ${over.kind ?? "invest"}, 'IN_PROGRESS', 1000000000, 100, 182400, ${basket.versionId}, 'key-12345678', now() + interval '30 minutes') RETURNING id`;
+    INSERT INTO app.operations (id, user_id, basket_id, position_id, kind, status, amount_usdc, sell_percent, slippage_bps, network_fee_usdc, version_id, idempotency_key, expires_at)
+    VALUES (gen_random_uuid(), ${user.userId}, ${basket.basketId}, ${positionId}, ${over.kind ?? "invest"}, 'IN_PROGRESS', 1000000000, ${over.kind === "sell_to_usdc" ? 100 : null}, 100, 182400, ${basket.versionId}, 'key-12345678', now() + interval '30 minutes') RETURNING id`;
   const ids: string[] = [];
   for (const [n, l] of legSpecs.entries()) {
     const [leg] = await adminSql<{ id: string }[]>`

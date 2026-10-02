@@ -85,6 +85,13 @@
       "when": 1790862854501,
       "tag": "0011_positions_review_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790893910886,
+      "tag": "0012_rebalance",
+      "breakpoints": true
     }
   ]
 }

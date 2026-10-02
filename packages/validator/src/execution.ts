@@ -3,18 +3,19 @@ import { assetChainSchema } from "./assets";
 import { challengeResponseSchema } from "./auth";
 import { decimalStringSchema } from "./baskets";
 import { chainFamilySchema } from "./chains";
+import { positionExtrasSchema, repairSchema } from "./rebalance";
 
 export const LEG_STATES = ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"] as const;
 export const OPERATION_STATES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"] as const;
 export const LEG_KINDS = ["network_fee", "swap", "cross_chain"] as const;
 export const GAS_PAYERS = ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"] as const;
-export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former"] as const;
+export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former", "rebalance", "repair"] as const;
 export type LegState = (typeof LEG_STATES)[number];
 export type OperationState = (typeof OPERATION_STATES)[number];
 
-/** SUBMITTING is the claim taken before anything is sent: a refused send returns to PLANNED, a sent (or unknown) one is SUBMITTED. */
+/** PLANNED may fail without ever being sent (a rebalance buy left with no cash). SUBMITTING is the claim taken before anything is sent: a refused send returns to PLANNED, a sent (or unknown) one is SUBMITTED. */
 export const LEG_TRANSITIONS = {
-  PLANNED: ["SUBMITTING"], SUBMITTING: ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "FAILED", "UNKNOWN"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"],
+  PLANNED: ["SUBMITTING", "FAILED"], SUBMITTING: ["PLANNED", "SUBMITTED", "PENDING_CHAIN", "FAILED", "UNKNOWN"], SUBMITTED: ["PENDING_CHAIN", "FAILED", "UNKNOWN"],
   PENDING_CHAIN: ["SETTLED", "FAILED", "UNKNOWN"], UNKNOWN: ["SETTLED", "FAILED"], SETTLED: [], FAILED: [],
 } as const;
 export const OPERATION_TRANSITIONS = { PLANNED: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["COMPLETED", "PARTIAL", "FAILED"], PARTIAL: [], COMPLETED: [], FAILED: [], CANCELLED: [] } as const;
@@ -61,6 +62,10 @@ export const investRequestSchema = z.strictObject({ basketId: z.uuid(), amountUs
 export type InvestRequest = z.infer<typeof investRequestSchema>;
 export const sellRequestSchema = z.strictObject({ positionId: z.uuid(), percent: z.number().int().min(1).max(100), slippageBps: slippage, idempotencyKey });
 export type SellRequest = z.infer<typeof sellRequestSchema>;
+export const rebalanceRequestSchema = z.strictObject({ positionId: z.uuid(), target: z.enum(["latest", "applied"]), slippageBps: slippage, idempotencyKey });
+export type RebalanceRequest = z.infer<typeof rebalanceRequestSchema>;
+export const repairRequestSchema = z.strictObject({ deploymentId: z.uuid(), slippageBps: slippage, idempotencyKey });
+export type RepairRequest = z.infer<typeof repairRequestSchema>;
 
 /** Exactly one proof of submission: a signed Solana transaction, an EVM transaction hash, or a signed Bitcoin PSBT. */
 export const legSubmitSchema = z.strictObject({
@@ -135,7 +140,7 @@ export const operationSchema = z.object({
   id: z.uuid(),
   kind: z.enum(OPERATION_KINDS),
   status: z.enum(OPERATION_STATES),
-  basketId: z.uuid(),
+  basketId: z.uuid().nullable(),
   positionId: z.uuid().nullable(),
   amountUsdc: z.string().nullable(),
   sellPercent: z.number().int().nullable(),
@@ -146,6 +151,8 @@ export const operationSchema = z.object({
   legs: z.array(legSchema),
 });
 export type OperationView = z.infer<typeof operationSchema>;
+/** A rebalance plan, or "already aligned" (the version was recorded and no operation made). */
+export const rebalanceResponseSchema = z.union([operationSchema, z.strictObject({ aligned: z.literal(true) })]);
 
 export const holdingSchema = z.object({
   deploymentId: z.uuid(),
@@ -168,10 +175,12 @@ export const positionSchema = z.object({
   openedAt: z.iso.datetime({ offset: true }),
   closedAt: z.iso.datetime({ offset: true }).nullable(),
   holdings: z.array(holdingSchema),
-});
+}).extend(positionExtrasSchema.shape);
 
 export const portfolioSchema = z.object({
   positions: z.array(positionSchema),
+  /** One entry per short deployment (or basket cash): the buy-back / sync target. */
+  repairs: z.array(repairSchema),
   openOperations: z.array(operationSchema),
   /** The 20 most recent finished operations (completed, partial, failed, cancelled), newest first. */
   history: z.array(operationSchema),

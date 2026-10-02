@@ -119,3 +119,9 @@ export async function sendProfileEmail(kind: ProfileEmailKind, to: string, data:
   const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, ...PROFILE_EMAILS[kind](data) }, { idempotencyKey });
   if (error) logger.warn("profile email failed", { kind, errorName: error.name });
 }
+
+/** Emails an inbox notification (the same copy as the inbox: it never says a trade happened). `link` is a path in the web app. Failures only log. */
+export async function sendNotificationEmail(to: string, n: { title: string; body: string; link: string }, idempotencyKey: string): Promise<void> {
+  const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, subject: n.title, text: `${n.body}\n\n${env.AUTH_URI}${n.link}` }, { idempotencyKey });
+  if (error) logger.warn("notification email failed", { errorName: error.name });
+}

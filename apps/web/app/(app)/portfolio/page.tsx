@@ -17,14 +17,14 @@ export default function PortfolioPage() {
       {p && (
         <>
           {p.openOperations.length > 0 && (
-            <section aria-label="Open operations" className="space-y-3">
+            <section id="open-operations" aria-label="Open operations" className="space-y-3">
               <h2 className="font-display text-xl font-semibold text-ivory">Open operations</h2>
               <ul className="space-y-3">{p.openOperations.map((o) => <OperationDetail key={o.id} operation={o} open />)}</ul>
             </section>
           )}
           <section aria-label="Positions" className="space-y-3">
             <h2 className="font-display text-xl font-semibold text-ivory">Positions</h2>
-            {p.positions.length === 0 ? <p className="text-sm text-stone">You have no open positions. Find a basket to invest in.</p> : <PositionsList positions={p.positions} />}
+            {p.positions.length === 0 ? <p className="text-sm text-stone">You have no open positions. Find a basket to invest in.</p> : <PositionsList positions={p.positions} repairs={p.repairs} />}
           </section>
           {p.formerPositions.length > 0 && (
             <section aria-label="Former positions" className="space-y-3">

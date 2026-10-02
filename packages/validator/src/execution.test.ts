@@ -55,7 +55,7 @@ describe("state machines", () => {
     for (const s of OPERATION_STATES) expect(OPERATION_TRANSITIONS).toHaveProperty(s);
     expect(LEG_TRANSITIONS.SETTLED).toEqual([]);
     expect(LEG_TRANSITIONS.UNKNOWN).toEqual(["SETTLED", "FAILED"]);
-    expect(LEG_TRANSITIONS.PLANNED).toEqual(["SUBMITTING"]); // the claim comes before any send
+    expect(LEG_TRANSITIONS.PLANNED).toEqual(["SUBMITTING", "FAILED"]); // the claim comes before any send; a planned leg can only fail unsent
     expect(LEG_TRANSITIONS.SUBMITTING).toContain("PLANNED"); // a refused send releases it
     expect(OPERATION_TRANSITIONS.PLANNED).toEqual(["IN_PROGRESS", "CANCELLED"]);
     expect(OPERATION_TRANSITIONS.PARTIAL).toEqual([]);

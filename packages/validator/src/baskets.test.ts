@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ASSIGNMENT_FLAGS, BASKET_ISSUE_CODES, BASKET_STATUSES, BASKET_TRANSITIONS, BASKET_VERSION_STATUSES, BASKET_VERSION_TRANSITIONS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS,
-  basketFeesSchema, canonicalJson, createAssignmentRequestSchema, decimalStringSchema, diffBasketVersions, feeSchema, feeWithinCap, maxFixedFeeUsdc, saveBasketDraftRequestSchema,
+  basketFeesSchema, basketRebalanceSchema, canonicalJson, createAssignmentRequestSchema, decimalStringSchema, diffBasketVersions, feeSchema, feeWithinCap, maxFixedFeeUsdc, saveBasketDraftRequestSchema,
   validateBasketVersion, type BasketIssueCode, type BasketValidationInput,
 } from "./index";
 
@@ -150,5 +150,17 @@ describe("canonicalJson and diffBasketVersions", () => {
     };
     expect(diffBasketVersions(prev, next)).toMatchObject({ added: [], constraints: true, rebalance: true, fees: true, minimums: true });
     expect(diffBasketVersions(null, next)).toMatchObject({ added: [{ instrumentId: "a", weightBps: 10_000 }], removed: [], constraints: false });
+  });
+});
+
+describe("basketRebalanceSchema thresholds", () => {
+  it("bounds minTradeBps 10-1000 and minTradeUsdc 1-100", () => {
+    const ok = (o: object) => basketRebalanceSchema.safeParse({ reviewFrequency: "none", ...o }).success;
+    expect(ok({ minTradeBps: 10, minTradeUsdc: "1" })).toBe(true);
+    expect(ok({ minTradeBps: 1000, minTradeUsdc: "100" })).toBe(true);
+    expect(ok({ minTradeBps: 9 })).toBe(false);
+    expect(ok({ minTradeBps: 1001 })).toBe(false);
+    expect(ok({ minTradeUsdc: "0.99" })).toBe(false);
+    expect(ok({ minTradeUsdc: "100.01" })).toBe(false);
   });
 });

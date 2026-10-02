@@ -9,6 +9,8 @@ describe("next.config headers", () => {
     expect(h["Permissions-Policy"]).toBe("camera=(), microphone=(), geolocation=(), payment=()");
     expect(h["Content-Security-Policy-Report-Only"]).toContain("default-src 'self'");
     expect(h["Content-Security-Policy-Report-Only"]).toContain("frame-ancestors 'none'");
+    expect(h["Content-Security-Policy-Report-Only"]).toContain("script-src 'self' 'unsafe-inline' https://www.gstatic.com");
+    expect(h["Content-Security-Policy-Report-Only"]).toContain("https://fcmregistrations.googleapis.com");
     expect(h["Content-Security-Policy"]).toBeUndefined();
   });
 });

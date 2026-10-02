@@ -4,6 +4,7 @@ import { ApiError } from "@repo/api-client";
 import { describeError } from "@repo/app-core";
 import type { NotificationPreferences } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PushToggle } from "@/components/notifications/push-toggle";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
@@ -44,6 +45,7 @@ export function NotificationsSection() {
           ))}
         </ul>
       )}
+      <PushToggle />
       {m.isError && <p role="alert" className="text-sm text-danger">{describeError(m.error instanceof ApiError ? m.error.code : "INTERNAL").title}</p>}
       <p className="text-xs text-stone">Security and account notices are always sent.</p>
     </section>

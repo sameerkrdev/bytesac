@@ -2,7 +2,10 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { Router } from "express";
 import { contacts, db, investmentWallets, sessions, userPermissions, users } from "@repo/db";
-import { bitcoinChallengeRequestSchema, bitcoinVerifySchema, familyOf, managerProfileRequestSchema, z, type BitcoinChallengeRequest, type BitcoinVerify, type ManagerProfileRequest, type MeResponse, type SessionsResponse } from "@repo/validator";
+import {
+  bitcoinChallengeRequestSchema, bitcoinVerifySchema, familyOf, listNotificationsQuerySchema, managerProfileRequestSchema, markReadSchema, pushTokenSchema, z,
+  type BitcoinChallengeRequest, type BitcoinVerify, type ManagerProfileRequest, type MeResponse, type SessionsResponse,
+} from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
@@ -12,6 +15,7 @@ import { writeAudit } from "../services/audit";
 import { contactView } from "../services/contacts";
 import { activeRoles } from "../services/platform-roles";
 import { listMyInvitations } from "../services/members";
+import { listNotifications, markRead, registerPushToken, revokePushToken } from "../services/notifications";
 import { getOwnProfile, saveOwnProfile, setOwnProfilePublished } from "../services/manager-profiles";
 import { listMyOrganizations } from "../services/organizations";
 import { listActiveSessions, revokeSession } from "../services/sessions";
@@ -88,6 +92,29 @@ meRouter.delete("/sessions/:id", validate({ params: z.object({ id: z.uuid() }) }
       await writeAudit(tx, { actorType: "user", actorUserId: req.auth!.userId, action: "session.revoked", entityType: "session", entityId: id, requestId: req.ctx.requestId, sessionId: req.auth!.sessionId, metadata: { reason: "user_revoked" } });
     }
   });
+  res.status(204).end();
+});
+
+meRouter.get("/notifications", async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
+  res.json(await listNotifications(req.auth!.userId, listNotificationsQuerySchema.parse(req.query)));
+});
+
+meRouter.post("/notifications/read", validate({ body: markReadSchema }), async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
+  await markRead(req.auth!.userId, req.body as z.infer<typeof markReadSchema>);
+  res.status(204).end();
+});
+
+meRouter.post("/push-tokens", validate({ body: pushTokenSchema }), async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
+  await registerPushToken(req.auth!.userId, req.body as z.infer<typeof pushTokenSchema>);
+  res.status(204).end();
+});
+
+meRouter.post("/push-tokens/revoke", validate({ body: pushTokenSchema.pick({ token: true }) }), async (req, res) => {
+  await consume(limits.notificationsUser, req.auth!.userId);
+  await revokePushToken(req.auth!.userId, (req.body as { token: string }).token);
   res.status(204).end();
 });
 

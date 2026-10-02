@@ -3,7 +3,7 @@
 import { ApiError, type ApiClient } from "@repo/api-client";
 import { BASKET_CATEGORY_LABEL, BASKET_SECTION_LABEL, BASKET_STATUS_LABEL, BASKET_ISSUE_LABEL, BASKET_VERSION_STATUS_LABEL } from "@repo/app-core";
 import {
-  BASKET_SECTIONS, basketCategorySchema, decimalStringSchema, validateBasketVersion, type BasketDetail, type BasketSection, type BasketValidation, type BasketVersionView, type SaveBasketDraftRequest,
+  BASKET_SECTIONS, basketCategorySchema, basketRebalanceSchema, decimalStringSchema, validateBasketVersion, type BasketDetail, type BasketSection, type BasketValidation, type BasketVersionView, type SaveBasketDraftRequest,
 } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { Adoption } from "./adoption";
 import { AllocationEditor, PercentInput } from "./allocation-editor";
 import { AssignmentsPanel } from "./assignments-panel";
 import { BasketView, type AllocationRow } from "./basket-view";
@@ -28,12 +29,30 @@ import { DiffSummary, VersionHistory } from "./version-history";
 
 type Client = Pick<ApiClient,
   "getBasket" | "saveBasketDraft" | "previewBasket" | "getBasketVersionDiff" | "listBasketVersions" | "submitBasket" | "withdrawBasket" | "publishBasket" | "createBasketVersion" |
-  "pauseBasket" | "resumeBasket" | "requestBasketRetirement" | "listAssets" | "listOrganizationMembers" | "addBasketAssignment" | "updateBasketAssignment" | "endBasketAssignment">;
+  "basketAdoption" | "pauseBasket" | "resumeBasket" | "requestBasketRetirement" | "listAssets" | "listOrganizationMembers" | "addBasketAssignment" | "updateBasketAssignment" | "endBasketAssignment">;
 
 const EDITABLE = ["draft", "changes_required"];
 const FREQUENCY = { none: "No scheduled review", monthly: "Monthly", quarterly: "Quarterly" } as const;
 
 const rows = (v: BasketVersionView): AllocationRow[] => v.assets.map((a) => ({ ...a, key: a.instrumentId }));
+
+/** Optional number field checked with the same schema the server uses. An invalid entry is flagged and not sent on. */
+function Threshold({ id, label, help, error, value, disabled, check, onChange }: {
+  id: string; label: string; help: string; error: string; value: number | string | undefined; disabled: boolean;
+  check(text: string): { success: boolean }; onChange(v: string | undefined): void;
+}) {
+  const [text, setText] = useState(value === undefined ? "" : String(value));
+  const bad = text.trim() !== "" && !check(text.trim()).success;
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs font-medium text-ivory">{label} (optional)</Label>
+      <Input id={id} inputMode="decimal" value={text} disabled={disabled} aria-invalid={bad} className="min-h-11 w-36 bg-space text-ivory"
+        onChange={(e) => { setText(e.target.value); const t = e.target.value.trim(); if (t === "") onChange(undefined); else if (check(t).success) onChange(t); }} />
+      <p className="text-xs text-stone">{help}</p>
+      {bad && <p role="alert" className="text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
 
 function TextField({ id, label, value, max, multiline, required, disabled, onChange }: { id: string; label: string; value: string | null; max: number; multiline?: boolean; required?: boolean; disabled: boolean; onChange(v: string): void }) {
   return (
@@ -123,6 +142,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
   );
   const setConstraint = (k: "maxWeightPerAssetBps" | "maxStablecoinBps" | "maxRwaBps", value: number | null) =>
     set({ constraints: Object.fromEntries(Object.entries({ ...d.constraints, [k]: value }).filter(([, x]) => x !== null)) });
+  const setRebalance = (patch: Partial<BasketVersionView["rebalance"]>) => set({ rebalance: Object.fromEntries(Object.entries({ ...d.rebalance, ...patch }).filter(([, x]) => x !== undefined)) as BasketVersionView["rebalance"] });
   const banner =
     status === "PAUSED" ? (detail.pauseKind === "platform" ? `Paused by Bytesac${detail.pauseReason ? `: ${detail.pauseReason}` : ""}. Only Bytesac can resume it.` : `Paused by your team${detail.pauseReason ? `: ${detail.pauseReason}` : ""}.`)
     : status === "REASSIGNMENT_REQUIRED" ? "This basket has no lead manager. Add a lead under Managers; the basket continues once Bytesac approves the new lead."
@@ -179,7 +199,11 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
           </Select>
         </div>
         <PercentInput id="r-drift" label="Drift threshold (optional)" optional value={d.rebalance.driftThresholdBps ?? null} disabled={dis}
-          onChange={(x) => set({ rebalance: x === null ? { reviewFrequency: d.rebalance.reviewFrequency } : { ...d.rebalance, driftThresholdBps: x } })} />
+          onChange={(x) => setRebalance({ driftThresholdBps: x ?? undefined })} />
+        <Threshold id="r-min-bps" label="Minimum trade (bps)" help="Assets whose weight is closer to target than this are left alone in a rebalance. Whole number, 10 to 1000. Default 50." error="Enter a whole number from 10 to 1000."
+          value={d.rebalance.minTradeBps} disabled={dis} check={(t) => basketRebalanceSchema.shape.minTradeBps.safeParse(/^\d+$/.test(t) ? Number(t) : NaN)} onChange={(x) => setRebalance({ minTradeBps: x === undefined ? undefined : Number(x) })} />
+        <Threshold id="r-min-usdc" label="Minimum trade (USDC)" help="Trades smaller than this are skipped in a rebalance. Between 1 and 100 USDC. Default 5." error="Enter an amount between 1 and 100 USDC, with up to 6 decimals."
+          value={d.rebalance.minTradeUsdc} disabled={dis} check={(t) => basketRebalanceSchema.shape.minTradeUsdc.safeParse(t)} onChange={(x) => setRebalance({ minTradeUsdc: x })} />
         <p className="rounded-xl border border-border-dark p-4 text-sm text-stone">These are disclosures, not automatic rules. A rebalance is always a new version you propose and Bytesac reviews. Investors always give explicit consent before a rebalance touches their holdings.</p>
       </div>
     ),
@@ -226,6 +250,12 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
             {dirty ? <p className="text-sm text-stone">Save your changes to refresh the preview.</p> : preview.isError ? failure(preview.error) : preview.data ? (
               <div className="rounded-xl border border-dashed border-border-dark p-4"><BasketView content={preview.data.version} allocation={rows(preview.data.version)} disclosures={preview.data.version.disclosures} /></div>
             ) : <p role="status" className="text-sm text-muted-foreground">Loading…</p>}
+          </section>
+        )}
+        {detail.publishedVersion && (
+          <section aria-label="Adoption" className="space-y-2">
+            <h3 className="text-sm font-medium text-ivory">Adoption</h3>
+            <Adoption bid={bid} client={client} />
           </section>
         )}
         <section aria-label="Versions" className="space-y-2">

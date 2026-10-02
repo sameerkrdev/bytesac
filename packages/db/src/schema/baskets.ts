@@ -75,7 +75,7 @@ export const basketVersions = app.table(
     conflictsOfInterest: text("conflicts_of_interest"),
     /** Shapes are the zod schemas in @repo/validator (basketConstraintsSchema, basketRebalanceSchema, basketFeesSchema). */
     constraints: jsonb("constraints").$type<Record<string, number>>().notNull().default({}),
-    rebalance: jsonb("rebalance").$type<{ reviewFrequency: "none" | "monthly" | "quarterly"; driftThresholdBps?: number }>().notNull().default({ reviewFrequency: "none" }),
+    rebalance: jsonb("rebalance").$type<{ reviewFrequency: "none" | "monthly" | "quarterly"; driftThresholdBps?: number; minTradeBps?: number; minTradeUsdc?: string }>().notNull().default({ reviewFrequency: "none" }),
     fees: jsonb("fees").$type<Record<string, unknown>>().notNull(),
     /** Decimal string in JSON (numeric round-trips as text). */
     minimumInvestmentUsdc: numeric("minimum_investment_usdc"),
