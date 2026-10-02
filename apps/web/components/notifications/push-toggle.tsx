@@ -13,6 +13,20 @@ const ON = "bytesac.push";
 const remembered = () => { try { return localStorage.getItem(ON) === "1"; } catch { return false; } };
 const remember = (on: boolean) => { try { if (on) localStorage.setItem(ON, "1"); else localStorage.removeItem(ON); } catch { /* the toggle still works for this visit */ } };
 
+/** Sign-out: stop this browser notifying the previous user. Best effort, never throws. */
+export async function revokePushOnLogout() {
+  try {
+    if (!remembered()) return;
+    const messaging = await getPushMessaging();
+    if (!messaging) return;
+    const serviceWorkerRegistration = await navigator.serviceWorker.register(serviceWorkerUrl);
+    const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration });
+    await api.revokePushToken(token).catch(() => undefined);
+    await deleteToken(messaging);
+    remember(false);
+  } catch { /* logout must never be blocked */ }
+}
+
 /** Browser push on this device. Hidden when the browser cannot do it or Firebase is not configured. */
 export function PushToggle() {
   const [messaging, setMessaging] = useState<Messaging | null>(null);

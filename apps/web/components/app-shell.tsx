@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/brand/logo";
 import { NotificationsBell } from "@/components/notifications/bell";
+import { revokePushOnLogout } from "@/components/notifications/push-toggle";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
           </ul>
           <div className="ml-auto"><NotificationsBell /></div>
-          <Button variant="ghost" className="min-h-11" onClick={async () => { await api.logout().catch(() => undefined); queryClient.clear(); await wallet.disconnect().catch(() => undefined); window.location.replace("/sign-in"); }}>
+          <Button variant="ghost" className="min-h-11" onClick={async () => { await revokePushOnLogout(); await api.logout().catch(() => undefined); queryClient.clear(); await wallet.disconnect().catch(() => undefined); window.location.replace("/sign-in"); }}>
             Log out
           </Button>
         </nav>

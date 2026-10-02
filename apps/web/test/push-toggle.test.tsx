@@ -11,7 +11,7 @@ const revokePushToken = vi.fn().mockResolvedValue(undefined);
 vi.mock("firebase/messaging", () => ({ getToken: (...a: unknown[]) => getToken(...a), deleteToken: (...a: unknown[]) => deleteToken(...a) }));
 vi.mock("@/lib/firebase", () => ({ getPushMessaging: () => getPushMessaging(), serviceWorkerUrl: "/firebase-messaging-sw.js?x=1", vapidKey: "vapid" }));
 vi.mock("@/lib/api", () => ({ api: { registerPushToken: (b: unknown) => registerPushToken(b), revokePushToken: (t: string) => revokePushToken(t) } }));
-import { PushToggle } from "@/components/notifications/push-toggle";
+import { PushToggle, revokePushOnLogout } from "@/components/notifications/push-toggle";
 
 const messaging = { app: "m" };
 const registration = { scope: "/" };
@@ -24,6 +24,23 @@ beforeEach(() => {
   Object.defineProperty(globalThis, "Notification", { configurable: true, value: { permission: "default", requestPermission } });
   Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: vi.fn().mockResolvedValue(registration) } });
   getToken.mockResolvedValue("tok-1");
+});
+
+describe("revokePushOnLogout", () => {
+  it("revokes and deletes the remembered token, and never throws when revoke fails", async () => {
+    getPushMessaging.mockResolvedValue(messaging);
+    localStorage.setItem("bytesac.push", "1");
+    revokePushToken.mockRejectedValueOnce(new Error("offline"));
+    await expect(revokePushOnLogout()).resolves.toBeUndefined();
+    expect(revokePushToken).toHaveBeenCalledWith("tok-1");
+    expect(deleteToken).toHaveBeenCalledWith(messaging);
+    expect(localStorage.getItem("bytesac.push")).toBeNull();
+  });
+
+  it("does nothing when this browser never registered", async () => {
+    await revokePushOnLogout();
+    expect(revokePushToken).not.toHaveBeenCalled();
+  });
 });
 
 describe("PushToggle", () => {
