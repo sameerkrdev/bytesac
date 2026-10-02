@@ -21,7 +21,7 @@ Close the risks the LI.FI FAQ revealed in our flow and add safety and transparen
 
 | # | Topic | Decision |
 |---|---|---|
-| A1 | Plan-time estimates | Use LI.FI `POST /v1/advanced/routes` (wallet optional, no balance check) for planning; `/v1/quote` only at execution (unchanged). |
+| A1 | Plan-time estimates | Use LI.FI `POST /v1/advanced/routes` (wallet optional, no balance check) where the wallet does not hold the funds yet (rebalance buys, balance-refused quotes); `/v1/quote` elsewhere and always at execution. |
 | A2 | No-SOL refusal | Detect LI.FI's refusal for Solana wallets without SOL and return 409 `SOL_REQUIRED` with guidance; no platform SOL drop. Real-key check before launch. |
 | A3 | Contract destinations | `eth_getCode` on the destination EVM address; when it has code, deny Mayan bridges. |
 | A4 | Destination swap failed | A recovery leg inside the same operation (user-signed swap from the delivered token to the target asset), ledgered as the original leg; no new network fee. A separate `recover` operation is a future plan. |
@@ -49,7 +49,7 @@ B1 (platform fee through LI.FI's integrator `fee` parameter, collected in each l
 
 ## 5. Planners
 
-Invest, rebalance, repair and sell planning call `estimate` instead of `quote`; execution (`quoteLeg`) keeps calling `quote`. The plan stores the estimate's `toAmountMin` as the plan minimum (D-073 price guard unchanged), `routeFees`, `priceImpact` and tool summary in `routeSummary`. Rebalance buy legs are estimated for their planned USDC amount with no balance requirement.
+Planners keep calling `quote` when the wallet already holds the source funds (invest, repair, sells, rebalance sells): the provider-built Solana transaction is what bounds the platform fee payer's exposure (D-072). Rebalance buy legs (funded by proceeds that arrive later) and any plan quote LI.FI refuses for balance (error 1001) use `estimate` instead, with a conservative Solana sponsor exposure of signature fee + `MAX_PRIORITY_LAMPORTS` + one `TOKEN_ACCOUNT_RENT_LAMPORTS`. Execution (`quoteLeg`) always calls `quote` (unchanged). The plan stores `toAmountMin` as the plan minimum (D-073 price guard unchanged), `routeFees`, `priceImpact` and the tool summary in `routeSummary`.
 
 ## 6. Recovery leg (A4)
 
