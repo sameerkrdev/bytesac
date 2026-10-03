@@ -10,6 +10,11 @@ import { releaseUnspentGas } from "./gas.service";
 import { notify } from "@/modules/notifications/notifications.service";
 import { orgDisplayName } from "@/modules/members/members.service";
 import { getPrices } from "@/modules/assets/pricing.service";
+import type { AssetChain } from "@repo/validator";
+import { bitcoinBalance } from "@/providers/bitcoin";
+import { evmBalance } from "@/providers/evm-rpc";
+import { solanaBalance } from "@/providers/solana-tx";
+import { type Addresses, addressOn } from "@/modules/auth/wallets.service";
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
 
@@ -233,4 +238,10 @@ export async function leavePosition(ctx: OpCtx, positionId: string, action: "pos
     await tx.update(basketPositions).set({ status: "CLOSED", closedAt: sql`now()` }).where(eq(basketPositions.id, positionId));
     await writeAudit(tx, { ...auditBase(ctx, positionId), action, entityType: "basket_position", entityId: positionId, metadata: { basketId: p.basketId } });
   });
+}
+
+/** The user's wallet balance in base units: native when `token` is null. */
+export async function walletBalance(addresses: Addresses, chain: AssetChain, token: string | null): Promise<bigint> {
+  const owner = addressOn(addresses, chain);
+  return chain === "solana" ? solanaBalance(owner, token) : chain === "bitcoin" ? bitcoinBalance(owner) : evmBalance(chain, owner, token);
 }

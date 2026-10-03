@@ -5,9 +5,6 @@ import { db, investmentWallets, notificationPreferences, users, walletAddresses,
 import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type ChainFamily, type VerificationMethod } from "@repo/validator";
 import { isAddress } from "viem";
 import { Address } from "@scure/btc-signer";
-import { bitcoinBalance } from "@/providers/bitcoin";
-import { evmBalance } from "@/providers/evm-rpc";
-import { solanaBalance } from "@/providers/solana-tx";
 
 export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
 
@@ -88,12 +85,6 @@ export async function userAddresses(db: DbOrTx, userId: string): Promise<Address
   const out: Addresses = {};
   for (const r of rows) out[r.family] ??= r.address;
   return out;
-}
-
-/** The user's wallet balance in base units: native when `token` is null. */
-export async function walletBalance(addresses: Addresses, chain: AssetChain, token: string | null): Promise<bigint> {
-  const owner = addressOn(addresses, chain);
-  return chain === "solana" ? solanaBalance(owner, token) : chain === "bitcoin" ? bitcoinBalance(owner) : evmBalance(chain, owner, token);
 }
 
 export function addressOn(addresses: Addresses, chain: AssetChain): string {

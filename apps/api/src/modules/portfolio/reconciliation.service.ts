@@ -4,7 +4,8 @@ import { logger } from "@repo/logger";
 import { DRIFT_THRESHOLD_BPS_DEFAULT, USDC_SOLANA_MINT } from "@repo/validator";
 import { enqueue } from "@/config/queues";
 import { activeCustom, inFlightAssets } from "@/modules/operations/operations.service";
-import { userAddresses, walletBalance } from "@/modules/auth/wallets.service";
+import { userAddresses } from "@/modules/auth/wallets.service";
+import { walletBalance } from "@/modules/operations/operations.service";
 import { notify } from "@/modules/notifications/notifications.service";
 import { valuePosition } from "./valuation.service";
 

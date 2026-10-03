@@ -16,7 +16,8 @@ import { planFees, type PlannedFee } from "@/modules/fees/fees.service";
 import { getPrices, priceToMicro } from "@/modules/assets/pricing.service";
 import { routeDenyList } from "@/modules/routing/routing.service";
 import { type OpCtx, type Leg, PLAN_TTL, SOLANA_FEE_TRANSFER_LAMPORTS, FEE_LEG_GAS_USD, operationView, getOperation, auditBase, freeUsdcMicro, cancelIfExpired, usdcPrice } from "./operations.service";
-import { type Addresses, userAddresses, walletBalance, addressOn } from "@/modules/auth/wallets.service";
+import { type Addresses, userAddresses, addressOn } from "@/modules/auth/wallets.service";
+import { walletBalance } from "./operations.service";
 
 export interface LegDraft {
   kind: Leg["kind"]; fromChain: AssetChain; fromDeploymentId: string | null; toChain: AssetChain; toDeploymentId: string | null; amountIn: bigint; minOut: bigint | null;
