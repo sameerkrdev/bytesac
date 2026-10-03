@@ -5,10 +5,12 @@ import { ETH, SOL, emptyDiff } from "./org-fixtures";
 
 const permanentRedirect = vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT ${path}`); });
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, permanentRedirect: (p: string) => permanentRedirect(p) }));
+const session = { current: null as string | null };
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => (session.current ? { value: session.current } : undefined) }) }));
 vi.mock("@/components/invest/invest-button", () => ({ InvestButton: (p: { slug: string; minimumUsdc: string | null }) => <span>invest:{p.slug}:{p.minimumUsdc}</span> }));
 import PublicBasketPage from "@/app/baskets/[slug]/page";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); session.current = null; });
 const T = "2026-09-30T00:00:00.000Z";
 const serve = (body: unknown, status = 200) => vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status })));
 
@@ -93,6 +95,14 @@ describe("Public basket page", () => {
     serve({ redirectTo: "new-slug" });
     await expect(page("old-slug")).rejects.toThrow("NEXT_REDIRECT /baskets/new-slug");
     expect(permanentRedirect).toHaveBeenCalledWith("/baskets/new-slug");
+  });
+
+  it("forwards the session so the API can say which assets the viewer may buy, and shows the notice", async () => {
+    session.current = "tok";
+    serve(detail({ eligibility: { requirements: true, assets: [{ instrumentId: SOL, outcome: "RESTRICTED", reason: "RULE" }] } }));
+    await page();
+    expect(vi.mocked(fetch).mock.calls[0]![1]!.headers).toMatchObject({ Cookie: expect.stringContaining("tok") });
+    expect(screen.getByText("Solana (SOL): Not available in your region / for your investor status")).toBeInTheDocument();
   });
 
   it("404s an unknown slug", async () => {

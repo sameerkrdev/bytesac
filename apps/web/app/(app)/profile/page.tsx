@@ -1,6 +1,7 @@
 "use client";
 import { BitcoinLink } from "@/components/profile/bitcoin-link";
 import { ContactsSection } from "@/components/profile/contacts-section";
+import { EligibilitySection } from "@/components/profile/eligibility-section";
 import { ManagerProfileEditor } from "@/components/profile/manager-profile-editor";
 import { NotificationsSection } from "@/components/profile/notifications-section";
 import { SessionsSection } from "@/components/profile/sessions-section";
@@ -16,6 +17,7 @@ export default function ProfilePage() {
       <WalletSection me={me} />
       <BitcoinLink me={me} />
       <ContactsSection me={me} />
+      <EligibilitySection />
       <ManagerProfileEditor />
       <NotificationsSection />
       <SessionsSection />

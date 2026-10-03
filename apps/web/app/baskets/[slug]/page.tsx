@@ -1,9 +1,11 @@
 import { formatBps } from "@repo/app-core/format";
 import { BASKET_STATUS_LABEL, SECTOR_LABEL } from "@repo/app-core/basket-status";
-import { publicBasketResponseSchema, type BasketStatus } from "@repo/validator";
+import { SESSION_COOKIE, publicBasketResponseSchema, type BasketStatus } from "@repo/validator";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound, permanentRedirect } from "next/navigation";
+import { EligibilityNotices } from "@/components/eligibility/notices";
 import { InvestButton } from "@/components/invest/invest-button";
 import { PerformanceChart } from "@/components/baskets/performance-chart";
 import { BasketView } from "@/components/baskets/basket-view";
@@ -21,8 +23,10 @@ const NOTICE: Partial<Record<BasketStatus, string>> = {
 
 export default async function PublicBasketPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  // The session (when there is one) lets the API say which assets this viewer may buy.
+  const session = (await cookies()).get(SESSION_COOKIE);
   const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/public/baskets/${encodeURIComponent(slug)}`, {
-    headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(5000),
+    headers: { Accept: "application/json", ...(session ? { Cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.value)}` } : {}) }, cache: "no-store", signal: AbortSignal.timeout(5000),
   });
   if (res.status === 404) notFound();
   if (!res.ok) throw new Error(`GET public basket failed: ${res.status}`);
@@ -43,6 +47,7 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
       </div>
       {notice && <p role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">{notice}</p>}
       {b.hasAssetWarning && <p role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">One or more assets in this basket were paused or deprecated in the registry after publication.</p>}
+      <EligibilityNotices eligibility={b.eligibility} names={names} />
       <InvestButton slug={slug} name={b.version.name} minimumUsdc={b.version.minimumInvestmentUsdc} incrementUsdc={b.version.minimumIncrementUsdc} />
 
       <PerformanceChart performance={b.performance} metrics={b.metrics} label={b.label} />
