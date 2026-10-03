@@ -62,6 +62,17 @@ User request: read six LI.FI FAQ pages; list changes/improvements → **"apply a
 | 5 | RWA pricing | A market price required, NAV display only (rec.) · B NAV fallback · C LI.FI `priceUSD` fallback | **A** (later: "also add question 5 into future plan") | As A; B and C → future plan |
 | 6 | Permissioned tokens | A permissionless only (rec.) · B ops-recorded allowlists · C on-chain allowlist checks | **A, add this into the future plan** | As A; B and C → future plan |
 
+## Spec 12 — Launch hardening (2026-10-03)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Scope | A must-fix + money/ops + small functional bugs (rec.) · B must-fix + money/ops · C all of OPEN-ITEMS §7 | **A** | As A; code debt → Spec 13, CI → Spec 16, UI → Spec 15 |
+| 2 | Server-side price-impact backstop (asked to "explain again in simpler words") | A own check with route fees removed (rec.) · B own check with fees counted · C keep deferring | **A** | Fee-excluded check, > 5% refused, skipped under $10 |
+| 3 | Fully sold positions | A auto-close when everything is 0 (rec.) · B "Close position" button · C leave | **both A and B** | Auto-close + dust (< $1) close button |
+| 4 | Stuck recovery blocks the user | A auto-stop after 7 days (rec.) · B allow a second operation · C reminder only | **A, add the issue to future plans for a deeper fix** | Auto-stop; deeper fix in FUTURE-PLANS |
+| 5 | Rebalance blocked by a non-investable held asset | A only bought assets must be investable (rec.) · B keep rule · C A + ops alert | **C, add the whole issue to future plans for a deeper fix** | Bought-only rule + ops alert; disposition flow in FUTURE-PLANS |
+
+
 ---
 
 ## Roadmap decisions
