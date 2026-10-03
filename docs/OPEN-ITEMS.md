@@ -126,6 +126,11 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
 - [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
 
+**Spec 15** (basic UI)
+- [ ] `apps/mobile/src/lib/appkit.tsx` WalletConnect metadata hardcodes `https://bytesac.com` — set the confirmed production origin (and `EXPO_PUBLIC_WEB_URL`) before release.
+- [ ] Mobile multi-leg tests use already-SETTLED legs; add a test with an intermediate SUBMITTED leg.
+- [ ] Review Minors left: raw SDK text shown for INTERNAL errors (needs copy), two cosmetic items (mobile has no warning tone).
+
 **Spec 14** (integration audit, deferred findings; details in `docs/engineering/INTEGRATION-AUDIT.md`)
 - [ ] Alchemy Bitcoin: buy the UTXO add-on on the key, then verify `/address`, `/tx` and `/sendtx/` shapes (without it, Core JSON-RPC `getrawtransaction`/`sendrawtransaction` could serve tx lookup and broadcast; balance still needs the add-on).
 - [ ] `broadcastBitcoin` maps every 4xx to `BROADCAST_REJECTED` (the claim is released as "nothing sent"), false for an already-known transaction; classify `/sendtx/` errors (already known, rejected, auth, rate limit) once the body is known.
