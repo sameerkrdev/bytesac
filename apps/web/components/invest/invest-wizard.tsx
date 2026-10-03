@@ -1,5 +1,6 @@
 "use client";
 
+import { investAmountProblem } from "@repo/app-core";
 import { SLIPPAGE_DEFAULT_BPS, SLIPPAGE_MAX_BPS, type OperationView } from "@repo/validator";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -14,17 +15,6 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 
-const micro = (v: string) => { const [w, f = ""] = v.split("."); return BigInt(w!) * 1_000_000n + BigInt(f.padEnd(6, "0")); };
-
-/** Why the amount can't be planned, or null. The server checks the same rules and the wallet balance. */
-function amountProblem(amount: string, minimum: string | null, increment: string | null): string | null {
-  if (!/^\d{1,12}(\.\d{1,6})?$/.test(amount)) return "Enter an amount in USDC, with up to 6 decimals.";
-  const a = micro(amount);
-  if (minimum && a < micro(minimum)) return `The minimum is ${minimum} USDC.`;
-  if (increment && micro(increment) > 0n && a % micro(increment) !== 0n) return `The amount must be a multiple of ${increment} USDC.`;
-  return a > 0n ? null : "Enter an amount above zero.";
-}
-
 /** Amount, slippage, preview, then signing leg by leg. */
 export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open, onOpenChange }: {
   basketId: string; name: string; minimumUsdc: string | null; incrementUsdc: string | null; open: boolean; onOpenChange(open: boolean): void;
@@ -38,7 +28,7 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
   const [signing, setSigning] = useState(false);
 
   const bps = Math.round(Number(slippage) * 100);
-  const problem = amountProblem(amount, minimumUsdc, incrementUsdc);
+  const problem = investAmountProblem(amount, minimumUsdc, incrementUsdc);
   const slippageProblem = Number.isFinite(bps) && bps >= 1 && bps <= SLIPPAGE_MAX_BPS ? null : `Slippage must be between 0.01% and ${SLIPPAGE_MAX_BPS / 100}%.`;
   const preview = useMutation({ mutationFn: () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, idempotencyKey: key }), onSuccess: setPlan });
   const discard = useMutation({ mutationFn: (id: string) => api.cancelOperation(id), onSettled: () => setPlan(null) });

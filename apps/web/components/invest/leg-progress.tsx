@@ -1,11 +1,13 @@
 "use client";
 
 import { ApiError } from "@repo/api-client";
-import { explorerTxUrl, formatUnits, legAmounts, legRoute, legTitle, LEG_STATUS_LABEL, OPERATION_STATUS_LABEL } from "@repo/app-core";
-import { ASSET_CHAINS, type Leg, type LegQuoteResponse, type OperationView } from "@repo/validator";
+import {
+  explorerTxUrl, formatUnits, GasDropError, initialLegSignerState, LEG_ACTIVE as ACTIVE, LEG_IN_FLIGHT as IN_FLIGHT, LEG_STATUS_LABEL, LEG_STEP_LABEL, legAmounts, legRoute, legSignerReducer, legTitle, nextLeg, OPERATION_STATUS_LABEL, prepareLeg, PRICE_IMPACT_WARNING, signLeg, type Prepared, type Signer,
+} from "@repo/app-core";
+import { ASSET_CHAINS, type Leg, type OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useReducer, useState } from "react";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
@@ -14,17 +16,12 @@ import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 
-class GasDropError extends Error {}
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** Previews warn from a 2% price impact; the server refuses above 5%. */
-const PRICE_IMPACT_WARNING = 0.02;
-const ACTIVE = ["PLANNED", "IN_PROGRESS"];
-/** Legs being sent or confirmed: the operation cannot be stopped while one of these is open. An UNKNOWN leg does not block stopping; it keeps being checked. */
-const IN_FLIGHT = ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"];
-type Prepared = { leg: Leg; q: LegQuoteResponse & { transaction: NonNullable<LegQuoteResponse["transaction"]> } };
-
-/** The leg the user signs next: the first planned one whose predecessors settled (a network fee that is already on chain does not hold up the first asset leg). */
-const nextLeg = (legs: Leg[]) => legs.find((l, i) => l.status === "PLANNED" && legs.slice(0, i).every((p) => p.status === "SETTLED" || p.recoveryToken || (p.kind === "network_fee" && p.status === "PENDING_CHAIN")));
+/** Adapts the web wallet hooks to the shared `Signer` (the hooks keep their own call shapes). */
+const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
+  signSolana: (b64) => w.signSolana(b64),
+  sendEvm: ({ approval, ...tx }) => w.sendEvm(tx, approval ?? null),
+  signPsbt: (psbt, inputCount) => w.signBitcoin(psbt, inputCount),
+});
 
 /** One leg: what it does, amounts, status and explorer links. */
 export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
@@ -61,7 +58,8 @@ export function LegProgress({ operationId }: { operationId: string }) {
   const qc = useQueryClient();
   const { data: me } = useMe();
   const signer = useLegSigner(me);
-  const [step, setStep] = useState("");
+  const [state, dispatch] = useReducer(legSignerReducer, initialLegSignerState);
+  const step = LEG_STEP_LABEL[state.kind] ?? "";
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const op = useQuery({
     queryKey: ["operation", operationId], queryFn: () => api.getOperation(operationId),
@@ -70,34 +68,12 @@ export function LegProgress({ operationId }: { operationId: string }) {
   const setOp = (o: OperationView) => { qc.setQueryData(["operation", operationId], o); void qc.invalidateQueries({ queryKey: ["portfolio"] }); };
 
   // Step 1: a fresh quote (and, on EVM, the confirmed gas top-up). The wallet is not opened until the user has seen the fresh figures.
-  const prepare = useMutation({
-    mutationFn: async (leg: Leg): Promise<Prepared> => {
-      setStep("Getting a quote");
-      let q = await api.quoteLeg(operationId, leg.id);
-      // EVM legs: the platform's gas top-up must be confirmed before anything is signed.
-      for (let n = 0; !q.transaction && q.gasDrop?.status === "pending" && n < 40; n++) {
-        setStep("Waiting for the gas top-up to confirm");
-        await sleep(3000);
-        q = await api.quoteLeg(operationId, leg.id);
-      }
-      if (!q.transaction) throw new GasDropError("The gas top-up did not confirm. Nothing was signed. Try again in a moment.");
-      return { leg, q: { ...q, transaction: q.transaction } };
-    },
-    onSuccess: setPrepared,
-    onSettled: () => setStep(""),
-  });
+  const prepare = useMutation({ mutationFn: (leg: Leg) => prepareLeg(api, operationId, leg, dispatch), onSuccess: setPrepared });
   // Step 2: the user approves the fresh figures; the wallet signs and the server verifies and submits.
   const sign = useMutation({
-    mutationFn: async ({ leg, q }: Prepared) => {
-      setStep("Approve in your wallet");
-      const body = q.transaction.kind === "solana" ? { signedTx: await signer.signSolana(q.transaction.serializedBase64) }
-        : q.transaction.kind === "evm" ? { txHash: await signer.sendEvm(q.transaction, q.approval) }
-          : { signedPsbt: await signer.signBitcoin(q.transaction.psbtBase64, q.transaction.inputCount) };
-      setStep("Submitting");
-      return api.submitLeg(operationId, leg.id, body);
-    },
-    onSuccess: setOp,
-    onSettled: () => { setStep(""); setPrepared(null); },
+    mutationFn: (p: Prepared) => signLeg(api, toSigner(signer), operationId, p, dispatch, `/portfolio#operation-${operationId}`),
+    onSuccess: (o) => { if (o) setOp(o); },
+    onSettled: () => setPrepared(null),
   });
   const stop = useMutation({ mutationFn: () => api.cancelOperation(operationId), onSuccess: setOp });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiError } from "@repo/api-client";
-import { formatUnits } from "@repo/app-core";
+import { formatUnits, validateSyncSplit } from "@repo/app-core";
 import { SLIPPAGE_DEFAULT_BPS, type OperationView, type Repair } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -17,11 +17,6 @@ import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
-/** Decimal text to raw units, or null when it is not a number with at most `decimals` places. */
-const toRaw = (text: string, decimals: number): bigint | null => {
-  const m = /^(\d+)(?:\.(\d+))?$/.exec(text.trim());
-  return !m || (m[2]?.length ?? 0) > decimals ? null : BigInt(m[1]! + (m[2] ?? "").padEnd(decimals, "0"));
-};
 const exact = (raw: string, decimals: number) => formatUnits(raw, decimals, decimals);
 
 function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
@@ -55,10 +50,7 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
 function Sync({ repair, decimals, onChanged }: { repair: Repair; decimals: number; onChanged(changed: boolean): void }) {
   const [key] = useState(() => crypto.randomUUID());
   const [text, setText] = useState(() => Object.fromEntries(repair.positions.map((x) => [x.positionId, exact(x.shortfall, decimals)])));
-  const total = BigInt(repair.totalShortfall);
-  const raw = repair.positions.map((x) => toRaw(text[x.positionId] ?? "", decimals));
-  const sum = raw.reduce<bigint>((s, v) => s + (v ?? 0n), 0n);
-  const valid = raw.every((v, n) => v !== null && v <= BigInt(repair.positions[n]!.ledger)) && sum === total;
+  const { raw, sum, total, valid } = validateSyncSplit(repair.positions.map((x) => text[x.positionId] ?? ""), repair.positions.map((x) => x.ledger), repair.totalShortfall, decimals);
   const save = useMutation({
     mutationFn: () => api.sync({ asset: repair.asset === "cash" ? "cash" : { deploymentId: repair.asset }, split: repair.positions.map((x, n) => ({ positionId: x.positionId, quantity: raw[n]!.toString() })), idempotencyKey: key }),
     onSuccess: () => onChanged(false),
@@ -70,7 +62,7 @@ function Sync({ repair, decimals, onChanged }: { repair: Repair; decimals: numbe
       {repair.positions.map((x) => (
         <div key={x.positionId} className="space-y-1">
           <label htmlFor={`sync-${x.positionId}`} className="text-xs font-medium text-ivory">{x.basketSlug}: reduce by ({repair.symbol})</label>
-          <Input id={`sync-${x.positionId}`} inputMode="decimal" className="min-h-11 w-48 bg-space text-ivory" value={text[x.positionId] ?? ""} aria-invalid={toRaw(text[x.positionId] ?? "", decimals) === null}
+          <Input id={`sync-${x.positionId}`} inputMode="decimal" className="min-h-11 w-48 bg-space text-ivory" value={text[x.positionId] ?? ""} aria-invalid={raw[repair.positions.indexOf(x)] === null}
             onChange={(e) => setText({ ...text, [x.positionId]: e.target.value })} />
         </div>
       ))}
