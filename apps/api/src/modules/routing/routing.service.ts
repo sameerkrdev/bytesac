@@ -45,7 +45,13 @@ export async function routeDenyList(toChain: AssetChain, toAddress: string): Pro
     }
     if (contract === "1") for (const b of (await lifiTools()).bridges) if (b.key.toLowerCase().startsWith("mayan")) bridges.add(b.key);
   }
-  return { bridges: [...bridges], exchanges: policy.rows.filter((r) => r.kind === "exchange").map((r) => r.toolKey) };
+  // LI.FI answers 400 (code 1011) for the whole request when a deny key is not in /v1/tools (live check 2026-10-03), so a tool LI.FI has since retired is dropped here instead of failing every route.
+  const exchanges = policy.rows.filter((r) => r.kind === "exchange").map((r) => r.toolKey);
+  if (bridges.size === 0 && exchanges.length === 0) return { bridges: [], exchanges: [] };
+  const tools = await lifiTools();
+  const known = (list: { key: string }[]) => new Set(list.map((t) => t.key));
+  const [bridgeKeys, exchangeKeys] = [known(tools.bridges), known(tools.exchanges)];
+  return { bridges: [...bridges].filter((k) => bridgeKeys.has(k)), exchanges: exchanges.filter((k) => exchangeKeys.has(k)) };
 }
 
 /** The route policy for ops: every LI.FI bridge and exchange with its deny state, and the full history of deny/allow entries. */
@@ -105,27 +111,27 @@ export async function getLifiTransfers(opId: string, legId: string) {
   if (!row.leg.submittedAt) throw createHttpError(409, "This leg was never submitted.", { code: "INVALID_TRANSITION" });
   const wallet = addressOn(await userAddresses(db, row.userId), row.leg.fromChain);
   const at = Math.floor(row.leg.submittedAt.getTime() / 1000);
-  const { data } = transfersSchema.parse(await lifiCall("/analytics/transfers", { base: ANALYTICS_BASE, params: { wallet, status: "ALL", fromTimestamp: at - WINDOW_S, toTimestamp: at + WINDOW_S } }));
+  const { data } = transfersSchema.parse(await lifiCall("/analytics/transfers", { base: ANALYTICS_BASE, params: { wallet, status: "ALL", limit: 100, fromTimestamp: at - WINDOW_S, toTimestamp: at + WINDOW_S } }));
   // The request carries the window; a record whose own timestamp is outside it is dropped as well.
   return { wallet, transfers: data.filter((t) => t.sending?.timestamp === undefined || Math.abs(t.sending.timestamp - at) <= WINDOW_S) };
 }
 
-const tokenListSchema = z.object({ tokens: z.record(z.string(), z.array(z.object({ address: z.string() }))) });
+const tokenListSchema = z.object({ tokens: z.record(z.string(), z.array(z.object({ address: z.string(), verificationStatus: z.string().optional() }))) });
 
 /**
- * Whether LI.FI lists a token (`/v1/tokens`, cached 24 h per chain as an address list). LI.FI's token endpoint documents no verified or flagged field, so only
- * listed ("verified") and not listed ("unverified") are told apart; "flagged" is reserved until a real-key check shows a field for it. null = unknown (native
+ * Whether LI.FI verifies a token (`/v1/tokens`, cached 24 h per chain as the verified-address list). Each token carries `verificationStatus` (live check 2026-10-03: "verified" or
+ * "unverified"; not in the docs); a listed but unverified token is "unverified". "flagged" is reserved until a value for it is seen. null = unknown (native
  * asset, Bitcoin, or LI.FI unavailable): the asset review never fails because of it.
  */
 export async function lifiVerification(chain: AssetChain, address: string | null): Promise<"verified" | "unverified" | "flagged" | null> {
   if (!address || chain === "bitcoin") return null;
-  const key = `lifi:tokens:${CHAIN_IDS[chain]}`;
+  const key = `lifi:tokens:v2:${CHAIN_IDS[chain]}`; // v2: the list holds verified addresses only
   if (await redis.get(`${key}:down`).catch(() => null)) return null; // LI.FI failed a moment ago: not asked again for a minute
   const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
   try {
     let listed: string[] | null = JSON.parse((await redis.get(key).catch(() => null)) ?? "null");
     if (!listed) {
-      listed = (tokenListSchema.parse(await lifiCall("/tokens", { params: { chains: CHAIN_IDS[chain] } })).tokens[String(CHAIN_IDS[chain])] ?? []).map((t) => norm(t.address));
+      listed = (tokenListSchema.parse(await lifiCall("/tokens", { params: { chains: CHAIN_IDS[chain] } })).tokens[String(CHAIN_IDS[chain])] ?? []).filter((t) => t.verificationStatus === "verified").map((t) => norm(t.address));
       await redis.set(key, JSON.stringify(listed), "EX", 24 * 3600).catch(() => undefined);
     }
     return listed.includes(norm(address)) ? "verified" : "unverified";

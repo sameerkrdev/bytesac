@@ -101,6 +101,14 @@ describe("lifi quote", () => {
     expect(q.priceImpact).toBeCloseTo(0.0475);
   });
 
+  // Live check 2026-10-03: a layerswap/mayanFastMCTP quote carried toAmountMin 7 / 350,000,000 wei under toAmount x 0.995 (old tolerance: 1 unit refused it).
+  it("accepts a toAmountMin within 1 ppm under the chosen slippage; refuses a weaker one", async () => {
+    const wei = (toAmountMin: string) => quoteBody({ estimate: { ...quoteBody().estimate, toAmount: "1852311024504540", toAmountMin } });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(wei("1843049469382010"))).mockResolvedValueOnce(jsonResponse(wei("1843049469382010".replace(/^1843049/, "1841000"))));
+    expect((await lifi.quote({ ...input, slippageBps: 50 })).minOut).toBe(1843049469382010n);
+    await expect(lifi.quote({ ...input, slippageBps: 50 })).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
+  });
+
   it("omits the deny params when nothing is denied", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(quoteBody()));
     await lifi.quote({ ...input, deny: { bridges: [], exchanges: [] } });
@@ -111,11 +119,22 @@ describe("lifi quote", () => {
   it("the no-SOL refusal is 409 SOL_REQUIRED; a price-impact refusal is 503 with its message; a 1001 keeps its code for the planner", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(jsonResponse({ message: "Your wallet needs SOL balance to cover the rent for the transaction", code: 1001 }, 400))
-      .mockResolvedValueOnce(jsonResponse({ message: "No available quotes", code: 1002, errors: [{ reason: "price impact above the maximum" }] }, 404))
+      .mockResolvedValueOnce(jsonResponse({ message: "No available quotes for the requested transfer", code: 1002, errors: { filteredOut: [{ overallPath: "p", reason: "Price impact of 87.8% is higher than the max allowed 5%" }], failed: [] } }, 404))
       .mockResolvedValueOnce(jsonResponse({ message: "Failed to build transaction", code: 1001 }, 400));
     await expect(lifi.quote(input)).rejects.toMatchObject({ status: 409, code: "SOL_REQUIRED", message: "Add a small amount of SOL (~0.003) to your Solana wallet to continue." });
     await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE", message: "Price impact too high for this trade size." });
     await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE", lifiCode: 1001 });
+  });
+
+  // Live check 2026-10-03 (zero-SOL wallet, only mayanFastMCTP allowed): 404, code 1002, the cause only in errors.filteredOut[].reason.
+  const noQuotes = (errors: unknown) => jsonResponse({ message: "No available quotes for the requested transfer", code: 1002, errors }, 404);
+  it("the live no-SOL shape (1002 with a SOL-balance filter reason and no failed route) is 409 SOL_REQUIRED; with another failed route it stays ROUTE_UNAVAILABLE", async () => {
+    const reason = "SOL balance insufficient to cover temporary token account creation";
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(noQuotes({ filteredOut: [{ overallPath: "1151111081099710:USDC-mayanFastMCTP-8453:ETH", reason }], failed: [] }))
+      .mockResolvedValueOnce(noQuotes({ filteredOut: [{ overallPath: "p", reason }], failed: [{ overallPath: "q", subpaths: {} }] }));
+    await expect(lifi.quote(input)).rejects.toMatchObject({ status: 409, code: "SOL_REQUIRED" });
+    await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE", lifiCode: 1002 });
   });
 });
 
@@ -150,7 +169,7 @@ describe("route deny list", () => {
     await policy("bridge", "across", true);
     vi.mocked(fetch).mockResolvedValue(jsonResponse(tools));
     expect(await routeDenyList("ethereum", USER_EVM)).toEqual({ bridges: ["stargate"], exchanges: ["uniswap"] });
-    expect(calls()).toHaveLength(0); // an EOA needs no tools list
+    expect(calls()).toHaveLength(1); // an EOA reads the tools list only to drop denied keys LI.FI no longer lists
     fakes.evm.contracts.add("0x2222222222222222222222222222222222222222");
     const deny = await routeDenyList("ethereum", "0x2222222222222222222222222222222222222222");
     expect([...deny.bridges].sort()).toEqual(["mayan", "mayanSwift", "stargate"]);
@@ -159,9 +178,18 @@ describe("route deny list", () => {
     expect(calls()).toHaveLength(1);
   });
 
+  it("drops a denied key that /v1/tools no longer lists (LI.FI answers 400 code 1011 for an unknown deny key, live check 2026-10-03)", async () => {
+    await policy("bridge", "stargate");
+    await policy("bridge", "retired-bridge");
+    await policy("exchange", "retired-dex");
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(tools));
+    expect(await routeDenyList("solana", USER_SOL)).toEqual({ bridges: ["stargate"], exchanges: [] });
+  });
+
   it("a Solana destination is never checked for code; policy rows are cached 60 s in-process", async () => {
     expect(await routeDenyList("solana", USER_SOL)).toEqual({ bridges: [], exchanges: [] });
     await policy("bridge", "stargate");
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(tools));
     expect((await routeDenyList("solana", USER_SOL)).bridges).toEqual([]); // still the cached empty list
     forgetRoutePolicy();
     expect((await routeDenyList("solana", USER_SOL)).bridges).toEqual(["stargate"]);

@@ -7,11 +7,11 @@ const response = z.object({ data: z.record(z.string(), z.unknown()) });
 const oneOrMany = z.union([entry, z.array(entry).min(1)]);
 
 /**
- * USD quotes for CoinMarketCap ids in one batched call (5 s timeout). Ids missing from the response, or whose own entry is unusable (null/non-numeric price), are missing from the map; any HTTP, network
+ * USD quotes for CoinMarketCap ids in one batched call (5 s timeout). `skip_invalid=true` (documented: without it any invalid id fails the whole request with 400) leaves an unknown id out of the response. Ids missing from the response, or whose own entry is unusable (null/non-numeric price), are missing from the map; any HTTP, network
  * or whole-body shape failure throws, and the caller reports "unavailable".
  */
 export async function fetchQuotes(cmcIds: string[]): Promise<Map<string, { value: string; observedAt: string }>> {
-  const res = await fetch(`https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id=${cmcIds.join(",")}&convert=USD`, {
+  const res = await fetch(`https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id=${cmcIds.join(",")}&convert=USD&skip_invalid=true`, {
     headers: { "X-CMC_PRO_API_KEY": env.COINMARKETCAP_API_KEY, Accept: "application/json" },
     signal: AbortSignal.timeout(5000),
   });

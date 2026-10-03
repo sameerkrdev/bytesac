@@ -55,7 +55,10 @@ function refusal(status: number, body: unknown): Error {
   const b = (body ?? {}) as { message?: unknown; code?: unknown };
   const text = JSON.stringify(body) ?? "";
   const message = typeof b.message === "string" ? b.message : "";
-  if (/\bSOL\b/.test(message) && /balance|rent|fee|gas|fund/i.test(message)) return createHttpError(409, "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", { code: "SOL_REQUIRED" });
+  // Live check 2026-10-03: a wallet with no SOL gets 404 code 1002 "No available quotes" with the cause in `errors.filteredOut[].reason` ("SOL balance insufficient to cover temporary token account creation"); svmSponsor does not avoid it. SOL is the cause only when no route failed for another reason (`errors.failed` empty).
+  const errs = (body as { errors?: { filteredOut?: { reason?: unknown }[]; failed?: unknown[] } } | null)?.errors;
+  const needsSol = !errs?.failed?.length && !!errs?.filteredOut?.some((r) => typeof r.reason === "string" && /SOL balance insufficient/i.test(r.reason));
+  if (needsSol || (/\bSOL\b/.test(message) && /balance|rent|fee|gas|fund/i.test(message))) return createHttpError(409, "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", { code: "SOL_REQUIRED" });
   if (/price.?impact/i.test(text)) return createHttpError("Price impact too high for this trade size.", { code: "ROUTE_UNAVAILABLE" });
   return createHttpError(`LI.FI responded ${status}`, { code: "ROUTE_UNAVAILABLE", lifiCode: typeof b.code === "number" ? b.code : undefined });
 }
@@ -119,6 +122,12 @@ function summarize(gas: z.infer<typeof stepEstimate>[], all: z.infer<typeof step
   };
 }
 
+/**
+ * LI.FI computes `toAmountMin` in floating point or rounds it per tool, so it can sit a hair under `toAmount x (1 - slippage)`: live checks (2026-10-03) on 18-decimal outputs showed
+ * 7 and 350,000,000 base units under (relative 4e-15 and 2e-7), where the old 1-unit tolerance refused a valid quote. Tolerate 1 ppm of the estimate (at least 1 unit); a minimum
+ * weaker than the chosen slippage by more than that is still refused.
+ */
+const roundingSlack = (estimatedOut: bigint): bigint => (estimatedOut / 1_000_000n > 1n ? estimatedOut / 1_000_000n : 1n);
 const PSBT_HEX_MAGIC = "70736274ff";
 const QUOTE_TTL_MS = 60_000;
 
@@ -149,7 +158,7 @@ export const lifi: RouteProvider = {
     const minOut = BigInt(r.toAmountMin);
     if (
       r.fromChainId !== CHAIN_IDS[i.fromChain] || r.toChainId !== CHAIN_IDS[i.toChain] || !same(r.fromToken.address, fromToken) || !same(r.toToken.address, toToken) || BigInt(r.fromAmount) !== i.fromAmount
-      || minOut + 1n < slippageFloor(estimatedOut, i.slippageBps)
+      || minOut + roundingSlack(estimatedOut) < slippageFloor(estimatedOut, i.slippageBps)
     ) throw unavailable("The route provider returned a route that does not match the trade.");
     // The gas the user pays is the source chain's: steps that start on another chain are paid there.
     const own = r.steps.filter((s) => s.action.fromChainId === CHAIN_IDS[i.fromChain]).map((s) => s.estimate);
@@ -172,8 +181,8 @@ export const lifi: RouteProvider = {
     if (
       a.fromChainId !== CHAIN_IDS[i.fromChain] || a.toChainId !== CHAIN_IDS[i.toChain] || !same(a.fromToken.address, fromToken) || !same(a.toToken.address, toToken)
       || BigInt(a.fromAmount) !== i.fromAmount || !same(a.toAddress, i.toAddress)
-      // The route must enforce at least the slippage the user chose (1 unit of rounding allowed).
-      || minOut + 1n < slippageFloor(estimatedOut, i.slippageBps)
+      // The route must enforce at least the slippage the user chose (rounding allowed, see `roundingSlack`).
+      || minOut + roundingSlack(estimatedOut) < slippageFloor(estimatedOut, i.slippageBps)
     ) throw unavailable("The route provider returned a quote that does not match the leg.");
 
     const tx = q.transactionRequest;
