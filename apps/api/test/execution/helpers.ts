@@ -7,7 +7,7 @@ import { signIn, webHeaders } from "../helpers/auth";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";
-import { orgWithOwner } from "../members/helpers";
+import { orgWithOwner } from "../modules/members/helpers";
 
 const FEES = { entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 0 }, rebalance: { type: "percent", bps: 0 }, subscription: null };
 export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";

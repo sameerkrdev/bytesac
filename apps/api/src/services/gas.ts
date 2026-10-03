@@ -6,7 +6,7 @@ import { ASSET_CHAINS, type AssetChain } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { evmBalance, evmReceipt, gasWalletAddress, sendNativeFromGasWallet } from "@/providers/evm-rpc";
 import { feePayer, solanaBalance } from "@/providers/solana-tx";
-import { writeAudit } from "./audit";
+import { writeAudit } from "@/modules/audit/audit.service";
 
 type Purpose = typeof platformWallets.$inferSelect["purpose"];
 

@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import { db } from "@repo/db";
 import { logger } from "@repo/logger";
-import { app } from "@/app";
+import { app } from "./app";
 import { env } from "@/config/dotenv";
 import { queues } from "@/config/queues";
 import { redis } from "@/middlewares/rate-limit.middleware";

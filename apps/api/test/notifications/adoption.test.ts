@@ -4,7 +4,7 @@ import { app } from "@/app";
 import { adminSql, resetDb } from "../helpers/db";
 import { mockChains, solanaTestWallet } from "../execution/chain-mocks";
 import { seedBasket, seedPosition, seedUser, seedVersion } from "../execution/helpers";
-import { user as plainUser } from "../organizations/helpers";
+import { user as plainUser } from "../modules/organizations/helpers";
 
 const SOL = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 5000, decimals: 9 } as const;
 const TKN = { symbol: "TKN", chain: "solana", tokenStandard: "spl", bps: 5000, decimals: 6 } as const;

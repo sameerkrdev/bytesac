@@ -9,9 +9,9 @@ import {
 } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection, tokenAccountMissing } from "@/providers/solana-tx";
-import { writeAudit } from "./audit";
-import { requirePermission } from "./members";
-import { notifyOwner } from "./organizations";
+import { writeAudit } from "@/modules/audit/audit.service";
+import { requirePermission } from "@/modules/members/members.service";
+import { notifyOwner } from "@/modules/organizations/organizations.service";
 
 export interface PlanFeesInput {
   networkMicro: bigint;

@@ -8,7 +8,7 @@ import { connection } from "@/providers/solana-tx";
 import { seedPlatformWallets } from "@/services/gas";
 import { closeIfEmpty } from "@/services/operations";
 import { reconcilePositions, trackLeg } from "@/services/positions";
-import { opsUser } from "../managers/helpers";
+import { opsUser } from "../modules/manager-applications/helpers";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "../execution/chain-mocks";

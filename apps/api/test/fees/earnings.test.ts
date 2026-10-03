@@ -2,9 +2,9 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "@/app";
 import { adminSql, resetDb } from "../helpers/db";
-import { plainUser, reviewer } from "../assets/helpers";
+import { plainUser, reviewer } from "../modules/assets/helpers";
 import { seedBasket, seedLeg } from "../execution/helpers";
-import { addMember, type Role } from "../members/helpers";
+import { addMember, type Role } from "../modules/members/helpers";
 
 const SOL = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 10_000 } as const;
 type Basket = Awaited<ReturnType<typeof seedBasket>>;

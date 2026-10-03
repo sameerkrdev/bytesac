@@ -6,8 +6,8 @@ import { redis } from "@/middlewares/rate-limit.middleware";
 import { evmCode } from "@/providers/evm-rpc";
 import { CHAIN_IDS, lifiCall } from "@/providers/routes/lifi";
 import type { RouteDeny } from "@/providers/routes/types";
-import { writeAudit } from "./audit";
-import type { OpsCtx } from "./applications";
+import { writeAudit } from "@/modules/audit/audit.service";
+import type { OpsCtx } from "@/modules/manager-applications/applications.service";
 import { addressOn, userAddresses } from "./operations";
 
 const toolList = z.array(z.object({ key: z.string(), name: z.string() }));

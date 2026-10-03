@@ -2,7 +2,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "@/app";
 import { adminSql, resetDb } from "../helpers/db";
-import { admin, plainUser, reviewer } from "../assets/helpers";
+import { admin, plainUser, reviewer } from "../modules/assets/helpers";
 import { seedBasket } from "../execution/helpers";
 
 type H = Record<string, string>;

@@ -3,8 +3,8 @@ import type { NextFunction, Request, Response } from "express";
 import { db } from "@repo/db";
 import { SESSION_COOKIE, type ClientKind } from "@repo/validator";
 import { env } from "@/config/dotenv";
-import { activeRoles } from "@/services/platform-roles";
-import { findActiveSession, touchSession } from "@/services/sessions";
+import { activeRoles } from "@/modules/manager-applications/platform-roles.service";
+import { findActiveSession, touchSession } from "@/modules/auth/sessions.service";
 
 export interface AuthContext { userId: string; sessionId: string; client: ClientKind; transport: "cookie" | "bearer" }
 

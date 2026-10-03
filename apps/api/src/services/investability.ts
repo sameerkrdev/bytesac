@@ -8,7 +8,7 @@ import { ASSET_CHAINS, RWA_PROBLEMS, RWA_ROUTE_METHODS, USDC_SOLANA_MINT, rwaPro
 import { selectRouteProvider } from "@/providers/routes";
 import type { RouteProvider } from "@/providers/routes/types";
 import { evaluateFor, isRwa, type Evaluated } from "./eligibility";
-import { getPrices } from "./pricing";
+import { getPrices } from "@/modules/assets/pricing.service";
 
 export interface Constituent {
   instrumentId: string;

@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { db } from "@repo/db";
 import { chainSchema, platformRoleSchema, z } from "@repo/validator";
-import { grantRole } from "@/services/platform-roles";
-import { disableAddress, reactivateAddress, suspendUser } from "@/services/ops";
+import { grantRole } from "@/modules/manager-applications/platform-roles.service";
+import { disableAddress, reactivateAddress, suspendUser } from "@/modules/ops/ops.service";
 
 const [command, ...rest] = process.argv.slice(2).filter((a) => a !== "--");
 const { values } = parseArgs({

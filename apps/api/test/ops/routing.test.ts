@@ -7,7 +7,7 @@ import { forgetRoutePolicy, routeDenyList } from "@/services/routing";
 import { balanceKey, mockChains, solanaTestWallet } from "../execution/chain-mocks";
 import { USDC_MINT, seedBasket, seedLeg, seedUser, type SeedAsset } from "../execution/helpers";
 import { adminSql, resetDb } from "../helpers/db";
-import { opsUser } from "../managers/helpers";
+import { opsUser } from "../modules/manager-applications/helpers";
 
 const tools = { bridges: [{ key: "across", name: "Across" }, { key: "mayan", name: "Mayan" }, { key: "stargate", name: "Stargate" }], exchanges: [{ key: "uniswap", name: "Uniswap" }] };
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

@@ -5,14 +5,14 @@ import { organizationDocuments } from "@repo/db";
 import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "@/app";
 import { limits } from "@/middlewares/rate-limit.middleware";
-import { linkInvitesIfProven } from "@/services/members";
-import { storeUpload } from "@/services/organizations";
+import { linkInvitesIfProven } from "@/modules/members/members.service";
+import { storeUpload } from "@/modules/organizations/organizations.service";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { newEvmWallet } from "../helpers/wallets";
 import { seedBasket, seedPosition, seedUser } from "../execution/helpers";
-import { invite, invitePending, inviteBody, orgWithOwner, rowOf, untilBlockedOnLock } from "../members/helpers";
-import { PDF, createOrg, resetOrgDb, user } from "../organizations/helpers";
+import { invite, invitePending, inviteBody, orgWithOwner, rowOf, untilBlockedOnLock } from "../modules/members/helpers";
+import { PDF, createOrg, resetOrgDb, user } from "../modules/organizations/helpers";
 
 beforeEach(resetOrgDb);
 

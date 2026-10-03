@@ -2,11 +2,11 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "@/app";
 import { ELIGIBILITY_ATTESTATION } from "@repo/validator";
-import { admin, mkAsset, mkDeployment, mkRule, patch, plainUser, reviewer } from "../assets/helpers";
+import { admin, mkAsset, mkDeployment, mkRule, patch, plainUser, reviewer } from "../modules/assets/helpers";
 import { seedBasket, seedUser } from "../execution/helpers";
 import { webHeaders } from "../helpers/auth";
 import { adminSql, resetDb } from "../helpers/db";
-import { refreshSearchIndex } from "@/services/search-index";
+import { refreshSearchIndex } from "@/modules/discovery/search-index.service";
 
 // The geo header name is switchable per test (the parsed env is read-only).
 const geo = vi.hoisted(() => ({ header: "" }));

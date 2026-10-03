@@ -14,11 +14,11 @@ import { routeProviderById } from "@/providers/routes";
 import { feePayer, solanaBalance, solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
 import { redis } from "@/middlewares/rate-limit.middleware";
 import { enqueue } from "@/config/queues";
-import { writeAudit } from "./audit";
+import { writeAudit } from "@/modules/audit/audit.service";
 import { activeCustom, addressOn, closeIfEmpty, gasPayerFor, basketCashMicro, cancelIfExpired, inFlightAssets, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, setOperationStatus, stopStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
-import { versionDiff } from "./baskets";
+import { versionDiff } from "@/modules/baskets/baskets.service";
 import { notify } from "./notifications";
-import { getPrices } from "./pricing";
+import { getPrices } from "@/modules/assets/pricing.service";
 import { latestRecon, valuePosition } from "./rebalance";
 import { routeDenyList } from "./routing";
 

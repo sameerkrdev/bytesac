@@ -11,7 +11,7 @@ import {
 } from "@repo/validator";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
 import { solanaBalance } from "@/providers/solana-tx";
-import { writeAudit } from "./audit";
+import { writeAudit } from "@/modules/audit/audit.service";
 import { planFees } from "./fees";
 import { assertAllowed, decisionOf, evaluateFor, isRwa } from "./eligibility";
 import { getInvestability } from "./investability";
@@ -20,7 +20,7 @@ import {
   closeIfEmpty, hasOpenOperation, leavePosition, legCost, lockOperation, planQuote, reservedExpectedTx, reused, sellLeg, setOperationStatus, usdcPrice, userAddresses, type LegDraft, type OpCtx,
 } from "./operations";
 import { fanOutToHolders } from "./notifications";
-import { getPrices, priceToMicro } from "./pricing";
+import { getPrices, priceToMicro } from "@/modules/assets/pricing.service";
 import { reconcilePositions } from "./positions";
 
 /** Reconciliation rows older than this at plan time mean the balance could not be read just now. */

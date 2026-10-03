@@ -19,14 +19,14 @@ import { SendTransactionError } from "@solana/web3.js";
 import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, buildFeeTransfer, cosign, describeUnsigned, sendSolana, solanaBalance, sponsorExposure, tokenAccountMissing } from "@/providers/solana-tx";
 import type { RequestMeta } from "@/middlewares/request-context.middleware";
 import { enqueue } from "@/config/queues";
-import { writeAudit } from "./audit";
+import { writeAudit } from "@/modules/audit/audit.service";
 import { assertWalletsCanFund, platformAddress, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
 import { type DecisionDraft, assertAllowed, decisionOf, evaluateFor, isRwa, recordDecisions } from "./eligibility";
 import { getInvestability } from "./investability";
 import { notify } from "./notifications";
-import { orgDisplayName } from "./members";
+import { orgDisplayName } from "@/modules/members/members.service";
 import { planFees, type PlannedFee } from "./fees";
-import { getPrices, priceToMicro } from "./pricing";
+import { getPrices, priceToMicro } from "@/modules/assets/pricing.service";
 import { routeDenyList } from "./routing";
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }

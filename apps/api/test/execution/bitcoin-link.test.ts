@@ -127,7 +127,7 @@ describe("linking a Bitcoin address", () => {
 
 describe("sign-in guard (minor 2)", () => {
   it("the service itself refuses a Bitcoin sign-in challenge, not only the request schema", async () => {
-    const { issueChallenge } = await import("@/services/sign-in");
+    const { issueChallenge } = await import("@/modules/auth/sign-in.service");
     await expect(issueChallenge({ purpose: "sign_in", chain: "bitcoin", rawAddress: bitcoinWallet("p2wpkh").address, sessionId: null, meta: { ip: "127.0.0.1", requestId: "r" } as never })).rejects.toMatchObject({ code: "UNSUPPORTED_CHAIN" });
   });
 

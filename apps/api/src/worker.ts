@@ -9,8 +9,8 @@ import { seedPlatformWallets } from "@/services/gas";
 import { deliverNotification, fanOutToHolders } from "@/services/notifications";
 import { onVersionPublished } from "@/services/rebalance";
 import { checkGasWallets, expireStalePlans, reconcilePositions, stopStalledRecoveries, trackLeg, trackStaleClaims } from "@/services/positions";
-import { runBasketPerformance, runPriceSnapshot } from "@/services/performance";
-import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/services/search-index";
+import { runBasketPerformance, runPriceSnapshot } from "@/modules/discovery/performance.service";
+import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/modules/discovery/search-index.service";
 
 /** Every 5 minutes: hand stuck legs to the tracker and cancel expired, untouched plans (releasing their gas reservations). */
 const sweepOperations = async () => { await trackStaleClaims(); await expireStalePlans(); await stopStalledRecoveries(); };

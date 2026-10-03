@@ -4,7 +4,7 @@ import { assetProviders, db, eligibilityDecisions, eligibilityDeclarations, elig
 import { DECLARATION_TTL_DAYS, RWA_ASSET_TYPES, RWA_ROUTE_METHODS, evaluateEligibility, type AssetType, type EligibilityDeclarationInput, type EligibilityResponse, type EligibilityResult } from "@repo/validator";
 import type { RequestMeta } from "@/middlewares/request-context.middleware";
 import { selectRouteProvider } from "@/providers/routes";
-import { writeAudit } from "./audit";
+import { writeAudit } from "@/modules/audit/audit.service";
 
 export const isRwa = (assetType: AssetType): boolean => RWA_ASSET_TYPES.includes(assetType);
 

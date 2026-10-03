@@ -2,7 +2,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "@/app";
 import { lifi } from "@/providers/routes/lifi";
-import { opsUser } from "../managers/helpers";
+import { opsUser } from "../modules/manager-applications/helpers";
 import { connection } from "@/providers/solana-tx";
 import { trackLeg, trackStaleClaims } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
