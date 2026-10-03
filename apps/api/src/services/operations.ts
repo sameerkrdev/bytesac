@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations,
-  operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
+  eligibilityDecisions, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, walletAddresses, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
   ASSET_CHAINS, LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, micro, minOut, networkFeeMicro, scaleBuys, splitInvestment,
@@ -385,11 +385,16 @@ export function sellLeg(
   };
 }
 
+const restrictedNotice = (symbol: string) => `You can't sell ${symbol} through Bytesac in your region; it stays in your wallet.`;
+
 export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<OperationView> {
   const existing = await findByKey(ctx.userId, body.idempotencyKey);
   if (existing) {
     if (existing.positionId !== body.positionId || existing.sellPercent !== body.percent) throw reused();
-    return operationView(db, existing);
+    // The exclusions a replay shows are the stored decisions without a leg (a missing declaration stores none).
+    const left = await db.select({ instrumentId: eligibilityDecisions.instrumentId, symbol: instruments.symbol }).from(eligibilityDecisions).innerJoin(instruments, eq(instruments.id, eligibilityDecisions.instrumentId))
+      .where(and(eq(eligibilityDecisions.operationId, existing.id), isNull(eligibilityDecisions.legId)));
+    return { ...(await operationView(db, existing)), ...(left.length ? { excluded: left.map((l) => ({ ...l, notice: restrictedNotice(l.symbol) })) } : {}) };
   }
   const [position] = await db.select().from(basketPositions).where(and(eq(basketPositions.id, body.positionId), eq(basketPositions.userId, ctx.userId)));
   if (!position) throw createHttpError("Position not found", { code: "NOT_FOUND" });
@@ -413,13 +418,12 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   }
   if (candidates.length === 0) throw createHttpError("There is nothing to sell: your wallet holds none of this position's assets.", { code: "INSUFFICIENT_BALANCE" });
 
-  // Spec 11 section 7: each RWA is evaluated for selling; one the user may not sell is left out (it stays in the wallet) and the rest sells. Nothing declared yet, or nothing left, is a 409.
+  // Spec 11 section 7: each RWA is evaluated for selling; one the user may not sell, or has no fresh declaration for, is left out (it stays in the wallet) and the rest sells. Nothing left is a 409.
   const sellDecisions = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: candidates.filter((s) => isRwa(s.assetType)).map((s) => ({ instrumentId: s.instrumentId, assetType: s.assetType, deploymentId: s.deploymentId, action: "sell" as const })) });
-  if ([...sellDecisions.values()].some((r) => r.outcome === "DECLARATION_REQUIRED")) assertAllowed(sellDecisions);
   const blocked = (s: { instrumentId: string }) => (sellDecisions.get(s.instrumentId)?.outcome ?? "ALLOWED") !== "ALLOWED";
   const sells = candidates.filter((s) => !blocked(s));
   if (sells.length === 0) assertAllowed(sellDecisions);
-  const excluded = candidates.filter(blocked).map((s) => ({ instrumentId: s.instrumentId, symbol: s.symbol, notice: `You can't sell ${s.symbol} through Bytesac in your region; it stays in your wallet.` }));
+  const excluded = candidates.filter(blocked).map((s) => ({ instrumentId: s.instrumentId, symbol: s.symbol, notice: sellDecisions.get(s.instrumentId)?.outcome === "DECLARATION_REQUIRED" ? `Confirm your eligibility to sell ${s.symbol} through Bytesac.` : restrictedNotice(s.symbol) }));
 
   const quotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
   const costs = await Promise.all(quotes.map((q, n) => (sells[n]!.chain === "solana" ? legCost(q, "solana", USDC_SOLANA_MINT, addressOn(addresses, "solana")) : { lamports: 0n, usd: q.gasEstimateUsd, estimated: false })));
@@ -486,6 +490,16 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     ? legs.some((l) => l.id !== leg.id && !l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")
     : legs.some((l) => l.sequence < leg.sequence && !(l.status === "SETTLED" || l.recoveryToken || (l.kind === "network_fee" && l.status === "PENDING_CHAIN")))) throw invalidTransition("Finish the previous leg first.");
 
+  // Spec 11: an RWA leg (the asset bought, or the asset sold) is evaluated again at every quote: rules or the declaration may have changed since the plan. Earlier settled legs stand.
+  const rwaDeploymentId = leg.kind === "network_fee" ? null : (leg.fromDeploymentId ?? leg.toDeploymentId);
+  const [rwa] = rwaDeploymentId ? await db.select({ instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType }).from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.id, rwaDeploymentId)) : [];
+  if (rwa && isRwa(rwa.assetType)) {
+    const action = leg.fromDeploymentId ? "sell" : "acquire";
+    const results = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: [{ ...rwa, deploymentId: rwaDeploymentId!, action }] });
+    await recordDecisions(db, [{ operationId: op.id, legId: leg.id, userId: ctx.userId, ipCountry: ctx.meta.ipCountry, instrumentId: rwa.instrumentId, action, result: results.get(rwa.instrumentId)! }]);
+    assertAllowed(results);
+  }
+
   // A rebalance's buys are sized once, at the first buy's quote, from the basket cash that actually arrived (spec section 4.3).
   const isBuy = leg.fromDeploymentId === null && leg.kind !== "network_fee" && !leg.recoveryOf;
   if (op.kind === "rebalance" && !op.buyScale && isBuy) {
@@ -512,16 +526,6 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     });
     if (nothing) throw createHttpError(409, "Nothing left to buy: the basket cash that arrived is used up.", { code: "VALIDATION_FAILED" });
     ({ op, legs, leg } = await loadLeg(ctx, opId, legId));
-  }
-
-  // Spec 11: an RWA leg (the asset bought, or the asset sold) is evaluated again at every quote: rules or the declaration may have changed since the plan. Earlier settled legs stand.
-  const rwaDeploymentId = leg.kind === "network_fee" ? null : (leg.fromDeploymentId ?? leg.toDeploymentId);
-  const [rwa] = rwaDeploymentId ? await db.select({ instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType }).from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.id, rwaDeploymentId)) : [];
-  if (rwa && isRwa(rwa.assetType)) {
-    const action = leg.fromDeploymentId ? "sell" : "acquire";
-    const results = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: [{ ...rwa, deploymentId: rwaDeploymentId!, action }] });
-    await recordDecisions(db, [{ operationId: op.id, legId: leg.id, userId: ctx.userId, ipCountry: ctx.meta.ipCountry, instrumentId: rwa.instrumentId, action, result: results.get(rwa.instrumentId)! }]);
-    assertAllowed(results);
   }
 
   const addresses = await userAddresses(db, ctx.userId);

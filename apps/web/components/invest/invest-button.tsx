@@ -41,10 +41,10 @@ export function InvestButton({ slug, name, minimumUsdc, incrementUsdc }: { slug:
       <div className="space-y-2">
         <Button disabled className="min-h-11">Invest</Button>
         <ul className="space-y-1 text-sm">
-          {eligibility.reasons.map((r) => {
+          {eligibility.reasons.filter((r, n, all) => r.code !== "DECLARATION_REQUIRED" || all.findIndex((x) => x.code === r.code) === n).map((r) => {
             if (r.code === "DECLARATION_REQUIRED") return <li key={r.code} className="space-y-2"><p className="text-stone">{r.message}</p><DeclarationForm onSaved={() => void qc.invalidateQueries({ queryKey: ["investability", slug] })} /></li>;
             const a = ACTIONS[r.code];
-            return <li key={r.code}>{a ? <Link href={a.href} className="inline-flex min-h-11 items-center text-mint underline">{a.label}</Link> : <span className="text-stone">{r.message}</span>}</li>;
+            return <li key={`${r.instrumentId ?? ""}${r.code}`}>{a ? <Link href={a.href} className="inline-flex min-h-11 items-center text-mint underline">{a.label}</Link> : <span className="text-stone">{r.message}</span>}</li>;
           })}
         </ul>
       </div>

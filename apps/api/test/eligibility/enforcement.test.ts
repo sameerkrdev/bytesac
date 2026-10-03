@@ -210,6 +210,43 @@ describe("rebalance and repair", () => {
     expect(res.body.error.details.reasons).toEqual([expect.objectContaining({ instrumentId: rwa("BOND").instrumentId, outcome: "RESTRICTED" })]);
   });
 
+  /** SOL ($1,000) and BOND ($1,000, no acquire rule) held; the new version moves the weights by `v2` (SOL, TKN, BOND). */
+  async function arrangeThree(v2: number[], bondRule?: { outcome: string; action: string }) {
+    const a = await arrange([{ ...SOL, bps: 4000 }, { symbol: "TKN", chain: "solana", tokenStandard: "spl", bps: 2000, decimals: 6 }, { ...BOND, bps: 4000 }]);
+    await declare(a.user.userId);
+    if (bondRule) await addRule(a.rwa("BOND").instrumentId, bondRule.outcome, { action: bondRule.action });
+    const [sol, , bond] = a.basket.deployments;
+    const positionId = await seedPosition(a.user.userId, a.basket, [{ deploymentId: sol!.deploymentId, quantity: 10_000_000_000n }, { deploymentId: bond!.deploymentId, quantity: 1_000_000_000n }]);
+    a.chain.balances.set(balanceKey(a.user.solanaAddress, null), 10_000_000_000n);
+    a.chain.balances.set(balanceKey(a.user.solanaAddress, bond!.address), 1_000_000_000n);
+    await seedVersion(a.basket, 2, v2);
+    return { ...a, positionId };
+  }
+  const rebalance = (h: H, positionId: string) => post(h, "/v1/operations/rebalance", { positionId, target: "latest", slippageBps: 100, idempotencyKey: "reb-aaaaaaaa" });
+
+  it("an RWA that is only held does not refuse a crypto-only rebalance, even when it can't be acquired", async () => {
+    const { user, positionId } = await arrangeThree([2500, 2500, 5000]); // sell SOL, buy TKN, BOND stays
+    const res = await rebalance(user.h, positionId);
+    expect(res.status).toBe(201);
+    expect(await decisions()).toEqual([]);
+  });
+
+  it("a plan that sells an RWA the user may not sell is 409 NOT_ELIGIBLE; allowed, the sell leg stores a decision", async () => {
+    const refused = await arrangeThree([4000, 4000, 2000], { outcome: "RESTRICTED", action: "sell" }); // BOND is sold down
+    const res = await rebalance(refused.user.h, refused.positionId);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("NOT_ELIGIBLE");
+    expect(res.body.error.details.reasons).toEqual([expect.objectContaining({ instrumentId: refused.rwa("BOND").instrumentId, outcome: "RESTRICTED" })]);
+    expect(await adminSql`SELECT 1 FROM app.operations WHERE kind = 'rebalance'`).toHaveLength(0);
+
+    await resetDb();
+    const ok = await arrangeThree([4000, 4000, 2000], { outcome: "ALLOWED", action: "sell" });
+    const planned = await rebalance(ok.user.h, ok.positionId);
+    expect(planned.status).toBe(201);
+    const bondSell = planned.body.legs.find((l: { fromDeploymentId: string }) => l.fromDeploymentId === ok.rwa("BOND").deploymentId);
+    expect(await decisions()).toEqual([expect.objectContaining({ instrument_id: ok.rwa("BOND").instrumentId, leg_id: bondSell.id, action: "sell", outcome: "ALLOWED" })]);
+  });
+
   it("a repair buy-back of a restricted RWA is refused, and syncing the shortfall still works", async () => {
     const { chain, basket, user, rwa } = await arrange([BOND]);
     await declare(user.userId);
@@ -245,6 +282,9 @@ describe("sell", () => {
     expect(rows.find((r) => r.instrument_id === rwa("BOND").instrumentId)).toMatchObject({ leg_id: null, action: "sell", outcome: "RESTRICTED" });
     expect(rows.find((r) => r.instrument_id === rwa("FUND").instrumentId)).toMatchObject({ outcome: "ALLOWED" });
     expect(rows.find((r) => r.instrument_id === rwa("FUND").instrumentId)!.leg_id).not.toBeNull();
+    const replay = await sell(user.h, positionId); // the same key: the exclusions come back from the stored decisions
+    expect(replay.status).toBe(201);
+    expect(replay.body.excluded).toEqual(res.body.excluded);
   });
 
   it("when every RWA is restricted nothing is planned: 409 NOT_ELIGIBLE", async () => {
@@ -253,6 +293,19 @@ describe("sell", () => {
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("NOT_ELIGIBLE");
     expect(await adminSql`SELECT 1 FROM app.operations WHERE kind = 'sell_to_usdc'`).toHaveLength(0);
+  });
+
+  it("without a declaration the RWA is left out with a notice and the crypto still sells", async () => {
+    const { chain, basket, user, rwa } = await arrange();
+    await addRule(rwa("BOND").instrumentId, "ALLOWED", { action: "sell" });
+    const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 1_000_000_000n }, { deploymentId: rwa("BOND").deploymentId, quantity: 5_000_000n }]);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 10_000_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, rwa("BOND").address), 10_000_000n);
+    const res = await sell(user.h, positionId);
+    expect(res.status).toBe(201);
+    expect(res.body.legs.filter((l: { kind: string }) => l.kind !== "network_fee").map((l: { fromDeploymentId: string }) => l.fromDeploymentId)).toEqual([basket.deployments[0]!.deploymentId]);
+    expect(res.body.excluded).toEqual([{ instrumentId: rwa("BOND").instrumentId, symbol: "BOND", notice: "Confirm your eligibility to sell BOND through Bytesac." }]);
+    expect(await decisions()).toEqual([]);
   });
 
   it("without a declaration a sell of an RWA asks for one", async () => {

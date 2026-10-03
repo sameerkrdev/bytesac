@@ -30,6 +30,7 @@ publicRouter.get("/baskets", async (req, res) => {
 
 publicRouter.get("/baskets/:slug", optionalSession, validate({ params: z.object({ slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(90) }) }), async (req, res) => {
   await consume(limits.publicBasketIp, req.ctx.ip);
+  if (req.auth) res.set("Cache-Control", "private, no-store"); // the response carries this viewer's eligibility
   res.json(await getPublicBasket(req.params.slug as string, req.auth ? { userId: req.auth.userId, ipCountry: req.ctx.ipCountry } : null));
 });
 

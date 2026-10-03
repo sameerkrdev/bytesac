@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   basketPositions, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations,
   type DbOrTx,
@@ -115,7 +115,8 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
 
     if (body.target === "applied" && position.appliedVersionId !== basket!.currentVersionId) throw createHttpError(409, "The basket was updated: review the latest version instead.", { code: "VERSION_NOT_CURRENT" });
     const inv = await getInvestability(db, { id: position.basketId }, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry });
-    assertEligible(inv);
+    // Spec 11: only an RWA the plan buys or sells is evaluated (below); one that is merely held never refuses a plan.
+    assertEligible({ ...inv, eligibility: inv.eligibility && { ...inv.eligibility, reasons: inv.eligibility.reasons.filter((r) => !r.instrumentId || !inv.rwaDecisions.has(r.instrumentId)) } });
     const targetVersionId = inv.versionId!;
 
     const [version] = await db.select({ rebalance: basketVersions.rebalance, fees: basketVersions.fees }).from(basketVersions).where(eq(basketVersions.id, targetVersionId));
@@ -138,7 +139,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
       const balance = h.walletBalance ?? 0n;
       const spendable = h.chain === "bitcoin" ? (balance > maxBtcMinerFee(balance) ? balance - maxBtcMinerFee(balance) : 0n) : balance;
       const quantity = s.quantity < spendable ? s.quantity : spendable;
-      return quantity > 0n ? [{ deploymentId: h.deploymentId, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity }] : [];
+      return quantity > 0n ? [{ instrumentId: h.instrumentId, deploymentId: h.deploymentId, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity }] : [];
     });
 
     if (sells.length === 0 && plan.buys.length === 0) {
@@ -178,10 +179,16 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     const buys = placement.fromCash ? planRebalance({ ...input, reserveMicro: fee }).buys : plan.buys;
     if (sells.length === 0 && buys.length === 0) throw createHttpError("Nothing left to trade once the fees are paid.", { code: "VALIDATION_FAILED" });
 
+    // Spec 11 section 7: each RWA sell leg is evaluated for selling and each RWA buy leg for acquiring; one not ALLOWED refuses the plan (nothing is stored).
+    const sellTypes = sells.length ? await db.select({ id: instruments.id, assetType: instruments.assetType }).from(instruments).where(inArray(instruments.id, sells.map((s) => s.instrumentId))) : [];
+    const sellDecisions = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: sells.flatMap((s) => { const assetType = sellTypes.find((t) => t.id === s.instrumentId)!.assetType; return isRwa(assetType) ? [{ instrumentId: s.instrumentId, assetType, deploymentId: s.deploymentId, action: "sell" as const }] : []; }) });
+    const bought = new Set(buys.map((b) => buyConstituents[plan.buys.findIndex((p) => p.deploymentId === b.deploymentId)]!.instrumentId));
+    assertAllowed(new Map([...sellDecisions, ...[...inv.rwaDecisions].filter(([id]) => bought.has(id) && !sellDecisions.has(id))]));
+
     const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports]]);
     const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: placement.fromCash ? { fromCash: true } : null, expectedTx: null, gasPayer: "platform_fee_payer" };
     const legs: LegDraft[] = placement.at === "first" ? [feeLeg] : [];
-    sells.forEach((s, n) => legs.push(sellLeg(s, sellQuotes[n]!, sellCosts[n]!, body.slippageBps, gas)));
+    sells.forEach((s, n) => legs.push({ ...sellLeg(s, sellQuotes[n]!, sellCosts[n]!, body.slippageBps, gas), decision: decisionOf(sellDecisions, s.instrumentId, "sell") }));
     if (placement.at === "after_sells") legs.push(feeLeg);
     for (const b of buys) {
       const n = plan.buys.findIndex((p) => p.deploymentId === b.deploymentId);

@@ -1,6 +1,6 @@
 # ADR-018: Secondary-Market RWAs and the Eligibility Engine (Release 1)
 
-- **Status:** APPROVED (design approved in conversation 2026-10-03; implemented in Spec 11)
+- **Status:** APPROVED for the six user decisions of the 2026-10-03 brainstorm (secondary-market only, self-declaration plus geo signal, deny-by-default engine, buys blocked / holdings kept / sells per sell rules, market price required, permissionless only); implemented in Spec 11. Implementation details decided by the controller are labelled "Ruling (controller, 2026-10-03)" and await owner confirmation.
 - **Date:** 2026-10-03
 - **Owners:** Product + platform engineering
 - **Related:** D-025, D-026, D-069, D-100 to D-106; ADR-002, ADR-010, ADR-014, ADR-015, ADR-017; spec `docs/superpowers/specs/2026-10-03-rwa-eligibility-design.md`; `docs/domains/ASSET-REGISTRY.md`; `docs/domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`; `docs/domains/FUTURE-PLANS.md`; `apps/api/README.md`
@@ -33,14 +33,14 @@ The API reads the request header named by `GEO_COUNTRY_HEADER` (for example `CF-
 |---|---|---|
 | Investability and basket page | `acquire`, each RWA constituent | not investable for the user, reason `NOT_ELIGIBLE_ASSET` or `DECLARATION_REQUIRED` per asset |
 | Invest plan | `acquire` | 409 `NOT_ELIGIBLE` (reasons in `details`) or `DECLARATION_REQUIRED` |
-| Rebalance (apply, drift fix) | `acquire` | refused with the reason; Skip, Keep custom and Leave remain |
+| Rebalance (apply, drift fix) | `acquire` for each RWA buy leg, `sell` for each RWA sell leg, at plan time | a buy or sell leg whose outcome is not `ALLOWED` refuses the plan (409 `NOT_ELIGIBLE` with a reason per asset, or `DECLARATION_REQUIRED`); an RWA that is only held never refuses it; Skip, Keep custom and Leave remain |
 | Repair buy-back | `acquire` | refused; Sync remains |
-| Sell to USDC, Sell former assets | `sell` | `RESTRICTED`, `KYC_REQUIRED` and `REVIEW_REQUIRED` assets are left out and listed in `excluded[]` with a notice; the rest sells; nothing left is 409 `NOT_ELIGIBLE` |
+| Sell to USDC, Sell former assets | `sell` | `RESTRICTED`, `KYC_REQUIRED` and `REVIEW_REQUIRED` assets, and RWAs with no current declaration, are left out and listed in `excluded[]` with a notice; the rest sells; nothing left is 409 `NOT_ELIGIBLE` (`DECLARATION_REQUIRED` when a declaration is what is missing) |
 | Leg quote (every RWA leg, including recovery legs to an RWA) | the leg's action | 409 `NOT_ELIGIBLE`; settled legs stand |
 
 Existing holders are never forced to sell; a restricted asset stays in the user's own wallet. Each RWA leg's decision is stored in `eligibility_decisions` (append-only: operation, leg, user, instrument, route, action, outcome, rule ids, declaration, IP country, time) at plan time and at every quote; sell exclusions are stored with no leg. Every check runs on the server.
 
-Rulings made in implementation, all the safest option consistent with the spec: a sell with any RWA lacking a current declaration is 409 `DECLARATION_REQUIRED`, not an exclusion (eligibility is unknown); a rebalance of a basket with any non-`ALLOWED` RWA constituent is refused even when that asset is not being bought (the basket is not investable for the user, and rebalancing without the blocked asset is deferred); creating a recovery leg (a system step with no user or IP) is not checked, its quote is; plan-time refusals and an all-excluded sell store no decision row (no operation or leg exists); a repeated idempotent sell returns the stored operation without `excluded[]`.
+Ruling (controller, 2026-10-03): a rebalance is refused only when a buy leg would acquire an RWA whose `acquire` outcome is not `ALLOWED`; a held or sold RWA never refuses it on `acquire` grounds. Ruling (controller, 2026-10-03): every RWA sell leg of a rebalance is evaluated with `sell` at plan time, stored with its leg, and a non-`ALLOWED` outcome refuses the plan. Ruling (controller, 2026-10-03): a sell with no current declaration excludes each RWA (notice "Confirm your eligibility to sell X through Bytesac.", no decision row, since `DECLARATION_REQUIRED` is never stored) and sells the rest; it is refused only when nothing is left. Ruling (controller, 2026-10-03): creating a recovery leg (a system step with no user or IP) is not checked, its quote is; plan-time refusals and an all-excluded sell store no decision row; a repeated idempotent sell rebuilds `excluded[]` from the stored decisions that have no leg (an exclusion for a missing declaration has none).
 
 ### 6. Pricing (D-104)
 
