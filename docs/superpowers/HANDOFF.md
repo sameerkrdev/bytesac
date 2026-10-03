@@ -6,7 +6,7 @@ The one document to read first in a new session (human or AI). It holds the star
 
 ## 0. Paste-ready starter prompt
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows 11, Git Bash + PowerShell; **Python is not installed** — edit with Edit/Write or `node -e`; files are CRLF). Specs 1–13 are done (table in §2). The next phase is **Spec 14 — audit every third-party library and provider integration against its official documentation** (§6), then the roadmap 15–19 (§7). Start a phase only after the user's explicit go-ahead.
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows 11, Git Bash + PowerShell; **Python is not installed** — edit with Edit/Write or `node -e`; files are CRLF). Specs 1–14 are done (table in §2; Spec 14 is the integration audit, `docs/engineering/INTEGRATION-AUDIT.md`). The next phase is **Spec 15 — basic UI for web and mobile** (§6), then the roadmap 16–19 (§7). Start a phase only after the user's explicit go-ahead.
 >
 > **1. Load context (mandatory, in order):** this file (§3 rules and §4 method are binding), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ the linked ADRs), `docs/engineering/CODING-STANDARDS.md`, the domain doc and `docs/source/*` file for the phase, `docs/OPEN-ITEMS.md`. Check the memory files for user preferences.
 >
@@ -20,7 +20,7 @@ The one document to read first in a new session (human or AI). It holds the star
 
 **Bytesac** is a manager-led, multi-chain investment-basket platform. Users sign in with wallets (EVM SIWE, Solana SIWS); fund managers apply, are screened, create a verified organization and build versioned baskets (target weights over platform-approved instruments); users invest. Initial settlement is **USDC on Solana**. Custody is **self-custody**: assets stay in the user's own wallets and the user signs every value-moving transaction; the platform only co-signs as Solana fee payer, sends gas drops from its own wallets and recovers gas through a user-signed network-fee leg (ADR-013, ADR-014). Rebalances are proposed by managers and executed only with user authorization. Verbatim product sources are in `docs/source/*` (never edit).
 
-## 2. Current state (after Spec 13)
+## 2. Current state (after Spec 14)
 
 Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migrations `0000..0016`; decision register up to D-113; ADRs up to ADR-018.
 
@@ -41,6 +41,7 @@ Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migr
 | 11 RWAs and eligibility | Permissionless tokenized RWAs via LI.FI, eligibility engine, enforcement, decision audit | `d24d0ad` | ADR-018, D-100..D-106 |
 | 12 Launch hardening | Price batch fix, price-impact backstop, gas reservation lifecycle, sweep isolation, position auto-close, recovery auto-stop, functional fixes | `2f05253` | D-107..D-113 |
 | 13 Code and docs cleanup | API restructured into feature modules (route/controller/service, `@/` alias, server/worker graceful shutdown, redacted error logging), route-table and no-cycles tests, dead code and duplicates removed, docs consolidated to one home per topic | `9febc6a` | spec `2026-10-03-code-docs-cleanup-design.md` |
+| 14 Integration audit | Every provider and library checked against official docs (LI.FI and Alchemy live): no-SOL shape, deny-key filtering, `toAmountMin` 1 ppm tolerance, BullMQ fail-fast producers, reverted-approval guard, Next 16.3.8, CSP directives; deferrals in OPEN-ITEMS (Spec 14 block) | `feat/spec14-integration-audit` (merge pending the user) | `docs/engineering/INTEGRATION-AUDIT.md` |
 
 Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (later review artifacts lived in the git-ignored SDD workspace and were deleted after merge). Layout, conventions and behavior are in `ARCHITECTURE.md`, `CODING-STANDARDS.md` and `docs/domains/*`, not repeated here. Pre-launch checks, user actions and leftovers are all in `docs/OPEN-ITEMS.md`.
 
@@ -83,15 +84,15 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 - **Branch deletion:** `git branch -d` may refuse when the GitHub copy is behind; check `git merge-base --is-ancestor <branch> main` before `-D`.
 - **Scratch:** `.superpowers/` is git-ignored and does not travel; regenerate briefs with the SDD skill's scripts.
 
-## 6. Next phase — Spec 14: integration audit
+## 6. Next phase — Spec 15: basic UI for web and mobile
 
-Audit every third-party library and provider integration against its **official documentation** (current versions, deprecations, limits, error shapes, security guidance), fix divergences and record findings. Scope: LI.FI (quote, advanced routes, status, analytics, tokens, `svmSponsor`, deny lists), Solana `@solana/web3.js` (versioned transactions, simulate, signatures), `@scure/btc-signer` and `@noble/*` (BIP-322/137, PSBT), viem and wagmi, Reown AppKit (web and React Native), Firebase Admin / FCM (including the Installation ID migration), Resend, Twilio Verify, Alchemy (EVM, Solana, Bitcoin REST), CoinMarketCap, Gemini (`@google/genai` tool calling, embeddings), Cloudflare R2 / `@aws-sdk/client-s3`, BullMQ, the Redis client, Drizzle, envalid, winston and morgan, rate-limiter-flexible, Next.js 16, Expo 57, pg_cron and pgvector. Start with the brainstorm (ask the user for priorities and any real keys available); real-key checks in `docs/OPEN-ITEMS.md` §5 are inputs. Behavior changes need the usual spec, plan and review.
+Spec 14 (integration audit) is complete: findings, evidence and versions are in `docs/engineering/INTEGRATION-AUDIT.md`; deferred findings are in `docs/OPEN-ITEMS.md` (Spec 14 block). Start Spec 15 with the brainstorm (§4) only after the user's go-ahead.
 
 ## 7. Roadmap (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead)
 
 | # | Phase |
 |---|---|
-| 14 | Integration audit against official documentation (§6) |
+| 14 | Integration audit against official documentation (done, §2) |
 | 15 | Basic UI for web and mobile |
 | 16 | Deployment: Docker, GitHub Actions CI/CD, step-by-step launch guide |
 | 17 | Redesign the whole web and mobile UI/UX from user-supplied reference images and videos |
@@ -102,5 +103,5 @@ Audit every third-party library and provider integration against its **official 
 
 - Product sources (never edit): `docs/source/*`. Index and reading order: `docs/README.md`.
 - Decisions: `docs/decisions/DECISION-REGISTER.md`, `ADR-001..ADR-018`. Architecture: `docs/architecture/ARCHITECTURE.md`. Behavior: `docs/domains/*.md`. Conventions: `docs/engineering/CODING-STANDARDS.md`. Design system: `docs/BYTESAC_Design_System.md`.
-- Open work: `docs/OPEN-ITEMS.md`. Deferred scope: `docs/domains/FUTURE-PLANS.md`. Brainstorm Q&A: `docs/superpowers/BRAINSTORM-LOG.md`.
+- Open work: `docs/OPEN-ITEMS.md`. Integration audit: `docs/engineering/INTEGRATION-AUDIT.md`. Deferred scope: `docs/domains/FUTURE-PLANS.md`. Brainstorm Q&A: `docs/superpowers/BRAINSTORM-LOG.md`.
 - Setup and operations: `apps/api/README.md`, `apps/web/README.md`, `apps/mobile/README.md`.

@@ -19,7 +19,7 @@ The LI.FI FAQ and a review of the Spec 8 to 10 flows showed gaps: a rebalance bu
 
 ### 2. `SOL_REQUIRED` (D-094)
 
-LI.FI's refusal of a Solana wallet without SOL is mapped to 409 `SOL_REQUIRED`: "Add a small amount of SOL (~0.003) to your Solana wallet to continue." The platform does not drop SOL to users in this release. The refusal wording is not documented; the match is a real-key check.
+LI.FI's refusal of a Solana wallet without SOL is mapped to 409 `SOL_REQUIRED`: "Add a small amount of SOL (~0.003) to your Solana wallet to continue." The platform does not drop SOL to users in this release. LI.FI documents no wording for it. Verified live (2026-10-03): the refusal is HTTP 404, code 1002, with the cause only in `errors.filteredOut[].reason` ("SOL balance insufficient to cover temporary token account creation"); `svmSponsor` does not avoid it. `SOL_REQUIRED` is raised when a filtered reason says so and `errors.failed` is empty (no route failed for another reason).
 
 ### 3. Mayan and contract destinations (D-095)
 
@@ -44,7 +44,7 @@ Every estimate and quote sends `maxPriceImpact = 0.05`. Because LI.FI's honoring
 
 ### 7. Route deny list and ops tools (D-098, D-099)
 
-- `route_policy_entries` (kind `bridge` or `exchange`, LI.FI tool key, reason 1 to 500 characters, who and when, removed by and when; rows are never deleted). `ops_admin` denies and allows (audited); ops roles read. Active entries are sent as LI.FI deny lists on every estimate and quote (60 s in-process cache). A deny list only narrows routes. `/ops/routing` lists LI.FI's bridges and exchanges (`/v1/tools`, cached 1 h) with deny state and history. Denying an already-denied entry returns 400 `VALIDATION_FAILED`, not 409.
+- `route_policy_entries` (kind `bridge` or `exchange`, LI.FI tool key, reason 1 to 500 characters, who and when, removed by and when; rows are never deleted). `ops_admin` denies and allows (audited); ops roles read. Active entries are sent as LI.FI deny lists on every estimate and quote (60 s in-process cache); keys absent from LI.FI's current `/v1/tools` are dropped first, because an unknown key makes LI.FI fail the whole request (400, code 1011). Quote encoding is repeated query parameters, routes use body arrays. A deny list only narrows routes. `/ops/routing` lists LI.FI's bridges and exchanges (`/v1/tools`, cached 1 h) with deny state and history. Denying an already-denied entry returns 400 `VALIDATION_FAILED`, not 409.
 - Route fees: LI.FI `feeCosts` become `routeFees` (`name`, `amountUsd`, `included`) stored with the leg; previews show "Route fees (LI.FI, DEX, bridge): $X — included in the estimate".
 - LI.FI transfers (`ops_admin`, read-only): `GET /v1/ops/operations/:id/legs/:legId/lifi-transfers` proxies LI.FI `GET /v2/analytics/transfers` for the leg's source address within 24 h of the submission (the design said v1; the documented path is v2). The records are provider data, an aid and never evidence.
 - Token verification: the asset review deployment view shows `lifiVerification` (`verified` when LI.FI lists the token, `unverified` when not, null when unknown; cached 24 h per chain). LI.FI's token list documents no flag field, so `flagged` is in the type and never produced until a real-key check finds one.
@@ -83,5 +83,5 @@ Unit and integration tests with mocked LI.FI, RPC and wallets (`lifi-hardening`,
 
 ## Open questions
 
-- The exact no-SOL and price-impact refusal shapes, `NOT_PROCESSABLE_REFUND_NEEDED`, Mayan key names, deny-list parameter encoding, a token flag field, `advanced/routes` without `fromAddress` for Solana, analytics access and timestamp unit (real-key checks).
+- Confirmed by the keyless live check of 2026-10-03: no-SOL and price-impact shapes, Mayan key names, deny-list encoding, `advanced/routes` without `fromAddress` for Solana, analytics access (seconds, cursor pagination, request `limit=100`), token flag (`verificationStatus`; only `verified` counts). Still open with a real key: `NOT_PROCESSABLE_REFUND_NEEDED`, the code 1001 shape, a `FAILED` status with a receiving transaction (`docs/OPEN-ITEMS.md` section 5).
 - Release of unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); an operation planned before Spec 12 releases a quote-time leg's top-up only with the whole plan.
