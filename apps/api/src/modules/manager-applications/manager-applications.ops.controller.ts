@@ -2,8 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 import { listApplicationsQuerySchema, type TransitionApplicationRequest, type ApplicationNoteRequest, type PlatformRolesResponse, type GrantRoleRequest } from "@repo/validator";
 import * as applicationsService from "./applications.service";
 import * as platformRolesService from "./platform-roles.service";
+import { opsCtx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 
 const actor = (req: Request) => ({ userId: req.auth!.userId, requestId: req.ctx.requestId });
 
@@ -25,7 +25,7 @@ export const getApplicationDetail = async (req: Request, res: Response, next: Ne
 
 export const transitionApplication = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.json(await applicationsService.transitionApplication(ctx(req), req.params.id as string, req.body as TransitionApplicationRequest));
+    res.json(await applicationsService.transitionApplication(opsCtx(req), req.params.id as string, req.body as TransitionApplicationRequest));
   } catch (error) {
     next(error);
   }
@@ -33,7 +33,7 @@ export const transitionApplication = async (req: Request, res: Response, next: N
 
 export const addApplicationNote = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.status(201).json(await applicationsService.addApplicationNote(ctx(req), req.params.id as string, (req.body as ApplicationNoteRequest).internalNote));
+    res.status(201).json(await applicationsService.addApplicationNote(opsCtx(req), req.params.id as string, (req.body as ApplicationNoteRequest).internalNote));
   } catch (error) {
     next(error);
   }

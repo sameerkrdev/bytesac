@@ -6,8 +6,8 @@ import * as planService from "./plan.service";
 import * as quoteService from "./quote.service";
 import * as submitService from "./submit.service";
 import * as rebalanceService from "@/modules/rebalance/rebalance.service";
+import { ctx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const createInvestPlan = async (req: Request, res: Response, next: NextFunction) => {
   try {

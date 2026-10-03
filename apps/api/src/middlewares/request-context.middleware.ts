@@ -32,3 +32,8 @@ export function requestContext(req: Request, res: Response, next: NextFunction):
   res.setHeader("X-Request-Id", requestId);
   next();
 }
+
+/** Who is calling, for services: the session user plus request metadata. Requires `requireSession`. */
+export const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
+/** Same without the session id, for ops (admin) controllers. */
+export const opsCtx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });

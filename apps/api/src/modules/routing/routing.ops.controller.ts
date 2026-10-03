@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import type { RoutePolicyInput } from "@repo/validator";
 import * as routingService from "./routing.service";
+import { opsCtx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 
 export const getLifiTransfers = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -22,7 +22,7 @@ export const getRouting = async (_req: Request, res: Response, next: NextFunctio
 
 export const denyTool = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.status(201).json(await routingService.denyTool(ctx(req), req.body as RoutePolicyInput));
+    res.status(201).json(await routingService.denyTool(opsCtx(req), req.body as RoutePolicyInput));
   } catch (error) {
     next(error);
   }
@@ -30,7 +30,7 @@ export const denyTool = async (req: Request, res: Response, next: NextFunction) 
 
 export const allowTool = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.json(await routingService.allowTool(ctx(req), req.params.id as string));
+    res.json(await routingService.allowTool(opsCtx(req), req.params.id as string));
   } catch (error) {
     next(error);
   }

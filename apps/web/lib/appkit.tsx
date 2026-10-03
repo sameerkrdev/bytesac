@@ -13,7 +13,7 @@ const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
 if (!projectId && typeof window !== "undefined") console.error("NEXT_PUBLIC_REOWN_PROJECT_ID is not set");
 
 // Polygon is for exit legs only (sign-in never accepts it); Bitcoin is link-and-sign only, never a sign-in network.
-export const evmNetworks = [mainnet, base, bsc, arbitrum, polygon] as const;
+const evmNetworks = [mainnet, base, bsc, arbitrum, polygon] as const;
 
 export const wagmiAdapter = new WagmiAdapter({ networks: [...evmNetworks], projectId, ssr: true, storage: createStorage({ storage: cookieStorage }) });
 const solanaAdapter = new SolanaAdapter();

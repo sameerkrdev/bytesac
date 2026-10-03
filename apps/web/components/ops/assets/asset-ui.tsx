@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { OpsError } from "../ops-error";
+import { OpsError } from "@/components/ops/ops-error";
 
 /** What every editor section needs. `locked` = the instrument is under review or retired: read-only. */
 export type SectionProps = { a: OpsAssetDetail; locked: boolean; isAdmin: boolean; onChange(d: OpsAssetDetail): void };

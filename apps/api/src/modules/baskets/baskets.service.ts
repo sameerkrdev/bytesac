@@ -24,7 +24,7 @@ type VersionRow = typeof basketVersions.$inferSelect;
 type AssignmentRow = typeof basketAssignments.$inferSelect;
 
 /** A version with one of these statuses is the basket's single open version. */
-export const OPEN_VERSION_STATUSES = ["draft", "in_review", "changes_required", "approved"] as const;
+const OPEN_VERSION_STATUSES = ["draft", "in_review", "changes_required", "approved"] as const;
 const EDITABLE: readonly string[] = ["draft", "changes_required"];
 export const READ_ONLY: readonly BasketStatus[] = ["RETIRED", "REJECTED"];
 const iso = (d: Date | null) => d?.toISOString() ?? null;

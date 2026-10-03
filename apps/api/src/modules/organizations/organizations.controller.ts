@@ -2,8 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 import type { CreateOrganizationRequest, UpdateDraftRequest, PresignDocumentRequest, EnterPayoutWalletRequest, VerifyPayoutWalletRequest } from "@repo/validator";
 import * as organizationsService from "./organizations.service";
 import * as payoutWalletsService from "./payout-wallets.service";
+import { ctx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const createOrganization = async (req: Request, res: Response, next: NextFunction) => {
   try {

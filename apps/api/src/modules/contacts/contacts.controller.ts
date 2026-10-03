@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import type { AddContactRequest, VerifyContactRequest } from "@repo/validator";
 import * as contactsService from "./contacts.service";
+import { ctx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const addContact = async (req: Request, res: Response, next: NextFunction) => {
   try {

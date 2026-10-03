@@ -5,7 +5,7 @@ import { CHAINS, familyOf, type Chain } from "@repo/validator";
 export const SIGN_IN_STATEMENT = "Sign in to Bytesac. This does not authorize any transaction or spending.";
 
 /** Bitcoin is link-only: it can never sign you in. */
-export const LINK_STATEMENT = "Link this Bitcoin address to your Bytesac account. This does not sign you in or authorize any transaction or spending.";
+const LINK_STATEMENT = "Link this Bitcoin address to your Bytesac account. This does not sign you in or authorize any transaction or spending.";
 
 export interface SignInMessageInput {
   chain: Chain;

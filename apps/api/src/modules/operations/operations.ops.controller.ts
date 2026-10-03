@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import type { ResolveLegRequest } from "@repo/validator";
 import * as trackingService from "@/modules/portfolio/tracking.service";
+import { opsCtx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 
 export const resolveLeg = async (req: Request, res: Response, next: NextFunction) => {
   try {

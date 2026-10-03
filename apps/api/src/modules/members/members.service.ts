@@ -59,7 +59,7 @@ export async function closeOpenVerification(tx: Tx, membershipId: string): Promi
 }
 
 /** Idempotent: a membership has at most one open verification, so an existing one is kept. */
-export async function openMemberVerification(tx: Tx, membershipId: string): Promise<void> {
+async function openMemberVerification(tx: Tx, membershipId: string): Promise<void> {
   await tx.insert(memberVerifications).values({ membershipId }).onConflictDoNothing();
 }
 
@@ -98,7 +98,7 @@ export async function moveMembership(tx: Tx, m: MembershipRow, to: MembershipSta
 }
 
 /** Moves open invites matching `scope` whose 14 days ran out to REVOKED (event `expired`). Returns how many. No job: every read or accept of an invite calls this first. */
-export async function expireInvites(tx: Tx, scope: SQL, requestId: string): Promise<number> {
+async function expireInvites(tx: Tx, scope: SQL, requestId: string): Promise<number> {
   const due = await tx.select().from(organizationMemberships)
     .where(and(inArray(organizationMemberships.status, INVITE_OPEN), lte(organizationMemberships.inviteExpiresAt, sql`now()`), scope)).for("update");
   for (const m of due) await moveMembership(tx, m, "REVOKED", { actorType: "system", actorUserId: null, requestId, kind: "expired", action: "membership.invite_expired" });
@@ -121,7 +121,7 @@ export async function notifyMember(kind: MembershipEmailKind, to: { userId: stri
   }
 }
 
-export const myMembershipView = (m: MembershipRow): MyMembership => ({
+const myMembershipView = (m: MembershipRow): MyMembership => ({
   id: m.id, organizationId: m.organizationId, role: m.role, requestedRole: m.requestedRole, status: m.status,
   publicDisplayName: m.publicDisplayName, publicTitle: m.publicTitle,
 });

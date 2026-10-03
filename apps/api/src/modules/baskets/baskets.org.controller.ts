@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import { listBasketsQuerySchema, type CreateBasketRequest } from "@repo/validator";
 import * as basketsService from "./baskets.service";
+import { ctx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const createBasket = async (req: Request, res: Response, next: NextFunction) => {
   try {

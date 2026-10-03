@@ -1,4 +1,4 @@
-import type { OrganizationStatus, PayoutWalletStatus, VersionStatus } from "@repo/validator";
+import type { OrganizationStatus, PayoutWalletStatus } from "@repo/validator";
 
 type Tone = "success" | "warning" | "danger" | "neutral";
 type Label = { label: string; tone: Tone };
@@ -11,15 +11,6 @@ export const ORGANIZATION_STATUS_LABEL: Record<OrganizationStatus, Label> = {
   RESUBMITTED: { label: "Resubmitted", tone: "neutral" },
   VERIFIED: { label: "Verified", tone: "success" },
   REJECTED: { label: "Not approved", tone: "danger" },
-};
-
-export const VERSION_STATUS_LABEL: Record<VersionStatus, Label> = {
-  draft: { label: "Draft", tone: "neutral" },
-  in_review: { label: "In review", tone: "neutral" },
-  changes_required: { label: "Changes required", tone: "warning" },
-  approved: { label: "Approved", tone: "success" },
-  rejected: { label: "Not approved", tone: "danger" },
-  superseded: { label: "Superseded", tone: "neutral" },
 };
 
 export const PAYOUT_WALLET_STATUS_LABEL: Record<PayoutWalletStatus, Label> = {

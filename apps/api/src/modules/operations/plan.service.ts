@@ -55,7 +55,7 @@ export async function planQuote(i: { fromChain: AssetChain; fromToken: string | 
  * An estimate carries no transaction: LI.FI's own gas figure plus `rentLamports` (the caller passes it only when the destination token account is missing);
  * `quoteLeg` tops the reservation up if the transaction it builds needs more (D-072 keeps its bound).
  */
-export function sponsoredCost(q: PlanQuote, rentLamports = 0n): { lamports: bigint; usd: number; estimated: boolean } {
+function sponsoredCost(q: PlanQuote, rentLamports = 0n): { lamports: bigint; usd: number; estimated: boolean } {
   const usd = (rent: bigint) => q.gasEstimateUsd + (Number(rent) / 1e9) * (q.nativePriceUsd ?? SOL_USD_FALLBACK);
   if (!q.transaction) return { lamports: q.gasNative + rentLamports, usd: usd(rentLamports), estimated: true };
   const e = sponsorExposure((q.transaction as { serializedBase64: string }).serializedBase64);
@@ -192,6 +192,12 @@ export function sellLeg(
 
 const restrictedNotice = (symbol: string) => `You can't sell ${symbol} through Bytesac in your region; it stays in your wallet.`;
 
+/** The 409 for a wallet that cannot pay the fees up front (D-071). Shared by sell and rebalance plans; `offChain` adds the "before selling assets on X" clause. */
+export function insufficientFee(fee: bigint, networkFee: bigint, offChain?: AssetChain): Error {
+  const cents = (fee + 9_999n) / 10_000n; // rounded up to whole cents: "at least"
+  return createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the ${fee === networkFee ? "network fee" : "fees"}${offChain ? ` before selling assets on ${ASSET_CHAINS[offChain].label}` : ""}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
+}
+
 export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<OperationView> {
   const existing = await findByKey(ctx.userId, body.idempotencyKey);
   if (existing) {
@@ -250,8 +256,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   const evmSell = sells.find((s) => gasPayerFor(s.chain) === "platform_gas_drop");
   const feeUsdc = await freeUsdcMicro(db, ctx.userId, await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT));
   // EVM gas is only ever dropped after the network fee has settled, so selling an EVM asset needs the fee in USDC on Solana up front (D-071).
-  const cents = (fee + 9_999n) / 10_000n; // rounded up to whole cents: "at least"
-  if (evmSell && feeUsdc < fee) throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the ${fee === fees.rows[0]!.amountMicro ? "network fee" : "fees"} before selling assets on ${ASSET_CHAINS[evmSell.chain].label}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
+  if (evmSell && feeUsdc < fee) throw insufficientFee(fee, fees.rows[0]!.amountMicro, evmSell.chain);
   const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: reservedExpectedTx({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports }), gasPayer: "platform_fee_payer" };
   if (feeUsdc >= fee) legs.unshift(feeLeg);
   else legs.push(feeLeg);

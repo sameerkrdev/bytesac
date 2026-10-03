@@ -3,8 +3,8 @@ import type { SyncRequest } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import * as portfolioService from "./portfolio.service";
 import * as rebalanceService from "@/modules/rebalance/rebalance.service";
+import { ctx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const getPortfolio = async (req: Request, res: Response, next: NextFunction) => {
   try {

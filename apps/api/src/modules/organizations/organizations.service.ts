@@ -40,7 +40,7 @@ const notEditable = () => createHttpError("This organization can't be edited rig
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
 /** The version the owner may change (draft or changes_required); throws 409 when there is none. */
-export async function editableVersion(conn: DbOrTx, orgId: string): Promise<VersionRow> {
+async function editableVersion(conn: DbOrTx, orgId: string): Promise<VersionRow> {
   const [v] = await conn.select().from(organizationVersions).where(and(eq(organizationVersions.organizationId, orgId), inArray(organizationVersions.status, EDITABLE)));
   if (!v) throw notEditable();
   return v;

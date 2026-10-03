@@ -2,8 +2,8 @@ import type { NextFunction, Request, Response } from "express";
 import type { MembershipProfileRequest, UpdateMemberVerificationRequest, PresignDocumentRequest } from "@repo/validator";
 import * as membersService from "./members.service";
 import * as memberVerificationsService from "./member-verifications.service";
+import { ctx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const getMembership = async (req: Request, res: Response, next: NextFunction) => {
   try {

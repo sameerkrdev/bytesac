@@ -5,7 +5,7 @@
  */
 const WALLET_PARAMS = ["data", "nonce", "errorCode", "errorMessage", "wc", "phantom_encryption_public_key", "solflare_encryption_public_key"];
 
-export function isWalletReturnUrl(path: string): boolean {
+function isWalletReturnUrl(path: string): boolean {
   if (/^wc:/i.test(path)) return true;
   const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^?#]*)(?:\?([^#]*))?/i.exec(path);
   if (!m) return false;

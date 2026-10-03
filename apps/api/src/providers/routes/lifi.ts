@@ -6,7 +6,7 @@ import type { ConnectionInput, LegEstimateInput, LegQuoteInput, RouteFee, RouteP
 
 const BASE_URL = "https://li.quest/v1";
 /** Never route through a trade this far from the USD value in (docs.li.fi: `maxPriceImpact` hides routes above it; LI.FI defaults to 0.10). */
-export const MAX_PRICE_IMPACT = 0.05;
+const MAX_PRICE_IMPACT = 0.05;
 
 /** LI.FI chain ids (docs.li.fi: EVM chains use their chain id; Solana 1151111081099710; Bitcoin 20000000000001). */
 export const CHAIN_IDS: Readonly<Record<AssetChain, number>> = {

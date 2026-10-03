@@ -14,7 +14,7 @@ function bearerOf(init: RequestInit | undefined): string | null {
  * would sign out the new one. The discarded request surfaces as a network error, which
  * never triggers the expiry sign-out.
  */
-export function createSessionGuardedFetch(
+function createSessionGuardedFetch(
   inner: typeof fetch,
   currentToken: () => Promise<string | null>,
 ): typeof fetch {

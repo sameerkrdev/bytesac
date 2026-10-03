@@ -17,7 +17,7 @@ const clearSessionCookie = (res: Response) => res.clearCookie(SESSION_COOKIE, co
  * sign_in issues a session for the requested client; add_chain_account rotates within the caller's own client.
  * Web gets an httpOnly cookie, mobile the token in the body; no new session means keep the current one.
  */
-export function respondVerified(res: Response, result: VerifyResult): void {
+function respondVerified(res: Response, result: VerifyResult): void {
   const out: VerifyResponse = { userId: result.userId, isNewUser: result.isNewUser };
   if (result.issued) {
     if (result.issued.client === "web") res.cookie(SESSION_COOKIE, result.issued.token, { ...cookieOptions, expires: result.issued.absoluteExpiresAt });

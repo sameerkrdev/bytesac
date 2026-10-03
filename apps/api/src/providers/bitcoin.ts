@@ -111,7 +111,7 @@ export interface PsbtInput { txid: string; index: number }
 const readPsbt = (psbtBase64: string) => Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
 
 /** The outputs of a PSBT as `{ script hex, sats }`, in order. */
-export function psbtOutputs(psbtBase64: string): PsbtOutput[] {
+function psbtOutputs(psbtBase64: string): PsbtOutput[] {
   const tx = readPsbt(psbtBase64);
   return Array.from({ length: tx.outputsLength }, (_, n) => {
     const o = tx.getOutput(n);

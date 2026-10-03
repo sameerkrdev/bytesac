@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import { earningsQuerySchema, type PlatformFeeScheduleInput, type PlatformFeeOverrideInput } from "@repo/validator";
 import * as feesService from "./fees.service";
+import { opsCtx } from "@/middlewares/request-context.middleware";
 
-const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 
 const actor = (req: Request) => ({ userId: req.auth!.userId, requestId: req.ctx.requestId });
 

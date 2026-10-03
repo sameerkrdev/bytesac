@@ -116,7 +116,7 @@ export async function missingRequirements(conn: DbOrTx, instrumentId: string): P
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** Keyset page of instruments, newest update first. `live` = the session view: ACTIVE instruments and ACTIVE deployments only. */
-export async function pageInstruments(q: OpsAssetListQuery, live: boolean) {
+async function pageInstruments(q: OpsAssetListQuery, live: boolean) {
   const deploymentScope = (chain?: AssetChain) => and(
     eq(instrumentDeployments.instrumentId, instruments.id),
     live ? eq(instrumentDeployments.status, "ACTIVE") : ne(instrumentDeployments.status, "RETIRED"),

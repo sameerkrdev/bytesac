@@ -14,7 +14,7 @@ const toolList = z.array(z.object({ key: z.string(), name: z.string() }));
 const toolsSchema = z.object({ bridges: toolList, exchanges: toolList });
 
 /** LI.FI bridges and exchanges (`GET /v1/tools`), cached 1 h. */
-export async function lifiTools(): Promise<z.infer<typeof toolsSchema>> {
+async function lifiTools(): Promise<z.infer<typeof toolsSchema>> {
   const cached = await redis.get("lifi:tools").catch(() => null);
   if (cached) return toolsSchema.parse(JSON.parse(cached));
   const tools = toolsSchema.parse(await lifiCall("/tools"));

@@ -1,7 +1,7 @@
 import { chainFromEvmChainId, type MeResponse, type SignInChain } from "@repo/validator";
 
 /** Solana mainnet-beta genesis hash used in CAIP-2 ids. */
-export const SOLANA_MAINNET_CAIP = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+const SOLANA_MAINNET_CAIP = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 
 export function chainFromCaip(caipNetworkId: string | undefined): SignInChain | "unsupported" | null {
   if (!caipNetworkId) return null;

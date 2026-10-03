@@ -11,7 +11,7 @@ import { assertAllowed, decisionOf, evaluateFor, isRwa } from "@/modules/eligibi
 import { getInvestability } from "@/modules/operations/investability.service";
 import { FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, applyVersion, assertNoneInFlight, auditBase, freeUsdcMicro, getOperation, operationView, closeIfEmpty, hasOpenOperation, leavePosition, lockOperation, setOperationStatus, usdcPrice, type OpCtx } from "@/modules/operations/operations.service";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
-import { assertEligible, findByKey, insertPlan, legCost, planQuote, reservedExpectedTx, reused, sellLeg, type LegDraft } from "@/modules/operations/plan.service";
+import { assertEligible, findByKey, insufficientFee, insertPlan, legCost, planQuote, reservedExpectedTx, reused, sellLeg, type LegDraft } from "@/modules/operations/plan.service";
 import { fanOutToHolders } from "@/modules/notifications/notifications.service";
 import { getPrices, priceToMicro } from "@/modules/assets/pricing.service";
 import { reconcilePositions } from "@/modules/portfolio/reconciliation.service";
@@ -135,11 +135,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
 
     const walletUsdc = await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT);
     const placement = feePlacement({ freeMicro: await freeUsdcMicro(db, ctx.userId, walletUsdc), cashMicro: val.cashMicro, feeMicro: fee, sellChains: sells.map((s) => s.chain) });
-    if (!placement) {
-      const cents = (fee + 9_999n) / 10_000n; // rounded up to whole cents: "at least"
-      const off = sells.find((s) => s.chain !== "solana");
-      throw createHttpError(409, `Add at least $${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} USDC on Solana to pay the ${fee === fees.rows[0]!.amountMicro ? "network fee" : "fees"}${off ? ` before selling assets on ${ASSET_CHAINS[off.chain].label}` : ""}.`, { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: fee.toString() } });
-    }
+    if (!placement) throw insufficientFee(fee, fees.rows[0]!.amountMicro, sells.find((s) => s.chain !== "solana")?.chain);
     // Fees paid from basket cash are held back from the buys.
     const buys = placement.fromCash ? planRebalance({ ...input, reserveMicro: fee }).buys : plan.buys;
     if (sells.length === 0 && buys.length === 0) throw createHttpError("Nothing left to trade once the fees are paid.", { code: "VALIDATION_FAILED" });
