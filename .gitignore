@@ -40,3 +40,6 @@ yarn-error.log*
 # Env (keep examples)
 !.env.example
 .env.test.local
+
+# Local agent workspaces and scratch
+.superpowers/
