@@ -64,8 +64,8 @@ A manager fee for an organization without a `VERIFIED` payout wallet is waived (
 
 - `earnings.read` (Owner and Admin): `/organization/earnings` and `GET /v1/organizations/:id/earnings` show settled manager fees by basket, version, kind and month, recent transactions with explorer links and a waived count; CSV export (a cell starting with `=`, `+`, `-`, `@`, tab or CR is prefixed with an apostrophe so a spreadsheet does not run it).
 - Ops roles: `/ops/revenue` and `GET /v1/ops/revenue` show settled platform fees by operation type and month and waived manager fees by reason; CSV export. Ops edit schedules at `/ops/fees`.
-- Reports read only fees whose leg settled (`settled_at` is stamped when the fee leg settles).
-- Daily worker job `revenue-reconcile` (04:00 UTC) compares settled platform fees with the revenue treasury's USDC inflows for the previous UTC day and logs a mismatch; it is read-only. It buckets fees by `settled_at` (when the tracker recorded it), not by block time, so a settlement recorded just after midnight can cause a false warning.
+- Reports read only fees whose leg settled (`settled_at` is stamped when the fee leg settles; `settled_chain_at` holds the fee transaction's block time).
+- Daily worker job `revenue-reconcile` (04:00 UTC) compares settled platform fees with the revenue treasury's USDC inflows for the previous UTC day and logs a mismatch; it is read-only. It buckets fees by `coalesce(settled_chain_at, settled_at)`, the on-chain block time where known (D-112), so a settlement recorded just after midnight does not cause a false warning.
 
 ## Alternatives considered
 

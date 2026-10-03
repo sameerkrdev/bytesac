@@ -72,22 +72,22 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 ## 7. Technical debt (fix opportunistically, don't expand scope)
 
 **Must fix before onboarding real assets**
-- [ ] CoinMarketCap: one `price: null` id marks the whole uncached batch unavailable.
-- [ ] `mobile#check-types` fails on `main` (duplicate `@wagmi/core` peer variants in `apps/mobile/src/lib/appkit.tsx`; pnpm dedupe/override).
+- [x] CoinMarketCap: one `price: null` id marks the whole uncached batch unavailable.
+- [x] `mobile#check-types` fails on `main` (duplicate `@wagmi/core` peer variants in `apps/mobile/src/lib/appkit.tsx`; pnpm dedupe/override).
 
 **Spec 10.1**
-- [ ] Releasing unspent recovery gas after a stop credits the current UTC day's budget row; a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
+- [ ] Releasing unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
 - [ ] Recovery legs use the fresh quote's minimum (no `PRICE_MOVED`); a duplicate route deny returns 400 `VALIDATION_FAILED`, not 409; the LI.FI transfers lookup is a form on `/ops/routing` (operation and leg ids) because the web has no leg resolve view.
 - [ ] Mobile Leg fixtures may need the new leg fields (`mobile#check-types` already fails on `main`); `lifiVerification` `flagged` is never produced.
 
 **Spec 10.1**
-- [ ] Server-side price-impact backstop (refuse measured impact > 5%; measure includes route fees) — decide after the real-key check of `maxPriceImpact` encoding.
-- [ ] Gas budget counters: a quote-time top-up racing a stop/expiry is not returned; Stop does not release top-ups on unsent non-recovery legs (reset at UTC midnight).
-- [ ] A stuck recovery leg holds the user's single active-operation slot until Stop; review Minors 2, 7, 11.
+- [x] Server-side price-impact backstop (refuse measured impact > 5%; measure includes route fees) — decide after the real-key check of `maxPriceImpact` encoding.
+- [x] Gas budget counters: a quote-time top-up racing a stop/expiry is not returned; Stop does not release top-ups on unsent non-recovery legs.
+- [ ] A stuck recovery leg holds the user's single active-operation slot until Stop or the 7-day auto-stop (the deeper fix is in `FUTURE-PLANS.md`); review Minors 2, 7, 11.
 
 **Spec 10**
 - [ ] `/ops/fees` does not show who last changed a row; override form takes raw ids (no picker); ops lists capped at 500 rows.
-- [ ] Revenue reconciliation buckets by `settled_at` (false mismatch near midnight possible).
+- [x] Revenue reconciliation buckets by `settled_at` (false mismatch near midnight possible).
 - [ ] Review Minors 2, 3, 5, 6, 7, 9, 10, 11 (cosmetic or low risk).
 
 **Spec 9**
@@ -97,13 +97,15 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] `organization-payout-wallet` web test times out under a parallel full run (passes alone).
 
 **Spec 8**
-- [ ] Optional fee-payer `simulateTransaction` check; fully sold positions not auto-closed; sweeps lack per-record isolation.
-- [ ] Abandoned `IN_PROGRESS` operations keep gas reservations until UTC midnight; a retried gas drop skips its status re-check; a refused drop keeps its reservation.
+- [ ] Optional fee-payer `simulateTransaction` check.
+- [x] Fully sold positions not auto-closed; sweeps lack per-record isolation.
+- [x] Abandoned `IN_PROGRESS` operations keep gas reservations until UTC midnight; a retried gas drop skips its status re-check; a refused drop keeps its reservation.
 - [ ] Native EVM received amount is a whole-block balance change; ops leg resolve is not bound to the leg's own transactions; treasury token-account rent is not estimated.
-- [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts; portfolio shows basket slugs rather than names.
+- [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts.
+- [x] Portfolio shows basket slugs rather than names.
 
 **Spec 11**
-- [ ] A rebalance is refused when a held RWA is structurally non-investable (permissioned, no supported route, no price) because Spec 9 requires the target version investable (scheduled in Spec 12).
+- [x] A rebalance is refused when a held RWA is structurally non-investable (permissioned, no supported route, no price) because Spec 9 requires the target version investable (scheduled in Spec 12).
 - [ ] Data: which RWA tokens have real DEX liquidity through LI.FI and CoinMarketCap ids (no RWA is offered until ops add a route, a market price reference and rules).
 - [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
 - [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
@@ -113,15 +115,18 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Assignment ends that keep the lead are not re-indexed until the next refresh; profile hide/unhide email untested; IP-day AI cap counter untested; a skipped first price day can miss a subscription period start.
 
 **Spec 6**
-- [ ] Version diff omits lead changes; `VERSION_CONFLICT` compares millisecond timestamps; publish has no slug-collision retry; some manager emails not wired; preview/diff routes missing from the role test table; no org-suspended publish test; drafts do not preview would-be disclosures; `listOrgBaskets` unpaginated.
+- [x] `VERSION_CONFLICT` compares millisecond timestamps; publish has no slug-collision retry.
+- [ ] Version diff omits lead changes; some manager emails not wired; preview/diff routes missing from the role test table; no org-suspended publish test; drafts do not preview would-be disclosures; `listOrgBaskets` unpaginated.
 
 **Spec 5**
 - [ ] Polygon on-chain verification and a Bitcoin data provider for the registry; a DRAFT route on a later-retired deployment can be cascade-approved; a live RWA issuer can be swapped; cascaded item events lack `from_status`; Redis read failures not logged.
 
 **Specs 1–4**
-- [ ] A concurrent invite during sign-in can abort that sign-in with a 500 (savepoint); a rejected invite consumes the 20/h invite budget; `/me.organizations` `displayName` uses the latest version name.
-- [ ] Spec 2 ops form offers "Not approved" for a proven approved application; Spec 3 orphan final R2 copy on DB failure after copy.
-- [ ] Double-click contact add can show 404; resend countdown resets on remount; logout awaits wallet disconnect; iOS keyboard double-adjust check; ops/app Switch hit area on device; `@wagmi/connectors` pinned 6.2.0 until Reown RN supports wagmi 3.
+- [x] A concurrent invite during sign-in can abort that sign-in with a 500 (savepoint); a rejected invite consumes the 20/h invite budget.
+- [ ] `/me.organizations` `displayName` uses the latest version name.
+- [x] Spec 2 ops form offers "Not approved" for a proven approved application; Spec 3 orphan final R2 copy on DB failure after copy.
+- [x] Double-click contact add can show 404.
+- [ ] Resend countdown resets on remount; logout awaits wallet disconnect; iOS keyboard double-adjust check; ops/app Switch hit area on device; `@wagmi/connectors` pinned 6.2.0 until Reown RN supports wagmi 3.
 
 ## 8. Open decisions in the register
 

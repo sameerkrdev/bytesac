@@ -32,7 +32,7 @@ A destination EVM address with contract code (`eth_getCode`, cached 1 h) denies 
 - While any recovery leg is not final (`PLANNED` to `UNKNOWN`) the operation stays `IN_PROGRESS`, even if another leg failed or every buy ended `NO_FUNDS` (a rebalance whose only sell was recovered): the user can still sign it or Stop (`PARTIAL`, unsent recovery released, D-072). Once every recovery is final the usual `COMPLETED`/`PARTIAL`/`FAILED` rules apply. A rebalance-sell recovery runs after the buys, which were sized without its proceeds, so the recovered USDC sits as basket cash until the next reconciliation. A delivered token equal to the target (or a leg with no readable evidence) creates no recovery and stays `UNKNOWN` for ops. LI.FI `FAILED` with a receiving transaction is not recovered (real-key check).
 - Recovery is created only while the operation is `IN_PROGRESS` and the delivered transaction is finalized; a recovery whose own destination swap fails is `UNKNOWN`, not recovered again; bitcoin destinations are never recovered.
 - Accounting: the source side of the original leg is written once when it fails (sell: position ledger debit; rebalance buy: basket cash debit; invest and repair: free USDC, no entry); the destination side is written once when the recovery settles, from the chain-evidenced received amount, by the original leg's role (invest ledger, rebalance ledger, repair split D-080, rebalance-sell cash). Re-running the tracker changes nothing (checked under the operation lock).
-- Ordering: recovered originals never block later legs; a recovery waits until every non-recovery leg is `SETTLED` or `FAILED`. "Stop here" leaves the recovery unsent: the operation is `PARTIAL` and the delivered token stays in the wallet, outside baskets (a rebalance basket may show cash `SHORT` until synced, D-078).
+- Ordering: recovered originals never block later legs; a recovery waits until every non-recovery leg is `SETTLED` or `FAILED`. "Stop here" (or the 7-day auto-stop, D-109) leaves the recovery unsent: the operation is `PARTIAL` and the delivered token stays in the wallet, outside baskets (a rebalance basket may show cash `SHORT` until synced, D-078).
 
 ### 5. Refund messaging (D-096)
 
@@ -40,7 +40,7 @@ The status check persists LI.FI's `substatus`. `NOT_PROCESSABLE_REFUND_NEEDED` a
 
 ### 6. Price impact (D-097)
 
-Every estimate and quote sends `maxPriceImpact = 0.05`. A refusal is 503 `ROUTE_UNAVAILABLE`, "Price impact too high for this trade size." Previews show the price impact of each leg (from `fromAmountUSD` and `toAmountUSD`; absent without USD values) in warning style from 2%.
+Every estimate and quote sends `maxPriceImpact = 0.05`. Because LI.FI's honoring of the parameter is unverified, the server also computes the impact itself: 1 - (`toAmountUSD` + included route fees USD) / `fromAmountUSD` (D-107), so a fee-heavy route is not mistaken for slippage. Above 5% it is refused with 503 `ROUTE_UNAVAILABLE`, "Price impact too high for this trade size."; there is no check under $10 or without USD values. Previews show this figure for each leg in warning style from 2%.
 
 ### 7. Route deny list and ops tools (D-098, D-099)
 
@@ -80,4 +80,4 @@ Unit and integration tests with mocked LI.FI, RPC and wallets (`lifi-hardening`,
 ## Open questions
 
 - The exact no-SOL and price-impact refusal shapes, `NOT_PROCESSABLE_REFUND_NEEDED`, Mayan key names, deny-list parameter encoding, a token flag field, `advanced/routes` without `fromAddress` for Solana, analytics access and timestamp unit (real-key checks).
-- Release of unspent recovery gas after stop credits the current UTC day's budget row, not the day it was reserved.
+- Release of unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); an operation planned before Spec 12 releases a quote-time leg's top-up only with the whole plan.
