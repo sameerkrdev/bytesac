@@ -13,6 +13,7 @@ import { maxBtcMinerFee } from "../providers/bitcoin";
 import { solanaBalance } from "../providers/solana-tx";
 import { writeAudit } from "./audit";
 import { planFees } from "./fees";
+import { assertAllowed, decisionOf, evaluateFor, isRwa, RWA_ROUTE_METHODS } from "./eligibility";
 import { getInvestability } from "./investability";
 import {
   FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, addressOn, applyVersion, assertEligible, assertNoneInFlight, auditBase, basketCashMicro, findByKey, freeUsdcMicro, getOperation, insertPlan, operationView,
@@ -113,7 +114,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     if ((await latestRecon(db, { positionId: position.id })).some((r) => r.status === "SHORT")) throw repairRequired();
 
     if (body.target === "applied" && position.appliedVersionId !== basket!.currentVersionId) throw createHttpError(409, "The basket was updated: review the latest version instead.", { code: "VERSION_NOT_CURRENT" });
-    const inv = await getInvestability(db, { id: position.basketId }, ctx.userId);
+    const inv = await getInvestability(db, { id: position.basketId }, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry });
     assertEligible(inv);
     const targetVersionId = inv.versionId!;
 
@@ -191,6 +192,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
         kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id, amountIn: b.amountMicro,
         minOut: (buyQuotes[n]!.minOut * b.amountMicro) / plan.buys[n]!.amountMicro, routeSummary: { tool: buyQuotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, planned: true, routeFees: buyQuotes[n]!.routeFees, priceImpact: buyQuotes[n]!.priceImpact },
         expectedTx: reservedExpectedTx(buyCosts[n]!), gasPayer: "platform_fee_payer",
+        decision: decisionOf(inv.rwaDecisions, c.instrumentId, "acquire"),
       });
     }
 
@@ -218,11 +220,15 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
     if (short.length === 0) throw createHttpError("This asset is not short in any of your baskets.", { code: "VALIDATION_FAILED" });
     if (short.some((r) => r.checkedAt.getTime() < startedAt - FRESH_MS)) throw stale("Your wallet balances could not be confirmed right now. Try again in a moment.");
 
-    const [d] = await db.select({ instrumentId: instrumentDeployments.instrumentId, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol })
+    const [d] = (await db.select({ instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType, permissioned: instrumentDeployments.permissioned, method: executionRoutes.method, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol })
       .from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId))
       .innerJoin(executionRoutes, and(eq(executionRoutes.deploymentId, instrumentDeployments.id), eq(executionRoutes.status, "ACTIVE")))
-      .where(and(eq(instrumentDeployments.id, body.deploymentId), eq(instrumentDeployments.status, "ACTIVE"))).limit(1);
+      .where(and(eq(instrumentDeployments.id, body.deploymentId), eq(instrumentDeployments.status, "ACTIVE"))).orderBy(asc(executionRoutes.createdAt), asc(executionRoutes.id)))
+      // Spec 11: a tokenized asset is bought back only on a permissionless token with a synchronous secondary-market route.
+      .filter((r) => !isRwa(r.assetType) || (!r.permissioned && RWA_ROUTE_METHODS.includes(r.method as (typeof RWA_ROUTE_METHODS)[number])));
     if (!d) throw createHttpError(409, "There is no active route to buy this asset right now.", { code: "NOT_INVESTABLE" });
+    const eligibility = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: isRwa(d.assetType) ? [{ instrumentId: d.instrumentId, assetType: d.assetType, deploymentId: body.deploymentId, action: "acquire" }] : [] });
+    assertAllowed(eligibility);
     const price = (await getPrices([d.instrumentId])).find((p) => p.kind === "market" && p.status === "ok" && !p.stale && p.value);
     const priceMicro = price ? priceToMicro(price.value!) : null;
     if (!priceMicro) throw stale("The market price is unavailable right now. Try again in a moment.");
@@ -247,6 +253,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
       {
         kind: d.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: d.chain, toDeploymentId: body.deploymentId, amountIn: buy, minOut: minOut(q.estimatedOut, body.slippageBps),
         routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact }, expectedTx: reservedExpectedTx(cost), gasPayer: "platform_fee_payer",
+        decision: decisionOf(eligibility, d.instrumentId, "acquire"),
       },
     ];
     const id = await insertPlan(ctx, {

@@ -7,7 +7,7 @@ import {
 } from "@repo/db";
 import {
   ASSET_CHAINS, LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, micro, minOut, networkFeeMicro, scaleBuys, splitInvestment,
-  type AssetChain, type BasketFees, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest, type WaivedReason,
+  type AssetChain, type AssetType, type BasketFees, type ChainFamily, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type SellRequest, type WaivedReason,
 } from "@repo/validator";
 import { env } from "../env";
 import { bitcoinBalance, broadcastBitcoin, checkPsbt, expectedBtcTx, finalizePsbt, maxBtcMinerFee, psbtInputs, type PsbtInput, type PsbtOutput } from "../providers/bitcoin";
@@ -21,6 +21,7 @@ import type { RequestMeta } from "../middleware/request-context";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
 import { assertWalletsCanFund, platformAddress, releaseRecoveryGas, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
+import { type DecisionDraft, assertAllowed, decisionOf, evaluateFor, isRwa, recordDecisions } from "./eligibility";
 import { getInvestability } from "./investability";
 import { notify } from "./notifications";
 import { orgDisplayName } from "./members";
@@ -216,6 +217,8 @@ export async function usdcPrice(): Promise<string> {
 export interface LegDraft {
   kind: Leg["kind"]; fromChain: AssetChain; fromDeploymentId: string | null; toChain: AssetChain; toDeploymentId: string | null; amountIn: bigint; minOut: bigint | null;
   routeSummary: Record<string, unknown> | null; expectedTx: Record<string, unknown> | null; gasPayer: Leg["gasPayer"];
+  /** Spec 11: the eligibility decision of an RWA leg, stored with the plan. */
+  decision?: DecisionDraft;
 }
 
 export const gasPayerFor = (chain: AssetChain): Leg["gasPayer"] => (chain === "solana" ? "platform_fee_payer" : chain === "bitcoin" ? "user_btc_inputs" : "platform_gas_drop");
@@ -263,7 +266,7 @@ export async function legCost(q: PlanQuote, toChain: AssetChain, toToken: string
 export const reservedExpectedTx = (c: { lamports: bigint; estimated?: boolean }): Record<string, unknown> | null => (c.estimated ? { reservedNative: c.lamports.toString() } : null);
 
 /** Reserves platform-paid gas, then inserts the operation and its legs, all in one transaction (a refused budget leaves no operation). */
-export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$inferInsert, "userId" | "expiresAt" | "gasReserved">; legs: LegDraft[]; gas: Map<AssetChain, bigint>; fees: PlannedFee[] }): Promise<string> {
+export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$inferInsert, "userId" | "expiresAt" | "gasReserved">; legs: LegDraft[]; gas: Map<AssetChain, bigint>; fees: PlannedFee[]; excluded?: DecisionDraft[] }): Promise<string> {
   await assertWalletsCanFund(i.gas);
   try {
     return await db.transaction(async (tx) => {
@@ -276,6 +279,9 @@ export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$in
         amountIn: l.amountIn.toString(), minOut: l.minOut?.toString() ?? null, provider: l.kind === "network_fee" ? null : env.ROUTE_PROVIDER_ORDER[0]!, routeSummary: l.routeSummary,
         expectedTx: l.expectedTx, gasPayer: l.gasPayer,
       }))).returning({ id: operationLegs.id, kind: operationLegs.kind });
+      // Decisions of the RWA legs, and of sell exclusions (no leg), recorded with the plan.
+      await recordDecisions(tx, [...i.legs.flatMap((l, n) => (l.decision ? [{ ...l.decision, legId: inserted[n]!.id }] : [])), ...(i.excluded ?? []).map((d) => ({ ...d, legId: null }))]
+        .map((d) => ({ ...d, operationId: op!.id, userId: ctx.userId, ipCountry: ctx.meta.ipCountry })));
       const feeLeg = inserted.find((l) => l.kind === "network_fee")!;
       await tx.insert(operationFees).values(i.fees.map((f) => ({
         operationId: op!.id, legId: feeLeg.id, kind: f.kind, baseMicro: f.baseMicro.toString(), bps: f.bps, capMicro: f.capMicro?.toString() ?? null, amountMicro: f.amountMicro.toString(),
@@ -301,7 +307,7 @@ export const reused = () => createHttpError("This idempotency key was already us
 export function assertEligible(inv: Awaited<ReturnType<typeof getInvestability>>): void {
   if (!inv.investable) throw createHttpError(409, "This basket can't be invested in right now.", { code: "NOT_INVESTABLE", details: { reasons: inv.reasons } });
   const blockers = inv.eligibility?.reasons ?? [];
-  for (const code of ["OPERATION_IN_PROGRESS", "BTC_ADDRESS_REQUIRED"] as const) {
+  for (const code of ["OPERATION_IN_PROGRESS", "BTC_ADDRESS_REQUIRED", "DECLARATION_REQUIRED"] as const) {
     if (blockers.some((r) => r.code === code)) throw createHttpError(409, blockers.find((r) => r.code === code)!.message, { code, details: { reasons: blockers } });
   }
   if (blockers.length) throw createHttpError(409, "You can't invest yet.", { code: "NOT_ELIGIBLE", details: { reasons: blockers } });
@@ -315,7 +321,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
     return operationView(db, existing);
   }
 
-  const inv = await getInvestability(db, { id: body.basketId }, ctx.userId);
+  const inv = await getInvestability(db, { id: body.basketId }, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry });
   assertEligible(inv);
 
   const [version] = await db.select({ increment: basketVersions.minimumIncrementUsdc, fees: basketVersions.fees, organizationId: baskets.organizationId }).from(basketVersions)
@@ -351,6 +357,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
     legs.push({
       kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id,
       amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: reservedExpectedTx(costs[n]!), gasPayer: "platform_fee_payer",
+      decision: decisionOf(inv.rwaDecisions, c.instrumentId, "acquire"),
     });
   });
 
@@ -390,11 +397,11 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
 
   // Quantity per deployment: the smaller of the recorded holding and what the wallet still holds, never more.
   const holdings = await db.select({
-    deploymentId: positionLedgerEntries.deploymentId, instrumentId: instrumentDeployments.instrumentId, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol,
+    deploymentId: positionLedgerEntries.deploymentId, instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType, quantity: sql<string>`sum(${positionLedgerEntries.quantityDelta})`, chain: instrumentDeployments.chain, address: instrumentDeployments.address, decimals: instrumentDeployments.decimals, symbol: instruments.symbol,
   }).from(positionLedgerEntries).innerJoin(instrumentDeployments, eq(instrumentDeployments.id, positionLedgerEntries.deploymentId)).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId))
-    .where(eq(positionLedgerEntries.positionId, position.id)).groupBy(positionLedgerEntries.deploymentId, instrumentDeployments.instrumentId, instrumentDeployments.chain, instrumentDeployments.address, instrumentDeployments.decimals, instruments.symbol)
+    .where(eq(positionLedgerEntries.positionId, position.id)).groupBy(positionLedgerEntries.deploymentId, instrumentDeployments.instrumentId, instrumentDeployments.chain, instrumentDeployments.address, instrumentDeployments.decimals, instruments.symbol, instruments.assetType)
     .orderBy(asc(instrumentDeployments.chain), asc(positionLedgerEntries.deploymentId));
-  const sells: { deploymentId: string; instrumentId: string; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }[] = [];
+  const candidates: { deploymentId: string; instrumentId: string; assetType: AssetType; chain: AssetChain; address: string | null; symbol: string; decimals: number; quantity: bigint }[] = [];
   for (const h of holdings) {
     const wanted = (BigInt(h.quantity) * BigInt(body.percent)) / 100n;
     if (wanted <= 0n) continue;
@@ -402,9 +409,17 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
     // Native Bitcoin pays the miner fee out of the same balance: a full sell keeps the fee ceiling back so the PSBT can be built.
     const spendable = h.chain === "bitcoin" ? (balance > maxBtcMinerFee(balance) ? balance - maxBtcMinerFee(balance) : 0n) : balance;
     const quantity = wanted < spendable ? wanted : spendable;
-    if (quantity > 0n) sells.push({ deploymentId: h.deploymentId, instrumentId: h.instrumentId, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity });
+    if (quantity > 0n) candidates.push({ deploymentId: h.deploymentId, instrumentId: h.instrumentId, assetType: h.assetType, chain: h.chain, address: h.address, symbol: h.symbol, decimals: h.decimals, quantity });
   }
-  if (sells.length === 0) throw createHttpError("There is nothing to sell: your wallet holds none of this position's assets.", { code: "INSUFFICIENT_BALANCE" });
+  if (candidates.length === 0) throw createHttpError("There is nothing to sell: your wallet holds none of this position's assets.", { code: "INSUFFICIENT_BALANCE" });
+
+  // Spec 11 section 7: each RWA is evaluated for selling; one the user may not sell is left out (it stays in the wallet) and the rest sells. Nothing declared yet, or nothing left, is a 409.
+  const sellDecisions = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: candidates.filter((s) => isRwa(s.assetType)).map((s) => ({ instrumentId: s.instrumentId, assetType: s.assetType, deploymentId: s.deploymentId, action: "sell" as const })) });
+  if ([...sellDecisions.values()].some((r) => r.outcome === "DECLARATION_REQUIRED")) assertAllowed(sellDecisions);
+  const blocked = (s: { instrumentId: string }) => (sellDecisions.get(s.instrumentId)?.outcome ?? "ALLOWED") !== "ALLOWED";
+  const sells = candidates.filter((s) => !blocked(s));
+  if (sells.length === 0) assertAllowed(sellDecisions);
+  const excluded = candidates.filter(blocked).map((s) => ({ instrumentId: s.instrumentId, symbol: s.symbol, notice: `You can't sell ${s.symbol} through Bytesac in your region; it stays in your wallet.` }));
 
   const quotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
   const costs = await Promise.all(quotes.map((q, n) => (sells[n]!.chain === "solana" ? legCost(q, "solana", USDC_SOLANA_MINT, addressOn(addresses, "solana")) : { lamports: 0n, usd: q.gasEstimateUsd, estimated: false })));
@@ -420,7 +435,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   const fee = fees.totalMicro;
   const legs: LegDraft[] = [];
   const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports]]);
-  sells.forEach((s, n) => legs.push(sellLeg(s, quotes[n]!, costs[n]!, body.slippageBps, gas)));
+  sells.forEach((s, n) => legs.push({ ...sellLeg(s, quotes[n]!, costs[n]!, body.slippageBps, gas), decision: decisionOf(sellDecisions, s.instrumentId, "sell") }));
   // The network fee goes FIRST when the wallet already holds that much USDC, so the platform is paid before it spends gas; otherwise (Solana-only
   // sells) it is last, paid from the proceeds, and a fee the user never pays is an accepted loss within the caps.
   const evmSell = sells.find((s) => gasPayerFor(s.chain) === "platform_gas_drop");
@@ -437,9 +452,9 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
       basketId: position.basketId, positionId: position.id, kind: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", sellPercent: body.percent, slippageBps: body.slippageBps,
       networkFeeUsdc: fees.rows[0]!.amountMicro.toString(), versionId: position.appliedVersionId, idempotencyKey: body.idempotencyKey,
     },
-    legs, gas, fees: fees.rows,
+    legs, gas, fees: fees.rows, excluded: candidates.filter(blocked).map((s) => decisionOf(sellDecisions, s.instrumentId, "sell")!),
   });
-  return getOperation(ctx, id);
+  return { ...(await getOperation(ctx, id)), ...(excluded.length ? { excluded } : {}) };
 }
 
 async function loadLeg(ctx: OpCtx, opId: string, legId: string) {
@@ -497,6 +512,16 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     });
     if (nothing) throw createHttpError(409, "Nothing left to buy: the basket cash that arrived is used up.", { code: "VALIDATION_FAILED" });
     ({ op, legs, leg } = await loadLeg(ctx, opId, legId));
+  }
+
+  // Spec 11: an RWA leg (the asset bought, or the asset sold) is evaluated again at every quote: rules or the declaration may have changed since the plan. Earlier settled legs stand.
+  const rwaDeploymentId = leg.kind === "network_fee" ? null : (leg.fromDeploymentId ?? leg.toDeploymentId);
+  const [rwa] = rwaDeploymentId ? await db.select({ instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType }).from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.id, rwaDeploymentId)) : [];
+  if (rwa && isRwa(rwa.assetType)) {
+    const action = leg.fromDeploymentId ? "sell" : "acquire";
+    const results = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: [{ ...rwa, deploymentId: rwaDeploymentId!, action }] });
+    await recordDecisions(db, [{ operationId: op.id, legId: leg.id, userId: ctx.userId, ipCountry: ctx.meta.ipCountry, instrumentId: rwa.instrumentId, action, result: results.get(rwa.instrumentId)! }]);
+    assertAllowed(results);
   }
 
   const addresses = await userAddresses(db, ctx.userId);

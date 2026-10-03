@@ -11,7 +11,7 @@ import { createSession, revokeSession } from "../../src/services/sessions";
 import { createUserWithWallet } from "../../src/services/wallets";
 import { adminSql, resetDb } from "../helpers/db";
 
-const meta = { requestId: "r", ip: "", ipPrefix: null, userAgent: null };
+const meta = { requestId: "r", ip: "", ipPrefix: null, userAgent: null, ipCountry: null };
 const pepper = env.SESSION_TOKEN_PEPPER;
 beforeEach(resetDb);
 

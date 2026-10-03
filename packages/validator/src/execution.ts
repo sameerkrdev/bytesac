@@ -111,7 +111,7 @@ export const investabilitySchema = z.object({
   reasons: z.array(z.object({ instrumentId: z.uuid().optional(), code: z.string(), message: z.string() })),
   requiredFamilies: z.array(chainFamilySchema),
   minimumUsdc: z.string().nullable(),
-  eligibility: z.object({ eligible: z.boolean(), reasons: z.array(z.object({ code: z.string(), message: z.string() })) }).optional(),
+  eligibility: z.object({ eligible: z.boolean(), reasons: z.array(z.object({ instrumentId: z.uuid().optional(), code: z.string(), message: z.string(), outcome: z.string().optional(), reason: z.string().optional() })) }).optional(),
 });
 export type Investability = z.infer<typeof investabilitySchema>;
 
@@ -162,6 +162,8 @@ export const operationSchema = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   legs: z.array(legSchema),
   fees: z.array(operationFeeViewSchema),
+  /** Sell plans only: tokenized assets left out because the user may not sell them (they stay in the wallet). */
+  excluded: z.array(z.object({ instrumentId: z.uuid(), symbol: z.string(), notice: z.string() })).optional(),
 });
 export type OperationView = z.infer<typeof operationSchema>;
 /** A rebalance plan, or "already aligned" (the version was recorded and no operation made). */

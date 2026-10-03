@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import ipaddr from "ipaddr.js";
+import { env } from "../env";
 
-export interface RequestMeta { requestId: string; ip: string; ipPrefix: string | null; userAgent: string | null }
+export interface RequestMeta { requestId: string; ip: string; ipPrefix: string | null; userAgent: string | null; ipCountry: string | null }
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -25,7 +26,9 @@ export function requestContext(req: Request, res: Response, next: NextFunction):
   const incoming = req.header("x-request-id");
   const requestId = incoming && REQUEST_ID.test(incoming) ? incoming : randomUUID();
   const ip = req.ip ?? "";
-  req.ctx = { requestId, ip, ipPrefix: ipPrefixOf(ip), userAgent: req.header("user-agent")?.slice(0, 512) ?? null };
+  // Spec 11: the geo signal is read only from the header the deployment names (its edge must strip client-supplied values); unset means no signal.
+  const geo = env.GEO_COUNTRY_HEADER ? req.get(env.GEO_COUNTRY_HEADER)?.trim().toUpperCase() : undefined;
+  req.ctx = { requestId, ip, ipPrefix: ipPrefixOf(ip), userAgent: req.header("user-agent")?.slice(0, 512) ?? null, ipCountry: geo && /^[A-Z]{2}$/.test(geo) ? geo : null };
   res.setHeader("X-Request-Id", requestId);
   next();
 }
