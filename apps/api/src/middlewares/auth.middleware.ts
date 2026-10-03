@@ -2,9 +2,9 @@ import createHttpError, { isHttpError } from "http-errors";
 import type { NextFunction, Request, Response } from "express";
 import { db } from "@repo/db";
 import { SESSION_COOKIE, type ClientKind } from "@repo/validator";
-import { env } from "../env";
-import { activeRoles } from "../services/platform-roles";
-import { findActiveSession, touchSession } from "../services/sessions";
+import { env } from "@/config/dotenv";
+import { activeRoles } from "@/services/platform-roles";
+import { findActiveSession, touchSession } from "@/services/sessions";
 
 export interface AuthContext { userId: string; sessionId: string; client: ClientKind; transport: "cookie" | "bearer" }
 

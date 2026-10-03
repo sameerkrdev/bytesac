@@ -22,7 +22,7 @@ const walk = (stack: Layer[], prefix: string, out: string[]): void => {
 };
 
 it("mounts exactly the same endpoints and middleware", async () => {
-  const { app } = await import("../src/app");
+  const { app } = await import("@/app");
   const out: string[] = [];
   walk((app as unknown as { router: { stack: Layer[] } }).router.stack, "", out);
   expect(out.sort()).toMatchSnapshot();

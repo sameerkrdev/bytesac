@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { meResponseSchema, sessionsResponseSchema } from "@repo/validator";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { signIn, webHeaders } from "../helpers/auth";
 import { resetDb } from "../helpers/db";
 import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";

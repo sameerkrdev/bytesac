@@ -2,7 +2,7 @@ import { createPublicKey, verify } from "node:crypto";
 import bs58 from "bs58";
 import { isErc6492Signature, isHex, recoverMessageAddress, size, type Hex } from "viem";
 import type { Chain, VerificationMethod } from "@repo/validator";
-import { verifyContractSignature } from "../providers/evm-rpc";
+import { verifyContractSignature } from "@/providers/evm-rpc";
 
 export type VerifyOutcome = { kind: "valid"; method: VerificationMethod } | { kind: "invalid" };
 

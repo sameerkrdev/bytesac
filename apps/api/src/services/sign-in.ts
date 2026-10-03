@@ -6,16 +6,16 @@ import {
   chainsInFamily, familyOf,
   type Chain, type ChallengeResponse, type ClientKind, type VerificationMethod,
 } from "@repo/validator";
-import { env } from "../env";
-import type { AuthContext } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import type { RequestMeta } from "../middleware/request-context";
+import { env } from "@/config/dotenv";
+import type { AuthContext } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import type { RequestMeta } from "@/middlewares/request-context.middleware";
 import { grantIfProven } from "./applications";
 import { writeAudit } from "./audit";
 import { linkInvitesIfProven } from "./members";
 import { createSession, revokeSession, type IssuedSession } from "./sessions";
 import { buildSignInMessage } from "./sign-in-message";
-import { verifyBitcoinProof } from "../providers/bitcoin";
+import { verifyBitcoinProof } from "@/providers/bitcoin";
 import { verifyEvmSignature, verifySolanaSignature, type VerifyOutcome } from "./signatures";
 import { addressesForWallet, canonicalizeAddress, createUserWithWallet, findAddressOwner, insertAddresses, type NewAddressRow } from "./wallets";
 

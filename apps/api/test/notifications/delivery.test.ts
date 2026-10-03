@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { deliverNotification } from "../../src/services/notifications";
+import { deliverNotification } from "@/services/notifications";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { mockChains, solanaTestWallet } from "../execution/chain-mocks";
@@ -78,7 +78,7 @@ describe("deliverNotification", () => {
 
 describe("push provider", () => {
   it("without FIREBASE_SERVICE_ACCOUNT nothing is sent and no token is reported dead", async () => {
-    const { sendPush } = await vi.importActual<typeof import("../../src/providers/fcm")>("../../src/providers/fcm");
+    const { sendPush } = await vi.importActual<typeof import("@/providers/fcm")>("@/providers/fcm");
     expect(await sendPush(["tok-a"], { title: "t", body: "b", link: "https://example.com" })).toEqual([]);
   });
 });

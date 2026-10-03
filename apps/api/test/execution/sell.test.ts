@@ -4,8 +4,8 @@ import { RawTx, Script, Transaction, p2pkh } from "@scure/btc-signer";
 import createHttpError from "http-errors";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { seedPlatformWallets } from "../../src/services/gas";
+import { app } from "@/app";
+import { seedPlatformWallets } from "@/services/gas";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, btcInputKey, btcPsbt, mockChains, solanaTestWallet } from "./chain-mocks";
@@ -179,7 +179,7 @@ describe("leave and sell former assets", () => {
     expect(p!.closed_at).toBeTruthy();
     expect(await adminSql`SELECT 1 FROM app.operation_legs WHERE status <> 'SETTLED' AND from_chain IS NOT NULL AND source_tx IS NOT NULL`).toHaveLength(0);
     expect(chain.quotes).toHaveLength(0);
-    expect(vi.mocked((await import("../../src/providers/solana-tx")).connection.sendRawTransaction)).not.toHaveBeenCalled();
+    expect(vi.mocked((await import("@/providers/solana-tx")).connection.sendRawTransaction)).not.toHaveBeenCalled();
     expect((await post(user.h, `/v1/positions/${positionId}/leave`)).status).toBe(409);
     const former = await sell(user.h, positionId, { percent: 100 });
     expect(former.status).toBe(201);
@@ -242,7 +242,7 @@ describe("review fixes", () => {
     for (const l of [feeLeg, solLeg]) await setLeg(l.id, "SETTLED");
     fakes.evm.balances.delete(`ethereum:${user.evmAddress}`);
     await adminSql`UPDATE app.operations SET status = 'CANCELLED' WHERE id = ${op.id}`; // cancel won the race
-    const { sendGasDrop } = await import("../../src/services/gas");
+    const { sendGasDrop } = await import("@/services/gas");
     await expect(sendGasDrop(ethLeg.id, "ethereum", user.evmAddress, 150_000_000_000_000n)).rejects.toMatchObject({ code: "INVALID_TRANSITION" });
     expect(fakes.evm.sentNative).toHaveLength(0);
     expect(await adminSql`SELECT 1 FROM app.gas_drops`).toHaveLength(0);
@@ -304,7 +304,7 @@ describe("review fixes", () => {
   describe("Bitcoin PSBT checks (I5)", () => {
     async function btcLegWith(psbt: (refund: string, sats: bigint) => string) {
       const ctx = await arrange();
-      const { lifi } = await import("../../src/providers/routes/lifi");
+      const { lifi } = await import("@/providers/routes/lifi");
       const original = vi.mocked(lifi.quote).getMockImplementation()!;
       vi.mocked(lifi.quote).mockImplementation(async (i) => {
         const q = await original(i);
@@ -360,7 +360,7 @@ describe("review fixes", () => {
       const q = await quote(user.h, op.id, btcLeg.id);
       expect((await submit(user.h, op.id, btcLeg.id, { signedPsbt: q.body.transaction.psbtBase64 })).body.error.code).toBe("PSBT_MISMATCH");
       const signed = (() => { const t = Transaction.fromPSBT(Buffer.from(q.body.transaction.psbtBase64, "base64"), { allowUnknownOutputs: true }); t.sign(btcInputKey.priv); return Buffer.from(t.toPSBT()).toString("base64"); })();
-      const bitcoin = await import("../../src/providers/bitcoin");
+      const bitcoin = await import("@/providers/bitcoin");
       vi.mocked(bitcoin.broadcastBitcoin).mockRejectedValueOnce(createHttpError(409, "rejected", { code: "BROADCAST_REJECTED" }));
       expect((await submit(user.h, op.id, btcLeg.id, { signedPsbt: signed })).body.error.code).toBe("BROADCAST_REJECTED");
       expect((await adminSql<{ status: string; source_tx: string | null }[]>`SELECT status, source_tx FROM app.operation_legs WHERE id = ${btcLeg.id}`)[0]).toEqual({ status: "PLANNED", source_tx: null });

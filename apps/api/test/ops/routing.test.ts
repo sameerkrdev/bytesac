@@ -1,9 +1,9 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
-import { seedPlatformWallets } from "../../src/services/gas";
-import { forgetRoutePolicy, routeDenyList } from "../../src/services/routing";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { seedPlatformWallets } from "@/services/gas";
+import { forgetRoutePolicy, routeDenyList } from "@/services/routing";
 import { balanceKey, mockChains, solanaTestWallet } from "../execution/chain-mocks";
 import { USDC_MINT, seedBasket, seedLeg, seedUser, type SeedAsset } from "../execution/helpers";
 import { adminSql, resetDb } from "../helpers/db";

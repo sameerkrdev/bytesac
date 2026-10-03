@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { Redis } from "ioredis";
 import { RateLimiterRedis, RateLimiterRes } from "rate-limiter-flexible";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 export const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 

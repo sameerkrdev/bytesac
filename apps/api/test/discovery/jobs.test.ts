@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { activeInstrument, basketOrg, publishedBasket } from "../baskets/helpers";
 import { opsUser } from "../managers/helpers";
 import { adminSql, resetDb } from "../helpers/db";
@@ -15,13 +15,13 @@ vi.mock("bullmq", () => ({
     close = async () => undefined;
   },
 }));
-vi.mock("../../src/queues", () => ({
+vi.mock("@/config/queues", () => ({
   queues: Object.fromEntries(["price-snapshot", "embed-basket", "track-leg", "reconcile-positions", "gas-wallet-check", "revenue-reconcile"].map((name) => [name, { upsertJobScheduler: async (id: string, repeat: unknown, template: unknown) => { bull.schedulers.set(id, { repeat, template }); }, close: async () => undefined }])),
   enqueue: async (name: string, data: Record<string, unknown>) => { fakes.queue.jobs.push({ name, data }); },
 }));
 
-const { startWorker } = await import("../../src/worker");
-const { runPriceSnapshot } = await import("../../src/services/performance");
+const { startWorker } = await import("@/worker");
+const { runPriceSnapshot } = await import("@/services/performance");
 
 beforeEach(async () => {
   bull.workers.length = 0;

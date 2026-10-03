@@ -5,17 +5,17 @@ import {
   type ChangeRoleRequest, type CreateBasketRequest, type CreateOrganizationRequest, type EnterPayoutWalletRequest, type InviteMemberRequest, type PresignDocumentRequest, type UpdateDraftRequest,
   type VerifyPayoutWalletRequest,
 } from "@repo/validator";
-import { requireSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
-import { createBasket, listOrgBaskets } from "../services/baskets";
-import { getEarnings, getEarningsCsv } from "../services/fees";
-import { cancelInvite, changeRole, decideRemoval, inviteMember, listMembers, removeMember } from "../services/members";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { createBasket, listOrgBaskets } from "@/services/baskets";
+import { getEarnings, getEarningsCsv } from "@/services/fees";
+import { cancelInvite, changeRole, decideRemoval, inviteMember, listMembers, removeMember } from "@/services/members";
 import {
   confirmDocument, createChangeRequest, createOrganization, getOrganizationForMember, listMyOrganizations, presignDocument, submitChangeRequest, submitOrganization,
   unlinkDocument, updateDraft,
-} from "../services/organizations";
-import { enterPayoutWallet, issuePayoutChallenge, verifyPayoutWallet } from "../services/payout-wallets";
+} from "@/services/organizations";
+import { enterPayoutWallet, issuePayoutChallenge, verifyPayoutWallet } from "@/services/payout-wallets";
 
 const idParam = z.object({ id: z.uuid() });
 const docParams = z.object({ id: z.uuid(), docId: z.uuid() });

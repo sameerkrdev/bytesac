@@ -1,8 +1,8 @@
 import request from "supertest";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
-import * as basketsService from "../../src/services/baskets";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import * as basketsService from "@/services/baskets";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { opsUser } from "../managers/helpers";

@@ -2,9 +2,9 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, navObservations, priceReferences } from "@repo/db";
 import { logger } from "@repo/logger";
 import { micro, type PriceView } from "@repo/validator";
-import { env } from "../env";
-import { redis } from "../middleware/rate-limit";
-import { fetchQuotes } from "../providers/coinmarketcap";
+import { env } from "@/config/dotenv";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { fetchQuotes } from "@/providers/coinmarketcap";
 
 const STALE_MS = 5 * 60_000;
 

@@ -16,7 +16,7 @@ async function loadEnv(overrides: Record<string, string | undefined> = {}) {
     if (v === undefined) vi.stubEnv(k, undefined as unknown as string);
     else vi.stubEnv(k, v);
   }
-  return (await import("../src/env")).env;
+  return (await import("@/config/dotenv")).env;
 }
 
 afterEach(() => vi.unstubAllEnvs());

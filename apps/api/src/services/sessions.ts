@@ -2,7 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { sessions, users, type DbOrTx } from "@repo/db";
 import type { ClientKind } from "@repo/validator";
-import type { RequestMeta } from "../middleware/request-context";
+import type { RequestMeta } from "@/middlewares/request-context.middleware";
 
 export type SessionRow = typeof sessions.$inferSelect;
 export type RevokeReason = NonNullable<SessionRow["revokeReason"]>;

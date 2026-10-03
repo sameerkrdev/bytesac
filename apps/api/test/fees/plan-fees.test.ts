@@ -1,11 +1,11 @@
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { env } from "../../src/env";
-import { lifi } from "../../src/providers/routes/lifi";
-import { seedPlatformWallets } from "../../src/services/gas";
-import { trackLeg } from "../../src/services/positions";
+import { app } from "@/app";
+import { env } from "@/config/dotenv";
+import { lifi } from "@/providers/routes/lifi";
+import { seedPlatformWallets } from "@/services/gas";
+import { trackLeg } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "../execution/chain-mocks";
@@ -13,8 +13,8 @@ import { USDC_MINT, seedBasket, seedPosition, seedPrices, seedUser, seedVersion,
 
 // The revenue treasury address is switchable per test (the parsed env is read-only).
 const revenue = vi.hoisted(() => ({ address: "" }));
-vi.mock("../../src/env", async (original) => {
-  const m = await original<typeof import("../../src/env")>();
+vi.mock("@/config/dotenv", async (original) => {
+  const m = await original<typeof import("@/config/dotenv")>();
   return { ...m, env: new Proxy({} as typeof m.env, { get: (_, k) => (k === "REVENUE_TREASURY_SOLANA_ADDRESS" ? revenue.address : Reflect.get(m.env, k)) }) };
 });
 

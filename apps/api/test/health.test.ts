@@ -1,7 +1,7 @@
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
-import { app } from "../src/app";
-import { redis } from "../src/middleware/rate-limit";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
 
 describe("GET /health", () => {
   it("reports ok when db and redis are up", async () => {

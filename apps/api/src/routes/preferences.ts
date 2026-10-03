@@ -3,9 +3,9 @@ import { updateNotificationPreferencesSchema, type NotificationPreferences } fro
 import { eq, sql } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { Router } from "express";
-import { requireSession } from "../middleware/auth";
-import { validate } from "../middleware/validate";
-import { writeAudit } from "../services/audit";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { writeAudit } from "@/services/audit";
 
 const pick = (r: typeof notificationPreferences.$inferSelect): NotificationPreferences => ({
   rebalance: r.rebalance, portfolioUpdates: r.portfolioUpdates, managerUpdates: r.managerUpdates,

@@ -1,7 +1,7 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { app } from "../../src/app";
-import { lifi } from "../../src/providers/routes/lifi";
+import { app } from "@/app";
+import { lifi } from "@/providers/routes/lifi";
 import { adminSql, resetDb } from "../helpers/db";
 import { webHeaders } from "../helpers/auth";
 import { seedBasket, seedUser, type SeedAsset } from "./helpers";

@@ -1,9 +1,9 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { logger } from "@repo/logger";
-import * as evmRpc from "../../src/providers/evm-rpc";
-import { checkGasWallets, reconcilePositions } from "../../src/services/positions";
+import * as evmRpc from "@/providers/evm-rpc";
+import { checkGasWallets, reconcilePositions } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { mockChains, solanaTestWallet } from "./chain-mocks";
@@ -124,7 +124,7 @@ describe("gas wallet check", () => {
       ["evm_gas:arbitrum", "evm_gas:base", "evm_gas:bnb", "evm_gas:ethereum", "evm_gas:polygon", "solana_fee_payer"],
     );
     warn.mockClear();
-    const { feePayer } = await import("../../src/providers/solana-tx");
+    const { feePayer } = await import("@/providers/solana-tx");
     chain.balances.set(`${feePayer().publicKey.toBase58().toLowerCase()}:native`, 10n ** 10n);
     for (const c of ["ethereum", "base", "arbitrum", "bnb", "polygon"]) fakes.evm.balances.set(`${c}:${fakes.evm.gasWalletAddress()}`, 10n ** 22n);
     await checkGasWallets();

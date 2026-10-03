@@ -5,8 +5,8 @@ import {
   type DbOrTx,
 } from "@repo/db";
 import { ASSET_CHAINS, RWA_PROBLEMS, RWA_ROUTE_METHODS, USDC_SOLANA_MINT, rwaProblem, type AssetChain, type AssetType, type ChainFamily, type Investability } from "@repo/validator";
-import { selectRouteProvider } from "../providers/routes";
-import type { RouteProvider } from "../providers/routes/types";
+import { selectRouteProvider } from "@/providers/routes";
+import type { RouteProvider } from "@/providers/routes/types";
 import { evaluateFor, isRwa, type Evaluated } from "./eligibility";
 import { getPrices } from "./pricing";
 

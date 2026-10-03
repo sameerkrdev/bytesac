@@ -9,8 +9,8 @@ import {
   type Chain, type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MembershipStatus,
   type MyMembership, type OrganizationPermission, type VerificationMethod,
 } from "@repo/validator";
-import { consume, limits } from "../middleware/rate-limit";
-import { sendMembershipEmail, type MembershipEmailKind } from "../providers/resend";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { sendMembershipEmail, type MembershipEmailKind } from "@/providers/resend";
 import { endIneligibleAssignments, notifyReassignmentRequired } from "./baskets";
 import { writeAudit } from "./audit";
 import type { OrganizationRow, OwnerCtx } from "./organizations";

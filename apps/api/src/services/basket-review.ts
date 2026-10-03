@@ -19,7 +19,7 @@ import {
 import { PAGE_SIZE, assertNotMember } from "./organization-review";
 import type { OwnerCtx } from "./organizations";
 import { activeRoles } from "./platform-roles";
-import { enqueue } from "../queues";
+import { enqueue } from "@/config/queues";
 
 type BasketRow = typeof baskets.$inferSelect;
 type VersionRow = typeof basketVersions.$inferSelect;

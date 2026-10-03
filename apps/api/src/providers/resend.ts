@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { Resend } from "resend";
 import { logger } from "@repo/logger";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const resend = new Resend(env.RESEND_API_KEY);
 

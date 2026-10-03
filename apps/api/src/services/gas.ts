@@ -3,9 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { db, gasDrops, isUniqueViolation, operationLegs, operations, platformWallets, sponsorUsage, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
 import { ASSET_CHAINS, type AssetChain } from "@repo/validator";
-import { env } from "../env";
-import { evmBalance, evmReceipt, gasWalletAddress, sendNativeFromGasWallet } from "../providers/evm-rpc";
-import { feePayer, solanaBalance } from "../providers/solana-tx";
+import { env } from "@/config/dotenv";
+import { evmBalance, evmReceipt, gasWalletAddress, sendNativeFromGasWallet } from "@/providers/evm-rpc";
+import { feePayer, solanaBalance } from "@/providers/solana-tx";
 import { writeAudit } from "./audit";
 
 type Purpose = typeof platformWallets.$inferSelect["purpose"];

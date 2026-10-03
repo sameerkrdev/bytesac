@@ -4,9 +4,9 @@ import {
   applicationReplySchema, confirmApplicationEmailSchema, createApplicationRequestSchema, z,
   type ApplicationReplyRequest, type ConfirmApplicationEmailRequest, type CreateApplicationRequest,
 } from "@repo/validator";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
-import { confirmApplicationEmail, createApplication, getApplicationStatus, replyToApplication, resendApplicationCode } from "../services/applications";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { confirmApplicationEmail, createApplication, getApplicationStatus, replyToApplication, resendApplicationCode } from "@/services/applications";
 
 const idParam = z.object({ id: z.uuid() });
 

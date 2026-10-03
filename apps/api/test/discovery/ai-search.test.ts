@@ -2,9 +2,9 @@ import request from "supertest";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "@repo/logger";
 import { discoveryFiltersSchema } from "@repo/validator";
-import { app } from "../../src/app";
-import { limits, redis } from "../../src/middleware/rate-limit";
-import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "../../src/services/search-index";
+import { app } from "@/app";
+import { limits, redis } from "@/middlewares/rate-limit.middleware";
+import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/services/search-index";
 import { activeInstrument, basketOrg, publishedBasket } from "../baskets/helpers";
 import { webHeaders } from "../helpers/auth";
 import { adminSql } from "../helpers/db";
@@ -14,8 +14,8 @@ import { resetOrgDb } from "../organizations/helpers";
 
 // The key is read through `env`, which is frozen: the tests flip it here.
 const gemini = vi.hoisted(() => ({ key: "test-gemini-key" }));
-vi.mock("../../src/env", async (importOriginal) => {
-  const { env } = await importOriginal<typeof import("../../src/env")>();
+vi.mock("@/config/dotenv", async (importOriginal) => {
+  const { env } = await importOriginal<typeof import("@/config/dotenv")>();
   return { env: { ...env, get GEMINI_API_KEY() { return gemini.key; } } };
 });
 

@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { grantRole } from "../../src/services/platform-roles";
+import { app } from "@/app";
+import { grantRole } from "@/services/platform-roles";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { ops, resetOrgDb } from "../organizations/helpers";

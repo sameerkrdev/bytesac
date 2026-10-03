@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { minOut as slippageFloor, z, type AssetChain } from "@repo/validator";
-import { env } from "../../env";
-import { redis } from "../../middleware/rate-limit";
+import { env } from "@/config/dotenv";
+import { redis } from "@/middlewares/rate-limit.middleware";
 import type { ConnectionInput, LegEstimateInput, LegQuoteInput, RouteFee, RouteProvider } from "./types";
 
 const BASE_URL = "https://li.quest/v1";

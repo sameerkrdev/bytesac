@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { redis } from "../../src/middleware/rate-limit";
-import { lifi } from "../../src/providers/routes/lifi";
-import { selectRouteProvider } from "../../src/providers/routes";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { lifi } from "@/providers/routes/lifi";
+import { selectRouteProvider } from "@/providers/routes";
 import { USDC_MINT } from "./helpers";
 
 const SOLANA = 1151111081099710;

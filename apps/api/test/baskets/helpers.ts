@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import request from "supertest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql } from "../helpers/db";
 import { addMember, orgWithOwner, type Actor, type Role } from "../members/helpers";
 

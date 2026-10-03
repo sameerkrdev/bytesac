@@ -1,8 +1,8 @@
 import { addContactRequestSchema, verifyContactRequestSchema, z, type AddContactRequest, type VerifyContactRequest } from "@repo/validator";
 import { Router, type Request } from "express";
-import { requireSession } from "../middleware/auth";
-import { validate } from "../middleware/validate";
-import { addContact, resendContact, verifyContact } from "../services/contacts";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { addContact, resendContact, verifyContact } from "@/services/contacts";
 
 const idParam = z.object({ id: z.uuid() });
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });

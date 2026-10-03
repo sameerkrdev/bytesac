@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sessions, walletAddresses } from "@repo/db";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { fakes } from "../helpers/fakes";
 import { challengeFor, signIn, webHeaders } from "../helpers/auth";
 import { adminSql, resetDb, testDb } from "../helpers/db";

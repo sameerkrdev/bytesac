@@ -1,8 +1,8 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents, walletAddresses } from "@repo/db";
-import { disableAddress, reactivateAddress, suspendUser } from "../../src/services/ops";
-import { app } from "../../src/app";
+import { disableAddress, reactivateAddress, suspendUser } from "@/services/ops";
+import { app } from "@/app";
 import { signIn } from "../helpers/auth";
 import { resetDb, testDb } from "../helpers/db";
 import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";

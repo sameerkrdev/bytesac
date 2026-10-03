@@ -4,7 +4,7 @@ import { ripemd160 } from "@noble/hashes/legacy.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { Address, OutScript, RawTx, RawWitness, Script, SigHash, Transaction } from "@scure/btc-signer";
 import { z } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const enc = new TextEncoder();
 const hash160 = (b: Uint8Array) => ripemd160(sha256(b));

@@ -1,4 +1,4 @@
-import { env } from "../../env";
+import { env } from "@/config/dotenv";
 import { lifi } from "./lifi";
 import type { RouteProvider } from "./types";
 

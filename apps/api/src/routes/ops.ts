@@ -15,30 +15,30 @@ import {
   type ApplicationNoteRequest, type DecideMemberVerificationRequest, type GrantRoleRequest, type TransferOwnershipRequest, type OrganizationNoteRequest, type PayoutWalletDecisionRequest, type PlatformRolesResponse,
   type TransitionApplicationRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
 } from "@repo/validator";
-import { requireRole, requireSession } from "../middleware/auth";
-import { resolveLeg } from "../services/positions";
-import { allowTool, denyTool, getLifiTransfers, getRouting } from "../services/routing";
-import { endOverride, getRevenue, getRevenueCsv, listSchedules, saveSchedule } from "../services/fees";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
+import { requireRole, requireSession } from "@/middlewares/auth.middleware";
+import { resolveLeg } from "@/services/positions";
+import { allowTool, denyTool, getLifiTransfers, getRouting } from "@/services/routing";
+import { endOverride, getRevenue, getRevenueCsv, listSchedules, saveSchedule } from "@/services/fees";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
 import {
   decideMemberVerification, getMemberForReview, listMembersForReview, memberDocumentDownloadUrl, transferOwnership,
-} from "../services/member-verifications";
-import { addApplicationNote, getApplicationDetail, listApplications, transitionApplication } from "../services/applications";
+} from "@/services/member-verifications";
+import { addApplicationNote, getApplicationDetail, listApplications, transitionApplication } from "@/services/applications";
 import {
   addOrganizationNote, decidePayoutWallet, decideVersion, documentDownloadUrl, getOrganizationForReview, listOrganizationsForReview, transitionOrganization,
-} from "../services/organization-review";
-import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
+} from "@/services/organization-review";
+import { grantRole, listRoles, revokeRole } from "@/services/platform-roles";
 import {
   createAssetProvider, createAssetTag, listAssetTags, retireAssetTag, createDeployment, createInstrument, createIssuer, createRoute, createRule, getAssetForOps, listAssetProviders, listAssetsForOps, listIssuers, putPriceReference,
   recordNav, setDeploymentFlag, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
-} from "../services/assets";
-import { hideProfile, listProfilesForOps, unhideProfile } from "../services/manager-profiles";
-import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "../services/asset-review";
+} from "@/services/assets";
+import { hideProfile, listProfilesForOps, unhideProfile } from "@/services/manager-profiles";
+import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "@/services/asset-review";
 import {
   createDisclosureTemplate, decideLead, decideRetirement, decideVersion as decideBasketVersion, getBasketForOps, listBasketsForOps, listDisclosureTemplates, platformPause, platformResume, platformRetire,
   retireDisclosureTemplate,
-} from "../services/basket-review";
+} from "@/services/basket-review";
 
 const idParam = z.object({ id: z.uuid() });
 const midParam = z.object({ mid: z.uuid() });

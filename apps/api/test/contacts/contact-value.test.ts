@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { maskContact, normalizeContact } from "../../src/services/contact-value";
-import { generateOtp, hashOtp, otpMatches } from "../../src/services/otp";
+import { maskContact, normalizeContact } from "@/services/contact-value";
+import { generateOtp, hashOtp, otpMatches } from "@/services/otp";
 
 const ALLOWED = ["IN", "US"];
 

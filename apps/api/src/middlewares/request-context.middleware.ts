@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import ipaddr from "ipaddr.js";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 export interface RequestMeta { requestId: string; ip: string; ipPrefix: string | null; userAgent: string | null; ipCountry: string | null }
 

@@ -1,8 +1,8 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
-import { reconcilePositions } from "../../src/services/positions";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { reconcilePositions } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "./chain-mocks";

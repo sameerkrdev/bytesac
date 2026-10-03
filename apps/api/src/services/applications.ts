@@ -8,10 +8,10 @@ import {
   type CreateApplicationRequest, type CreateApplicationResponse, type ListApplicationsQuery, type ListApplicationsResponse,
   type TransitionApplicationRequest, type VerificationMethod, z,
 } from "@repo/validator";
-import { env } from "../env";
-import { consume, limits } from "../middleware/rate-limit";
-import type { RequestMeta } from "../middleware/request-context";
-import { sendApplicationEmail, type ApplicationEmailKind } from "../providers/resend";
+import { env } from "@/config/dotenv";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import type { RequestMeta } from "@/middlewares/request-context.middleware";
+import { sendApplicationEmail, type ApplicationEmailKind } from "@/providers/resend";
 import { writeAudit } from "./audit";
 import { OTP_MAX_ATTEMPTS, OTP_RESEND_COOLDOWN_SEC, OTP_TTL, generateOtp, hashOtp, otpMatches } from "./otp";
 import { hashToken } from "./sessions";

@@ -3,7 +3,7 @@ import bs58 from "bs58";
 import createHttpError from "http-errors";
 import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 export const connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`, { commitment: "confirmed" });
 

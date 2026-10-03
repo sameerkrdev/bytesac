@@ -4,15 +4,15 @@ import {
   basketReasonRequestSchema, createAssignmentRequestSchema, endAssignmentRequestSchema, saveBasketDraftRequestSchema, updateAssignmentRequestSchema, z,
   type BasketReasonRequest, type Investability, type CreateAssignmentRequest, type EndAssignmentRequest, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
 } from "@repo/validator";
-import { optionalSession, requireSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
-import { getInvestability } from "../services/investability";
-import { getAdoption } from "../services/notifications";
+import { optionalSession, requireSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { getInvestability } from "@/services/investability";
+import { getAdoption } from "@/services/notifications";
 import {
   addAssignment, createNextVersion, endAssignment, getBasketForMember, requireBasketAction, getVersionDiff, listVersions, previewOpenVersion, saveDraft, updateAssignment, validateOpenVersion,
-} from "../services/baskets";
-import { pauseBasket, publishVersion, requestRetirement, resumeBasket, submitVersion, withdrawVersion } from "../services/basket-review";
+} from "@/services/baskets";
+import { pauseBasket, publishVersion, requestRetirement, resumeBasket, submitVersion, withdrawVersion } from "@/services/basket-review";
 
 const bidParam = z.object({ bid: z.uuid() });
 const versionParams = z.object({ bid: z.uuid(), vid: z.uuid() });

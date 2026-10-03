@@ -1,13 +1,13 @@
 import { Router } from "express";
 import createHttpError from "http-errors";
 import { aiSearchRequestSchema, discoveryFiltersSchema, discoveryQuerySchema, managerHandleParamSchema, publicBasketQuerySchema, z } from "@repo/validator";
-import { optionalSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
-import { aiSearch, structuredSearch } from "../services/discovery";
-import { getPublicManager } from "../services/manager-profiles";
-import { getPublicOrganization } from "../services/organizations";
-import { getPublicBasket, listPublicBaskets, platformFeeRates } from "../services/public-baskets";
+import { optionalSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { aiSearch, structuredSearch } from "@/services/discovery";
+import { getPublicManager } from "@/services/manager-profiles";
+import { getPublicOrganization } from "@/services/organizations";
+import { getPublicBasket, listPublicBaskets, platformFeeRates } from "@/services/public-baskets";
 
 /** No session: only the public fields of a verified organization's current approved version. */
 export const publicRouter = Router();

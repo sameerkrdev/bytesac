@@ -1,11 +1,11 @@
 import { Router, type Request } from "express";
 import { skipRequestSchema, syncRequestSchema, z, type SkipRequest, type SyncRequest } from "@repo/validator";
-import { requireSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
-import { leavePosition } from "../services/operations";
-import { getPortfolio } from "../services/positions";
-import { closeDustPosition, keepCustom, revertCustom, skipVersion, syncShortfall } from "../services/rebalance";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { leavePosition } from "@/services/operations";
+import { getPortfolio } from "@/services/positions";
+import { closeDustPosition, keepCustom, revertCustom, skipVersion, syncShortfall } from "@/services/rebalance";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 

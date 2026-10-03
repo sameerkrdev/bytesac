@@ -1,9 +1,9 @@
 import { VersionedTransaction } from "@solana/web3.js";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { seedPlatformWallets } from "../../src/services/gas";
-import { trackLeg } from "../../src/services/positions";
+import { app } from "@/app";
+import { seedPlatformWallets } from "@/services/gas";
+import { trackLeg } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet, type ChainState } from "./chain-mocks";

@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { activeInstrument, basketOrg, publishedBasket } from "../baskets/helpers";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";

@@ -12,13 +12,13 @@ import {
   type IssuerRequest, type IssuerView, type NavEntryRequest, type OpsAssetDetail, type OpsAssetListResponse, type OpsAssetListQuery, type PublicAssetDetail, type PublicAssetListResponse, type PutPriceReferenceRequest,
   type TokenStandard, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
 } from "@repo/validator";
-import { consume, limits } from "../middleware/rate-limit";
-import { readTokenMetadata } from "../providers/evm-rpc";
-import { getMintDecimals } from "../providers/solana-rpc";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { readTokenMetadata } from "@/providers/evm-rpc";
+import { getMintDecimals } from "@/providers/solana-rpc";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import { lifiVerification } from "./routing";
-import { enqueue } from "../queues";
+import { enqueue } from "@/config/queues";
 import { notify } from "./notifications";
 import { getPrices } from "./pricing";
 import { canonicalizeAddress } from "./wallets";

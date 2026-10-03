@@ -4,9 +4,9 @@ import request from "supertest";
 import { logger } from "@repo/logger";
 import { z } from "@repo/validator";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { errorHandler, notFoundHandler } from "../../src/middleware/error-handler";
-import { requestContext } from "../../src/middleware/request-context";
-import { validate } from "../../src/middleware/validate";
+import { errorHandler, notFoundHandler } from "@/middlewares/error-handler.middleware";
+import { requestContext } from "@/middlewares/request-context.middleware";
+import { validate } from "@/middlewares/validate.middleware";
 
 function appThrowing(err: unknown) {
   const app = express();
@@ -101,5 +101,23 @@ describe("errorHandler logging", () => {
     expect(out).not.toContain("params");
     expect(out).toContain("23505");
     expect(out).toContain("DrizzleQueryError");
+  });
+});
+
+describe("errorHandler request context", () => {
+  it("logs method, path, query and body with secret fields redacted", async () => {
+    const spy = vi.spyOn(logger, "error");
+    const app = express();
+    app.use(requestContext);
+    app.use(express.json());
+    app.post("/z", () => { throw new Error("boom"); });
+    app.use(errorHandler);
+    await request(app).post("/z?token=abc123").send({ password: "hunter2", signature: "sig-value", otp: "424242", nested: { secret: "s3cret" }, name: "alice" });
+    const out = JSON.stringify(spy.mock.calls);
+    for (const leaked of ["hunter2", "sig-value", "424242", "s3cret", "abc123"]) expect(out).not.toContain(leaked);
+    expect(out).toContain("[redacted]");
+    expect(out).toContain('"method":"POST"');
+    expect(out).toContain('"path":"/z"');
+    expect(out).toContain("alice");
   });
 });

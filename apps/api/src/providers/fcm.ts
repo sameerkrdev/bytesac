@@ -1,7 +1,7 @@
 import { cert, initializeApp } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import { logger } from "@repo/logger";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 /** Web push through Firebase Cloud Messaging. Without `FIREBASE_SERVICE_ACCOUNT` (JSON) push is off: nothing is sent and the inbox and email still work. */
 const app = env.FIREBASE_SERVICE_ACCOUNT ? initializeApp({ credential: cert(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT)) }) : null;

@@ -1,5 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 /**
  * Private Cloudflare R2 bucket over its S3-compatible API. Checksums only when an operation requires one: the SDK default would hoist a

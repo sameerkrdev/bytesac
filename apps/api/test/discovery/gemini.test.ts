@@ -6,7 +6,7 @@ vi.mock("@google/genai", async (orig) => ({
   GoogleGenAI: class { models = { generateContent: sdk.generateContent, embedContent: vi.fn() }; },
 }));
 
-const { geminiSearchCall } = await vi.importActual<typeof import("../../src/providers/gemini")>("../../src/providers/gemini");
+const { geminiSearchCall } = await vi.importActual<typeof import("@/providers/gemini")>("@/providers/gemini");
 
 const reply = (call?: { name: string; args: unknown }) => ({
   functionCalls: call ? [call] : undefined,

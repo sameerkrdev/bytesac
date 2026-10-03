@@ -3,10 +3,10 @@ import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransac
 import { Script, Transaction } from "@scure/btc-signer";
 import bs58 from "bs58";
 import { vi } from "vitest";
-import * as bitcoin from "../../src/providers/bitcoin";
-import { lifi } from "../../src/providers/routes/lifi";
-import type { LegStatus } from "../../src/providers/routes/types";
-import * as solanaTx from "../../src/providers/solana-tx";
+import * as bitcoin from "@/providers/bitcoin";
+import { lifi } from "@/providers/routes/lifi";
+import type { LegStatus } from "@/providers/routes/types";
+import * as solanaTx from "@/providers/solana-tx";
 import { fakes } from "../helpers/fakes";
 import { bitcoinWallet } from "./helpers";
 

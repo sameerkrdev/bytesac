@@ -3,9 +3,9 @@ import {
   assetTags, basketAssignments, basketPerformanceDays, basketSearchIndex, basketVersionAssets, basketVersions, baskets, db, instrumentTags, instruments, managerProfiles, organizations,
 } from "@repo/db";
 import { basketFeesSchema, effectiveFeeBps, performanceMetrics } from "@repo/validator";
-import { env } from "../env";
-import { embedText } from "../providers/gemini";
-import { enqueue } from "../queues";
+import { env } from "@/config/dotenv";
+import { embedText } from "@/providers/gemini";
+import { enqueue } from "@/config/queues";
 import { orgDisplayName } from "./members";
 import { LISTED_BASKET_STATUSES } from "./public-baskets";
 

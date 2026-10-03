@@ -8,7 +8,7 @@ import {
   type DecideMemberVerificationRequest, type DocumentView, type ListMemberReviewQuery, type ListMemberReviewResponse, type MemberReviewDetail, type MemberVerificationStatus, type MemberVerificationView,
   type MembershipStatus, type PresignDocumentRequest, type PresignDocumentResponse, type TransferOwnershipRequest, type UpdateMemberVerificationRequest,
 } from "@repo/validator";
-import { consume, limits } from "../middleware/rate-limit";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import { endIneligibleAssignments } from "./baskets";

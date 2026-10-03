@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { verifyBitcoinProof } from "../../src/providers/bitcoin";
+import { app } from "@/app";
+import { verifyBitcoinProof } from "@/providers/bitcoin";
 import { webHeaders } from "../helpers/auth";
 import { adminSql, resetDb } from "../helpers/db";
 import { INVALID, VALID } from "./bip322-vectors";
@@ -127,7 +127,7 @@ describe("linking a Bitcoin address", () => {
 
 describe("sign-in guard (minor 2)", () => {
   it("the service itself refuses a Bitcoin sign-in challenge, not only the request schema", async () => {
-    const { issueChallenge } = await import("../../src/services/sign-in");
+    const { issueChallenge } = await import("@/services/sign-in");
     await expect(issueChallenge({ purpose: "sign_in", chain: "bitcoin", rawAddress: bitcoinWallet("p2wpkh").address, sessionId: null, meta: { ip: "127.0.0.1", requestId: "r" } as never })).rejects.toMatchObject({ code: "UNSUPPORTED_CHAIN" });
   });
 

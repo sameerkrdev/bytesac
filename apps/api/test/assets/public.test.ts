@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { act, activeCrypto, admin, decide, evmAddress, get, itemAct, mkAsset, mkDeployment, mkIssuer, mkProvider, mkRoute, mkRule, patch, plainUser, post, putRef, readyCrypto, reviewer, setStatus, submit } from "./helpers";

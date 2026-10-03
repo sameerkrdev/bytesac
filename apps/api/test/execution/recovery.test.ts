@@ -1,9 +1,9 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { lifi } from "../../src/providers/routes/lifi";
-import { seedPlatformWallets } from "../../src/services/gas";
-import { trackLeg } from "../../src/services/positions";
+import { app } from "@/app";
+import { lifi } from "@/providers/routes/lifi";
+import { seedPlatformWallets } from "@/services/gas";
+import { trackLeg } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { mockChains, solanaTestWallet } from "./chain-mocks";

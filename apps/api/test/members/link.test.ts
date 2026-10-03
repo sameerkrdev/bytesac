@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { disableAddress, suspendUser } from "../../src/services/ops";
+import { app } from "@/app";
+import { disableAddress, suspendUser } from "@/services/ops";
 import { challengeFor, signIn, webHeaders } from "../helpers/auth";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";

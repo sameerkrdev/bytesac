@@ -3,13 +3,13 @@ import {
   membershipProfileRequestSchema, presignDocumentRequestSchema, updateMemberVerificationRequestSchema, z,
   type MembershipProfileRequest, type PresignDocumentRequest, type UpdateMemberVerificationRequest,
 } from "@repo/validator";
-import { requireSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
 import {
   confirmMemberDocument, getMemberVerification, presignMemberDocument, submitMemberVerification, unlinkMemberDocument, updateMemberVerification,
-} from "../services/member-verifications";
-import { acceptInvitation, declineInvitation, expireInvites, leaveOrganization, myMembershipView, updateMembershipProfile } from "../services/members";
+} from "@/services/member-verifications";
+import { acceptInvitation, declineInvitation, expireInvites, leaveOrganization, myMembershipView, updateMembershipProfile } from "@/services/members";
 import { db, organizationMemberships } from "@repo/db";
 import { and, eq } from "drizzle-orm";
 import createHttpError from "http-errors";

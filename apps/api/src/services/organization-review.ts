@@ -11,8 +11,8 @@ import {
   type DocumentContentType, type ListOrganizationsQuery, type ListOrganizationsResponse, type OrganizationNoteRequest,
   type OrganizationReviewDetail, type OrganizationStatus, type PayoutWalletDecisionRequest, type TransitionOrganizationRequest, type VersionDecisionRequest,
 } from "@repo/validator";
-import { R2_BUCKET, r2 } from "../providers/r2";
-import type { OrganizationEmailKind } from "../providers/resend";
+import { R2_BUCKET, r2 } from "@/providers/r2";
+import type { OrganizationEmailKind } from "@/providers/resend";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import { notifyOwner, resolveTemplate, versionView } from "./organizations";

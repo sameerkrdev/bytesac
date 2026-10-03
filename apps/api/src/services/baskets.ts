@@ -12,8 +12,8 @@ import {
   type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
 } from "@repo/validator";
 import { logger } from "@repo/logger";
-import { enqueue } from "../queues";
-import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "../providers/resend";
+import { enqueue } from "@/config/queues";
+import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "@/providers/resend";
 import { writeAudit } from "./audit";
 import { isRwa } from "./eligibility";
 import { requirePermission, type MembershipRow } from "./members";

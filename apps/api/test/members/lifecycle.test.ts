@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { newEvmWallet } from "../helpers/wallets";

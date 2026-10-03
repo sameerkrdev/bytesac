@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import bs58 from "bs58";
-import { verifySolanaSignature } from "../../src/services/signatures";
+import { verifySolanaSignature } from "@/services/signatures";
 
 // RFC 8032 section 7.1, TEST 1 (empty message): fixed vector produced by an independent implementation.
 const PUBLIC_KEY = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";

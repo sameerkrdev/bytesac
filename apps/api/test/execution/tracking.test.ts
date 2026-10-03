@@ -1,10 +1,10 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { lifi } from "../../src/providers/routes/lifi";
+import { app } from "@/app";
+import { lifi } from "@/providers/routes/lifi";
 import { opsUser } from "../managers/helpers";
-import { connection } from "../../src/providers/solana-tx";
-import { trackLeg, trackStaleClaims } from "../../src/services/positions";
+import { connection } from "@/providers/solana-tx";
+import { trackLeg, trackStaleClaims } from "@/services/positions";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { mockChains, solanaTestWallet } from "./chain-mocks";

@@ -7,8 +7,8 @@ import { logger } from "@repo/logger";
 import {
   type HideManagerProfileRequest, type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
 } from "@repo/validator";
-import { sendProfileEmail, type ProfileEmailKind } from "../providers/resend";
-import { enqueue } from "../queues";
+import { sendProfileEmail, type ProfileEmailKind } from "@/providers/resend";
+import { enqueue } from "@/config/queues";
 import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import { orgDisplayName } from "./members";

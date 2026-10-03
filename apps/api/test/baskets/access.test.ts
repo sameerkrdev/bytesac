@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeAll, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
 import { adminSql } from "../helpers/db";
 import { addMember, type Actor } from "../members/helpers";
 import { resetOrgDb, user } from "../organizations/helpers";

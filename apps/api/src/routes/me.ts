@@ -6,22 +6,22 @@ import {
   bitcoinChallengeRequestSchema, bitcoinVerifySchema, eligibilityDeclarationInputSchema, familyOf, listNotificationsQuerySchema, managerProfileRequestSchema, markReadSchema, pushTokenSchema, z,
   type BitcoinChallengeRequest, type BitcoinVerify, type EligibilityDeclarationInput, type ManagerProfileRequest, type MeResponse, type SessionsResponse,
 } from "@repo/validator";
-import { requireSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
 import { respondVerified } from "./auth";
-import { issueChallenge, verifyChallenge } from "../services/sign-in";
-import { writeAudit } from "../services/audit";
-import { contactView } from "../services/contacts";
-import { currentDeclaration, declare } from "../services/eligibility";
-import { activeRoles } from "../services/platform-roles";
-import { listMyInvitations } from "../services/members";
-import { listNotifications, markRead, registerPushToken, revokePushToken } from "../services/notifications";
-import { getOwnProfile, saveOwnProfile, setOwnProfilePublished } from "../services/manager-profiles";
-import { listMyOrganizations } from "../services/organizations";
-import { listActiveSessions, revokeSession } from "../services/sessions";
-import { bip322ToSignPsbt } from "../providers/bitcoin";
-import { addressesForWallet, canonicalBitcoinAddress } from "../services/wallets";
+import { issueChallenge, verifyChallenge } from "@/services/sign-in";
+import { writeAudit } from "@/services/audit";
+import { contactView } from "@/services/contacts";
+import { currentDeclaration, declare } from "@/services/eligibility";
+import { activeRoles } from "@/services/platform-roles";
+import { listMyInvitations } from "@/services/members";
+import { listNotifications, markRead, registerPushToken, revokePushToken } from "@/services/notifications";
+import { getOwnProfile, saveOwnProfile, setOwnProfilePublished } from "@/services/manager-profiles";
+import { listMyOrganizations } from "@/services/organizations";
+import { listActiveSessions, revokeSession } from "@/services/sessions";
+import { bip322ToSignPsbt } from "@/providers/bitcoin";
+import { addressesForWallet, canonicalBitcoinAddress } from "@/services/wallets";
 
 export const meRouter = Router();
 meRouter.use(requireSession);

@@ -5,10 +5,10 @@ import { logger } from "@repo/logger";
 import {
   notificationText, type Adoption, type NotificationKind, type NotificationPreferences, type NotificationsPage,
 } from "@repo/validator";
-import { env } from "../env";
-import { sendPush } from "../providers/fcm";
-import { sendNotificationEmail } from "../providers/resend";
-import { enqueue } from "../queues";
+import { env } from "@/config/dotenv";
+import { sendPush } from "@/providers/fcm";
+import { sendNotificationEmail } from "@/providers/resend";
+import { enqueue } from "@/config/queues";
 
 /** Which of the user's preferences gates the email and push of a kind (the inbox row is always written). */
 const PREFERENCE: Record<NotificationKind, keyof NotificationPreferences> = {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { notificationText } from "@repo/validator";
-import { fanOutToHolders } from "../../src/services/notifications";
-import { trackLeg } from "../../src/services/positions";
-import { onVersionPublished } from "../../src/services/rebalance";
+import { fanOutToHolders } from "@/services/notifications";
+import { trackLeg } from "@/services/positions";
+import { onVersionPublished } from "@/services/rebalance";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { mockChains, solanaTestWallet } from "../execution/chain-mocks";

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import request from "supertest";
 import { authChallenges, sessions } from "@repo/db";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { challengeFor, webHeaders } from "../helpers/auth";
 import { adminSql, resetDb, testDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";

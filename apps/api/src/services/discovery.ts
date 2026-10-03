@@ -3,8 +3,8 @@ import { and, asc, cosineDistance, desc, eq, inArray, sql, type SQL } from "driz
 import { basketSearchIndex as idx, db } from "@repo/db";
 import { logger } from "@repo/logger";
 import { discoveryFiltersSchema, z, type AiSearchResponse, type DiscoveryFilters, type DiscoverySearchItem, type DiscoverySearchResponse } from "@repo/validator";
-import { env } from "../env";
-import { embedText, geminiSearchCall } from "../providers/gemini";
+import { env } from "@/config/dotenv";
+import { embedText, geminiSearchCall } from "@/providers/gemini";
 import { LISTED_BASKET_STATUSES } from "./public-baskets";
 
 const PAGE_SIZE = 20;

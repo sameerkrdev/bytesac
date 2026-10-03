@@ -3,12 +3,12 @@ import express from "express";
 import request from "supertest";
 import { db } from "@repo/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { env } from "../../src/env";
-import { optionalSession, requireSession } from "../../src/middleware/auth";
-import { errorHandler } from "../../src/middleware/error-handler";
-import { requestContext } from "../../src/middleware/request-context";
-import { createSession, revokeSession } from "../../src/services/sessions";
-import { createUserWithWallet } from "../../src/services/wallets";
+import { env } from "@/config/dotenv";
+import { optionalSession, requireSession } from "@/middlewares/auth.middleware";
+import { errorHandler } from "@/middlewares/error-handler.middleware";
+import { requestContext } from "@/middlewares/request-context.middleware";
+import { createSession, revokeSession } from "@/services/sessions";
+import { createUserWithWallet } from "@/services/wallets";
 import { adminSql, resetDb } from "../helpers/db";
 
 const meta = { requestId: "r", ip: "", ipPrefix: null, userAgent: null, ipCountry: null };

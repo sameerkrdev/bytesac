@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { verifyEvmSignature, verifySolanaSignature } from "../../src/services/signatures";
+import { verifyEvmSignature, verifySolanaSignature } from "@/services/signatures";
 import { fakes, resetFakes } from "../helpers/fakes";
 import { ERC6492_SUFFIX, newEvmWallet, newSolanaWallet } from "../helpers/wallets";
 

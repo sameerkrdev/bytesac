@@ -1,5 +1,5 @@
 {
   "extends": "@repo/typescript-config/base.json",
-  "compilerOptions": { "lib": ["es2022"], "types": ["node"], "noEmit": true },
+  "compilerOptions": { "lib": ["es2022"], "types": ["node"], "noEmit": true, "paths": { "@/*": ["./src/*"] } },
   "include": ["src", "test", "vitest.config.ts", "tsup.config.ts"]
 }

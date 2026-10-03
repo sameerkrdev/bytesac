@@ -2,9 +2,9 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { csrfGuard, noCors, rejectDualAuth } from "../../src/middleware/security";
-import { errorHandler } from "../../src/middleware/error-handler";
-import { requestContext } from "../../src/middleware/request-context";
+import { csrfGuard, noCors, rejectDualAuth } from "@/middlewares/security.middleware";
+import { errorHandler } from "@/middlewares/error-handler.middleware";
+import { requestContext } from "@/middlewares/request-context.middleware";
 
 const ORIGIN = "http://localhost:3000";
 function app() {

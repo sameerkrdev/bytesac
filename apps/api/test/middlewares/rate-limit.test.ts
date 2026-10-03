@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { consume, limits, redis } from "../../src/middleware/rate-limit";
+import { consume, limits, redis } from "@/middlewares/rate-limit.middleware";
 
 beforeEach(async () => { await redis.flushdb(); });
 

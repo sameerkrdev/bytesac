@@ -3,8 +3,8 @@ import { Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionM
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USDC_SOLANA_MINT } from "@repo/validator";
-import { env } from "../../src/env";
-import { buildFeeTransfer, connection, cosign, describeUnsigned, feePayer, sendSolana, solanaFinality, sponsorExposure } from "../../src/providers/solana-tx";
+import { env } from "@/config/dotenv";
+import { buildFeeTransfer, connection, cosign, describeUnsigned, feePayer, sendSolana, solanaFinality, sponsorExposure } from "@/providers/solana-tx";
 
 const BLOCKHASH = bs58.encode(Buffer.alloc(32, 7));
 const user = Keypair.generate();

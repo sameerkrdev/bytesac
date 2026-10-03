@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { beforeAll, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
-import { structuredSearch } from "../../src/services/discovery";
-import { refreshSearchIndex } from "../../src/services/search-index";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { structuredSearch } from "@/services/discovery";
+import { refreshSearchIndex } from "@/services/search-index";
 import { activeInstrument, basketOrg, publishedBasket } from "../baskets/helpers";
 import { adminSql } from "../helpers/db";
 import { webHeaders } from "../helpers/auth";

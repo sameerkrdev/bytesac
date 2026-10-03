@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import type { NextFunction, Request, Response } from "express";
 import { CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, SESSION_COOKIE } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const AUTH_ENTRY = new Set(["/v1/auth/challenge", "/v1/auth/verify"]);

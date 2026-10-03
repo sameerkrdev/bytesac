@@ -1,7 +1,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
-import { canonicalizeAddress } from "../../src/services/wallets";
-import { buildSignInMessage, SIGN_IN_STATEMENT } from "../../src/services/sign-in-message";
+import { canonicalizeAddress } from "@/services/wallets";
+import { buildSignInMessage, SIGN_IN_STATEMENT } from "@/services/sign-in-message";
 
 const acct = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
 const SOL = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";

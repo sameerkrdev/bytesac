@@ -7,8 +7,8 @@ import {
   FEE_DUST_MICRO, USDC_SOLANA_MINT, managerFeeMicro, micro, microToUsdc, networkFeeMicro, platformFeeMicro, resolvePlatformSchedule,
   type Earnings, type EarningsQuery, type Fee, type FeeKind, type PlatformFeeList, type PlatformFeeOperation, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type Revenue, type WaivedReason,
 } from "@repo/validator";
-import { env } from "../env";
-import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection, tokenAccountMissing } from "../providers/solana-tx";
+import { env } from "@/config/dotenv";
+import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection, tokenAccountMissing } from "@/providers/solana-tx";
 import { writeAudit } from "./audit";
 import { requirePermission } from "./members";
 import { notifyOwner } from "./organizations";

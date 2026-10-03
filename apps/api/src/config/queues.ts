@@ -1,7 +1,7 @@
 import { Queue } from "bullmq";
 import { logger } from "@repo/logger";
 import type { NotificationKind } from "@repo/validator";
-import { env } from "./env";
+import { env } from "./dotenv";
 
 /** `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. */
 const queue = (name: string) => new Queue(name, {

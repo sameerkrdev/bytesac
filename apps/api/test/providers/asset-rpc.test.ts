@@ -9,8 +9,8 @@ vi.mock("viem", async (importOriginal) => {
   return { ...viem, http: () => viem.custom({ request: ((args: { method: string }) => transport.request(args)) as never }, { retryCount: 0 }) };
 });
 
-const { readTokenMetadata } = await vi.importActual<typeof import("../../src/providers/evm-rpc")>("../../src/providers/evm-rpc");
-const { getMintDecimals } = await vi.importActual<typeof import("../../src/providers/solana-rpc")>("../../src/providers/solana-rpc");
+const { readTokenMetadata } = await vi.importActual<typeof import("@/providers/evm-rpc")>("@/providers/evm-rpc");
+const { getMintDecimals } = await vi.importActual<typeof import("@/providers/solana-rpc")>("@/providers/solana-rpc");
 
 const unavailable = { code: "VERIFIER_UNAVAILABLE" };
 const token = { chain: "base" as const, address: `0x${"ab".repeat(20)}` };

@@ -2,7 +2,7 @@ import request from "supertest";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents, organizationDocuments, organizationMemberships, organizationVersionDocuments } from "@repo/db";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql, testDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { DOCS, FIELDS, PDF, PNG, createOrg, resetOrgDb, uploadDocument, user } from "./helpers";

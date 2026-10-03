@@ -1,14 +1,14 @@
 import request from "supertest";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../src/env", async (importOriginal) => {
-  const { env } = await importOriginal<typeof import("../../src/env")>();
+vi.mock("@/config/dotenv", async (importOriginal) => {
+  const { env } = await importOriginal<typeof import("@/config/dotenv")>();
   return { env: { ...env, COINMARKETCAP_API_KEY: "test-cmc-key" } };
 });
 
-import { app } from "../../src/app";
-import { redis } from "../../src/middleware/rate-limit";
-import { PAGE_SIZE } from "../../src/services/organization-review";
+import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { PAGE_SIZE } from "@/services/organization-review";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { addMember, memberAction } from "../members/helpers";

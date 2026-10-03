@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents } from "@repo/db";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { signIn } from "../helpers/auth";
 import { adminSql, resetDb, testDb } from "../helpers/db";
 import { newEvmWallet } from "../helpers/wallets";

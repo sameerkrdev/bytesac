@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ipPrefixOf } from "../../src/middleware/request-context";
+import { ipPrefixOf } from "@/middlewares/request-context.middleware";
 
 describe("ipPrefixOf", () => {
   it("IPv4 /24", () => expect(ipPrefixOf("203.0.113.77")).toBe("203.0.113.0/24"));

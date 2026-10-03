@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql, resetDb } from "../helpers/db";
 import { evmAddress, get, mkAsset, mkDeployment, mkIssuer, mkProvider, mkRoute, mkRule, patch, plainUser, post, putRef, readyCrypto, reviewer, setStatus } from "./helpers";
 

@@ -1,8 +1,8 @@
 import request from "supertest";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "../../src/services/search-index";
-import { structuredSearch } from "../../src/services/discovery";
+import { app } from "@/app";
+import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/services/search-index";
+import { structuredSearch } from "@/services/discovery";
 import { activeInstrument, basketOrg, basketRow, decideBasket, decision, post, publishBasket, publishedBasket, saveOpen, submitBasket } from "../baskets/helpers";
 import { setPublishedAt } from "./helpers";
 import { adminSql } from "../helpers/db";

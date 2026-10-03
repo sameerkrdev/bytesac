@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@repo/db";
-import { feePayer } from "../../src/providers/solana-tx";
-import { platformAddress, reserveGas, seedPlatformWallets, sendGasDrop } from "../../src/services/gas";
+import { feePayer } from "@/providers/solana-tx";
+import { platformAddress, reserveGas, seedPlatformWallets, sendGasDrop } from "@/services/gas";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { seedBasket, seedLeg, seedUser } from "./helpers";

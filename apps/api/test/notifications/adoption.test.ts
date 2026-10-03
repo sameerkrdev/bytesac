@@ -1,6 +1,6 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql, resetDb } from "../helpers/db";
 import { mockChains, solanaTestWallet } from "../execution/chain-mocks";
 import { seedBasket, seedPosition, seedUser, seedVersion } from "../execution/helpers";

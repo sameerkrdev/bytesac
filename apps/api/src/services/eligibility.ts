@@ -2,8 +2,8 @@ import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { assetProviders, db, eligibilityDecisions, eligibilityDeclarations, eligibilityRules, executionRoutes, type DbOrTx } from "@repo/db";
 import { DECLARATION_TTL_DAYS, RWA_ASSET_TYPES, RWA_ROUTE_METHODS, evaluateEligibility, type AssetType, type EligibilityDeclarationInput, type EligibilityResponse, type EligibilityResult } from "@repo/validator";
-import type { RequestMeta } from "../middleware/request-context";
-import { selectRouteProvider } from "../providers/routes";
+import type { RequestMeta } from "@/middlewares/request-context.middleware";
+import { selectRouteProvider } from "@/providers/routes";
 import { writeAudit } from "./audit";
 
 export const isRwa = (assetType: AssetType): boolean => RWA_ASSET_TYPES.includes(assetType);

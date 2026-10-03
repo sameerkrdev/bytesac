@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ROLE_PERMISSIONS, type OrganizationPermission } from "@repo/validator";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql } from "../helpers/db";
 import { newEvmWallet } from "../helpers/wallets";
 import { resetOrgDb } from "../organizations/helpers";

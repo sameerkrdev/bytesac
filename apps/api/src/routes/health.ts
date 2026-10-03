@@ -1,7 +1,7 @@
 import { db } from "@repo/db";
 import { sql } from "drizzle-orm";
 import { Router } from "express";
-import { redis } from "../middleware/rate-limit";
+import { redis } from "@/middlewares/rate-limit.middleware";
 
 export const healthRouter = Router();
 

@@ -1,17 +1,17 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { ELIGIBILITY_ATTESTATION } from "@repo/validator";
 import { admin, mkAsset, mkDeployment, mkRule, patch, plainUser, reviewer } from "../assets/helpers";
 import { seedBasket, seedUser } from "../execution/helpers";
 import { webHeaders } from "../helpers/auth";
 import { adminSql, resetDb } from "../helpers/db";
-import { refreshSearchIndex } from "../../src/services/search-index";
+import { refreshSearchIndex } from "@/services/search-index";
 
 // The geo header name is switchable per test (the parsed env is read-only).
 const geo = vi.hoisted(() => ({ header: "" }));
-vi.mock("../../src/env", async (original) => {
-  const m = await original<typeof import("../../src/env")>();
+vi.mock("@/config/dotenv", async (original) => {
+  const m = await original<typeof import("@/config/dotenv")>();
   return { ...m, env: new Proxy({} as typeof m.env, { get: (_, k) => (k === "GEO_COUNTRY_HEADER" ? geo.header : Reflect.get(m.env, k)) }) };
 });
 

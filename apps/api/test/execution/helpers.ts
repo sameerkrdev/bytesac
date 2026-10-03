@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { RawTx, Script, Transaction, p2sh, p2tr, p2wpkh } from "@scure/btc-signer";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { signIn, webHeaders } from "../helpers/auth";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";

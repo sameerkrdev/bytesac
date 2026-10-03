@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const cfg = vi.hoisted(() => ({ key: "test-cmc-key" }));
 // The key is read from env at call time; let a test switch it off.
-vi.mock("../../src/env", async (importOriginal) => {
-  const { env } = await importOriginal<typeof import("../../src/env")>();
+vi.mock("@/config/dotenv", async (importOriginal) => {
+  const { env } = await importOriginal<typeof import("@/config/dotenv")>();
   return { env: { ...env, get COINMARKETCAP_API_KEY() { return cfg.key; } } };
 });
 
-const { redis } = await import("../../src/middleware/rate-limit");
-const { getPrices } = await import("../../src/services/pricing");
+const { redis } = await import("@/middlewares/rate-limit.middleware");
+const { getPrices } = await import("@/services/pricing");
 const { resetDb } = await import("../helpers/db");
 const { fakes } = await import("../helpers/fakes");
 const { get, mkAsset, post, putRef, reviewer } = await import("./helpers");

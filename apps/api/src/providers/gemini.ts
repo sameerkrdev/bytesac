@@ -1,6 +1,6 @@
 import { FunctionCallingConfigMode, GoogleGenAI, type Content } from "@google/genai";
 import { discoveryFiltersSchema, z, type DiscoveryFilters } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 // An empty key still constructs (callers check GEMINI_API_KEY first); the placeholder only keeps the SDK from warning at startup.
 const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY || "unset" });

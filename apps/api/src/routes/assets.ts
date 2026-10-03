@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { assetListQuerySchema, z } from "@repo/validator";
-import { requireSession } from "../middleware/auth";
-import { validate } from "../middleware/validate";
-import { getPublicAsset, listPublicAssets } from "../services/assets";
+import { requireSession } from "@/middlewares/auth.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { getPublicAsset, listPublicAssets } from "@/services/assets";
 
 /** Read-only view of ACTIVE instruments for signed-in users: public fields and prices only. */
 export const assetsRouter = Router();

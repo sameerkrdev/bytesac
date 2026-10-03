@@ -1,8 +1,8 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { seedPlatformWallets } from "../../src/services/gas";
-import { reconcilePositions } from "../../src/services/positions";
+import { app } from "@/app";
+import { seedPlatformWallets } from "@/services/gas";
+import { reconcilePositions } from "@/services/positions";
 import { webHeaders } from "../helpers/auth";
 import { adminSql, resetDb } from "../helpers/db";
 import { balanceKey, mockChains, solanaTestWallet } from "../execution/chain-mocks";
@@ -10,8 +10,8 @@ import { USDC_MINT, seedBasket, seedPosition, seedPrices, seedUser, seedVersion,
 
 // The geo header name is switchable per test (the parsed env is read-only).
 const geo = vi.hoisted(() => ({ header: "" }));
-vi.mock("../../src/env", async (original) => {
-  const m = await original<typeof import("../../src/env")>();
+vi.mock("@/config/dotenv", async (original) => {
+  const m = await original<typeof import("@/config/dotenv")>();
   return { ...m, env: new Proxy({} as typeof m.env, { get: (_, k) => (k === "GEO_COUNTRY_HEADER" ? geo.header : Reflect.get(m.env, k)) }) };
 });
 

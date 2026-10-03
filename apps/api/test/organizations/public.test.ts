@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ORGANIZATION_FIELDS } from "@repo/validator";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { adminSql } from "../helpers/db";
 import { createOrg, fillAll, ops, readyOrg, resetOrgDb, submit, transition, user, verifiedOrg } from "./helpers";
 

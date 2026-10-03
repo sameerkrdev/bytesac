@@ -2,9 +2,9 @@ import { SendTransactionError, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { app } from "../../src/app";
-import { connection } from "../../src/providers/solana-tx";
-import { seedPlatformWallets } from "../../src/services/gas";
+import { app } from "@/app";
+import { connection } from "@/providers/solana-tx";
+import { seedPlatformWallets } from "@/services/gas";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "./chain-mocks";
@@ -345,8 +345,8 @@ describe("review fixes", () => {
   it("I4: a provider transaction in which the fee payer would pay for anything but fees and token-account rent is refused at quote time", async () => {
     const { user, op, feeLeg, solLeg, chain } = await ready();
     await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${feeLeg.id}`;
-    const { lifi } = await import("../../src/providers/routes/lifi");
-    const { feePayer } = await import("../../src/providers/solana-tx");
+    const { lifi } = await import("@/providers/routes/lifi");
+    const { feePayer } = await import("@/providers/solana-tx");
     const { PublicKey, SystemProgram, TransactionMessage } = await import("@solana/web3.js");
     const good = lifi.quote as unknown as (i: unknown) => Promise<{ transaction: { kind: string } }>;
     const original = vi.mocked(lifi.quote).getMockImplementation()!;
@@ -364,7 +364,7 @@ describe("review fixes", () => {
 
   it("spec 7: a plan is refused while the platform fee payer cannot fund it, before any row exists", async () => {
     const { user, basket, chain } = await arrange();
-    const { feePayer } = await import("../../src/providers/solana-tx");
+    const { feePayer } = await import("@/providers/solana-tx");
     chain.balances.set(balanceKey(feePayer().publicKey.toBase58(), null), 1_000n);
     const res = await invest(user.h, basket.basketId);
     expect(res.status).toBe(503);
@@ -374,7 +374,7 @@ describe("review fixes", () => {
   });
 
   it("N2: the sweeper cancels expired untouched plans and releases their reservation, but leaves a plan with a claimed leg", async () => {
-    const { expireStalePlans } = await import("../../src/services/positions");
+    const { expireStalePlans } = await import("@/services/positions");
     const { user, basket } = await arrange();
     const op = (await invest(user.h, basket.basketId)).body;
     expect(await usage()).toBe(40_000n);

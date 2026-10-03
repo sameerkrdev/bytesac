@@ -1,6 +1,6 @@
 import request from "supertest";
 import type { Express } from "express";
-import { grantRole } from "../../src/services/platform-roles";
+import { grantRole } from "@/services/platform-roles";
 import { signIn, webHeaders } from "../helpers/auth";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";

@@ -1,5 +1,5 @@
 import request from "supertest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { signIn, webHeaders } from "../helpers/auth";
 import { adminSql } from "../helpers/db";
 import { newEvmWallet, newSolanaWallet } from "../helpers/wallets";

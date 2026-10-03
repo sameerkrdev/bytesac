@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditEvents, authChallenges, notificationPreferences, sessions } from "@repo/db";
-import { writeAudit } from "../../src/services/audit";
-import { createSession, hashToken, findActiveSession, listActiveSessions, revokeAllSessions, touchSession } from "../../src/services/sessions";
-import { createUserWithWallet, findAddressOwner } from "../../src/services/wallets";
+import { writeAudit } from "@/services/audit";
+import { createSession, hashToken, findActiveSession, listActiveSessions, revokeAllSessions, touchSession } from "@/services/sessions";
+import { createUserWithWallet, findAddressOwner } from "@/services/wallets";
 import { adminSql, resetDb, testDb } from "../helpers/db";
 
 const db = testDb.db;

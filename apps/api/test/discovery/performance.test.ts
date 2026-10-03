@@ -1,8 +1,8 @@
 import request from "supertest";
 import { PERFORMANCE_LABEL } from "@repo/validator";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
-import { runBasketPerformance } from "../../src/services/performance";
+import { app } from "@/app";
+import { runBasketPerformance } from "@/services/performance";
 import { activeInstrument, approvedBasket, basketOrg, decideBasket, decision, post, publishBasket, publishedBasket, saveOpen, submitBasket } from "../baskets/helpers";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";

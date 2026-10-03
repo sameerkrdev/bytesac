@@ -5,7 +5,7 @@ vi.mock("twilio", () => ({
   default: () => ({ verify: { v2: { services: () => ({ verifications: { create: sdk.create }, verificationChecks: { create: sdk.check } }) } } }),
 }));
 
-const { checkSmsVerification, startSmsVerification } = await vi.importActual<typeof import("../../src/providers/twilio")>("../../src/providers/twilio");
+const { checkSmsVerification, startSmsVerification } = await vi.importActual<typeof import("@/providers/twilio")>("@/providers/twilio");
 
 beforeEach(() => { sdk.create.mockReset(); sdk.check.mockReset(); });
 

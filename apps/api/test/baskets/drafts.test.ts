@@ -1,8 +1,8 @@
 import request from "supertest";
 import { beforeAll, describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "@/app";
 import { db } from "@repo/db";
-import { contentHash } from "../../src/services/baskets";
+import { contentHash } from "@/services/baskets";
 import { adminSql } from "../helpers/db";
 import { createOrg, resetOrgDb, user } from "../organizations/helpers";
 import { FULL_FEES, activeInstrument, basketOrg, basketRow, create, createBasket, eventKinds, forceStatus, getBasket, post, save, saveOpen, validContent } from "./helpers";

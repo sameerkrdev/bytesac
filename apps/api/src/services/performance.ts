@@ -2,9 +2,9 @@ import { and, asc, eq, gte, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { basketEvents, basketPerformanceDays, basketVersionAssets, basketVersions, baskets, db, instrumentPriceSnapshots, instruments, priceReferences } from "@repo/db";
 import { logger } from "@repo/logger";
 import { basketFeesSchema, computePerformanceDays, type PerformanceState, type PerformanceVersion } from "@repo/validator";
-import { env } from "../env";
-import { fetchQuotes } from "../providers/coinmarketcap";
-import { enqueue } from "../queues";
+import { env } from "@/config/dotenv";
+import { fetchQuotes } from "@/providers/coinmarketcap";
+import { enqueue } from "@/config/queues";
 import { LISTED_BASKET_STATUSES } from "./public-baskets";
 
 const CMC_BATCH = 100;

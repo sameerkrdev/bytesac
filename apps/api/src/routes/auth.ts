@@ -5,13 +5,13 @@ import {
   SESSION_COOKIE, challengeRequestSchema, verifyRequestSchema,
   type ChallengeRequest, type VerifyRequest, type VerifyResponse,
 } from "@repo/validator";
-import { env } from "../env";
-import { optionalSession, requireSession } from "../middleware/auth";
-import { consume, limits } from "../middleware/rate-limit";
-import { validate } from "../middleware/validate";
-import { writeAudit } from "../services/audit";
-import { revokeAllSessions, revokeSession } from "../services/sessions";
-import { issueChallenge, verifyChallenge, type VerifyResult } from "../services/sign-in";
+import { env } from "@/config/dotenv";
+import { optionalSession, requireSession } from "@/middlewares/auth.middleware";
+import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import { validate } from "@/middlewares/validate.middleware";
+import { writeAudit } from "@/services/audit";
+import { revokeAllSessions, revokeSession } from "@/services/sessions";
+import { issueChallenge, verifyChallenge, type VerifyResult } from "@/services/sign-in";
 
 const cookieOptions = { httpOnly: true, secure: env.COOKIE_SECURE, sameSite: "lax", path: "/" } as const;
 const clearSessionCookie = (res: Response) => res.clearCookie(SESSION_COOKIE, cookieOptions);

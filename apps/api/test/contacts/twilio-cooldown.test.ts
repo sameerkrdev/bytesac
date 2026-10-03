@@ -2,8 +2,8 @@ import request from "supertest";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { contactVerifications } from "@repo/db";
-import { app } from "../../src/app";
-import { limits } from "../../src/middleware/rate-limit";
+import { app } from "@/app";
+import { limits } from "@/middlewares/rate-limit.middleware";
 import { signIn, webHeaders } from "../helpers/auth";
 import { resetDb, testDb } from "../helpers/db";
 import { newEvmWallet } from "../helpers/wallets";
@@ -13,7 +13,7 @@ const sdk = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("twilio", () => ({
   default: () => ({ verify: { v2: { services: () => ({ verifications: { create: sdk.create }, verificationChecks: { create: vi.fn() } }) } } }),
 }));
-vi.mock("../../src/providers/twilio", async (importActual) => importActual());
+vi.mock("@/providers/twilio", async (importActual) => importActual());
 
 beforeEach(resetDb);
 
