@@ -55,7 +55,11 @@ export async function startWorker(): Promise<Worker[]> {
 
 if (env.NODE_ENV !== "test") {
   const workers = await startWorker();
+  let stopping = false;
   const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    setTimeout(() => process.exit(1), 10_000).unref();
     logger.info("worker shutting down", { signal });
     try {
       await Promise.all([...workers.map((w) => w.close()), ...Object.values(queues).map((q) => q.close())]);

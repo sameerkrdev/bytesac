@@ -39,7 +39,7 @@ Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migr
 | 10 Fees and earnings | Manager and platform fees in one fee leg, ops fee schedules, earnings, revenue reconciliation | `ee86cd4` | ADR-016, D-085..D-092 |
 | 10.1 LI.FI hardening | Estimates, `SOL_REQUIRED`, Mayan rule, recovery leg, price-impact limit, deny list, route fees | `b23da86` | ADR-017, D-093..D-099 |
 | 11 RWAs and eligibility | Permissionless tokenized RWAs via LI.FI, eligibility engine, enforcement, decision audit | `d24d0ad` | ADR-018, D-100..D-106 |
-| 12 Launch hardening | Price batch fix, mobile types, price-impact backstop, gas reservation lifecycle, sweep isolation, position auto-close, recovery auto-stop, functional fixes | `2f05253` | D-107..D-113 |
+| 12 Launch hardening | Price batch fix, price-impact backstop, gas reservation lifecycle, sweep isolation, position auto-close, recovery auto-stop, functional fixes | `2f05253` | D-107..D-113 |
 | 13 Code and docs cleanup | API restructured into feature modules (route/controller/service, `@/` alias, server/worker graceful shutdown, redacted error logging), route-table and no-cycles tests, dead code and duplicates removed, docs consolidated to one home per topic | Spec 13 (this branch) | spec `2026-10-03-code-docs-cleanup-design.md` |
 
 Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (later review artifacts lived in the git-ignored SDD workspace and were deleted after merge). Layout, conventions and behavior are in `ARCHITECTURE.md`, `CODING-STANDARDS.md` and `docs/domains/*`, not repeated here. Pre-launch checks, user actions and leftovers are all in `docs/OPEN-ITEMS.md`.
@@ -52,7 +52,7 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 4. **Shared code lives in `packages/`**; apps hold app code only; API layout per `CODING-STANDARDS.md`.
 5. **Supply chain:** pin exact versions; never add pnpm `minimumReleaseAgeExclude`; if a version is too new, pin the newest allowed.
 6. **Safety (AGENTS.md):** never move assets, sign or broadcast real transactions or touch production data; wallet auth is not spending authority; manager publication is not user consent; keep audit and history. The runtime DB role has no DELETE.
-7. **Git hygiene:** never stage `.claude/settings.json`, generated `apps/*/AGENTS.md` / `CLAUDE.md`, or anything under `.superpowers/` (git-ignored scratch; never `git add -f`). Root `AGENTS.md` project-section edits are intended. Branch before committing (never commit on `main`); commits end with the harness attribution line; ask before merging or pushing.
+7. **Git hygiene:** never stage `.claude/settings.json`, generated `apps/*/AGENTS.md` / `CLAUDE.md`, or anything under `.superpowers/` (git-ignored scratch; never `git add -f`). Root `AGENTS.md` project-section edits are intended (stage only those hunks, never the turbo-managed block or line-ending noise). Branch before committing (never commit on `main`); commits end with the harness attribution line; ask before merging or pushing.
 
 ## 4. Working method
 
@@ -75,6 +75,7 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 
 - **Services:** `pnpm db:up` starts Docker Postgres 17 (custom image with pg_cron and pgvector, port 54329) and Redis 7 (port 63799); start Docker Desktop if `docker info` fails. After pulling migrations run `pnpm --filter @repo/db db:migrate`; `pnpm --filter @repo/db db:dev-roles` sets the local runtime role password. `apps/api/README.md` has env, worker, platform wallets, gas caps and the mainnet checklist.
 - **Gate:** `pnpm turbo run lint check-types test build --continue --concurrency=1 < /dev/null` (28 tasks; `--concurrency=2` if memory allows). Mobile extra: `pnpm --filter mobile test`, then `cd apps/mobile && npx expo export --platform android --output-dir <tmp>` (delete the temp dir and revert generated tsconfig changes).
+- **Known gate caveat:** `mobile#check-types` passes only through the scoped type assertion in `apps/mobile/src/lib/appkit.tsx`; the duplicate `@wagmi/core` peer variants are not deduped (OPEN-ITEMS §7).
 - **Windows vitest crash `3221226505`** (native Node crash) hits 1–3 random api files per full run: re-run each crashed file alone; it is not a code failure. Linux CI would avoid it (OPEN-ITEMS §6).
 - **Never run two test suites at once:** they share one test database; concurrent runs cause deadlocks and "relation does not exist" errors that look like real failures.
 - **Line endings:** files are CRLF in the working tree; `node -e` edits must normalize `\r\n` and write back with the original endings.

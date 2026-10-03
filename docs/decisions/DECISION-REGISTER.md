@@ -32,7 +32,7 @@ One line per decision. Detail lives in the linked ADR; decisions without an ADR 
 | D-024 | Spend authority | No delegation: every transaction is signed by the user against a reviewed plan of legs; sign-in or publication never authorizes spending. | APPROVED | ADR-013 |
 | D-025 | Eligibility | A pure engine evaluates user, instrument, route, jurisdiction, investor status and action; RWAs are denied by default and rule values (legal policy) are still to be entered by ops. | APPROVED; rule values OPEN | ADR-018 |
 | D-026 | RWA execution | Release 1 offers only permissionless secondary-market RWA tokens through LI.FI; issuer subscription and redemption are future plans. | APPROVED | ADR-018 |
-| D-027 | Pricing hierarchy | Market price and issuer NAV stay distinct entries; source priority between providers, indicative prices and executable quotes remain to be defined. | PARTIAL | ADR-002, ADR-012 |
+| D-027 | Pricing hierarchy | Market price and issuer NAV stay distinct entries; source priority between providers, indicative prices and executable quotes remain to be defined. | PARTIAL; hierarchy OPEN | ADR-002, ADR-012 |
 | D-028 | Rebalance semantics | Reconciliation, repair, rebalance and customization are distinct; a rebalance is a manager version a holder applies or skips with explicit consent, never replaying skipped versions. | IMPLEMENTED | ADR-011, ADR-015 |
 | D-029 | Platform name | Bytesac. | APPROVED | |
 | D-030 | Settlement currency | USDC on Solana first, designed for later currency expansion. | APPROVED | |
@@ -111,7 +111,7 @@ One line per decision. Detail lives in the linked ADR; decisions without an ADR 
 | D-103 | Enforcement and exits | Buys of non-`ALLOWED` RWAs are refused, holdings are never force-sold, and sells leave out RWAs the user may not sell and sell the rest. | APPROVED | ADR-018 |
 | D-104 | RWA pricing | An RWA is investable only with an `ACTIVE` CoinMarketCap market price reference; NAV is display only. | APPROVED | ADR-018 |
 | D-105 | Permissioned tokens | A `permissioned` deployment is never investable in release 1. | APPROVED | ADR-018 |
-| D-106 | Token-2022 RWAs | Token-2022 accounts are read like SPL, transfer-fee extensions are not read (use `feeOnTransfer`), and a real-RPC check is open. | OPEN check | ADR-018 |
+| D-106 | Token-2022 RWAs | Token-2022 accounts are read like SPL, transfer-fee extensions are not read (use `feeOnTransfer`), and a real-RPC check is open. | Ruling (controller); real-RPC check OPEN | ADR-018 |
 | D-107 | Price-impact backstop | The server checks the real price impact itself and refuses above 5% regardless of LI.FI. | APPROVED | ADR-014, ADR-017 |
 | D-108 | Gas reservation lifecycle | Reservations release on every terminal status and Stop, and a refused drop is never retried automatically. | APPROVED | ADR-014 |
 | D-109 | Recovery auto-stop | An operation whose recovery leg stays `PLANNED` for 7 days is stopped automatically and the user is notified. | APPROVED | ADR-017 |

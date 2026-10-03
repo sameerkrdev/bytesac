@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { basketPositions, baskets, db, instrumentDeployments, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
+import { basketPositions, baskets, contacts, db, instrumentDeployments, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
 import { LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, minOut, type OperationView, type WaivedReason } from "@repo/validator";
 import type { RouteFee } from "@/providers/routes/types";
 import type { RequestMeta } from "@/middlewares/request-context.middleware";
@@ -28,6 +28,12 @@ export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n;
 
 /** ponytail: a flat estimate for the network-fee transfer's own cost (one signature, no priority fee). */
 export const FEE_LEG_GAS_USD = 0.002;
+
+/** Investing needs a verified email and phone. */
+export async function assertVerifiedContacts(userId: string): Promise<void> {
+  const verified = await db.select({ type: contacts.type }).from(contacts).where(and(eq(contacts.userId, userId), eq(contacts.status, "verified"), inArray(contacts.type, ["email", "phone"])));
+  if (verified.length < 2) throw createHttpError(409, "Verify your email and phone before investing.", { code: "NOT_ELIGIBLE" });
+}
 
 export const notFound = () => createHttpError("Operation not found", { code: "NOT_FOUND" });
 

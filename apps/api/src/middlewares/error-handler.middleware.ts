@@ -10,8 +10,8 @@ const redact = (value: unknown): unknown =>
   : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SECRET_KEY.test(k) ? "[redacted]" : redact(v)]))
   : value;
 
-/** Request context for error logs; secret-looking fields are masked. `routeParams` (not `params`) so log scans for driver query params stay clean. */
-const requestLogContext = (req: Request) => ({ method: req.method, path: req.originalUrl.split("?")[0], routeParams: req.params, query: redact(req.query), body: redact(req.body) });
+/** Request context for error logs. Body values are never logged (signed transactions, PSBTs, free text, addresses): only the key names. Query values are masked by key. `routeParams` (not `params`) so log scans for driver query params stay clean. */
+const requestLogContext = (req: Request) => ({ method: req.method, path: req.originalUrl.split("?")[0], routeParams: req.params, query: redact(req.query), bodyKeys: Object.keys(req.body ?? {}) });
 
 export const notFoundHandler: RequestHandler = (_req, _res, next) => {
   next(createHttpError("Not found", { code: "NOT_FOUND" }));

@@ -105,19 +105,20 @@ describe("errorHandler logging", () => {
 });
 
 describe("errorHandler request context", () => {
-  it("logs method, path, query and body with secret fields redacted", async () => {
+  it("logs method, path, masked query and body key names, never body values", async () => {
     const spy = vi.spyOn(logger, "error");
     const app = express();
     app.use(requestContext);
     app.use(express.json());
     app.post("/z", () => { throw new Error("boom"); });
     app.use(errorHandler);
-    await request(app).post("/z?token=abc123").send({ password: "hunter2", signature: "sig-value", otp: "424242", nested: { secret: "s3cret" }, name: "alice" });
+    const body = { signedTx: "0xsignedtx-value", signedPsbt: "psbt-value", password: "hunter2", signature: "sig-value", otp: "424242", message: "free-text-value", address: "addr-value" };
+    await request(app).post("/z?token=abc123").send(body);
     const out = JSON.stringify(spy.mock.calls);
-    for (const leaked of ["hunter2", "sig-value", "424242", "s3cret", "abc123"]) expect(out).not.toContain(leaked);
+    for (const leaked of [...Object.values(body), "abc123"]) expect(out).not.toContain(leaked);
+    for (const key of Object.keys(body)) expect(out).toContain(key);
     expect(out).toContain("[redacted]");
     expect(out).toContain('"method":"POST"');
     expect(out).toContain('"path":"/z"');
-    expect(out).toContain("alice");
   });
 });

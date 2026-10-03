@@ -74,7 +74,7 @@ Consolidated list of everything still open after Spec 13 (2026-10-03). This is t
 
 **Must fix before onboarding real assets**
 - [x] CoinMarketCap: one `price: null` id marks the whole uncached batch unavailable.
-- [x] `mobile#check-types` fails on `main` (duplicate `@wagmi/core` peer variants in `apps/mobile/src/lib/appkit.tsx`; pnpm dedupe/override).
+- [ ] `mobile#check-types` fixed with a scoped type assertion in `apps/mobile/src/lib/appkit.tsx` (duplicate `@wagmi/core` 2.22.1 peer variants: typescript 6/7, use-sync-external-store 1.4/1.7, zod 3/4); proper peer dedupe open.
 
 **Spec 10.1**
 - [ ] Releasing unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
@@ -118,7 +118,6 @@ Consolidated list of everything still open after Spec 13 (2026-10-03). This is t
 - [ ] Unused `*Schema` and type exports in `@repo/validator` and unused db enums were left as contract surface; prune with Spec 14 if the audit finds them unneeded.
 - [ ] Composition routers (`me`, `organizations`, `public`, `ops`) mount sub-routers that carry no session middleware; keep that rule documented in code if more are added.
 
-**Review minors not itemized** (cosmetic or low risk; the Opus reviews are not kept): Spec 9 Minors 2, 4, 5, 9, 10; Spec 11 Minors 1, 3, 4, 6, 7, 8, 9, 10, 13, 14; Spec 12 Minors 2, 7, 8, 9, 10, 13.
 
 **Spec 7**
 - [ ] Discovery "Load more" replaces the page; organization filter is an id field; tag filter takes typed keys; asset rows with only an `instrumentId` show an empty symbol in the filter panel; instrument/organization name edits refresh only nightly.

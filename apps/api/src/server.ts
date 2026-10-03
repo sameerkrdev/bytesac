@@ -8,10 +8,14 @@ import { redis } from "@/middlewares/rate-limit.middleware";
 import { seedPlatformWallets } from "@/modules/operations/gas.service";
 
 let server: Server | undefined;
+let stopping = false;
 
 /** Stops accepting requests, then closes the queues, Redis and the DB pool. Runs only on a signal, never on import. */
 const shutdown = async (signal: string) => {
+  if (stopping) return;
+  stopping = true;
   logger.info("shutting down", { signal });
+  setTimeout(() => process.exit(1), 10_000).unref();
   try {
     if (server) {
       const closed = new Promise<void>((resolve, reject) => { server?.close((err) => { if (err) reject(err); else resolve(); }); });
@@ -32,6 +36,7 @@ const startServer = async () => {
   try {
     await seedPlatformWallets();
     server = app.listen(env.PORT, () => logger.info("api listening", { port: env.PORT }));
+    server.on("error", (error) => { logger.error("failed to start api", { errMessage: error.message }); process.exit(1); });
   } catch (error) {
     logger.error("failed to start api", { errMessage: error instanceof Error ? error.message : "unknown" });
     process.exit(1);
