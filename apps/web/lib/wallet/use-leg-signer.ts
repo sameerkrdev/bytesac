@@ -50,7 +50,9 @@ export function useLegSigner(me: MeResponse | undefined) {
         const hash = await sendTransactionAsync({
           chainId: tx.chainId, to: approval.token as `0x${string}`, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [approval.spender as `0x${string}`, BigInt(approval.amount)] }),
         });
-        await waitForTransactionReceipt(config, { hash, chainId: tx.chainId });
+        // A mined but reverted approval does not throw: stop here rather than send a transaction that needs the allowance.
+        const receipt = await waitForTransactionReceipt(config, { hash, chainId: tx.chainId });
+        if (receipt.status !== "success") throw new Error("The token approval was not confirmed on-chain. Nothing else was sent.");
       }
       return sendTransactionAsync({ chainId: tx.chainId, to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: BigInt(tx.value) });
     }),
