@@ -27,7 +27,7 @@ describe("useLegSigner.sendEvm", () => {
     expect(wallet.send).toHaveBeenCalledTimes(2);
   });
 
-  // viem's waitForTransactionReceipt resolves (does not throw) for a mined, reverted transaction (receipt.status "reverted").
+  // @wagmi/core 2.22.1 waitForTransactionReceipt already throws on a revert; this mock resolves "reverted" to cover the explicit status guard (defense in depth).
   it("sends nothing more when the approval was mined but reverted", async () => {
     wallet.send.mockResolvedValueOnce("0xapprove");
     wallet.receipt.mockResolvedValue({ status: "reverted" });

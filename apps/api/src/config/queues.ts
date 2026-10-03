@@ -4,8 +4,8 @@ import type { NotificationKind } from "@repo/validator";
 import { env } from "./dotenv";
 
 /**
- * `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. Producers fail fast when Redis is down
- * (`enableOfflineQueue: false`, per the BullMQ production guide) so a request never waits on a dead queue; `enqueue` logs and moves on.
+ * `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. Producers fail fast when Redis goes down after the first connection
+ * (`enableOfflineQueue: false`, per the BullMQ production guide; BullMQ still waits for the very first connection) so a request never waits on a dead queue; `enqueue` logs and moves on.
  */
 const queue = (name: string) => {
   const q = new Queue(name, {

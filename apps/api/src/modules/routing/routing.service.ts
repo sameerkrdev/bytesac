@@ -2,6 +2,7 @@ import createHttpError from "http-errors";
 import { desc, eq, isNull, sql } from "drizzle-orm";
 import { db, isUniqueViolation, operationLegs, operations, routePolicyEntries } from "@repo/db";
 import { ASSET_CHAINS, z, type AssetChain, type RoutePolicyInput } from "@repo/validator";
+import { logger } from "@repo/logger";
 import { redis } from "@/middlewares/rate-limit.middleware";
 import { evmCode } from "@/providers/evm-rpc";
 import { CHAIN_IDS, lifiCall } from "@/providers/routes/lifi";
@@ -27,6 +28,16 @@ let policy: { at: number; rows: { kind: "bridge" | "exchange"; toolKey: string }
 /** An ops change takes effect on this process at once; other processes pick it up within 60 s. */
 export const forgetRoutePolicy = () => { policy = null; };
 
+const STALE_WARN_MS = 3_600_000;
+const warned = new Map<string, number>();
+/** A deny entry whose key LI.FI no longer lists is dropped from the request (fails open for a renamed tool): warn once per key per process-hour so ops see it. */
+function warnStale(kind: string, toolKey: string) {
+  const id = `${kind}:${toolKey}`;
+  if (Date.now() - (warned.get(id) ?? 0) < STALE_WARN_MS) return;
+  warned.set(id, Date.now());
+  logger.warn("route policy: denied key not in LI.FI tools; dropped from the request", { kind, toolKey });
+}
+
 /**
  * What every LI.FI estimate and quote leaves out: the ops deny list (active `route_policy_entries`, cached 60 s in-process) plus, when the destination is an
  * EVM address with code (a contract: `eth_getCode`, cached 1 h), every Mayan bridge (`/v1/tools` keys starting with `mayan`), which delivers to EOAs only.
@@ -51,17 +62,19 @@ export async function routeDenyList(toChain: AssetChain, toAddress: string): Pro
   const tools = await lifiTools();
   const known = (list: { key: string }[]) => new Set(list.map((t) => t.key));
   const [bridgeKeys, exchangeKeys] = [known(tools.bridges), known(tools.exchanges)];
+  for (const r of policy.rows) if (!(r.kind === "bridge" ? bridgeKeys : exchangeKeys).has(r.toolKey)) warnStale(r.kind, r.toolKey);
   return { bridges: [...bridges].filter((k) => bridgeKeys.has(k)), exchanges: exchanges.filter((k) => exchangeKeys.has(k)) };
 }
 
 /** The route policy for ops: every LI.FI bridge and exchange with its deny state, and the full history of deny/allow entries. */
 export async function getRouting() {
   const [tools, entries] = await Promise.all([lifiTools(), db.select().from(routePolicyEntries).orderBy(desc(routePolicyEntries.createdAt), desc(routePolicyEntries.id))]);
+  const listed = { bridge: new Set(tools.bridges.map((t) => t.key)), exchange: new Set(tools.exchanges.map((t) => t.key)) };
   const denied = (kind: "bridge" | "exchange", key: string) => entries.find((e) => e.kind === kind && e.toolKey === key && !e.removedAt)?.id ?? null;
   return {
     bridges: tools.bridges.map((t) => ({ key: t.key, name: t.name, denyEntryId: denied("bridge", t.key) })),
     exchanges: tools.exchanges.map((t) => ({ key: t.key, name: t.name, denyEntryId: denied("exchange", t.key) })),
-    entries: entries.map((e) => ({ id: e.id, kind: e.kind, toolKey: e.toolKey, reason: e.reason, createdBy: e.createdBy, createdAt: e.createdAt.toISOString(), removedBy: e.removedBy, removedAt: e.removedAt?.toISOString() ?? null })),
+    entries: entries.map((e) => ({ id: e.id, kind: e.kind, toolKey: e.toolKey, reason: e.reason, createdBy: e.createdBy, createdAt: e.createdAt.toISOString(), removedBy: e.removedBy, removedAt: e.removedAt?.toISOString() ?? null, stale: !e.removedAt && !listed[e.kind].has(e.toolKey) })),
   };
 }
 

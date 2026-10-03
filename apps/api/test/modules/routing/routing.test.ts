@@ -86,6 +86,15 @@ describe("route policy", () => {
     expect((await request(app).post("/v1/ops/routing/deny").set(admin.h).send({ kind: "exchange", toolKey: "uniswap", reason: "Again" })).status).toBe(201);
   });
 
+  it("an active entry whose key LI.FI no longer lists is stale in the ops view; listed, removed and current entries are not", async () => {
+    lifiStub({ "/v1/tools": tools });
+    const admin = await opsUser(app, "ops_admin");
+    await adminSql`INSERT INTO app.route_policy_entries (id, kind, tool_key, reason, created_by) VALUES (gen_random_uuid(), 'bridge', 'stargate', 'live', ${admin.userId}), (gen_random_uuid(), 'bridge', 'stargateOld', 'renamed', ${admin.userId})`;
+    const res = await request(app).get("/v1/ops/routing").set(admin.h);
+    expect(res.status).toBe(200);
+    expect(Object.fromEntries(res.body.entries.map((e: { toolKey: string; stale: boolean }) => [e.toolKey, e.stale]))).toEqual({ stargate: false, stargateOld: true });
+  });
+
   it("another process’s change is picked up when the 60 s cache expires", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     lifiStub({ "/v1/tools": tools }); // a denied key is checked against LI.FI's tools
