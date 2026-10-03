@@ -73,6 +73,18 @@ User request: read six LI.FI FAQ pages; list changes/improvements → **"apply a
 | 5 | Rebalance blocked by a non-investable held asset | A only bought assets must be investable (rec.) · B keep rule · C A + ops alert | **C, add the whole issue to future plans for a deeper fix** | Bought-only rule + ops alert; disposition flow in FUTURE-PLANS |
 
 
+## Spec 13 — Code cleanup (reference structure) and docs cleanup (2026-10-03)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Which references | repos / files / style notes | **Shridhan-Backend (`src/routes/activityRoutes.ts` …) and nerve (`apps/api-gateway/src/app.ts`, `server.ts`); also clean the docs folder (remove duplicates, update md files)** | References recorded |
+| 2 | Request layering | A controllers, function style (rec.) · B class controllers with DI · C keep inline handlers | **Per aspect: layers → Shridhan; controller → Shridhan; file names → nerve; config → nerve; imports → nerve; server.ts → Shridhan; app.ts → nerve; "maybe feature-based instead of service-layered folders"** | Mixed reference style |
+| 3 | Folder structure | A feature modules (rec.) · B layered with nerve names · C hybrid | **A** | `src/modules/<feature>/` |
+| 4 | Error response shape | A keep ours, nerve logging (rec.) · B nerve array shape · C array + code | **A** | Contract unchanged |
+| 5 | Reach | A restructure API, tidy packages/web/mobile (rec.) · B also restructure web · C API only | **A** | As A |
+| 6 | Docs cleanup | A one source of truth per topic (rec.) · B light pass · C A + delete old specs/plans | **A** | CONTINUATION merged into HANDOFF; register as index |
+
+
 ---
 
 ## Roadmap decisions
