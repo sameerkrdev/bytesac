@@ -15,6 +15,21 @@ const show = (p: object) => {
 beforeEach(() => vi.clearAllMocks());
 
 describe("Portfolio", () => {
+  it("gives each operation an id the mobile handoff can link to and scrolls to it on load", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    const open = operation();
+    const done = { ...operation({ status: "COMPLETED" }), id: "0192f1c2-7a4b-7c3d-8e9f-000000000099" };
+    window.history.replaceState(null, "", `/portfolio#operation-${done.id}`);
+    show({ openOperations: [open], history: [done] });
+    await screen.findByText("Open operations");
+    expect(document.getElementById(`operation-${open.id}`)).toBeInTheDocument();
+    await vi.waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+    expect(scroll.mock.contexts[0]).toBe(document.getElementById(`operation-${done.id}`));
+    window.history.replaceState(null, "", "/");
+  });
+
+
   it("shows an open position with its value, actual against target weights and exit actions", async () => {
     show({ positions: [position()] });
     const link = await screen.findByRole("link", { name: "Core Crypto" });

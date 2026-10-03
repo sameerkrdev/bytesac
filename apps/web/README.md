@@ -30,7 +30,7 @@ Browser push for notifications uses Firebase Cloud Messaging. The toggle in Prof
 
 ## App shell and page states (Spec 15)
 
-`components/layout/app-shell.tsx` is the single shell (header, mobile menu, bottom padding at 360 px); `nav.ts` builds role-aware navigation from `/me`: Investor (Discover, Portfolio, Notifications, Profile), Manager (organization pages, shown with an organization membership) and Ops (platform roles). Navigation is a UI guard only; the API enforces permissions. `page-layout.tsx` gives every page a title and width, and `states.tsx` holds the shared loading, empty, error and stale states. Money-flow logic (leg signer, fee lines, portfolio actions) comes from `@repo/app-core`; the web only supplies its `Signer`.
+`components/layout/app-shell.tsx` is the single shell (header with a wrapping navigation row); `nav.ts` builds role-aware navigation from `/me`: Investor (Discover, Portfolio, Notifications, Profile), Manager (organization pages, shown with an organization membership) and Ops (platform roles). Navigation is a UI guard only; the API enforces permissions. `page-layout.tsx` gives every page a title and width, and `states.tsx` holds the shared loading, empty, error and stale states. Money-flow logic (leg signer, fee lines, portfolio actions) comes from `@repo/app-core`; the web only supplies its `Signer`.
 
 ## Fees and earnings (Spec 10)
 

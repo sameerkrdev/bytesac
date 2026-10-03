@@ -1,3 +1,5 @@
+"use client";
+
 import { AlertTriangle, Clock, Inbox, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";

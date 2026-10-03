@@ -6,9 +6,10 @@ import { useSigner } from "@/lib/wallet/use-signer";
 const SOL = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
 const EVM = "0xAbC0000000000000000000000000000000000001";
 const mockState = {
-  appkit: { address: SOL as string | undefined, namespace: "solana" as string | undefined, chainId: "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" },
+  appkit: { address: SOL as string | undefined, namespace: "solana" as string | undefined, chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" } as { caipNetworkId: string } | undefined },
   provider: { request: jest.fn() },
   walletName: "Phantom",
+  walletType: "external" as string,
   evm: { isConnected: true, address: EVM as string | undefined, chainId: 1 },
   send: jest.fn(),
   switchChain: jest.fn(),
@@ -17,7 +18,7 @@ const mockState = {
 jest.mock("@reown/appkit-react-native", () => ({
   useAccount: () => mockState.appkit,
   useProvider: () => ({ provider: mockState.provider }),
-  useWalletInfo: () => ({ walletInfo: { name: mockState.walletName } }),
+  useWalletInfo: () => ({ walletInfo: { name: mockState.walletName, type: mockState.walletType } }),
 }));
 jest.mock("wagmi", () => ({
   useAccount: () => mockState.evm,
@@ -41,8 +42,9 @@ const evmTx = { to: "0x00000000000000000000000000000000000000aa", data: "0x1234"
 describe("useSigner (AppKit React Native adapter)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockState.appkit = { address: SOL, namespace: "solana", chainId: "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" };
+    mockState.appkit = { address: SOL, namespace: "solana", chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" } };
     mockState.walletName = "Phantom";
+    mockState.walletType = "external";
     mockState.evm = { isConnected: true, address: EVM, chainId: 1 };
     mockState.provider.request.mockReset();
     mockState.send.mockReset();
@@ -61,12 +63,19 @@ describe("useSigner (AppKit React Native adapter)", () => {
     expect(out).toBe(b64(bytes(9, 8, 7)));
   });
 
-  it("Solana, WalletConnect wallet: base64 in and out", async () => {
-    mockState.walletName = "Trust Wallet";
+  it.each(["Phantom", "Solflare", "Trust Wallet"])("Solana, WalletConnect session (%s): base64 in and out, whatever the wallet name", async (name) => {
+    mockState.walletName = name;
+    mockState.walletType = "walletconnect";
     mockState.provider.request.mockResolvedValue({ transaction: b64(bytes(9, 8, 7)) });
     const out = await (await getSigner()).signSolana(b64(bytes(1, 2, 3)));
     expect(mockState.provider.request).toHaveBeenCalledWith(expect.objectContaining({ params: { transaction: b64(bytes(1, 2, 3)), pubkey: SOL } }), expect.any(String));
     expect(out).toBe(b64(bytes(9, 8, 7)));
+  });
+
+  it("Solana: no active network id refuses before anything is requested", async () => {
+    mockState.appkit = { ...mockState.appkit, chain: undefined };
+    await expect((await getSigner()).signSolana("AAAA")).rejects.toBeInstanceOf(WrongWalletError);
+    expect(mockState.provider.request).not.toHaveBeenCalled();
   });
 
   it("Solana: refuses when the active wallet is not the linked Solana address; nothing is requested", async () => {

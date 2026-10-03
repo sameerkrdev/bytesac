@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import Link from "next/link";
 import { OperationDetail } from "@/components/portfolio/operation-detail";
 import { PositionsList } from "@/components/portfolio/positions-list";
@@ -11,6 +12,10 @@ import { PageLayout } from "@/components/layout/page-layout";
 export default function PortfolioPage() {
   const q = useQuery({ queryKey: ["portfolio"], queryFn: () => api.getPortfolio() });
   const p = q.data;
+  // The mobile app links to /portfolio#operation-<id>; the element only exists once the portfolio has loaded.
+  useEffect(() => {
+    if (p && window.location.hash) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
+  }, [p]);
   return (
     <PageLayout id="portfolio-title" title="Portfolio" className="space-y-8">
       {q.isPending && <LoadingState />}

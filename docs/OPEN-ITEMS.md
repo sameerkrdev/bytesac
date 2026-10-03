@@ -65,6 +65,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 ### Spec 15 manual checks (basic UI)
 
 - [ ] Mobile device run (iOS and Android) with AppKit RN: connect Phantom and MetaMask mobile; Solana sign (active-account requirement, base58 vs base64 responses), EVM chain switch, approval and send; wallet returns only a `signature` is rejected.
+- [ ] Set EXPO_PUBLIC_WEB_URL to the confirmed production web origin before release (there is no default; unset hides the handoff buttons).
 - [ ] Bitcoin "Continue on web" opens `<EXPO_PUBLIC_WEB_URL>/portfolio#operation-<id>` and "Link Bitcoin on web" opens `/profile`.
 - [ ] SecureStore session survives restart; logout clears it and disconnects the wallet.
 - [ ] Notifications tab unread badge updates after mark read.

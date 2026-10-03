@@ -113,9 +113,52 @@ describe("Invest wizard (mobile)", () => {
     await toSigning();
     expect(screen.queryByRole("button", { name: "Review step 1" })).toBeNull();
     await fireEvent.press(await screen.findByRole("button", { name: "Continue on web" }));
-    expect(Linking.openURL).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`/portfolio#operation-${id(1)}$`)));
+    expect(Linking.openURL).toHaveBeenCalledWith(`https://web.example/portfolio#operation-${id(1)}`);
     expect(mockApi.quoteLeg).not.toHaveBeenCalled();
     expect(mockSigner.signSolana).not.toHaveBeenCalled();
+  });
+
+  it("a Bitcoin-spending leg without EXPO_PUBLIC_WEB_URL shows plain text and no link or Review button", async () => {
+    const saved = process.env.EXPO_PUBLIC_WEB_URL;
+    delete process.env.EXPO_PUBLIC_WEB_URL;
+    try {
+      const btc = operation({ legs: [leg({ fromChain: "bitcoin" })] });
+      mockApi.investPlan.mockResolvedValue(btc);
+      mockApi.getOperation.mockResolvedValue(btc);
+      await toSigning();
+      expect(await screen.findByText("Use the Bytesac web app to continue")).toBeOnTheScreen();
+      expect(screen.queryByRole("button", { name: "Continue on web" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Review step 1" })).toBeNull();
+    } finally { process.env.EXPO_PUBLIC_WEB_URL = saved; }
+  });
+
+  it.each([2, 3])("a %i-leg operation goes through every step, with Stop here between steps", async (count) => {
+    const legs = Array.from({ length: count }, (_, i) => leg({
+      id: id(11 + i), sequence: i + 1, kind: i === 0 ? "network_fee" : "swap", status: "PLANNED", amountIn: "50000000",
+    }));
+    let op = operation({ legs });
+    mockApi.investPlan.mockResolvedValue(op);
+    mockApi.getOperation.mockImplementation(async () => op);
+    mockApi.quoteLeg.mockImplementation(async (_o: string, legId: string) => quote({ legId }));
+    mockSigner.signSolana.mockResolvedValue("signed64");
+    mockApi.submitLeg.mockImplementation(async (_o: string, legId: string) => {
+      const upTo = legs.find((x) => x.id === legId)!.sequence;
+      const settled = legs.map((l) => (l.sequence <= upTo ? { ...l, status: "SETTLED" as const } : l));
+      op = operation({ legs: settled, status: settled.every((l) => l.status === "SETTLED") ? "COMPLETED" : "IN_PROGRESS" });
+      return op;
+    });
+    await toSigning();
+    for (let step = 1; step <= count; step++) {
+      await fireEvent.press(await screen.findByRole("button", { name: `Review step ${step}` }));
+      await fireEvent.press(await screen.findByRole("button", { name: `Approve step ${step} in your wallet` }));
+      if (step < count) {
+        expect(await screen.findByRole("button", { name: `Review step ${step + 1}` })).toBeOnTheScreen();
+        // After the fee leg alone the stop button reads "Cancel" (no asset leg has settled); once an asset leg settled it reads "Stop here".
+        expect(screen.getByRole("button", { name: step === 1 ? "Cancel" : "Stop here" })).toBeOnTheScreen();
+      }
+    }
+    expect(await screen.findByText(/All steps are settled/)).toBeOnTheScreen();
+    expect(mockApi.submitLeg).toHaveBeenCalledTimes(count);
   });
 
   it("a Bitcoin transaction from the server without signPsbt ends in the web handoff, nothing signed", async () => {

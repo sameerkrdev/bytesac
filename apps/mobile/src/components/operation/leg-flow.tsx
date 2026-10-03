@@ -7,7 +7,7 @@ import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { api } from "@/lib/api";
-import { webUrl } from "@/lib/web-url";
+import { WEB_HANDOFF_TEXT, webUrl } from "@/lib/web-url";
 import { legBuys } from "@/lib/leg-direction";
 import { useLegRunner } from "@/lib/use-leg-runner";
 import { FeeLines } from "./fee-lines";
@@ -44,7 +44,7 @@ export function LegFlow({ operationId }: { operationId: string }) {
   const next = nextLeg(o.legs);
   const inFlight = o.legs.some((l) => LEG_IN_FLIGHT.includes(l.status));
   const active = LEG_ACTIVE.includes(o.status);
-  const busy = state.kind === "quoting" || state.kind === "awaitingGasDrop" || state.kind === "signing" || state.kind === "submitting" || state.kind === "tracking";
+  const busy = state.kind === "quoting" || state.kind === "awaitingGasDrop" || state.kind === "signing" || state.kind === "submitting";
   const fresh = state.kind === "confirmPrice" && runner.leg ? runner.leg : null;
   const freshAmounts = fresh && state.kind === "confirmPrice" && state.estimatedOut
     ? legAmounts({ ...fresh, minOut: state.minOut, routeSummary: { ...legRoute(fresh), estimatedOut: state.estimatedOut } }, legBuys(o.kind, fresh)) : null;
@@ -56,7 +56,9 @@ export function LegFlow({ operationId }: { operationId: string }) {
   const s = OPERATION_STATUS_LABEL[o.status];
   // A leg that spends Bitcoin needs a PSBT signature, which mobile does not offer: it is continued on the web, with no quote fetched here.
   const btcNext = next?.fromChain === "bitcoin";
-  const handoff = state.kind === "handoffWeb" ? state.url : btcNext ? webUrl(`/portfolio#operation-${operationId}`) : null;
+  const portfolioUrl = webUrl(`/portfolio#operation-${operationId}`);
+  const webOnly = state.kind === "handoffWeb" || btcNext;
+  const handoff = webOnly ? (state.kind === "handoffWeb" && state.url) || portfolioUrl : null;
   const failure = state.kind === "failed" ? failureCopy(state.code, state.message) : null;
 
   return (
@@ -81,10 +83,10 @@ export function LegFlow({ operationId }: { operationId: string }) {
           <AppText variant="label" tone="stone">The quote is valid for about a minute. {fresh.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</AppText>
         </View>
       )}
-      {handoff && active && (
+      {webOnly && active && (
         <View className="gap-2 rounded-xl border border-border-dark p-3">
           <AppText>This step involves Bitcoin, which is signed on the web.</AppText>
-          <Button onPress={() => void Linking.openURL(handoff)}>Continue on web</Button>
+          {handoff ? <Button onPress={() => void Linking.openURL(handoff)}>Continue on web</Button> : <AppText tone="stone">{WEB_HANDOFF_TEXT}</AppText>}
         </View>
       )}
       {active && inFlight && !busy && <AppText tone="stone">Waiting for the network to confirm. This screen updates by itself.</AppText>}
@@ -96,7 +98,7 @@ export function LegFlow({ operationId }: { operationId: string }) {
               <Button onPress={runner.approve}>{`Approve step ${fresh.sequence} in your wallet`}</Button>
               <Button variant="secondary" onPress={runner.decline}>Not now</Button>
             </>
-          ) : next && !handoff ? (
+          ) : next && !webOnly ? (
             <Button onPress={() => void runner.run(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>
           ) : null}
           {!inFlight && !fresh && <Button variant="secondary" loading={stop.isPending} onPress={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}

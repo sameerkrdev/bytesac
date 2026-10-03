@@ -166,6 +166,12 @@ describe("runLeg", () => {
     await runLeg(a, signer(), "O1", "L1", t.dispatch, { confirm: async () => true, handoffUrl: "/w" });
     expect(run(t.events)).toEqual({ kind: "tracking" });
   });
+  it("surfaces a failure of the first getOperation call instead of staying idle", async () => {
+    const a = api(); const t = trace();
+    a.getOperation.mockRejectedValue(new ApiError("INTERNAL", 500, "offline"));
+    await expect(runLeg(a, signer(), "O1", "L1", t.dispatch, { confirm: async () => true, handoffUrl: "/w" })).rejects.toBeInstanceOf(ApiError);
+    expect(t.events).toEqual([{ type: "failed", code: "INTERNAL", message: "offline" }]);
+  });
   it("fails for a leg that is not in the operation", async () => {
     const t = trace();
     expect(await runLeg(api(), signer(), "O1", "nope", t.dispatch, { confirm: async () => true, handoffUrl: "/w" })).toBeNull();

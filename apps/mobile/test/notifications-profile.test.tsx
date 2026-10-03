@@ -95,7 +95,19 @@ describe("Profile (mobile)", () => {
     const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
     await setup();
     await fireEvent.press(await screen.findByRole("button", { name: "Link Bitcoin on web" }));
-    expect(open).toHaveBeenCalledWith(expect.stringMatching(/\/profile$/));
+    expect(open).toHaveBeenCalledWith("https://web.example/profile");
+  });
+
+  it("without EXPO_PUBLIC_WEB_URL the web actions become plain text, never a link", async () => {
+    const saved = process.env.EXPO_PUBLIC_WEB_URL;
+    delete process.env.EXPO_PUBLIC_WEB_URL;
+    try {
+      await setup(me({ organizations: [{ membershipStatus: "ACTIVE" }] }));
+      await screen.findByText("Investment wallet");
+      expect(screen.queryByRole("button", { name: "Link Bitcoin on web" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Open on web" })).toBeNull();
+      expect(screen.getAllByText("Use the Bytesac web app to continue")).toHaveLength(2);
+    } finally { process.env.EXPO_PUBLIC_WEB_URL = saved; }
   });
 
   it("a linked Bitcoin address is shown, not re-linked", async () => {

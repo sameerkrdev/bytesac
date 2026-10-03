@@ -1,7 +1,7 @@
-import { initialLegSignerState, legSignerReducer, runLeg, type LegSignerState } from "@repo/app-core";
+import { initialLegSignerState, legSignerReducer, runLeg, type LegSignerState, type Signer } from "@repo/app-core";
 import type { Leg } from "@repo/validator";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useSigner } from "@/lib/wallet/use-signer";
 import { webUrl } from "@/lib/web-url";
@@ -15,7 +15,14 @@ export function useLegRunner(operationId: string): {
 } {
   const qc = useQueryClient();
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.me() });
-  const signer = useSigner(me);
+  const current = useSigner(me);
+  // Read the signer when each step signs, not when "Review" was tapped: the user may switch account or chain while the fresh quote is shown.
+  const signerRef = useRef(current);
+  useEffect(() => { signerRef.current = current; }, [current]);
+  const signer = useMemo<Signer>(() => ({
+    signSolana: (tx) => signerRef.current.signSolana(tx),
+    sendEvm: (tx) => signerRef.current.sendEvm(tx),
+  }), []);
   const [state, dispatch] = useReducer(legSignerReducer, initialLegSignerState);
   const [leg, setLeg] = useState<Leg | null>(null);
   const waiting = useRef<((ok: boolean) => void) | null>(null);
@@ -29,7 +36,7 @@ export function useLegRunner(operationId: string): {
     setLeg(next);
     try {
       const op = await runLeg(api, signer, operationId, next.id, dispatch, {
-        handoffUrl: webUrl(`/portfolio#operation-${operationId}`),
+        handoffUrl: webUrl(`/portfolio#operation-${operationId}`) ?? "",
         confirm: () => new Promise<boolean>((resolve) => { waiting.current = resolve; }),
       });
       if (op) qc.setQueryData(["operation", operationId], op);

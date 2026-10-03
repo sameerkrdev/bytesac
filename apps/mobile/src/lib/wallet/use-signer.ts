@@ -12,13 +12,13 @@ const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 
 /**
  * The only place the mobile money flows touch wallets (AppKit React Native). Each method signs exactly what the server prepared for one leg.
- * Solana: `solana_signTransaction` through the active AppKit provider; Phantom and Solflare (deeplink connectors) take and return base58, WalletConnect wallets base64
+ * Solana: `solana_signTransaction` through the active AppKit provider; deeplink connectors (Phantom, Solflare: walletInfo.type "external") take and return base58, WalletConnect sessions base64
  * (the encodings AppKit's own SolanaAdapter uses). EVM: wagmi, an exact-amount approval first, then the LI.FI transaction.
  * Bitcoin is not offered: `signPsbt` is left out, so a Bitcoin leg is continued on the web. The server verifies everything that comes back.
  */
 export function useSigner(me: MeResponse | undefined): Signer {
   const linked = (chain: "solana" | "ethereum") => me?.wallet.addresses.find((a) => a.chain === chain && a.status === "active")?.address;
-  const { address, namespace, chainId } = useAccount();
+  const { address, namespace, chain } = useAccount();
   const { provider } = useProvider();
   const { walletInfo } = useWalletInfo();
   const evm = useEvmAccount();
@@ -39,8 +39,11 @@ export function useSigner(me: MeResponse | undefined): Signer {
     return {
       signSolana: (serializedBase64) => guard(async () => {
         if (!provider || namespace !== "solana" || !address || address !== solanaAddress) throw new WrongWalletError("Solana wallet");
-        const deeplink = /phantom|solflare/i.test(walletInfo?.name ?? "");
-        const caip = chainId?.includes(":") ? chainId : `solana:${chainId}`;
+        const caip = chain?.caipNetworkId;
+        if (!caip) throw new WrongWalletError("Solana wallet");
+        // Encoding follows the connector, not the wallet name (as AppKit's SolanaAdapter does): the Phantom and Solflare deeplink connectors report walletInfo.type "external"
+        // (appkit-solana-react-native PhantomConnector/SolflareConnector getWalletInfo); WalletConnect sessions, whatever the wallet, report "walletconnect" and take base64.
+        const deeplink = walletInfo?.type === "external";
         const res = await provider.request<{ transaction?: string }>({
           method: "solana_signTransaction",
           params: { transaction: deeplink ? bs58.encode(fromBase64(serializedBase64)) : serializedBase64, pubkey: address },
@@ -63,5 +66,5 @@ export function useSigner(me: MeResponse | undefined): Signer {
         return sendTransactionAsync({ chainId: tx.chainId, to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: BigInt(tx.value) });
       }),
     };
-  }, [provider, namespace, address, chainId, walletInfo?.name, solanaAddress, evmAddress, evm.isConnected, evm.address, evm.chainId, config, switchChainAsync, sendTransactionAsync]);
+  }, [provider, namespace, address, chain?.caipNetworkId, walletInfo?.type, solanaAddress, evmAddress, evm.isConnected, evm.address, evm.chainId, config, switchChainAsync, sendTransactionAsync]);
 }

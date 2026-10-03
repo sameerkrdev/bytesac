@@ -153,7 +153,13 @@ export async function runLeg(
   api: LegSignerApi, signer: Signer, operationId: string, legId: string, dispatch: Dispatch,
   opts: { confirm(fresh: { estimatedOut: string | null; minOut: string | null }): Promise<boolean>; handoffUrl: string; sleep?: (ms: number) => Promise<void> },
 ): Promise<OperationView | null> {
-  const leg = (await api.getOperation(operationId)).legs.find((l) => l.id === legId);
+  let leg;
+  try {
+    leg = (await api.getOperation(operationId)).legs.find((l) => l.id === legId);
+  } catch (err) {
+    dispatch({ type: "failed", ...legErrorInfo(err) });
+    throw err;
+  }
   if (!leg) { dispatch({ type: "failed", code: "NOT_FOUND", message: "This step is no longer part of the operation." }); return null; }
   const prepared = await prepareLeg(api, operationId, leg, dispatch, { sleep: opts.sleep });
   if (!(await opts.confirm({ estimatedOut: prepared.q.estimatedOut, minOut: prepared.q.minOut }))) { dispatch({ type: "reset" }); return null; }

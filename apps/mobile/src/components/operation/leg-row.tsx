@@ -38,7 +38,7 @@ export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
       {refunding && <AppText variant="label" tone="stone">{"Refund in progress (the route couldn't complete)."}</AppText>}
       {l.status === "FAILED" && refunded && <AppText variant="label">Funds returned to your wallet.</AppText>}
       {t && <AppText variant="label">Arrived as {formatUnits(t.amount, t.decimals)} {t.symbol} on {ASSET_CHAINS[t.chain].label}. Complete the swap below, or stop here and keep it in your wallet.</AppText>}
-      {btc && l.status !== "SETTLED" && <AppText variant="label" tone="stone">Bitcoin needs 2 confirmations, about 20 minutes. Bitcoin steps are signed on the web.</AppText>}
+      {btc && l.status !== "SETTLED" && <AppText variant="label" tone="stone">Bitcoin needs 2 confirmations, about 20 minutes.{l.fromChain === "bitcoin" ? " Bitcoin steps are signed on the web." : ""}</AppText>}
       {l.status === "UNKNOWN" && <AppText variant="label" tone="stone">We are checking this with the chain. Do not sign it again. You can stop here; the check continues and the result is added to your portfolio.</AppText>}
       {l.failureReason && !t ? <AppText variant="label" tone="danger">{l.failureReason}</AppText> : null}
       {l.sourceTx ? <Link label="Source transaction" url={explorerTxUrl(l.fromChain, l.sourceTx)} /> : null}

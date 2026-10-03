@@ -8,7 +8,7 @@ Copy `.env.example` to `.env`.
 
 - `EXPO_PUBLIC_API_URL`: Bytesac API base URL (Android emulator: `http://10.0.2.2:4000`).
 - `EXPO_PUBLIC_REOWN_PROJECT_ID`: Reown (WalletConnect) Cloud project ID.
-- `EXPO_PUBLIC_WEB_URL` (optional, default `https://bytesac.com`): web origin used for "Continue on web" handoffs (`<web>/portfolio#operation-<id>`, `<web>/profile`). An empty value falls back to the default.
+- `EXPO_PUBLIC_WEB_URL` (optional, no default): web origin used for "Continue on web" handoffs (`<web>/portfolio#operation-<id>`, `<web>/profile`). When unset, those buttons are hidden and the screen says "Use the Bytesac web app to continue".
 
 ### Development build
 

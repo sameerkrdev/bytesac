@@ -1,3 +1,4 @@
+process.env.EXPO_PUBLIC_WEB_URL = "https://web.example";
 jest.mock(
   "expo-secure-store",
   () => {
