@@ -85,6 +85,14 @@ User request: read six LI.FI FAQ pages; list changes/improvements → **"apply a
 | 6 | Docs cleanup | A one source of truth per topic (rec.) · B light pass · C A + delete old specs/plans | **A** | CONTINUATION merged into HANDOFF; register as index |
 
 
+## Spec 14 — Integration audit (2026-10-03)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Output | A report + fixes (rec.) · B report only · C report + fixes + upgrade everything | **A** | Audit doc + fixes; majors/design → OPEN-ITEMS |
+| 2 | Live calls | A read-only via throwaway script (rec.) · B docs only · C A + sandbox sends | **A** | LI.FI keyless; Alchemy/CMC only with local keys; no writes, signing or broadcasting |
+
+
 ---
 
 ## Roadmap decisions

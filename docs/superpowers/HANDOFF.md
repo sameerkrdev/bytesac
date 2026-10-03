@@ -40,7 +40,7 @@ Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migr
 | 10.1 LI.FI hardening | Estimates, `SOL_REQUIRED`, Mayan rule, recovery leg, price-impact limit, deny list, route fees | `b23da86` | ADR-017, D-093..D-099 |
 | 11 RWAs and eligibility | Permissionless tokenized RWAs via LI.FI, eligibility engine, enforcement, decision audit | `d24d0ad` | ADR-018, D-100..D-106 |
 | 12 Launch hardening | Price batch fix, price-impact backstop, gas reservation lifecycle, sweep isolation, position auto-close, recovery auto-stop, functional fixes | `2f05253` | D-107..D-113 |
-| 13 Code and docs cleanup | API restructured into feature modules (route/controller/service, `@/` alias, server/worker graceful shutdown, redacted error logging), route-table and no-cycles tests, dead code and duplicates removed, docs consolidated to one home per topic | Spec 13 (this branch) | spec `2026-10-03-code-docs-cleanup-design.md` |
+| 13 Code and docs cleanup | API restructured into feature modules (route/controller/service, `@/` alias, server/worker graceful shutdown, redacted error logging), route-table and no-cycles tests, dead code and duplicates removed, docs consolidated to one home per topic | `9febc6a` | spec `2026-10-03-code-docs-cleanup-design.md` |
 
 Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (later review artifacts lived in the git-ignored SDD workspace and were deleted after merge). Layout, conventions and behavior are in `ARCHITECTURE.md`, `CODING-STANDARDS.md` and `docs/domains/*`, not repeated here. Pre-launch checks, user actions and leftovers are all in `docs/OPEN-ITEMS.md`.
 
