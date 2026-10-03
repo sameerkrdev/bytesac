@@ -6,15 +6,15 @@ The one document to read first in a new session (human or AI). It holds the star
 
 ## 0. Paste-ready starter prompt
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows 11, Git Bash + PowerShell; **Python is not installed** — edit with Edit/Write or `node -e`; files are CRLF). Specs 1–14 are merged to local `main` (table in §2). **Spec 15 (basic UI for web and mobile) is in progress** on branch `feat/spec15-basic-ui`: spec, plan and brainstorm log are committed, no code yet — resume exactly as §6 says. Then continue the roadmap 16–19 (§7).
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows 11, Git Bash + PowerShell; **Python is not installed** — edit with Edit/Write or `node -e`; files are CRLF). Specs 1–14 are merged to local `main` (table in §2). **Spec 15 (basic UI for web and mobile) is fully implemented, reviewed, fixed and re-reviewed on branch `feat/spec15-basic-ui`; only the final full gate and the local merge remain** — finish it exactly as §6 says. Then run the roadmap 16–19 (§7), starting with **Spec 16 — deployment**.
 >
-> **1. Load context (mandatory, in order):** this file (§3 rules and §4 method are binding), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ the linked ADRs), `docs/engineering/CODING-STANDARDS.md`, `docs/OPEN-ITEMS.md`, `docs/superpowers/BRAINSTORM-LOG.md`, the domain doc and `docs/source/*` file for the phase. Check the memory files for user preferences.
+> **1. Load context (mandatory, in order):** this file (§3 rules and §4 method are binding), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ the linked ADRs), `docs/engineering/CODING-STANDARDS.md`, `docs/OPEN-ITEMS.md`, `docs/superpowers/BRAINSTORM-LOG.md`, `docs/engineering/INTEGRATION-AUDIT.md`, the domain doc and `docs/source/*` file for the phase. Check the memory files for user preferences.
 >
-> **2. Verify state:** `git log --oneline -5`, `git status --short` (the only expected changes are the user's/noise files listed in §5 — never stage them), `git branch --show-current`. Start Docker Desktop, `pnpm db:up`, `pnpm --filter @repo/db db:migrate`.
+> **2. Verify state:** `git log --oneline -5`, `git status --short` (only the user's/noise files in §5 "Never stage" should show — never stage them), `git branch --show-current`. Start Docker Desktop, `pnpm db:up`, `pnpm --filter @repo/db db:migrate`.
 >
-> **3. Per phase run the full cycle in §4** (brainstorm → spec → plan → subagent-driven execution → one Opus review → one fix wave → your own full gate → finishing menu). The user pre-approved for Spec 15: execute the approved plan and merge to local `main` after a green gate, then start the next phase's brainstorm. Items touching permissions, money, custody or data migration go to the user (AskUserQuestion, recommended option first); otherwise decide and log `Ruling: <what> — <why> — <cost if wrong>`.
+> **3. Per phase run the full cycle in §4** (brainstorm → spec → plan → subagent-driven execution → one Opus review → one fix wave → your own full gate → merge). The user pre-approved the Spec 15 local merge after a green gate; for later phases ask at plan approval whether they pre-approve the merge. Items touching permissions, money, custody, data migration, **deployment targets, secrets or anything public-facing** go to the user (AskUserQuestion, recommended option first); otherwise decide and log `Ruling: <what> — <why> — <cost if wrong>`.
 >
-> **4. Style:** terse chat, tables for state, never claim a test, merge or push succeeded without observing it. Never move real assets, sign or broadcast transactions, or touch production data. Push only when the user says so (local `main` is ahead of `origin`).
+> **4. Style:** terse chat, tables for state, never claim a test, merge, deploy or push succeeded without observing it. Never move real assets, sign or broadcast transactions, deploy, or touch production data without the user's explicit go-ahead. Push only when the user says so (local `main` is far ahead of `origin`).
 
 ---
 
@@ -94,23 +94,29 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 - **Do not run tests while a sub-agent is running tests** (shared test DB); a run that overlaps produces false failures — re-run alone.
 - **Never stage (user/noise files):** `.claude/settings.json`, `.gitignore` and `apps/api/.env.example` (the user's own edits), `firebase-service-account.json` (a credential — git-ignored; never open it), root `AGENTS.md` and `apps/api/test/__snapshots__/route-table.test.ts.snap` (line-ending-only changes), generated `apps/*/AGENTS.md`/`CLAUDE.md`, anything under `.superpowers/`.
 
-## 6. Next phase — Spec 15: basic UI for web and mobile (implemented on `feat/spec15-basic-ui`; awaiting review, final gate and merge)
+## 6. Next phase — finish Spec 15 (gate + merge), then Spec 16
 
-**Status (2026-10-03):** brainstorm done (3 questions, all answered A — see `BRAINSTORM-LOG.md` "Spec 15"); spec `docs/superpowers/specs/2026-10-03-basic-ui-design.md` and plan `docs/superpowers/plans/2026-10-03-spec15-basic-ui.md` approved and committed on branch `feat/spec15-basic-ui` (`5afeaaa`). Implementer #1 stopped at a usage limit before writing any code: **no code commits, nothing to salvage**. The user pre-approved execution and a local merge to `main` after a green gate.
+**Spec 15 status (2026-10-03):** everything except the final gate and the merge is done on `feat/spec15-basic-ui`:
+- Commits: `43d84e3` app-core shared `legSigner` + helpers (web switched; 413 existing web tests unchanged), `7449218` web app shell / role-aware nav / page states, `1b6116e` + `6ffa301` mobile tabs, discover, invest, portfolio and all actions, notifications, profile, `4f7a312` docs, `f854d80` review fix wave (multi-leg mobile flow no longer stuck, no `EXPO_PUBLIC_WEB_URL` default, Solana encoding by connector type, web `#operation-<id>` anchors, minors).
+- Opus review: 1 Critical + 3 Important, all fixed; scoped re-review: all addressed, no new issues. Last targeted checks: mobile 133, app-core 62, web 434 + lint/check-types/build; implementer #3's full gate before the fix wave: 27/28 (only load-induced api timeouts/crashes, all passing alone).
+- Bitcoin on mobile: Reown AppKit RN documents no PSBT signing → Bitcoin legs and Bitcoin linking hand off to the web (`EXPO_PUBLIC_WEB_URL`; unset hides the links).
 
-**What Spec 15 delivers:**
-- `@repo/app-core`: the shared `legSigner` state machine (exact `LegSignerState` / `Signer` contract in the plan's Global Constraints) plus fee lines, portfolio actions, sync-split validation, eligibility copy, formatters. Web switched to it; existing web tests must pass unchanged (they are the oracle).
-- Web: one app shell with role-aware navigation (Investor / Manager / Ops), shared `PageLayout` and loading/empty/error/stale components on every page, 360 px layout.
-- Mobile (Expo 57, Expo Router tabs Discover / Portfolio / Notifications / Profile): investor parity — discover + basket detail + invest wizard, portfolio and all actions (rebalance review, skip, keep custom, repair/sync, sell, leave, close dust, Continue, Complete swap), operation detail, notifications inbox, profile (contacts, preferences, eligibility, wallets). Solana + EVM signing through Reown AppKit React Native; Bitcoin legs and Bitcoin linking hand off to the web; manager/ops see "Manage on web".
+**Finish Spec 15 (the user chose "full gate again"):**
+1. `git checkout feat/spec15-basic-ui`. Ask the user to close heavy apps, then run the full gate in the background: `pnpm turbo run lint check-types test build --continue --concurrency=1 --force < /dev/null` plus `pnpm --filter mobile test` and `cd apps/mobile && npx expo export --platform android --output-dir <tmp>` (delete it, revert generated tsconfig changes). Re-run each api file that crashes with `3221226505` or times out under load, alone. If Claude Code kills the gate for low memory, do not restart on your own: offer the split gate (lint+check-types+build, then api tests, then web, then app-core/mobile tests, then expo export).
+2. Green → merge to local `main` (pre-approved): `git checkout main && git merge --no-ff feat/spec15-basic-ui`, gate on `main` the same way, delete the branch and `.superpowers/sdd/2026-10-03-spec15-basic-ui`.
+3. Docs on a `docs/` branch merged to `main`: §2 Spec 15 row (merge commit), this §6 → Spec 16, and `docs/OPEN-ITEMS.md` lines: "`apps/mobile/src/lib/appkit.tsx` WalletConnect metadata hardcodes `https://bytesac.com` — set the confirmed production origin before release", "mobile multi-leg tests use already-SETTLED legs; add a test for an intermediate SUBMITTED leg", and the skipped review Minors 10 (raw SDK text for INTERNAL errors needs copy), 12, 13.
 
-**Resume steps:**
-1. `git checkout feat/spec15-basic-ui`; `git merge main` if `main` moved.
-2. Regenerate the workspace (it is git-ignored and may be gone): `bash <superpowers>/skills/subagent-driven-development/scripts/sdd-workspace docs/superpowers/plans/2026-10-03-spec15-basic-ui.md`, then `task-brief <plan> 1..5`; recreate `progress.md` (identity line + "User pre-approved: execute and merge to local main after green gate").
-3. Dispatch **implementer #1 (Sonnet, background) for Tasks 1–2** (app-core extraction + web shell), **implementer #2 (Sonnet) for Tasks 3–4** (mobile; give it #1's report with the exported app-core API), **implementer #3 (Sonnet) for Task 5** (tests completion, docs, full gate). Dispatch prompt essentials are in §4 item 8.
-4. One **Opus** whole-branch review (trimmed diff, spec, plan, ledger, reports; focus = the plan's Review Focus), one **Sonnet** fix wave, your own full gate (§5), then merge to local `main`, gate on `main`, delete branch + workspace, update §2/§6 and `OPEN-ITEMS.md`, then start Spec 16's brainstorm.
-5. Mobile specifics to tell implementer #2: read `apps/mobile/AGENTS.md` and the Expo v57 docs first; use the `expo-overview`, `expo-router`, `expo-data-fetching`, `expo-native-ui` skills; confirm Reown AppKit RN Solana/EVM signing (and whether Bitcoin PSBT is officially supported) in the official docs; Jest + React Native Testing Library with mocked `@repo/api-client` and `Signer`; `expo export --platform android` must pass (temp dir outside the repo, delete it, revert generated tsconfig changes).
-
-## 7. Roadmap after Spec 15 (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead unless pre-approved)
+**Then Spec 16 — deployment** (full cycle, §4). Likely brainstorm questions, one at a time, recommended first — the answers decide everything, never assume:
+1. Hosting for api + worker (e.g. Fly.io / Render / Railway / AWS ECS / GCP Cloud Run), web (Vercel vs container), Postgres (Supabase per ADR-005/006 — pg_cron + pgvector), Redis (managed, non-evicting for BullMQ), object storage (Cloudflare R2), mobile builds (EAS — use the `expo:eas-*` skills).
+2. Environments (dev / staging / production), domains and the confirmed web origin (also fixes `EXPO_PUBLIC_WEB_URL`, AppKit metadata, CSP, `AUTH_DOMAIN`/`ALLOWED_ORIGINS`).
+3. Secrets management (platform keys must move to a KMS — OPEN-ITEMS; Firebase service account, LI.FI, Alchemy, Resend, Twilio, CoinMarketCap, Gemini, R2) and who holds them.
+4. CI (GitHub Actions on **Linux** — removes the Windows vitest crash): lint, check-types, test with Postgres+Redis service containers, build, migrations, Docker image builds; CD triggers (main → staging, tags → production) and manual approval gates.
+5. Docker: multi-stage images for api and worker (tsup output), web (Next standalone) or Vercel; healthchecks; graceful shutdown (already in server/worker); non-root users.
+6. Database migrations in CD (drizzle migrate as a release step, runtime role without DELETE), backups, pg_cron jobs on Supabase.
+7. Observability (logs, error tracking, uptime), CSP enforce mode, load balancer `X-Forwarded-For`, `GEO_COUNTRY_HEADER` edge config.
+8. The step-by-step launch guide (accounts to create, keys to obtain, wallet funding, the mainnet small-amount checklist from `apps/api/README.md`, the manual device checklists in OPEN-ITEMS).
+Deliverables: Dockerfiles, compose for local prod-like runs, `.github/workflows/*`, env templates per environment (no secrets), `docs/engineering/DEPLOYMENT.md` + `docs/engineering/LAUNCH-GUIDE.md`. **Never deploy, create cloud resources, push, or use real secrets without the user's explicit go-ahead.** Read the turbo bundled docs (AGENTS.md block) before changing CI/turbo config.
+## 7. Roadmap after Spec 15 — 16 is next (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead unless pre-approved)
 
 | # | Phase | What to ask / prepare at the start |
 |---|---|---|
