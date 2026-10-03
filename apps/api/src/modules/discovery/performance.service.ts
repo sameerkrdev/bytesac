@@ -5,7 +5,7 @@ import { basketFeesSchema, computePerformanceDays, type PerformanceState, type P
 import { env } from "@/config/dotenv";
 import { fetchQuotes } from "@/providers/coinmarketcap";
 import { enqueue } from "@/config/queues";
-import { LISTED_BASKET_STATUSES } from "@/modules/baskets/public-baskets.service";
+import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 const CMC_BATCH = 100;
 const utcDay = (d: Date) => d.toISOString().slice(0, 10);

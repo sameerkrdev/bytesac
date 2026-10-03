@@ -2,9 +2,9 @@ import type { NextFunction, Request, Response } from "express";
 import { db } from "@repo/db";
 import type { Investability, SaveBasketDraftRequest, CreateAssignmentRequest, UpdateAssignmentRequest, EndAssignmentRequest, BasketReasonRequest } from "@repo/validator";
 import * as basketsService from "./baskets.service";
-import * as notificationsService from "@/services/notifications";
+import * as notificationsService from "@/modules/notifications/notifications.service";
 import * as basketReviewService from "./basket-review.service";
-import * as investabilityService from "@/services/investability";
+import * as investabilityService from "@/modules/operations/investability.service";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });

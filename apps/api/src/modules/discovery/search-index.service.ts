@@ -7,7 +7,7 @@ import { env } from "@/config/dotenv";
 import { embedText } from "@/providers/gemini";
 import { enqueue } from "@/config/queues";
 import { orgDisplayName } from "@/modules/members/members.service";
-import { LISTED_BASKET_STATUSES } from "@/modules/baskets/public-baskets.service";
+import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 const MAX_EMBEDDING_ATTEMPTS = 5;
 

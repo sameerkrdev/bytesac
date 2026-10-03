@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { db } from "@repo/db";
 import type { EligibilityDeclarationInput } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
-import * as eligibilityService from "@/services/eligibility";
+import * as eligibilityService from "./eligibility.service";
 
 export const currentDeclaration = async (req: Request, res: Response, next: NextFunction) => {
   try {

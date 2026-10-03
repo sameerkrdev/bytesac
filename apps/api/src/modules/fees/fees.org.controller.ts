@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { earningsQuerySchema } from "@repo/validator";
-import * as feesService from "@/services/fees";
+import * as feesService from "./fees.service";
 
 export const getEarnings = async (req: Request, res: Response, next: NextFunction) => {
   try {

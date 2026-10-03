@@ -1,10 +1,13 @@
 import bs58 from "bs58";
 import createHttpError from "http-errors";
-import { and, eq } from "drizzle-orm";
-import { investmentWallets, notificationPreferences, users, walletAddresses, type DbOrTx, type Tx } from "@repo/db";
-import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type VerificationMethod } from "@repo/validator";
+import { and, asc, eq } from "drizzle-orm";
+import { db, investmentWallets, notificationPreferences, users, walletAddresses, type DbOrTx, type Tx } from "@repo/db";
+import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type ChainFamily, type VerificationMethod } from "@repo/validator";
 import { isAddress } from "viem";
 import { Address } from "@scure/btc-signer";
+import { bitcoinBalance } from "@/providers/bitcoin";
+import { evmBalance } from "@/providers/evm-rpc";
+import { solanaBalance } from "@/providers/solana-tx";
 
 export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
 
@@ -74,4 +77,27 @@ export async function createUserWithWallet(tx: Tx, i: { walletProvider?: string;
   await tx.insert(notificationPreferences).values({ userId: user!.id });
   await insertAddresses(tx, wallet!.id, i.rows);
   return user!.id;
+}
+
+export type Addresses = Partial<Record<ChainFamily, string>>;
+
+export async function userAddresses(db: DbOrTx, userId: string): Promise<Addresses> {
+  const rows = await db.select({ family: walletAddresses.chainFamily, address: walletAddresses.address }).from(investmentWallets)
+    .innerJoin(walletAddresses, and(eq(walletAddresses.investmentWalletId, investmentWallets.id), eq(walletAddresses.status, "active")))
+    .where(and(eq(investmentWallets.userId, userId), eq(investmentWallets.status, "active"))).orderBy(asc(walletAddresses.createdAt));
+  const out: Addresses = {};
+  for (const r of rows) out[r.family] ??= r.address;
+  return out;
+}
+
+/** The user's wallet balance in base units: native when `token` is null. */
+export async function walletBalance(addresses: Addresses, chain: AssetChain, token: string | null): Promise<bigint> {
+  const owner = addressOn(addresses, chain);
+  return chain === "solana" ? solanaBalance(owner, token) : chain === "bitcoin" ? bitcoinBalance(owner) : evmBalance(chain, owner, token);
+}
+
+export function addressOn(addresses: Addresses, chain: AssetChain): string {
+  const a = addresses[ASSET_CHAINS[chain].family];
+  if (!a) throw createHttpError(`Link a ${ASSET_CHAINS[chain].family} wallet first.`, { code: ASSET_CHAINS[chain].family === "bitcoin" ? "BTC_ADDRESS_REQUIRED" : "NOT_ELIGIBLE" });
+  return a;
 }

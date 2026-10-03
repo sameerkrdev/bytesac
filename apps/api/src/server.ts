@@ -5,7 +5,7 @@ import { app } from "./app";
 import { env } from "@/config/dotenv";
 import { queues } from "@/config/queues";
 import { redis } from "@/middlewares/rate-limit.middleware";
-import { seedPlatformWallets } from "@/services/gas";
+import { seedPlatformWallets } from "@/modules/operations/gas.service";
 
 let server: Server | undefined;
 

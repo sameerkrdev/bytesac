@@ -1,51 +1,35 @@
 import createHttpError from "http-errors";
 import { and, eq, gt, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { logger } from "@repo/logger";
-import {
-  contacts, db, isUniqueViolation, memberVerifications, membershipEvents, organizationMemberships, organizations, type DbOrTx, type Tx,
-} from "@repo/db";
-import {
-  MEMBERSHIP_TRANSITIONS, REVIEWED_ROLES, ROLE_PERMISSIONS, familyOf,
-  type Chain, type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MembershipStatus,
-  type MyMembership, type OrganizationPermission, type VerificationMethod,
-} from "@repo/validator";
+import { contacts, db, isUniqueViolation, memberVerifications, membershipEvents, organizationMemberships, organizations, type DbOrTx, type Tx } from "@repo/db";
+import { MEMBERSHIP_TRANSITIONS, REVIEWED_ROLES, ROLE_PERMISSIONS, familyOf, type Chain, type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MembershipStatus, type MyMembership, type VerificationMethod } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import { sendMembershipEmail, type MembershipEmailKind } from "@/providers/resend";
 import { endIneligibleAssignments, notifyReassignmentRequired } from "@/modules/baskets/baskets.service";
 import { writeAudit } from "@/modules/audit/audit.service";
-import type { OrganizationRow, OwnerCtx } from "@/modules/organizations/organizations.service";
+import type { OwnerCtx } from "@/modules/organizations/organizations.service";
 import { canonicalizeAddress, findAddressOwner } from "@/modules/auth/wallets.service";
+import { type MembershipRow, forbidden, requirePermission } from "./access.service";
 
-export type MembershipRow = typeof organizationMemberships.$inferSelect;
 type EventKind = typeof membershipEvents.$inferInsert.kind;
 
 const INVITE_OPEN: MembershipStatus[] = ["PENDING_WALLET_VERIFICATION", "INVITED"];
+
 const TERMINAL: MembershipStatus[] = ["REJECTED", "REVOKED"];
+
 const WITHDRAWABLE: MembershipStatus[] = ["PENDING_DOCUMENTS", "UNDER_REVIEW", "CHANGES_REQUIRED"];
+
 const DECLINABLE: MembershipStatus[] = ["INVITED", "PENDING_DOCUMENTS", "CHANGES_REQUIRED"];
 
-export const notFound = () => createHttpError("Organization not found", { code: "NOT_FOUND" });
 const memberNotFound = () => createHttpError("Membership not found", { code: "NOT_FOUND" });
-const forbidden = () => createHttpError("You don't have access to this organization.", { code: "FORBIDDEN" });
-const invalid = (message: string) => createHttpError(message, { code: "INVALID_TRANSITION" });
-const ownerImmovable = () => invalid("Contact support to transfer ownership first.");
-const iso = (d: Date | null) => d?.toISOString() ?? null;
-export const orgDisplayName = sql<string | null>`(select v.public_profile->>'displayName' from app.organization_versions v where v.id = ${organizations.currentVersionId})`;
 
-/**
- * Guard for every organization route: 404 for an unknown organization, 403 unless the user holds an ACTIVE membership whose role grants `permission`.
- * `lock` takes the organization row FOR UPDATE (use inside a transaction): every member-management writer takes it before locking membership rows.
- */
-export async function requirePermission(conn: DbOrTx, userId: string, orgId: string, permission: OrganizationPermission, lock = false): Promise<{ org: OrganizationRow; membership: MembershipRow }> {
-  const query = conn.select().from(organizations).where(eq(organizations.id, orgId));
-  const [org] = await (lock ? query.for("update") : query);
-  if (!org) throw notFound();
-  const [membership] = await conn.select().from(organizationMemberships).where(and(
-    eq(organizationMemberships.organizationId, orgId), eq(organizationMemberships.userId, userId), eq(organizationMemberships.status, "ACTIVE"),
-  ));
-  if (!membership || !ROLE_PERMISSIONS[membership.role].includes(permission)) throw forbidden();
-  return { org, membership };
-}
+const invalid = (message: string) => createHttpError(message, { code: "INVALID_TRANSITION" });
+
+const ownerImmovable = () => invalid("Contact support to transfer ownership first.");
+
+const iso = (d: Date | null) => d?.toISOString() ?? null;
+
+export const orgDisplayName = sql<string | null>`(select v.public_profile->>'displayName' from app.organization_versions v where v.id = ${organizations.currentVersionId})`;
 
 const lockMembership = async (tx: Tx, mid: string, scope: SQL): Promise<MembershipRow> => {
   const [m] = await tx.select().from(organizationMemberships).where(and(eq(organizationMemberships.id, mid), scope)).for("update");

@@ -5,7 +5,7 @@ import { logger } from "@repo/logger";
 import { discoveryFiltersSchema, z, type AiSearchResponse, type DiscoveryFilters, type DiscoverySearchItem, type DiscoverySearchResponse } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { embedText, geminiSearchCall } from "@/providers/gemini";
-import { LISTED_BASKET_STATUSES } from "@/modules/baskets/public-baskets.service";
+import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 const PAGE_SIZE = 20;
 const cursorSchema = z.tuple([z.string().regex(/^-?\d+(\.\d+)?$/), z.uuid()]);

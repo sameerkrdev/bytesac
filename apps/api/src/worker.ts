@@ -4,11 +4,12 @@ import { logger } from "@repo/logger";
 import { env } from "@/config/dotenv";
 import { enqueue, queues } from "@/config/queues";
 import { redis } from "@/middlewares/rate-limit.middleware";
-import { reconcileRevenue } from "@/services/fees";
-import { seedPlatformWallets } from "@/services/gas";
-import { deliverNotification, fanOutToHolders } from "@/services/notifications";
-import { onVersionPublished } from "@/services/rebalance";
-import { checkGasWallets, expireStalePlans, reconcilePositions, stopStalledRecoveries, trackLeg, trackStaleClaims } from "@/services/positions";
+import { reconcileRevenue } from "@/modules/fees/fees.service";
+import { checkGasWallets, seedPlatformWallets } from "@/modules/operations/gas.service";
+import { deliverNotification, fanOutToHolders } from "@/modules/notifications/notifications.service";
+import { onVersionPublished } from "@/modules/rebalance/rebalance.service";
+import { expireStalePlans, stopStalledRecoveries, trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
+import { reconcilePositions } from "@/modules/portfolio/reconciliation.service";
 import { runBasketPerformance, runPriceSnapshot } from "@/modules/discovery/performance.service";
 import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/modules/discovery/search-index.service";
 

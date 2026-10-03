@@ -17,9 +17,9 @@ import { readTokenMetadata } from "@/providers/evm-rpc";
 import { getMintDecimals } from "@/providers/solana-rpc";
 import { cursorSchema, type OpsCtx } from "@/modules/manager-applications/applications.service";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { lifiVerification } from "@/services/routing";
+import { lifiVerification } from "@/modules/routing/routing.service";
 import { enqueue } from "@/config/queues";
-import { notify } from "@/services/notifications";
+import { notify } from "@/modules/notifications/notifications.service";
 import { getPrices } from "./pricing.service";
 import { canonicalizeAddress } from "@/modules/auth/wallets.service";
 

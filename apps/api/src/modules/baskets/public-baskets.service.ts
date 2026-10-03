@@ -1,19 +1,14 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import {
-  assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations,
-  platformFeeSchedules,
-} from "@repo/db";
-import {
-  basketConstraintsSchema, basketFeesSchema, microToUsdc, PERFORMANCE_LABEL, PLATFORM_FEE_OPERATIONS, performanceMetrics, resolvePlatformSchedule,
-  type BasketStatus, type PublicBasketListResponse, type PublicBasketResponse, type PublicFees,
-} from "@repo/validator";
+import { assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations, platformFeeSchedules } from "@repo/db";
+import { basketConstraintsSchema, basketFeesSchema, microToUsdc, PERFORMANCE_LABEL, PLATFORM_FEE_OPERATIONS, performanceMetrics, resolvePlatformSchedule, type PublicBasketListResponse, type PublicBasketResponse, type PublicFees } from "@repo/validator";
 import { cursorSchema } from "@/modules/manager-applications/applications.service";
 import { currentDisclosures, versionDiff } from "./baskets.service";
-import { evaluateFor, isRwa } from "@/services/eligibility";
+import { evaluateFor, isRwa } from "@/modules/eligibility/eligibility.service";
 import { orgDisplayName } from "@/modules/members/members.service";
 import { PAGE_SIZE } from "@/modules/organizations/organization-review.service";
 import { getPrices } from "@/modules/assets/pricing.service";
+import { LISTED_BASKET_STATUSES } from "./baskets.service";
 
 /**
  * The platform fee rate per operation that applies to a basket and its organization (active basket override, else organization override, else the default);
@@ -27,9 +22,6 @@ export async function platformFeeRates(organizationId: string | null, basketId: 
     return r ? [{ operationKind: operation, bps: r.bps, minUsdc: r.minMicro === null ? null : microToUsdc(BigInt(r.minMicro)), maxUsdc: r.maxMicro === null ? null : microToUsdc(BigInt(r.maxMicro)) }] : [];
   });
 }
-
-/** Statuses of a published basket that appear in lists; a RETIRED basket is still served by its link. */
-export const LISTED_BASKET_STATUSES: readonly BasketStatus[] = ["ACTIVE", "PAUSED", "REASSIGNMENT_REQUIRED", "RETIREMENT_PENDING"];
 
 export async function listPublicBaskets(q: { cursor?: string }): Promise<PublicBasketListResponse> {
   const conditions = [inArray(baskets.status, [...LISTED_BASKET_STATUSES]), isNotNull(baskets.currentVersionId)];

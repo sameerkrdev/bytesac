@@ -15,8 +15,8 @@ import { logger } from "@repo/logger";
 import { enqueue } from "@/config/queues";
 import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "@/providers/resend";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { isRwa } from "@/services/eligibility";
-import { requirePermission, type MembershipRow } from "@/modules/members/members.service";
+import { isRwa } from "@/modules/eligibility/eligibility.service";
+import { requirePermission, type MembershipRow } from "@/modules/members/access.service";
 import type { OrganizationRow, OwnerCtx } from "@/modules/organizations/organizations.service";
 
 type BasketRow = typeof baskets.$inferSelect;
@@ -478,3 +478,6 @@ export async function notifyReassignmentRequired(requestId: string): Promise<voi
     logger.warn("basket email failed", { kind: "reassignment_required", error: err instanceof Error ? err.name : "unknown" });
   }
 }
+
+/** Statuses of a published basket that appear in lists; a RETIRED basket is still served by its link. */
+export const LISTED_BASKET_STATUSES: readonly BasketStatus[] = ["ACTIVE", "PAUSED", "REASSIGNMENT_REQUIRED", "RETIREMENT_PENDING"];

@@ -1,14 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
 import type { SyncRequest } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
-import * as positionsService from "@/services/positions";
-import * as rebalanceService from "@/services/rebalance";
+import * as portfolioService from "./portfolio.service";
+import * as rebalanceService from "@/modules/rebalance/rebalance.service";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
 export const getPortfolio = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.json(await positionsService.getPortfolio(ctx(req)));
+    res.json(await portfolioService.getPortfolio(ctx(req)));
   } catch (error) {
     next(error);
   }

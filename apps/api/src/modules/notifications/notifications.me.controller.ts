@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { listNotificationsQuerySchema, z, markReadSchema, pushTokenSchema } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
-import * as notificationsService from "@/services/notifications";
+import * as notificationsService from "./notifications.service";
 
 export const listNotifications = async (req: Request, res: Response, next: NextFunction) => {
   try {

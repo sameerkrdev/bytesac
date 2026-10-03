@@ -13,7 +13,7 @@ import { cursorSchema, type OpsCtx } from "@/modules/manager-applications/applic
 import { writeAudit } from "@/modules/audit/audit.service";
 import { orgDisplayName } from "@/modules/members/members.service";
 import { PAGE_SIZE } from "@/modules/organizations/organization-review.service";
-import { LISTED_BASKET_STATUSES } from "@/modules/baskets/public-baskets.service";
+import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 type ProfileRow = typeof managerProfiles.$inferSelect;
 const iso = (d: Date | null) => d?.toISOString() ?? null;

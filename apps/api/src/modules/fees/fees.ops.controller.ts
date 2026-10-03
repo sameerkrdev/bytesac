@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { earningsQuerySchema, type PlatformFeeScheduleInput, type PlatformFeeOverrideInput } from "@repo/validator";
-import * as feesService from "@/services/fees";
+import * as feesService from "./fees.service";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 

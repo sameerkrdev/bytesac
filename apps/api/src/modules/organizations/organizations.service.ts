@@ -19,8 +19,8 @@ import type { RequestMeta } from "@/middlewares/request-context.middleware";
 import { R2_BUCKET, r2 } from "@/providers/r2";
 import { sendOrganizationEmail, type OrganizationEmailData, type OrganizationEmailKind } from "@/providers/resend";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { notFound, requirePermission } from "@/modules/members/members.service";
-import { LISTED_BASKET_STATUSES } from "@/modules/baskets/public-baskets.service";
+import { notFound, requirePermission } from "@/modules/members/access.service";
+import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 export interface OwnerCtx { userId: string; sessionId: string; meta: RequestMeta }
 export type OrganizationRow = typeof organizations.$inferSelect;

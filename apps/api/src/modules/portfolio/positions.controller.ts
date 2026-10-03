@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import type { SkipRequest } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
-import * as rebalanceService from "@/services/rebalance";
-import * as operationsService from "@/services/operations";
+import * as rebalanceService from "@/modules/rebalance/rebalance.service";
+import * as operationsService from "@/modules/operations/operations.service";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 

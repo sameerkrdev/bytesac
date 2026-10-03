@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { RoutePolicyInput } from "@repo/validator";
-import * as routingService from "@/services/routing";
+import * as routingService from "./routing.service";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, meta: req.ctx });
 

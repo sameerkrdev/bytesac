@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { authChallenges, db, organizationEvents, organizationPayoutWallets } from "@repo/db";
 import type { ChallengeResponse, OrganizationDetail, OrganizationStatus } from "@repo/validator";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { requirePermission } from "@/modules/members/members.service";
+import { requirePermission } from "@/modules/members/access.service";
 import { getOrganizationForMember, notifyOwner, type OwnerCtx } from "./organizations.service";
 import { claimChallenge, issueChallenge, rejectChallenge } from "@/modules/auth/sign-in.service";
 import { verifySolanaSignature } from "@/modules/auth/signatures.service";
