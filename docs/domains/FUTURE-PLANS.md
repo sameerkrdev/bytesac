@@ -29,6 +29,10 @@ The source lists these as future expansion ideas, not initial-release commitment
 - Mobile push (Firebase Cloud Messaging for iOS and Android) and the mobile portfolio, rebalance, repair and notification screens.
 - Moving web and API push from FCM registration tokens to Firebase Installation IDs when the token APIs are removed.
 
+- Discovery extras: investor counts and real returns, price-history backfill, saved searches, personalized recommendations, and a background-jobs dashboard.
+- Registry extras: manager asset proposals, Polygon and Bitcoin on-chain verification (Bitcoin data provider).
+- Basket commentary from managers to investors.
+
 ### RWAs and eligibility (deferred from Spec 11)
 
 - Issuer subscription and redemption routes with asynchronous settlement states (`ELIGIBILITY_PENDING`, `SETTLEMENT_PENDING`, `ISSUANCE_PENDING`, `REDEEMING`, `SETTLED`, `REJECTED`, `CANCELLED`), redemption windows, lockups and fees, and removed-RWA disposition in rebalances (retain as legacy or wait for the window; never a fictional instant sell). Release 1 supports secondary-market RWA tokens through LI.FI only.

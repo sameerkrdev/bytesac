@@ -3,7 +3,7 @@ import bs58 from "bs58";
 import createHttpError from "http-errors";
 import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 export const connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`, { commitment: "confirmed" });
 
@@ -63,9 +63,9 @@ export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
 /** Used for the rent estimate only when LI.FI's gas costs carry no native token price. */
 export const SOL_USD_FALLBACK = 150;
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
-export const LAMPORTS_PER_SIGNATURE = 5_000n;
+const LAMPORTS_PER_SIGNATURE = 5_000n;
 /** Priority fee the platform will pay for one transaction (price x limit), the instruction and static-account counts it accepts. */
-export const MAX_PRIORITY_LAMPORTS = 1_000_000n;
+const MAX_PRIORITY_LAMPORTS = 1_000_000n;
 const MAX_INSTRUCTIONS = 24;
 const MAX_STATIC_ACCOUNTS = 64;
 

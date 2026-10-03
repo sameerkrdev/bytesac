@@ -1,5 +1,5 @@
 import { z } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const entry = z.object({ quote: z.object({ USD: z.object({ price: z.number().finite().nonnegative(), last_updated: z.iso.datetime({ offset: true }) }) }) });
 /** Lookups by `id` return an object per id; by symbol, an array. Both are accepted. */

@@ -9,7 +9,7 @@ vi.mock("viem", async (importOriginal) => {
   return { ...viem, http: () => viem.custom({ request: ((args: { method: string }) => transport.request(args)) as never }, { retryCount: 0 }) };
 });
 
-const { verifyContractSignature } = await vi.importActual<typeof import("../../src/providers/evm-rpc")>("../../src/providers/evm-rpc");
+const { verifyContractSignature } = await vi.importActual<typeof import("@/providers/evm-rpc")>("@/providers/evm-rpc");
 
 const input = { chain: "base" as const, address: ("0x" + "ab".repeat(20)) as `0x${string}`, message: "hi", signature: ("0x" + "11".repeat(100)) as `0x${string}` };
 const verifyWith = (request: (a: { method: string }) => Promise<unknown>) => {

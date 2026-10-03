@@ -1,5 +1,5 @@
 /** What the user sees for a tokenized asset they can't buy; the server decides the outcome, this only words it. */
-export const OUTCOME_NOTICE: Record<string, string> = {
+const OUTCOME_NOTICE: Record<string, string> = {
   RESTRICTED: "Not available in your region / for your investor status",
   KYC_REQUIRED: "Identity verification required — not available yet",
   REVIEW_REQUIRED: "Needs review — contact support",

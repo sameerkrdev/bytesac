@@ -1,8 +1,49 @@
+import type { Server } from "node:http";
+import { db } from "@repo/db";
 import { logger } from "@repo/logger";
 import { app } from "./app";
-import { env } from "./env";
-import { seedPlatformWallets } from "./services/gas";
+import { env } from "@/config/dotenv";
+import { queues } from "@/config/queues";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { seedPlatformWallets } from "@/modules/operations/gas.service";
 
-await seedPlatformWallets();
+let server: Server | undefined;
+let stopping = false;
 
-app.listen(env.PORT, () => logger.info("api listening", { port: env.PORT }));
+/** Stops accepting requests, then closes the queues, Redis and the DB pool. Runs only on a signal, never on import. */
+const shutdown = async (signal: string) => {
+  if (stopping) return;
+  stopping = true;
+  logger.info("shutting down", { signal });
+  setTimeout(() => process.exit(1), 10_000).unref();
+  try {
+    if (server) {
+      const closed = new Promise<void>((resolve, reject) => { server?.close((err) => { if (err) reject(err); else resolve(); }); });
+      server.closeIdleConnections();
+      await closed;
+    }
+    await Promise.all(Object.values(queues).map((q) => q.close()));
+    await redis.quit();
+    await db.$client.end();
+    process.exit(0);
+  } catch (error) {
+    logger.error("shutdown failed", { errMessage: error instanceof Error ? error.message : "unknown" });
+    process.exit(1);
+  }
+};
+
+const startServer = async () => {
+  try {
+    await seedPlatformWallets();
+    server = app.listen(env.PORT, () => logger.info("api listening", { port: env.PORT }));
+    server.on("error", (error) => { logger.error("failed to start api", { errMessage: error.message }); process.exit(1); });
+  } catch (error) {
+    logger.error("failed to start api", { errMessage: error instanceof Error ? error.message : "unknown" });
+    process.exit(1);
+  }
+};
+
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+
+void startServer();

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { OpsError } from "../ops-error";
+import { OpsError } from "@/components/ops/ops-error";
 
 type Client = Pick<ApiClient, "opsListDisclosureTemplates" | "opsCreateDisclosureTemplate" | "opsRetireDisclosureTemplate">;
 

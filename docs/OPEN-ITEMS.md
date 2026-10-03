@@ -1,6 +1,6 @@
 # Bytesac — Open Items
 
-Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: `docs/superpowers/HANDOFF.md` §5/§7, `docs/superpowers/CONTINUATION.md` §7, the decision register (`OPEN` rows) and the Spec 8–10 reviews. Future product scope lives in `docs/domains/FUTURE-PLANS.md`, not here. Tick items as they are closed and rewrite the affected docs in place.
+Consolidated list of everything still open after Spec 13 (2026-10-03). This is the single home for open work: `docs/superpowers/HANDOFF.md` points here and keeps no lists of its own. Sources: the decision register (`OPEN` statuses), the Spec 8–12 reviews and earlier handoff notes. Future product scope lives in `docs/domains/FUTURE-PLANS.md`, not here. Tick items as they are closed and rewrite the affected docs in place.
 
 ## 1. Accounts, keys and credentials (user actions)
 
@@ -74,7 +74,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 
 **Must fix before onboarding real assets**
 - [x] CoinMarketCap: one `price: null` id marks the whole uncached batch unavailable.
-- [x] `mobile#check-types` fails on `main` (duplicate `@wagmi/core` peer variants in `apps/mobile/src/lib/appkit.tsx`; pnpm dedupe/override).
+- [ ] `mobile#check-types` fixed with a scoped type assertion in `apps/mobile/src/lib/appkit.tsx` (duplicate `@wagmi/core` 2.22.1 peer variants: typescript 6/7, use-sync-external-store 1.4/1.7, zod 3/4); proper peer dedupe open.
 
 **Spec 10.1**
 - [ ] Releasing unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
@@ -93,7 +93,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 
 **Spec 9**
 - [ ] Unbounded push tokens per user; Firebase registration tokens deprecated (Installation ID migration is a future plan).
-- [ ] `positions.ts` ↔ `rebalance.ts` function-level import cycle; D-071 message duplicated in sell and rebalance.
+- [x] `positions` ↔ `rebalance` import cycle (valuation moved to `portfolio/valuation.service`); D-071 message duplicated in sell and rebalance (one `insufficientFee`) (Spec 13).
 - [ ] Millisecond race between leg submit and the in-flight guard (bounded by the one-active-operation index).
 - [ ] `organization-payout-wallet` web test times out under a parallel full run (passes alone).
 
@@ -103,7 +103,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [x] Gas reservations are released on every terminal status (cancel, stop, completion, failure), including the network-fee leg; a retried gas drop re-checks its status; a refused drop returns its reservation.
 - [ ] An `IN_PROGRESS` operation the user abandons without Stop, with no recovery leg, keeps its reservation (and the user's slot) until UTC midnight.
 - [ ] Native EVM received amount is a whole-block balance change; ops leg resolve is not bound to the leg's own transactions; treasury token-account rent is not estimated.
-- [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts.
+- [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts; the web signer needs the linked Solana, EVM and Bitcoin wallets to be the connected ones (it says so otherwise).
 - [x] Portfolio shows basket slugs rather than names.
 
 **Spec 11**
@@ -113,13 +113,19 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
 - [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
 
+**Spec 13**
+- [ ] Inline guard arrows (`router.use(requireSession, async ...)` rate-limit and guard logic) remain in four route files because naming them would change the frozen route-table snapshot.
+- [ ] Unused `*Schema` and type exports in `@repo/validator` and unused db enums were left as contract surface; prune with Spec 14 if the audit finds them unneeded.
+- [ ] Composition routers (`me`, `organizations`, `public`, `ops`) mount sub-routers that carry no session middleware; keep that rule documented in code if more are added.
+
+
 **Spec 7**
-- [ ] Discovery "Load more" replaces the page; organization filter is an id field; tag filter takes typed keys; instrument/organization name edits refresh only nightly.
+- [ ] Discovery "Load more" replaces the page; organization filter is an id field; tag filter takes typed keys; asset rows with only an `instrumentId` show an empty symbol in the filter panel; instrument/organization name edits refresh only nightly.
 - [ ] Assignment ends that keep the lead are not re-indexed until the next refresh; profile hide/unhide email untested; IP-day AI cap counter untested; a skipped first price day can miss a subscription period start.
 
 **Spec 6**
 - [x] `VERSION_CONFLICT` compares millisecond timestamps; publish has no slug-collision retry.
-- [ ] Version diff omits lead changes; some manager emails not wired; preview/diff routes missing from the role test table; no org-suspended publish test; drafts do not preview would-be disclosures; `listOrgBaskets` unpaginated.
+- [ ] A current lead may hand over the lead on an unpublished basket without ops approval (published: ops approval); the wizard cannot preview would-be platform notices before submit; version diff omits lead changes; some manager emails not wired; preview/diff routes missing from the role test table; no org-suspended publish test; drafts do not preview would-be disclosures; `listOrgBaskets` unpaginated.
 
 **Spec 5**
 - [ ] Polygon on-chain verification and a Bitcoin data provider for the registry; a DRAFT route on a later-retired deployment can be cascade-approved; a live RWA issuer can be swapped; cascaded item events lack `from_status`; Redis read failures not logged.

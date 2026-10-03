@@ -3,7 +3,7 @@ import { BaseError, InsufficientFundsError, NonceTooHighError, NonceTooLowError,
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrum, base, bsc, mainnet, polygon } from "viem/chains";
 import type { AssetChain, Chain } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const ALCHEMY_HOST: Partial<Record<AssetChain, string>> = {
   ethereum: "eth-mainnet",

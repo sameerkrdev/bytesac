@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { z } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const response = z.union([
   z.object({ result: z.object({ value: z.object({ decimals: z.number().int() }) }) }),

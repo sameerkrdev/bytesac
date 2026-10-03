@@ -42,6 +42,8 @@ Existing holders are never forced to sell; a restricted asset stays in the user'
 
 Ruling (controller, 2026-10-03): a rebalance is refused only when a buy leg would acquire an RWA whose `acquire` outcome is not `ALLOWED`; a held or sold RWA never refuses it on `acquire` grounds. Ruling (controller, 2026-10-03): an RWA that is held but no longer investable keeps its target at the held deployment and refuses the plan only if it would be bought; selling it needs an `ACTIVE` or `PAUSED` deployment and a quotable route (D-111). Ruling (controller, 2026-10-03): every RWA sell leg of a rebalance is evaluated with `sell` at plan time, stored with its leg, and a non-`ALLOWED` outcome refuses the plan. Ruling (controller, 2026-10-03): a sell with no current declaration excludes each RWA (notice "Confirm your eligibility to sell X through Bytesac.", no decision row, since `DECLARATION_REQUIRED` is never stored) and sells the rest; it is refused only when nothing is left. Ruling (controller, 2026-10-03): creating a recovery leg (a system step with no user or IP) is not checked, its quote is; plan-time refusals and an all-excluded sell store no decision row; a repeated idempotent sell rebuilds `excluded[]` from the stored decisions that have no leg (an exclusion for a missing declaration has none).
 
+Personalized basket pages (those carrying the viewer's eligibility or position state) are served `private, no-store`.
+
 ### 6. Pricing (D-104)
 
 An RWA is investable only with an `ACTIVE` CoinMarketCap market price reference (fresh within five minutes, ADR-002). NAV stays display only and is never used to size a trade.

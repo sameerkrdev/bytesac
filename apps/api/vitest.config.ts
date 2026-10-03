@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import bs58 from "bs58";
 import { loadEnv } from "vite";
@@ -14,6 +15,7 @@ const solanaKey = () => {
 };
 
 export default defineConfig({
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   test: {
     include: ["test/**/*.test.ts"],
     globalSetup: ["test/global-setup.ts"],

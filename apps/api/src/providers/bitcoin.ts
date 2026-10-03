@@ -4,7 +4,7 @@ import { ripemd160 } from "@noble/hashes/legacy.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { Address, OutScript, RawTx, RawWitness, Script, SigHash, Transaction } from "@scure/btc-signer";
 import { z } from "@repo/validator";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const enc = new TextEncoder();
 const hash160 = (b: Uint8Array) => ripemd160(sha256(b));
@@ -111,7 +111,7 @@ export interface PsbtInput { txid: string; index: number }
 const readPsbt = (psbtBase64: string) => Transaction.fromPSBT(Buffer.from(psbtBase64, "base64"), PSBT_OPTS);
 
 /** The outputs of a PSBT as `{ script hex, sats }`, in order. */
-export function psbtOutputs(psbtBase64: string): PsbtOutput[] {
+function psbtOutputs(psbtBase64: string): PsbtOutput[] {
   const tx = readPsbt(psbtBase64);
   return Array.from({ length: tx.outputsLength }, (_, n) => {
     const o = tx.getOutput(n);

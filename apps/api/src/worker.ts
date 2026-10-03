@@ -1,14 +1,17 @@
 import { Worker } from "bullmq";
+import { db } from "@repo/db";
 import { logger } from "@repo/logger";
-import { env } from "./env";
-import { enqueue, queues } from "./queues";
-import { reconcileRevenue } from "./services/fees";
-import { seedPlatformWallets } from "./services/gas";
-import { deliverNotification, fanOutToHolders } from "./services/notifications";
-import { onVersionPublished } from "./services/rebalance";
-import { checkGasWallets, expireStalePlans, reconcilePositions, stopStalledRecoveries, trackLeg, trackStaleClaims } from "./services/positions";
-import { runBasketPerformance, runPriceSnapshot } from "./services/performance";
-import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "./services/search-index";
+import { env } from "@/config/dotenv";
+import { enqueue, queues } from "@/config/queues";
+import { redis } from "@/middlewares/rate-limit.middleware";
+import { reconcileRevenue } from "@/modules/fees/fees.service";
+import { checkGasWallets, seedPlatformWallets } from "@/modules/operations/gas.service";
+import { deliverNotification, fanOutToHolders } from "@/modules/notifications/notifications.service";
+import { onVersionPublished } from "@/modules/rebalance/rebalance.service";
+import { expireStalePlans, stopStalledRecoveries, trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
+import { reconcilePositions } from "@/modules/portfolio/reconciliation.service";
+import { runBasketPerformance, runPriceSnapshot } from "@/modules/discovery/performance.service";
+import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/modules/discovery/search-index.service";
 
 /** Every 5 minutes: hand stuck legs to the tracker and cancel expired, untouched plans (releasing their gas reservations). */
 const sweepOperations = async () => { await trackStaleClaims(); await expireStalePlans(); await stopStalledRecoveries(); };
@@ -52,8 +55,22 @@ export async function startWorker(): Promise<Worker[]> {
 
 if (env.NODE_ENV !== "test") {
   const workers = await startWorker();
-  process.on("SIGTERM", async () => {
-    await Promise.all([...workers.map((w) => w.close()), ...Object.values(queues).map((q) => q.close())]);
-    process.exit(0);
-  });
+  let stopping = false;
+  const shutdown = async (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    setTimeout(() => process.exit(1), 10_000).unref();
+    logger.info("worker shutting down", { signal });
+    try {
+      await Promise.all([...workers.map((w) => w.close()), ...Object.values(queues).map((q) => q.close())]);
+      await redis.quit();
+      await db.$client.end();
+      process.exit(0);
+    } catch (error) {
+      logger.error("worker shutdown failed", { errMessage: error instanceof Error ? error.message : "unknown" });
+      process.exit(1);
+    }
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }

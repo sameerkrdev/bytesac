@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sdk = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("resend", () => ({ Resend: class { emails = { send: sdk.send }; } }));
 
-const { sendOtpEmail, sendApplicationEmail, sendOrganizationEmail, sendBasketEmail } = await vi.importActual<typeof import("../../src/providers/resend")>("../../src/providers/resend");
+const { sendOtpEmail, sendApplicationEmail, sendOrganizationEmail, sendBasketEmail } = await vi.importActual<typeof import("@/providers/resend")>("@/providers/resend");
 
 beforeEach(() => sdk.send.mockReset());
 

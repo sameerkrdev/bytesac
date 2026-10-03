@@ -25,6 +25,10 @@ Verified organizations need to express investment strategies as reviewed, versio
 | No investment | Spec 6 built no investing, execution, custody, fee collection or investor notification; investing arrived in Spec 8 (ADR-014), rebalancing in Spec 9 (ADR-015) and the collection of entry and rebalance fees in Spec 10 (ADR-016). The management fee and the subscription remain disclosures, not collected in this release. Emails go to the lead(s) and the organization owner only. |
 | Data | Migration `0008_baskets.sql`: `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets`, `disclosure_templates`, `basket_version_disclosures`, `basket_assignments`, `basket_reviews`, `basket_events`; SELECT, INSERT and UPDATE only, RLS `api_all`. |
 
+### Draft revision lock (D-113)
+
+`basket_versions.revision` (integer, starts at 0) increments on every draft save. A save sends `expectedRevision` and a stale one is 409 `VERSION_CONFLICT`. `expectedUpdatedAt` is still accepted when `expectedRevision` is absent; one of the two is required. The web wizard sends `expectedRevision`.
+
 ## Consequences
 - Investing, portfolios and rebalance execution can build on an immutable, hashed published version; a rebalance is a manager-proposed new version that users must explicitly accept (D-028).
 - A history table grows with every save that replaces assets (revisions); a retention policy can prune later through the owner role.

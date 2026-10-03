@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
-import { OpsError } from "../ops-error";
+import { OpsError } from "@/components/ops/ops-error";
 import { AssetDeployments } from "./asset-deployments";
 import { AssetClassification, AssetDetailsForm } from "./asset-form";
 import { AssetPricing } from "./asset-pricing";

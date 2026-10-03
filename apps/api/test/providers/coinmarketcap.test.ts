@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { fetchQuotes } = await vi.importActual<typeof import("../../src/providers/coinmarketcap")>("../../src/providers/coinmarketcap");
+const { fetchQuotes } = await vi.importActual<typeof import("@/providers/coinmarketcap")>("@/providers/coinmarketcap");
 
 afterEach(() => vi.unstubAllGlobals());
 const cmc = (body: unknown, status = 200) => {

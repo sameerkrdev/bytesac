@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { OpsError } from "../ops-error";
+import { OpsError } from "@/components/ops/ops-error";
 
 type Client = Pick<ApiClient, "opsListBaskets">;
 type Queue = ListOpsBasketsQuery["queue"];

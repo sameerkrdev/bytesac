@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import twilio from "twilio";
-import { env } from "../env";
+import { env } from "@/config/dotenv";
 
 const verify = twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN).verify.v2.services(env.TWILIO_VERIFY_SERVICE_SID);
 

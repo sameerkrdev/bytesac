@@ -44,11 +44,15 @@ Every estimate and quote sends `maxPriceImpact = 0.05`. Because LI.FI's honoring
 
 ### 7. Route deny list and ops tools (D-098, D-099)
 
-- `route_policy_entries` (kind `bridge` or `exchange`, LI.FI tool key, reason 1 to 500 characters, who and when, removed by and when; rows are never deleted). `ops_admin` denies and allows (audited); ops roles read. Active entries are sent as LI.FI deny lists on every estimate and quote (60 s in-process cache). A deny list only narrows routes. `/ops/routing` lists LI.FI's bridges and exchanges (`/v1/tools`, cached 1 h) with deny state and history.
+- `route_policy_entries` (kind `bridge` or `exchange`, LI.FI tool key, reason 1 to 500 characters, who and when, removed by and when; rows are never deleted). `ops_admin` denies and allows (audited); ops roles read. Active entries are sent as LI.FI deny lists on every estimate and quote (60 s in-process cache). A deny list only narrows routes. `/ops/routing` lists LI.FI's bridges and exchanges (`/v1/tools`, cached 1 h) with deny state and history. Denying an already-denied entry returns 400 `VALIDATION_FAILED`, not 409.
 - Route fees: LI.FI `feeCosts` become `routeFees` (`name`, `amountUsd`, `included`) stored with the leg; previews show "Route fees (LI.FI, DEX, bridge): $X — included in the estimate".
 - LI.FI transfers (`ops_admin`, read-only): `GET /v1/ops/operations/:id/legs/:legId/lifi-transfers` proxies LI.FI `GET /v2/analytics/transfers` for the leg's source address within 24 h of the submission (the design said v1; the documented path is v2). The records are provider data, an aid and never evidence.
 - Token verification: the asset review deployment view shows `lifiVerification` (`verified` when LI.FI lists the token, `unverified` when not, null when unknown; cached 24 h per chain). LI.FI's token list documents no flag field, so `flagged` is in the type and never produced until a real-key check finds one.
 - Fee-on-transfer: `ops_admin` flags a deployment (`instrument_deployments.fee_on_transfer`, audited as an asset event). Legs touching it carry `feeOnTransfer` and previews say "This token charges a transfer tax; amounts are estimates."
+
+### 8. Recovery auto-stop (D-109)
+
+The 5-minute sweep stops an operation whose recovery leg has been `PLANNED` for more than 7 days, as the user's Stop would (`PARTIAL`, unsent reservations released, audit `operation.auto_stopped`), and notifies the user (`execution_incomplete`, "We stopped your unfinished swap; the tokens that arrived are in your wallet."). The deeper fix is in `docs/domains/FUTURE-PLANS.md` (Execution robustness).
 
 ## Alternatives considered
 
