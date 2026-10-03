@@ -1,6 +1,6 @@
 # Bytesac — Continuation Guide (for a new session or a different AI model)
 
-Written 2026-10-03 after Spec 10.1 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
+Written 2026-10-03 after Spec 11 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
 
 Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Local path: `D:\Coding\projects\bytesac` (Windows 11; Git Bash + PowerShell; **Python is not installed** — edit files with your editor tools or `node -e`).
 
@@ -28,8 +28,9 @@ Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Lo
 | 9 Rebalance, skip, drift, repair, notifications | Apply/skip versions (one plan via the USDC-on-Solana hub, buys rescaled to actual proceeds), drift fix + keep custom, `SHORT` Buy back / Sync, basket cash sub-ledger, trade thresholds, portfolio states, inbox + email + FCM web push, investor basket notices, manager adoption counts | ADR-015, D-076..D-084 |
 | 10 Manager fees, platform fees, earnings | Manager entry/rebalance fees to the org payout wallet, ops-configured platform fee per operation (overrides), one user-signed fee leg with all transfers, waivers, earnings (Owner/Admin) and ops revenue with CSV, daily revenue reconciliation, public fees page | ADR-016, D-085..D-092 |
 | 10.1 LI.FI hardening | Plan-time estimates via routes, `SOL_REQUIRED`, Mayan rule, recovery leg after a failed destination swap, refund messaging, 5% price impact, ops deny list, route fees, LI.FI transfer lookup, token verification, fee-on-transfer flag | ADR-017, D-093..D-099 |
+| 11 Secondary-market RWAs and eligibility | Permissionless tokenized RWAs via LI.FI, eligibility engine (declarations, geo signal, deny by default), enforcement at every acquire/sell point, decision audit, declaration UI and notices | ADR-018, D-100..D-106 |
 
-Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`, Spec 10.1 `b23da86`. Migrations `0000..0014`. Decision register up to **D-099**; ADRs up to **ADR-017**.
+Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`, Spec 10.1 `b23da86`, Spec 11 `d24d0ad`. Migrations `0000..0015`. Decision register up to **D-106**; ADRs up to **ADR-018**.
 
 Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (Spec 9 review artifacts lived in the git-ignored SDD workspace and were deleted after merge; findings and rulings are summarized in HANDOFF §5).
 
@@ -71,29 +72,25 @@ Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 r
 
 ---
 
-## 5. Next phase — Spec 11: RWAs and tokenized ETFs/equities
+## 5. Next phase — Spec 12: Launch hardening
 
-**Start only after the user's go-ahead.** Sources: `docs/source/Assets-Registry.txt` (RWA onboarding, §6 RWA execution routes, §7 eligibility and compliance), `docs/source/First-Investment,-Rebalancing,-Drift-&-Fix.txt` §5.6 (RWA adapter boundary), §9.5 (first investment with an RWA), Case 3, Scenarios D and J, §20 (RWA states), §33 (eligibility is route-specific), `docs/source/User-Detailed-Features.txt` §9 (investment eligibility), `docs/source/Basket-Creation.txt` §12 (minimum investment and eligibility); `docs/domains/ASSET-REGISTRY.md`, `INVESTMENT-REBALANCING-DRIFT-FIX.md`; D-025 (eligibility), D-026 (RWA execution, OPEN), ADR-010 (registry: RWA issuer terms already stored), ADR-013/014/015/016; Spec 8–10 code (`services/{investability,operations,rebalance,positions,fees}.ts`, `providers/routes/*`).
-
-**Fixed constraints already decided (do not re-ask):** self-custody and user-signed legs (ADR-013); `RouteProvider` abstraction with LI.FI first (ADR-014); eligibility is evaluated per user + instrument + provider + route + jurisdiction + action, never one global KYC flag (D-025); no fictional immediate sells for illiquid RWAs (Scenario D); unsettled RWA orders never count as holdings (Scenario J); fees and the network fee leg as Spec 10 (ADR-016); conventional broker-held ETFs/stocks are a future plan needing a custody ADR.
-
-**Likely brainstorm questions (one at a time, recommended first):**
-1. Scope: which RWA classes in release 1 (tokenized treasuries/money-market funds, tokenized equities/ETFs, others) and which providers/routes (LI.FI where it supports them, issuer subscription APIs, 0x xStocks — opt-in, geo-restricted, enablement paused Sept 2026).
-2. Eligibility engine: data to collect (jurisdiction, accredited/qualified status, issuer KYC/allowlist status), who verifies (self-declared vs provider KYC), where it runs (plan time and per leg), how ineligibility shows on baskets and in rebalances.
-3. Async settlement states (`ELIGIBILITY_PENDING`, `SETTLEMENT_PENDING`, `ISSUANCE_PENDING`, `REDEEMING`, `SETTLED`) for legs and operations; how a plan mixing instant crypto and pending RWA legs reports progress; timeouts.
-4. Redemptions and removed RWAs in rebalances: redemption windows, retain-as-legacy vs wait, partial exits.
-5. Pricing: NAV (ops-entered today) vs a data vendor; staleness rules for planning.
-6. Transfer restrictions: allowlisted wallets (the user's linked addresses), what happens when a user moves an RWA token outside (reconciliation, `SHORT`).
-
-Money/permission/custody/eligibility questions must go to the user. Expect 5 tasks: (1) data + validator (eligibility rules, RWA leg states); (2) eligibility engine + RWA route provider adapter(s); (3) async settlement tracking, redemptions, rebalance/repair integration; (4) web (eligibility capture, RWA disclosures, pending states); (5) web tests + docs (ADR-018, register rows from D-100).
+**Go-ahead given 2026-10-03; brainstorm in progress.** Scope (user answer A): (1) must-fix — CoinMarketCap `price: null` batch bug, `mobile#check-types` duplicate wagmi peers; (2) money/ops correctness — gas-budget counter leaks (top-up after stop/expiry, Stop not releasing top-ups, abandoned `IN_PROGRESS` reservations until midnight, refused drop keeping its reservation, retried drop skipping its status re-check), fully sold positions not auto-closed, sweeps without per-record isolation, a stuck recovery holding the active-operation slot, a rebalance blocked by a structurally non-investable held RWA, server-side price-impact backstop, revenue reconciliation bucketing; (3) small functional bugs — concurrent invite aborting sign-in, rejected invite consuming the budget, Spec 2 "Not approved" option, Spec 3 orphan R2 copy, publish slug-collision retry, `VERSION_CONFLICT` ms compare, double-click contact add 404, portfolio slugs instead of names. Code-quality debt goes to Spec 13, CI/deploy to Spec 16, UI gaps to Spec 15. Sources: `docs/OPEN-ITEMS.md` §6–§7 and HANDOFF §5.
 
 ---
 
-## 6. Remaining roadmap after Spec 11 (each a full cycle; start only with the user's go-ahead)
+## 6. Roadmap after Spec 12 (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead)
 
-| Phase | Scope |
+| # | Phase |
 |---|---|
-| **Future plans** (`docs/domains/FUTURE-PLANS.md`; only with explicit approval) | Subscriptions (prepaid signed periods, auto-renew through token delegation with an ADR, lapse effects); management-fee accrual; manager and platform fees always up front; fee credits/refunds; platform take rate; tax statements; direct sell→buy pairing; one combined repair plan; Alchemy webhooks; mobile investing screens and push; Firebase Installation ID migration; LI.Fuel gas top-up; conventional ETFs/stocks (custody ADR); multiple wallets and wallet migration; delegated signing / session keys (ADR); price backfill; investor counts; jobs dashboard. |
+| 13 | Code cleanup against user-supplied reference code (ask for references at the start) **and docs cleanup** (remove duplication, unwanted and outdated information) |
+| 14 | Audit every third-party library and provider integration against its official documentation |
+| 15 | Basic UI for web and mobile |
+| 16 | Deployment: Docker, GitHub Actions CI/CD, step-by-step launch guide |
+| 17 | Redesign the whole web and mobile UI/UX from user-supplied reference images and videos |
+| 18 | Motion-graphics promo/launch video (from a user-supplied reference) and a platform presentation in the Bytesac theme |
+| 19 | Future plans (`docs/domains/FUTURE-PLANS.md`), one at a time with approval — last |
+
+Every brainstorm question, option and answer is logged in `docs/superpowers/BRAINSTORM-LOG.md` (append to it in each brainstorm).
 
 ---
 
