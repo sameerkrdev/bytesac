@@ -67,4 +67,12 @@ User request: read six LI.FI FAQ pages; list changes/improvements → **"apply a
 ## Roadmap decisions
 
 - 2026-10-02: rebalance (Spec 9) before fees (Spec 10); then RWAs (Spec 11).
-- 2026-10-03: after Spec 11 → **Spec 12 launch hardening** (must-fix debt, parked money/ops leftovers, deploy readiness), then **Spec 13 basic UI for web and mobile**, then future plans one at a time with approval.
+- 2026-10-03 (final order after Spec 11):
+  12. Launch hardening (must-fix debt, parked money/ops leftovers, deploy readiness).
+  13. Code cleanup against user-supplied reference code (ask for references at the start) **and docs cleanup** (remove duplication, unwanted and outdated information).
+  14. Audit every third-party library and provider integration against its official documentation.
+  15. Basic UI for web and mobile.
+  16. Deployment: Docker, GitHub Actions CI/CD, step-by-step launch guide.
+  17. Redesign the whole web and mobile UI/UX from user-supplied reference images and videos.
+  18. Motion-graphics promo/launch video (from a user-supplied reference motion-design video) and a platform presentation in the Bytesac theme.
+  19. Future plans, one at a time with approval (last).
