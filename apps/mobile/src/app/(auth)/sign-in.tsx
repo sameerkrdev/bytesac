@@ -13,12 +13,12 @@ export default function SignInScreen() {
   const startedSignedOut = useRef(false);
   useEffect(() => {
     if (status === "signedOut") startedSignedOut.current = true;
-    else if (status === "signedIn" && !startedSignedOut.current) router.replace("/(app)/home");
+    else if (status === "signedIn" && !startedSignedOut.current) router.replace("/(app)/(tabs)/discover");
   }, [status, router]);
   const wallet = useWalletConnector();
   const onVerified = useCallback(
     (isNewUser: boolean) => {
-      router.replace(isNewUser ? "/(auth)/contact" : "/(app)/home");
+      router.replace(isNewUser ? "/(auth)/contact" : "/(app)/(tabs)/discover");
     },
     [router],
   );

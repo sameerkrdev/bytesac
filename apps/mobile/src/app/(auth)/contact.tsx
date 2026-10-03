@@ -26,7 +26,7 @@ export default function ContactScreen() {
         <ContactVerifier type="email" existing={email} key={`email:${email?.id}:${email?.status}`} onChanged={refresh} />
         <ContactVerifier type="phone" existing={phone} key={`phone:${phone?.id}:${phone?.status}`} onChanged={refresh} />
       </Card>
-      <Button variant="ghost" onPress={() => router.replace("/(app)/home")}>Skip for now</Button>
+      <Button variant="ghost" onPress={() => router.replace("/(app)/(tabs)/discover")}>Skip for now</Button>
     </Screen>
   );
 }
