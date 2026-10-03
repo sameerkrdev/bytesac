@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { OpsError } from "@/components/ops/ops-error";
+import { PageHeader } from "@/components/layout/page-layout";
+import { EmptyState, LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "opsListAssets">;
 
@@ -49,7 +51,7 @@ export function AssetsTable({ client = api }: { client?: Client }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-bold text-ivory">Assets</h1>
+        <PageHeader title="Assets" />
         <Link href="/ops/assets/new" className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground">New asset</Link>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
@@ -80,8 +82,8 @@ export function AssetsTable({ client = api }: { client?: Client }) {
         </div>
       </div>
 
-      {list.isError ? <OpsError error={list.error} /> : list.isPending ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No assets found.</p>
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
+        <EmptyState title="No assets found." />
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">

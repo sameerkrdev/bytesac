@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-layout";
+import { EmptyState, LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListOrganizations">;
@@ -49,7 +51,7 @@ export function OrganizationsTable({ client = api }: { client?: Client }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">Organizations</h1>
+      <PageHeader title="Organizations" />
       <div role="group" aria-label="Queue" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button key={t.queue} type="button" aria-pressed={queue === t.queue} onClick={() => setQueue(t.queue)}
@@ -70,8 +72,8 @@ export function OrganizationsTable({ client = api }: { client?: Client }) {
       )}
       <Input type="search" aria-label="Search organizations" placeholder="Search display or legal name" value={search} onChange={(e) => setSearch(e.target.value)} className="min-h-11 max-w-md bg-space text-ivory placeholder:text-stone" />
 
-      {list.isError ? <OpsError error={list.error} /> : list.isPending ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No organizations found.</p>
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
+        <EmptyState title="No organizations found." />
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">

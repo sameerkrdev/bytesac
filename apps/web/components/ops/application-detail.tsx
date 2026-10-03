@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 import { TransitionForm } from "./transition-form";
 
@@ -38,13 +40,13 @@ export function ApplicationDetailView({ id, client = api }: { id: string; client
 
   if (query.isError) return <OpsError error={query.error} />;
   const a = query.data;
-  if (!a) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!a) return <LoadingState />;
   const label = APPLICATION_STATUS_LABEL[a.status];
 
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold text-ivory">{a.firmName ?? a.fullName}</h1>
+        <PageHeader title={a.firmName ?? a.fullName} breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Applications", href: "/ops/applications" }]} />
         <StatusBadge {...label} />
       </div>
 

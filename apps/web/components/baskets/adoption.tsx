@@ -3,12 +3,13 @@
 import type { ApiClient } from "@repo/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { toDisplayError } from "@/lib/errors";
+import { LoadingState } from "@/components/layout/states";
 
 /** How holders responded to each published version. Counts only; a cell of 1 to 4 reads "<5" so no individual can be picked out. */
 export function Adoption({ bid, client }: { bid: string; client: Pick<ApiClient, "basketAdoption"> }) {
   const q = useQuery({ queryKey: ["basket", bid, "adoption"], queryFn: () => client.basketAdoption(bid), retry: false });
   if (q.isError) return <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).title}</p>;
-  if (!q.data) return <p role="status" className="text-xs text-muted-foreground">Loading…</p>;
+  if (!q.data) return <LoadingState />;
   if (q.data.versions.length === 0) return <p className="text-sm text-stone">No versions are published yet.</p>;
   return (
     <div className="overflow-x-auto">

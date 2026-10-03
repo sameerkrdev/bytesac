@@ -5,6 +5,7 @@ import { countryName, DeclarationForm, STATUS_LABEL } from "@/components/eligibi
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { LoadingState } from "@/components/layout/states";
 
 /** The user's country and investor status, needed to buy tokenized assets. A new declaration replaces the current one. */
 export function EligibilitySection() {
@@ -16,7 +17,7 @@ export function EligibilitySection() {
         <h2 id="eligibility-title" className="font-display text-xl font-semibold text-ivory">Eligibility</h2>
         <p className="text-sm text-muted-foreground">Tokenized assets are offered by country and investor status. The declaration is valid for 365 days.</p>
       </div>
-      {q.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).title}</p> : q.isPending ? <p role="status" className="text-sm text-stone">Loading…</p> : d ? (
+      {q.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).title}</p> : q.isPending ? <LoadingState /> : d ? (
         <p className="flex flex-wrap items-center gap-3 text-sm text-ivory">
           <span>{countryName(d.country)} · {STATUS_LABEL[d.investorStatus].title}</span>
           <StatusBadge tone={d.expired ? "danger" : "success"} label={d.expired ? "Expired" : `Valid until ${new Date(d.expiresAt).toLocaleDateString()}`} />

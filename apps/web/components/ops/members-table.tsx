@@ -10,6 +10,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-layout";
+import { EmptyState, LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListMembers">;
@@ -34,7 +36,7 @@ export function MembersTable({ client = api }: { client?: Client }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">Members</h1>
+      <PageHeader title="Members" />
       <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-2">
         {FILTERS.map((s) => (
           <button key={s ?? "queue"} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}
@@ -44,8 +46,8 @@ export function MembersTable({ client = api }: { client?: Client }) {
         ))}
       </div>
 
-      {list.isError ? <OpsError error={list.error} /> : list.isPending ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No members found.</p>
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
+        <EmptyState title="No members found." />
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">

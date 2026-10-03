@@ -18,6 +18,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { Adoption } from "./adoption";
 import { AllocationEditor, PercentInput } from "./allocation-editor";
 import { AssignmentsPanel } from "./assignments-panel";
@@ -77,7 +79,7 @@ export function BasketWizard({ bid, client = api }: { bid: string; client?: Clie
     const e = toDisplayError(query.error);
     return <p role="alert" className="text-sm text-danger"><span className="font-medium">{e.title}</span> {e.message}</p>;
   }
-  if (!query.data) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!query.data) return <LoadingState />;
   // A new version or a reload starts the form afresh from the server's copy.
   return (
     <Workspace key={`${query.data.openVersion?.id}:${generation}`} detail={query.data} client={client}
@@ -241,7 +243,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
         {open && open.versionNumber >= 2 && (
           <section aria-label="Changes" className="space-y-2">
             <h3 className="text-sm font-medium text-ivory">Changes from the published version</h3>
-            {dirty ? <p className="text-xs text-stone">Save to refresh the changes.</p> : diff.data ? <DiffSummary diff={diff.data} names={names} /> : <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
+            {dirty ? <p className="text-xs text-stone">Save to refresh the changes.</p> : diff.data ? <DiffSummary diff={diff.data} names={names} /> : <LoadingState />}
           </section>
         )}
         {open && (
@@ -249,7 +251,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
             <h3 className="text-sm font-medium text-ivory">Preview — not public</h3>
             {dirty ? <p className="text-sm text-stone">Save your changes to refresh the preview.</p> : preview.isError ? failure(preview.error) : preview.data ? (
               <div className="rounded-xl border border-dashed border-border-dark p-4"><BasketView content={preview.data.version} allocation={rows(preview.data.version)} disclosures={preview.data.version.disclosures} /></div>
-            ) : <p role="status" className="text-sm text-muted-foreground">Loading…</p>}
+            ) : <LoadingState />}
           </section>
         )}
         {detail.publishedVersion && (
@@ -260,7 +262,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
         )}
         <section aria-label="Versions" className="space-y-2">
           <h3 className="text-sm font-medium text-ivory">Versions</h3>
-          {versions.data ? <VersionHistory bid={bid} versions={versions.data.versions} names={names} client={client} /> : <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
+          {versions.data ? <VersionHistory bid={bid} versions={versions.data.versions} names={names} client={client} /> : <LoadingState />}
         </section>
       </div>
     ),

@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { PageLayout } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 const REVIEW_STATUSES = ["SUBMITTED", "UNDER_REVIEW", "RESUBMITTED"];
 
@@ -69,7 +71,7 @@ function Workspace() {
     );
   }
   if (query.isError) { const e = toDisplayError(query.error); return <Shell switcher={switcher}><p role="alert" className="text-sm text-danger"><span className="font-medium">{e.title}</span> {e.message}</p></Shell>; }
-  if (!org) return <Shell switcher={switcher}><p role="status" className="text-sm text-muted-foreground">Loading…</p></Shell>;
+  if (!org) return <Shell switcher={switcher}><LoadingState /></Shell>;
 
   const version = org.openVersion ?? org.currentVersion;
   const canEdit = org.myPermissions.includes("org.edit");
@@ -114,13 +116,9 @@ function Workspace() {
 
 function Shell({ badge, switcher, children }: { badge?: ReactNode; switcher?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-labelledby="org-title" className="max-w-3xl space-y-8">
-      <div className="space-y-2">
-        <h1 id="org-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Your organization</h1>
-        {badge}
-      </div>
+    <PageLayout id="org-title" title="Your organization" className="max-w-3xl space-y-8" actions={badge}>
       {switcher}
       {children}
-    </section>
+    </PageLayout>
   );
 }

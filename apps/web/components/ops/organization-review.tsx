@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 import { OrganizationChangeRequest } from "./organization-change-request";
 import { OrganizationPayoutChange } from "./organization-payout-change";
@@ -94,7 +96,7 @@ export function OrganizationReviewView({ id, client = api }: { id: string; clien
 
   if (query.isError) return <OpsError error={query.error} />;
   const o = query.data;
-  if (!o) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!o) return <LoadingState />;
 
   const current = o.versions.find((v) => v.id === o.currentVersionId);
   const latest = [...o.versions].sort((a, b) => b.versionNumber - a.versionNumber)[0];
@@ -107,7 +109,7 @@ export function OrganizationReviewView({ id, client = api }: { id: string; clien
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold text-ivory">{str(shown?.publicProfile.displayName) || "Unnamed organization"}</h1>
+        <PageHeader title={str(shown?.publicProfile.displayName) || "Unnamed organization"} breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Organizations", href: "/ops/organizations" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...ORGANIZATION_STATUS_LABEL[o.status]} />
           <span className="text-sm text-stone">{o.type === "firm" ? "Firm" : "Individual"} · {o.jurisdiction}</span>

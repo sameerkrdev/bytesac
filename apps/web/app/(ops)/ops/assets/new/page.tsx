@@ -1,9 +1,10 @@
 import { CreateAssetForm } from "@/components/ops/assets/asset-form";
+import { PageHeader } from "@/components/layout/page-layout";
 
 export default function OpsNewAssetPage() {
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">New asset</h1>
+      <PageHeader title="New asset" breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Assets", href: "/ops/assets" }]} />
       <CreateAssetForm />
     </div>
   );

@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "getEarnings" | "getOrganization">;
 const KIND = { network: "Network", manager_entry: "Entry fee", manager_rebalance: "Rebalance fee", platform: "Platform" } as const;
@@ -26,17 +28,17 @@ export function Earnings({ orgId, client = api }: { orgId: string; client?: Clie
   const csv = `/api/v1/organizations/${orgId}/earnings?${new URLSearchParams({ ...range, format: "csv" })}`;
 
   if (org.isError) { const e = toDisplayError(org.error); return <p role="alert" className="text-sm text-danger"><span className="font-medium">{e.title}</span> {e.message}</p>; }
-  if (!org.data) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!org.data) return <LoadingState />;
   if (!allowed) return <p role="alert" className="text-base text-ivory">You don&apos;t have access to earnings for this organization.</p>;
   return (
     <section aria-labelledby={`${id}-h`} className="max-w-3xl space-y-6">
-      <h1 id={`${id}-h`} className="font-display text-3xl font-bold text-ivory">Earnings</h1>
+      <PageHeader id={`${id}-h`} title="Earnings" breadcrumb={[{ label: "Organization", href: "/organization" }]} />
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1"><Label htmlFor={`${id}-f`} className="text-xs font-medium text-ivory">From</Label><Input id={`${id}-f`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="min-h-11 bg-space text-ivory" /></div>
         <div className="space-y-1"><Label htmlFor={`${id}-t`} className="text-xs font-medium text-ivory">To</Label><Input id={`${id}-t`} type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-11 bg-space text-ivory" /></div>
         <a href={csv} className="inline-flex min-h-11 items-center text-sm text-mint underline">Download CSV</a>
       </div>
-      {q.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).message}</p> : !q.data ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : (
+      {q.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).message}</p> : !q.data ? <LoadingState /> : (
         <>
           <p className="text-lg text-ivory">Settled manager fees: {formatUnits(q.data.totalMicro, 6)} USDC</p>
           {q.data.waivedCount > 0 && <p role="status" className="text-sm text-stone">{q.data.waivedCount} manager fee{q.data.waivedCount === 1 ? " was" : "s were"} waived (no verified payout wallet, below $0.01, or price unavailable) and {q.data.waivedCount === 1 ? "is" : "are"} not in the total.</p>}

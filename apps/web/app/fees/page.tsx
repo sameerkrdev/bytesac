@@ -1,6 +1,7 @@
 import { publicFeesSchema } from "@repo/validator";
 import type { Metadata } from "next";
 import { PLATFORM_OPERATION_LABEL, rateText } from "@/lib/fees";
+import { PageLayout } from "@/components/layout/page-layout";
 
 export const metadata: Metadata = { title: "Fees · Bytesac" };
 
@@ -11,8 +12,7 @@ export default async function PublicFeesPage() {
   if (!res.ok) throw new Error(`GET public fees failed: ${res.status}`);
   const { platform } = publicFeesSchema.parse(await res.json());
   return (
-    <main className="mx-auto min-h-screen max-w-3xl space-y-6 bg-space px-4 py-10 md:px-8">
-      <h1 className="font-display text-3xl font-bold text-ivory md:text-4xl">Fees</h1>
+    <PageLayout title="Fees" className="max-w-3xl">
       <section aria-label="Platform fees" className="space-y-2">
         <h2 className="font-display text-xl font-semibold text-ivory">Bytesac platform fees</h2>
         {platform.length === 0 ? <p className="text-sm text-stone">Bytesac charges no platform fee right now.</p> : (
@@ -21,6 +21,6 @@ export default async function PublicFeesPage() {
       </section>
       <p className="text-sm text-stone">Fund managers set their own fees; each is shown on the basket&apos;s page. Individual baskets or organizations may have a different platform rate, also shown on the basket.</p>
       <p className="text-sm text-stone">Every operation also pays a network fee to Bytesac for gas. Fees are paid up front in USDC and are not refunded if the operation does not complete.</p>
-    </main>
+    </PageLayout>
   );
 }

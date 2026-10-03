@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListAssetTags" | "opsCreateAssetTag" | "opsRetireAssetTag">;
@@ -30,7 +32,7 @@ export function AssetTags({ client = api }: { client?: Client }) {
   if (!isAdmin) return <p role="alert" className="text-base text-ivory">You don&apos;t have access to this area.</p>;
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-3xl font-bold text-ivory">Asset tags</h1>
+      <PageHeader title="Asset tags" />
       <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => {
         e.preventDefault();
         const parsed = createAssetTagRequestSchema.safeParse({ key: f.key.trim(), label: f.label.trim() });
@@ -50,7 +52,7 @@ export function AssetTags({ client = api }: { client?: Client }) {
         {create.isError && <OpsError error={create.error} />}
       </form>
 
-      {tags.isError ? <OpsError error={tags.error} /> : !tags.data ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : (
+      {tags.isError ? <OpsError error={tags.error} onRetry={() => void tags.refetch()} /> : !tags.data ? <LoadingState /> : (
         <ul className="space-y-3">
           {tags.data.tags.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3">

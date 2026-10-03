@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/layout/page-layout";
 
 export const metadata: Metadata = { title: "Organization · Bytesac" };
 
@@ -20,7 +21,7 @@ export default async function PublicOrganizationPage({ params }: { params: Promi
   const fields = ORGANIZATION_FIELD_KEYS.filter((k) => ORGANIZATION_FIELDS[k].visibility === "public" && typeof org.profile[k] === "string" && org.profile[k] !== "");
 
   return (
-    <main className="mx-auto min-h-screen max-w-3xl space-y-6 bg-space px-4 py-10 md:px-8">
+    <div className="max-w-3xl space-y-6">
       <div className="space-y-2">
         <h1 className="font-display text-3xl font-bold text-ivory md:text-4xl">{String(org.profile.displayName ?? "Organization")}</h1>
         <p className="flex flex-wrap items-center gap-3 text-sm text-stone">
@@ -61,6 +62,6 @@ export default async function PublicOrganizationPage({ params }: { params: Promi
           <ul className="space-y-2">{org.baskets.map((b) => <li key={b.slug}><Link href={`/baskets/${b.slug}`} className="text-sm text-mint underline">{b.name}</Link></li>)}</ul>
         </section>
       )}
-    </main>
+    </div>
   );
 }

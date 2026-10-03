@@ -8,6 +8,7 @@ import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { PageLayout } from "@/components/layout/page-layout";
 
 export default function HomePage() {
   const { data: me } = useMe();
@@ -16,12 +17,12 @@ export default function HomePage() {
   const org = orgs.find((o) => o.status !== "REJECTED") ?? orgs[0];
   const invitations = useQuery({ queryKey: ["invitations"], queryFn: () => api.myInvitations(), retry: false }).data?.invitations ?? [];
   return (
-    <section aria-labelledby="home-title" className="space-y-6">
-      <h1 id="home-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Home</h1>
+    <PageLayout id="home-title" title="Home">
       <Card className="rounded-2xl border-border-dark bg-slate">
         <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
           <Compass aria-hidden className="size-10 text-mint" />
-          <p className="text-base text-ivory">You&apos;re signed in. Basket discovery arrives soon.</p>
+          <p className="text-base text-ivory">You&apos;re signed in.</p>
+          <Link href="/baskets" className="inline-flex min-h-11 items-center text-sm text-mint underline">Discover baskets</Link>
         </CardContent>
       </Card>
       {invitations.map((i) => (
@@ -45,6 +46,6 @@ export default function HomePage() {
       ) : (
         <Link href="/managers/apply" className="inline-flex min-h-11 items-center text-sm text-stone underline hover:text-ivory">Become a fund manager</Link>
       )}
-    </section>
+    </PageLayout>
   );
 }

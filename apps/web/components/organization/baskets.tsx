@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "listOrgBaskets" | "createBasket">;
 
@@ -42,14 +43,14 @@ export function Baskets({ org, client = api }: { org: OrganizationDetail; client
   const items = list.data?.baskets.filter(tab.match) ?? [];
 
   return (
-    <section aria-labelledby={`${id}-h`} className="space-y-4">
+    <section id="baskets" aria-labelledby={`${id}-h`} className="space-y-4">
       <h3 id={`${id}-h`} className="font-display text-lg font-semibold text-ivory">Baskets</h3>
       <div role="group" aria-label="Basket status" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button key={t.id} type="button" aria-pressed={tab.id === t.id} onClick={() => setTab(t)} className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", tab.id === t.id && "bg-slate text-ivory")}>{t.label}</button>
         ))}
       </div>
-      {list.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(list.error).title}</p> : list.isPending ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : items.length === 0 ? (
+      {list.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(list.error).title}</p> : list.isPending ? <LoadingState /> : items.length === 0 ? (
         <p className="text-sm text-stone">No baskets here.</p>
       ) : (
         <ul className="divide-y divide-border-dark">

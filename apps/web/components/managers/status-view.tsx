@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "getApplicationStatus" | "replyToApplication">;
 
@@ -32,7 +33,7 @@ export function StatusView({ client = api }: { client?: Client }) {
     onSuccess: () => { setMessage(""); void status.refetch(); },
   });
 
-  if (token === undefined || (token && status.isPending)) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (token === undefined || (token && status.isPending)) return <LoadingState />;
   const s = status.data;
   if (!token || !s) {
     const e = token ? toDisplayError(status.error) : { title: "Status link not valid", message: "Open the private link from your confirmation email." };

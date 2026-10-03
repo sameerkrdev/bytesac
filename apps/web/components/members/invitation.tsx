@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "myInvitations" | "acceptInvitation" | "declineInvitation">;
 
@@ -24,13 +26,13 @@ export function Invitation({ mid, client = api }: { mid: string; client?: Client
   const decline = useMutation({ mutationFn: () => client.declineInvitation(mid), onSuccess: () => { done(); router.push("/home"); } });
 
   if (list.isError) return <p role="alert" className="text-sm text-danger">{toDisplayError(list.error).title}</p>;
-  if (!list.data) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!list.data) return <LoadingState />;
   const invite = list.data.invitations.find((i) => i.membershipId === mid);
   const gone = accept.error instanceof ApiError && accept.error.code === "INVALID_TRANSITION";
   if (!invite || gone || new Date(invite.expiresAt) <= new Date()) {
     return (
       <section aria-labelledby="invite-title" className="max-w-xl space-y-4">
-        <h1 id="invite-title" className="font-display text-3xl font-bold text-ivory">Invitation unavailable</h1>
+        <PageHeader id="invite-title" title="Invitation unavailable" />
         <p className="text-base text-ivory">This invitation has expired, was cancelled, or has already been answered. Ask the organization to invite you again.</p>
       </section>
     );
@@ -39,7 +41,7 @@ export function Invitation({ mid, client = api }: { mid: string; client?: Client
   const reviewed = (REVIEWED_ROLES as readonly string[]).includes(invite.role);
   return (
     <section aria-labelledby="invite-title" className="max-w-xl space-y-4">
-      <h1 id="invite-title" className="font-display text-3xl font-bold text-ivory">Join {invite.organization.displayName ?? "an organization"}</h1>
+      <PageHeader id="invite-title" title={`Join ${invite.organization.displayName ?? "an organization"}`} />
       <p className="text-base text-ivory">You have been invited as <span className="font-medium">{MEMBERSHIP_ROLE_LABEL[invite.role]}</span>.</p>
       {reviewed && <p role="note" className="rounded-xl border border-border-dark bg-slate p-4 text-sm text-ivory">You&apos;ll be asked to verify your identity before joining.</p>}
       <p className="text-sm text-stone">This invitation expires on {new Date(invite.expiresAt).toLocaleDateString()}.</p>

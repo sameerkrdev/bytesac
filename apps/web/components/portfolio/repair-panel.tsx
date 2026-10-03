@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 const exact = (raw: string, decimals: number) => formatUnits(raw, decimals, decimals);
 
@@ -80,7 +82,7 @@ export function RepairPanel({ asset }: { asset: string }) {
   const [tab, setTab] = useState<"buy" | "sync">("buy");
   const [changed, setChanged] = useState(false);
   const portfolio = useQuery({ queryKey: ["portfolio"], queryFn: () => api.getPortfolio() });
-  if (portfolio.isPending) return <p role="status" className="text-sm text-stone">Loading…</p>;
+  if (portfolio.isPending) return <LoadingState />;
   if (portfolio.isError) return <p role="alert" className="text-sm text-danger">{toDisplayError(portfolio.error).title}</p>;
   const repair = portfolio.data.repairs.find((r) => r.asset === asset);
   if (!repair) return <p role="status" className="text-sm text-ivory">Nothing needs repair here. <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>;
@@ -92,7 +94,7 @@ export function RepairPanel({ asset }: { asset: string }) {
   return (
     <section aria-labelledby="repair-title" className="max-w-3xl space-y-6">
       <div className="space-y-1">
-        <h1 id="repair-title" className="font-display text-3xl font-bold text-ivory">Repair {repair.symbol}</h1>
+        <PageHeader id="repair-title" title={`Repair ${repair.symbol}`} breadcrumb={[{ label: "Portfolio", href: "/portfolio" }]} />
         <p className="text-sm text-stone">Your wallet holds {exact(repair.totalShortfall, decimals)} {repair.symbol} less than your baskets record. <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>
       </div>
       {changed && <p role="alert" className="rounded-xl border border-warning/40 p-3 text-sm text-ivory">Your holdings changed — review the new figures</p>}

@@ -19,6 +19,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { OpsError } from "@/components/ops/ops-error";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "opsGetBasket" | "opsDecideBasketVersion" | "opsDecideBasketLead" | "opsPauseBasket" | "opsResumeBasket" | "opsRetireBasket" | "opsDecideBasketRetirement">;
 type Decision = BasketReviewDecisionRequest["decision"];
@@ -124,7 +126,7 @@ export function BasketReview({ bid, client = api }: { bid: string; client?: Clie
 
   if (query.isError) return <OpsError error={query.error} />;
   const b = query.data;
-  if (!b) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!b) return <LoadingState />;
 
   const v = b.openVersion ?? b.publishedVersion;
   const names = Object.fromEntries([...(b.openVersion?.assets ?? []), ...(b.publishedVersion?.assets ?? [])].map((a) => [a.instrumentId, `${a.name} (${a.symbol})`]));
@@ -138,7 +140,7 @@ export function BasketReview({ bid, client = api }: { bid: string; client?: Clie
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold text-ivory">{v?.name ?? "Basket"}</h1>
+        <PageHeader title={v?.name ?? "Basket"} breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Baskets", href: "/ops/baskets" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...BASKET_STATUS_LABEL[b.status]} />
           {b.openVersion && <StatusBadge {...BASKET_VERSION_STATUS_LABEL[b.openVersion.status]} label={`Version ${b.openVersion.versionNumber}: ${BASKET_VERSION_STATUS_LABEL[b.openVersion.status].label}`} />}

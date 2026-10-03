@@ -8,6 +8,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListManagerProfiles" | "opsHideManagerProfile" | "opsUnhideManagerProfile">;
@@ -26,7 +28,7 @@ export function ManagerProfiles({ client = api }: { client?: Client }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">Manager profiles</h1>
+      <PageHeader title="Manager profiles" />
       <div className="max-w-xs space-y-2">
         <Label htmlFor={`${id}-status`} className="text-xs font-medium text-ivory">Status</Label>
         <Select id={`${id}-status`} value={status ?? ""} onChange={(e) => setStatus((e.target.value || undefined) as Status)}>
@@ -34,7 +36,7 @@ export function ManagerProfiles({ client = api }: { client?: Client }) {
           {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </Select>
       </div>
-      {list.isError ? <OpsError error={list.error} /> : !list.data ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : list.data.items.length === 0 ? <p className="text-sm text-stone">No profiles.</p> : (
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : !list.data ? <LoadingState /> : list.data.items.length === 0 ? <p className="text-sm text-stone">No profiles.</p> : (
         <ul className="space-y-3">
           {list.data.items.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3">
