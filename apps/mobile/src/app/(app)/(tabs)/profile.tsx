@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { ContactsSection } from "@/components/profile/contacts-section";
+import { EligibilitySection } from "@/components/profile/eligibility-section";
 import { NotificationsSection } from "@/components/profile/notifications-section";
 import { SessionsSection } from "@/components/profile/sessions-section";
 import { WalletSection } from "@/components/profile/wallet-section";
+import { BitcoinSection, ManageOnWebCard } from "@/components/profile/web-sections";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Screen } from "@/components/ui/screen";
@@ -18,8 +20,11 @@ export default function ProfileScreen() {
       {isError && <Button variant="secondary" onPress={() => void refetch()}>Retry loading profile</Button>}
       {me && (
         <>
+          <ManageOnWebCard me={me} />
           <WalletSection me={me} />
+          <BitcoinSection me={me} />
           <ContactsSection me={me} />
+          <EligibilitySection />
           <NotificationsSection />
           <SessionsSection />
         </>

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { PLATFORM_OPERATION_LABEL } from "@/lib/fees";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsGetRevenue">;
@@ -25,13 +27,13 @@ export function Revenue({ client = api }: { client?: Client }) {
   const csv = `/api/v1/ops/revenue?${new URLSearchParams({ ...range, format: "csv" })}`;
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">Revenue</h1>
+      <PageHeader title="Revenue" />
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1"><Label htmlFor={`${id}-f`} className="text-xs font-medium text-ivory">From</Label><Input id={`${id}-f`} type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="min-h-11 bg-space text-ivory" /></div>
         <div className="space-y-1"><Label htmlFor={`${id}-t`} className="text-xs font-medium text-ivory">To</Label><Input id={`${id}-t`} type="date" value={to} onChange={(e) => setTo(e.target.value)} className="min-h-11 bg-space text-ivory" /></div>
         <a href={csv} className="inline-flex min-h-11 items-center text-sm text-mint underline">Download CSV</a>
       </div>
-      {q.isError ? <OpsError error={q.error} /> : !q.data ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : (
+      {q.isError ? <OpsError error={q.error} onRetry={() => void q.refetch()} /> : !q.data ? <LoadingState /> : (
         <>
           <p className="text-lg text-ivory">Platform fees settled: {formatUnits(q.data.totalMicro, 6)} USDC</p>
           <section aria-label="By operation and month" className="space-y-2">

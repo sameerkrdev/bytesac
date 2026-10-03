@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "getBasketVersionDiff">;
 
@@ -45,7 +46,7 @@ export function VersionHistory({ bid, versions, names, client = api }: { bid: st
             </Button>
           </div>
           {v.rationale && <p className="whitespace-pre-wrap text-sm text-stone">{v.rationale}</p>}
-          {open === v.id && (diff.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(diff.error).title}</p> : diff.data ? <DiffSummary diff={diff.data} names={names} /> : <p role="status" className="text-xs text-muted-foreground">Loading…</p>)}
+          {open === v.id && (diff.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(diff.error).title}</p> : diff.data ? <DiffSummary diff={diff.data} names={names} /> : <LoadingState />)}
         </li>
       ))}
     </ul>

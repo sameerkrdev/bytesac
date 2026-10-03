@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { PLATFORM_OPERATION_LABEL, rateText } from "@/lib/fees";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListFees" | "opsSaveFee" | "opsListFeeOverrides" | "opsSaveFeeOverride" | "opsEndFeeOverride">;
@@ -76,14 +78,14 @@ export function FeeSchedules({ client = api }: { client?: Client }) {
   const end = useMutation({ mutationFn: (rid: string) => client.opsEndFeeOverride(rid), onSuccess: refresh });
 
   if (fees.isError) return <OpsError error={fees.error} />;
-  if (!fees.data || !overrides.data) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!fees.data || !overrides.data) return <LoadingState />;
   const active = new Map(fees.data.items.filter((r) => r.supersededAt === null).map((r) => [r.operationKind, r]));
   const history = fees.data.items.filter((r) => r.supersededAt !== null);
   const liveOverrides = overrides.data.items.filter((r) => r.supersededAt === null);
 
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-3xl font-bold text-ivory">Platform fees</h1>
+      <PageHeader title="Platform fees" />
       <p className="text-sm text-stone">The platform fee is charged up front in USDC together with the network fee and the manager fee. A basket override beats an organization override, which beats the default.</p>
 
       <section aria-label="Default schedule" className="space-y-3">

@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-layout";
+import { EmptyState, LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListApplications">;
@@ -48,7 +50,7 @@ export function ApplicationsTable({ client = api }: { client?: Client }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">Applications</h1>
+      <PageHeader title="Applications" />
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by status">
         {[undefined, ...FILTERS].map((s) => (
           <button key={s ?? "all"} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}
@@ -59,8 +61,8 @@ export function ApplicationsTable({ client = api }: { client?: Client }) {
       </div>
       <Input type="search" aria-label="Search applications" placeholder="Search name, firm or email" value={search} onChange={(e) => setSearch(e.target.value)} className="min-h-11 max-w-md bg-space text-ivory placeholder:text-stone" />
 
-      {list.isError ? <OpsError error={list.error} /> : list.isPending ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No applications found.</p>
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
+        <EmptyState title="No applications found." />
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">

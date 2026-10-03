@@ -28,6 +28,10 @@ Browser push for notifications uses Firebase Cloud Messaging. The toggle in Prof
 
 `public/firebase-messaging-sw.js` loads the Firebase compat scripts from `gstatic.com` at the same version as the `firebase` dependency (12.19.0); change both together. The page passes its public config to the service worker in the registration URL, so no secret or env is baked into the file. The CSP allows `https://www.gstatic.com` scripts and the FCM and Installations APIs. The API side needs `FIREBASE_SERVICE_ACCOUNT` (see `apps/api/README.md`).
 
+## App shell and page states (Spec 15)
+
+`components/layout/app-shell.tsx` is the single shell (header with a wrapping navigation row); `nav.ts` builds role-aware navigation from `/me`: Investor (Discover, Portfolio, Notifications, Profile), Manager (organization pages, shown with an organization membership) and Ops (platform roles). Navigation is a UI guard only; the API enforces permissions. `page-layout.tsx` gives every page a title and width, and `states.tsx` holds the shared loading, empty, error and stale states. Money-flow logic (leg signer, fee lines, portfolio actions) comes from `@repo/app-core`; the web only supplies its `Signer`.
+
 ## Fees and earnings (Spec 10)
 
 Previews in the invest wizard, rebalance review, repair and sell dialogs render `operation.fees[]` with `components/invest/fee-lines.tsx` (one line per fee, a waived fee with its reason, the total and the no-refund note); `lib/fees.ts` holds the shared rate text ("1% up to $50") and operation labels. Routes: `/ops/fees` (default schedule, history and overrides; `ops_admin` edits, reviewers read), `/ops/revenue`, `/organization/earnings` (needs `earnings.read`, linked from the organization page) and the public `/fees`. CSV exports are plain links to `/api/v1/.../earnings` and `/api/v1/ops/revenue` with `format=csv` (cookie auth through the rewrite). The basket wizard has an optional "Maximum (USDC, optional)" next to a percent fee. Management and subscription fees show "Disclosed — not collected in this release". Hiding a page or button is a UI guard only; the API enforces every permission.

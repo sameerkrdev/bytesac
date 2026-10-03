@@ -11,6 +11,7 @@ import { PerformanceChart } from "@/components/baskets/performance-chart";
 import { BasketView } from "@/components/baskets/basket-view";
 import { DiffSummary } from "@/components/baskets/version-history";
 import { StatusBadge } from "@/components/status-badge";
+import { PageHeader } from "@/components/layout/page-layout";
 
 export const metadata: Metadata = { title: "Basket · Bytesac" };
 
@@ -36,7 +37,7 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
   const names = Object.fromEntries(b.allocation.map((a) => [a.instrumentId, `${a.name} (${a.symbol})`]));
   const notice = NOTICE[b.status];
   return (
-    <main className="mx-auto min-h-screen max-w-3xl space-y-8 bg-space px-4 py-10 md:px-8">
+    <div className="max-w-3xl space-y-8">
       <div className="space-y-2">
         <h1 className="font-display text-3xl font-bold text-ivory md:text-4xl">{b.version.name}</h1>
         <p className="flex flex-wrap items-center gap-3 text-sm text-stone">
@@ -102,6 +103,6 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
           </ul>
         </section>
       ))}
-    </main>
+    </div>
   );
 }

@@ -15,7 +15,7 @@ const KIND = { invest: "Investment", sell_to_usdc: "Sale to USDC", sell_former: 
 export function OperationDetail({ operation: o, open }: { operation: OperationView; open?: boolean }) {
   const [resume, setResume] = useState(false);
   return (
-    <li className="space-y-3 rounded-xl border border-border-dark p-4">
+    <li id={`operation-${o.id}`} className="scroll-mt-4 space-y-3 rounded-xl border border-border-dark p-4">
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
         <span className="text-ivory">{KIND[o.kind]} · {new Date(o.createdAt).toLocaleString()}{o.amountUsdc && ` · ${formatUnits(o.amountUsdc, 6)} USDC`}{o.sellPercent && ` · ${o.sellPercent}%`}</span>
         <StatusBadge {...OPERATION_STATUS_LABEL[o.status]} />

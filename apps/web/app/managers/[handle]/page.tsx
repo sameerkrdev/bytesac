@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/status-badge";
+import { PageHeader } from "@/components/layout/page-layout";
 
 export const metadata: Metadata = { title: "Manager · Bytesac" };
 
@@ -23,7 +24,7 @@ export default async function PublicManagerPage({ params }: { params: Promise<{ 
   const baskets = [["Current baskets", m.baskets.filter((b) => b.to === null)], ["Previous baskets", m.baskets.filter((b) => b.to !== null)]] as const;
   const orgs = [["Current organizations", m.organizations.filter((o) => o.current)], ["Former organizations", m.organizations.filter((o) => !o.current)]] as const;
   return (
-    <main className="mx-auto min-h-screen max-w-3xl space-y-8 bg-space px-4 py-10 md:px-8">
+    <div className="max-w-3xl space-y-8">
       <div className="space-y-2">
         <h1 className="font-display text-3xl font-bold text-ivory md:text-4xl">{m.displayName}</h1>
         {m.headline && <p className="text-base text-ivory">{m.headline}</p>}
@@ -73,6 +74,6 @@ export default async function PublicManagerPage({ params }: { params: Promise<{ 
           </ul>
         </section>
       ))}
-    </main>
+    </div>
   );
 }

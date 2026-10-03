@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { MemberVerification } from "./member-verification";
 
 type Client = Pick<ApiClient, "getMembership" | "updateMembershipProfile" | "leaveOrganization">;
@@ -71,7 +73,7 @@ export function MembershipPage({ mid, client = api }: { mid: string; client?: Cl
 
   if (query.isError) return <p role="alert" className="text-sm text-danger">{toDisplayError(query.error).title}</p>;
   const m = query.data;
-  if (!m) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!m) return <LoadingState />;
 
   const open = m.status !== "REJECTED" && m.status !== "REVOKED";
   const reviewed = (REVIEWED_ROLES as readonly string[]).includes(m.requestedRole ?? m.role);
@@ -79,7 +81,7 @@ export function MembershipPage({ mid, client = api }: { mid: string; client?: Cl
   return (
     <section aria-labelledby="membership-title" className="max-w-3xl space-y-8">
       <div className="space-y-2">
-        <h1 id="membership-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Your membership</h1>
+        <PageHeader id="membership-title" title="Your membership" breadcrumb={[{ label: "Organization", href: "/organization" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...MEMBERSHIP_STATUS_LABEL[m.status]} />
           <span className="text-sm text-stone">{MEMBERSHIP_ROLE_LABEL[m.role]}{m.requestedRole && ` · upgrade to ${MEMBERSHIP_ROLE_LABEL[m.requestedRole]} pending`}</span>

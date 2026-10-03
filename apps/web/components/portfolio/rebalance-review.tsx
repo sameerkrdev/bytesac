@@ -16,6 +16,8 @@ import { ErrorBox } from "@/components/portfolio/exit-dialogs";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 const Legs = ({ title, legs, buying, note }: { title: string; legs: Leg[]; buying: boolean; note?: string }) => legs.length === 0 ? null : (
   <div className="space-y-2">
@@ -41,7 +43,7 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
   const discard = useMutation({ mutationFn: (id: string) => api.cancelOperation(id), onSettled: () => setPlan(null) });
   const skip = useMutation({ mutationFn: (versionId: string) => api.skipVersion(positionId, { versionId }), onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["portfolio"] }); router.push("/portfolio"); } });
 
-  if (portfolio.isPending) return <p role="status" className="text-sm text-stone">Loading…</p>;
+  if (portfolio.isPending) return <LoadingState />;
   const p = portfolio.data?.positions.find((x) => x.id === positionId);
   if (!p) return <p role="alert" className="text-sm text-danger">{portfolio.isError ? toDisplayError(portfolio.error).title : "Position not found."}</p>;
   const latest = p.latestVersion;
@@ -55,7 +57,7 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
   return (
     <section aria-labelledby="rebalance-title" className="max-w-3xl space-y-6">
       <div className="space-y-1">
-        <h1 id="rebalance-title" className="font-display text-3xl font-bold text-ivory">{target === "latest" ? "Review update" : "Rebalance to target"}</h1>
+        <PageHeader id="rebalance-title" title={target === "latest" ? "Review update" : "Rebalance to target"} breadcrumb={[{ label: "Portfolio", href: "/portfolio" }]} />
         <p className="text-sm text-stone">{p.basketName} · <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>
       </div>
 

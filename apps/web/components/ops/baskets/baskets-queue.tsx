@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { OpsError } from "@/components/ops/ops-error";
+import { PageHeader } from "@/components/layout/page-layout";
+import { EmptyState, LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "opsListBaskets">;
 type Queue = ListOpsBasketsQuery["queue"];
@@ -32,7 +34,7 @@ export function BasketsQueue({ client = api }: { client?: Client }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-3xl font-bold text-ivory">Baskets</h1>
+      <PageHeader title="Baskets" />
       <div role="group" aria-label="Queue" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button key={t.queue} type="button" aria-pressed={queue === t.queue} onClick={() => setQueue(t.queue)}
@@ -41,8 +43,8 @@ export function BasketsQueue({ client = api }: { client?: Client }) {
           </button>
         ))}
       </div>
-      {list.isError ? <OpsError error={list.error} /> : list.isPending ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No baskets found.</p>
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
+        <EmptyState title="No baskets found." />
       ) : (
         <>
           <ul className="divide-y divide-border-dark">

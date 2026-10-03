@@ -14,6 +14,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { OpsError } from "@/components/ops/ops-error";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 
 type Client = Pick<ApiClient, "opsListDisclosureTemplates" | "opsCreateDisclosureTemplate" | "opsRetireDisclosureTemplate">;
 
@@ -61,12 +63,12 @@ export function DisclosureTemplates({ client = api }: { client?: Client }) {
 
   if (!isAdmin) return <p role="alert" className="text-base text-ivory">Only ops admins can manage disclosure templates.</p>;
   if (query.isError) return <OpsError error={query.error} />;
-  if (!query.data) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!query.data) return <LoadingState />;
 
   return (
     <div className="space-y-8">
       <div className="space-y-1">
-        <h1 className="font-display text-3xl font-bold text-ivory">Disclosures</h1>
+        <PageHeader title="Disclosures" />
         <p className="text-sm text-stone">Platform notices are added to every basket version when it is submitted. A new version applies to later submissions and is re-pinned when an approved version is published.</p>
       </div>
       {act.isError && <OpsError error={act.error} />}

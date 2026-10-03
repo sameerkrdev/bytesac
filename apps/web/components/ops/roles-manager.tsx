@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsListRoles" | "opsGrantRole" | "opsRevokeRole">;
@@ -38,7 +40,7 @@ export function RolesManager({ client = api }: { client?: Client }) {
 
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-3xl font-bold text-ivory">Roles</h1>
+      <PageHeader title="Roles" />
 
       <form className="grid max-w-xl gap-4" onSubmit={(e) => {
         e.preventDefault();
@@ -61,7 +63,7 @@ export function RolesManager({ client = api }: { client?: Client }) {
         {grant.isError && <OpsError error={grant.error} />}
       </form>
 
-      {roles.isError ? <OpsError error={roles.error} /> : !roles.data ? <p role="status" className="text-sm text-muted-foreground">Loading…</p> : (
+      {roles.isError ? <OpsError error={roles.error} onRetry={() => void roles.refetch()} /> : !roles.data ? <LoadingState /> : (
         <ul className="space-y-3">
           {roles.data.roles.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3">

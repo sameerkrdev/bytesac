@@ -1,19 +1,26 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import Link from "next/link";
 import { OperationDetail } from "@/components/portfolio/operation-detail";
 import { PositionsList } from "@/components/portfolio/positions-list";
 import { api } from "@/lib/api";
-import { toDisplayError } from "@/lib/errors";
+import { EmptyState, ErrorState, LoadingState, StaleNotice } from "@/components/layout/states";
+import { PageLayout } from "@/components/layout/page-layout";
 
 export default function PortfolioPage() {
   const q = useQuery({ queryKey: ["portfolio"], queryFn: () => api.getPortfolio() });
   const p = q.data;
+  // The mobile app links to /portfolio#operation-<id>; the element only exists once the portfolio has loaded.
+  useEffect(() => {
+    if (p && window.location.hash) document.getElementById(window.location.hash.slice(1))?.scrollIntoView();
+  }, [p]);
   return (
-    <section aria-labelledby="portfolio-title" className="space-y-8">
-      <h1 id="portfolio-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Portfolio</h1>
-      {q.isPending && <p role="status" className="text-sm text-stone">Loading…</p>}
-      {q.isError && <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).title}</p>}
+    <PageLayout id="portfolio-title" title="Portfolio" className="space-y-8">
+      {q.isPending && <LoadingState />}
+      {q.isError && !p && <ErrorState error={q.error} onRetry={() => void q.refetch()} />}
+      {q.isError && p && <StaleNotice>Could not refresh. Showing what loaded earlier.</StaleNotice>}
       {p && (
         <>
           {p.openOperations.length > 0 && (
@@ -24,7 +31,7 @@ export default function PortfolioPage() {
           )}
           <section aria-label="Positions" className="space-y-3">
             <h2 className="font-display text-xl font-semibold text-ivory">Positions</h2>
-            {p.positions.length === 0 ? <p className="text-sm text-stone">You have no open positions. Find a basket to invest in.</p> : <PositionsList positions={p.positions} repairs={p.repairs} />}
+            {p.positions.length === 0 ? <EmptyState title="You have no open positions. Find a basket to invest in."><Link href="/baskets" className="inline-flex min-h-11 items-center text-mint underline">Discover baskets</Link></EmptyState> : <PositionsList positions={p.positions} repairs={p.repairs} />}
           </section>
           {p.formerPositions.length > 0 && (
             <section aria-label="Former positions" className="space-y-3">
@@ -40,6 +47,6 @@ export default function PortfolioPage() {
           )}
         </>
       )}
-    </section>
+    </PageLayout>
   );
 }

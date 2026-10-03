@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsGetMember" | "opsDecideMember">;
@@ -69,14 +71,14 @@ export function MemberReview({ mid, client = api }: { mid: string; client?: Clie
 
   if (query.isError) return <OpsError error={query.error} />;
   const m = query.data;
-  if (!m) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!m) return <LoadingState />;
 
   const details = m.verification?.details ?? {};
   const keys = ORGANIZATION_FIELD_KEYS.filter((k) => str(details[k]));
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold text-ivory">Member of {m.organization.displayName ?? "an unnamed organization"}</h1>
+        <PageHeader title={<>Member of {m.organization.displayName ?? "an unnamed organization"}</>} breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Members", href: "/ops/members" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...MEMBERSHIP_STATUS_LABEL[m.status]} />
           {m.verification && <StatusBadge {...MEMBER_VERIFICATION_STATUS_LABEL[m.verification.status]} label={`Verification: ${MEMBER_VERIFICATION_STATUS_LABEL[m.verification.status].label}`} />}

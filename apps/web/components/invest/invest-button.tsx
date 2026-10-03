@@ -1,5 +1,6 @@
 "use client";
 
+import { INELIGIBLE_ACTION } from "@repo/app-core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
@@ -8,15 +9,7 @@ import { InvestWizard } from "@/components/invest/invest-wizard";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
-/** Where the user fixes each reason they cannot invest yet. */
-const ACTIONS: Record<string, { href: string; label: string }> = {
-  EMAIL_NOT_VERIFIED: { href: "/profile", label: "Verify your email" },
-  PHONE_NOT_VERIFIED: { href: "/profile", label: "Verify your phone" },
-  EVM_ADDRESS_REQUIRED: { href: "/profile", label: "Link an EVM wallet" },
-  SOLANA_ADDRESS_REQUIRED: { href: "/profile", label: "Link a Solana wallet" },
-  BTC_ADDRESS_REQUIRED: { href: "/profile", label: "Link a Bitcoin wallet" },
-  OPERATION_IN_PROGRESS: { href: "/portfolio", label: "Finish your current operation" },
-};
+const ROUTE = { profile: "/profile", portfolio: "/portfolio" } as const;
 
 /** Invest when the basket is investable and the user is eligible; otherwise the reason, with a link to fix it. */
 export function InvestButton({ slug, name, minimumUsdc, incrementUsdc }: { slug: string; name: string; minimumUsdc: string | null; incrementUsdc: string | null }) {
@@ -43,8 +36,8 @@ export function InvestButton({ slug, name, minimumUsdc, incrementUsdc }: { slug:
         <ul className="space-y-1 text-sm">
           {eligibility.reasons.filter((r, n, all) => r.code !== "DECLARATION_REQUIRED" || all.findIndex((x) => x.code === r.code) === n).map((r) => {
             if (r.code === "DECLARATION_REQUIRED") return <li key={r.code} className="space-y-2"><p className="text-stone">{r.message}</p><DeclarationForm onSaved={() => void qc.invalidateQueries({ queryKey: ["investability", slug] })} /></li>;
-            const a = ACTIONS[r.code];
-            return <li key={`${r.instrumentId ?? ""}${r.code}`}>{a ? <Link href={a.href} className="inline-flex min-h-11 items-center text-mint underline">{a.label}</Link> : <span className="text-stone">{r.message}</span>}</li>;
+            const a = INELIGIBLE_ACTION[r.code];
+            return <li key={`${r.instrumentId ?? ""}${r.code}`}>{a ? <Link href={ROUTE[a.target]} className="inline-flex min-h-11 items-center text-mint underline">{a.label}</Link> : <span className="text-stone">{r.message}</span>}</li>;
           })}
         </ul>
       </div>

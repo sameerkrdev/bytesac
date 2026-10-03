@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { PageHeader } from "@/components/layout/page-layout";
+import { EmptyState, ErrorState, LoadingState, StaleNotice } from "@/components/layout/states";
 
 const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [["day", 86_400_000], ["hour", 3_600_000], ["minute", 60_000]];
 const ago = (iso: string) => {
@@ -23,13 +25,14 @@ export function Inbox() {
   return (
     <section aria-labelledby="inbox-title" className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id="inbox-title" className="font-display text-3xl font-bold text-ivory md:text-4xl">Notifications</h1>
+        <PageHeader id="inbox-title" title="Notifications" />
         {unread > 0 && <Button variant="secondary" className="min-h-11" disabled={read.isPending} onClick={() => read.mutate({ all: true })}>Mark all read</Button>}
       </div>
-      {q.isPending && <p role="status" className="text-sm text-stone">Loading…</p>}
-      {q.isError && <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).title}</p>}
+      {q.isPending && <LoadingState />}
+      {q.isError && !q.data && <ErrorState error={q.error} onRetry={() => void q.refetch()} />}
+      {q.isError && q.data && <StaleNotice>Could not refresh. Showing what loaded earlier.</StaleNotice>}
       {read.isError && <p role="alert" className="text-sm text-danger">{toDisplayError(read.error).title}</p>}
-      {q.data && items.length === 0 && <p className="text-sm text-stone">Nothing yet.</p>}
+      {q.data && items.length === 0 && <EmptyState title="Nothing yet." />}
       <ul className="divide-y divide-border-dark">
         {items.map((n) => (
           <li key={n.id} className="py-3">

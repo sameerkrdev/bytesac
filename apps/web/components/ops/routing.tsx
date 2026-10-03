@@ -8,6 +8,8 @@ import { useMe } from "@/components/me-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { OpsError } from "./ops-error";
 
 type Client = Pick<ApiClient, "opsGetRouting" | "opsDenyRouteTool" | "opsAllowRouteTool">;
@@ -27,7 +29,7 @@ export function Routing({ client = api }: { client?: Client }) {
   const allow = useMutation({ mutationFn: (id: string) => client.opsAllowRouteTool(id), onSuccess: refresh });
 
   if (view.isError) return <OpsError error={view.error} />;
-  if (!view.data) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!view.data) return <LoadingState />;
   const table = (kind: "bridge" | "exchange", title: string, tools: Tool[]) => (
     <section aria-label={title} className="space-y-2">
       <h2 className="font-display text-xl font-semibold text-ivory">{title}</h2>
@@ -46,7 +48,7 @@ export function Routing({ client = api }: { client?: Client }) {
   );
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-3xl font-bold text-ivory">Routing</h1>
+      <PageHeader title="Routing" />
       <p className="text-sm text-stone">A denied bridge or exchange is left out of every estimate and quote within a minute. It only narrows the routes; it never moves anything.</p>
       {!isAdmin && <p className="text-xs text-stone">Only an ops admin can deny or allow a tool.</p>}
       {pick && (

@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Redirect, Tabs } from "expo-router";
-import { Home, User } from "lucide-react-native";
-import { palette, semantic } from "@repo/design-tokens";
+import { Redirect, Stack } from "expo-router";
+import { palette } from "@repo/design-tokens";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -12,17 +11,21 @@ export default function AppLayout() {
   if (status === "loading") return null;
   if (status === "signedOut") return <Redirect href="/(auth)/sign-in" />;
   return (
-    <Tabs
+    <Stack
       screenOptions={{
-        headerShown: false,
-        tabBarStyle: { backgroundColor: palette.slate, borderTopColor: semantic.borderDark, minHeight: 56 },
-        tabBarActiveTintColor: palette.mint,
-        tabBarInactiveTintColor: palette.stone,
-        sceneStyle: { backgroundColor: palette.space },
+        headerStyle: { backgroundColor: palette.slate },
+        headerTintColor: palette.ivory,
+        headerBackButtonDisplayMode: "minimal",
+        contentStyle: { backgroundColor: palette.space },
       }}
     >
-      <Tabs.Screen name="home" options={{ title: "Home", tabBarIcon: ({ color, size }) => <Home color={color} size={size} /> }} />
-      <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: ({ color, size }) => <User color={color} size={size} /> }} />
-    </Tabs>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="basket/[slug]" options={{ title: "Basket" }} />
+      <Stack.Screen name="invest/[slug]" options={{ title: "Invest" }} />
+      <Stack.Screen name="operation/[id]" options={{ title: "Operation" }} />
+      <Stack.Screen name="rebalance/[positionId]" options={{ title: "Rebalance" }} />
+      <Stack.Screen name="repair/[asset]" options={{ title: "Repair" }} />
+      <Stack.Screen name="sell/[positionId]" options={{ title: "Sell" }} />
+    </Stack>
   );
 }

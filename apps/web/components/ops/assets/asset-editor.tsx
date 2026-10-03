@@ -8,6 +8,8 @@ import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import { OpsError } from "@/components/ops/ops-error";
+import { PageHeader } from "@/components/layout/page-layout";
+import { LoadingState } from "@/components/layout/states";
 import { AssetDeployments } from "./asset-deployments";
 import { AssetClassification, AssetDetailsForm } from "./asset-form";
 import { AssetPricing } from "./asset-pricing";
@@ -27,7 +29,7 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
   const query = useQuery({ queryKey: key, queryFn: () => client.opsGetAsset(id), retry: false });
   if (query.isError) return <OpsError error={query.error} />;
   const a = query.data;
-  if (!a) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>;
+  if (!a) return <LoadingState />;
 
   const onChange = (d: OpsAssetDetail) => { qc.setQueryData(key, d); void qc.invalidateQueries({ queryKey: ["ops", "assets"] }); };
   const isAdmin = me?.platformRoles.includes("ops_admin") ?? false;
@@ -38,7 +40,7 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
   return (
     <div className="space-y-10">
       <div className="space-y-2">
-        <h1 className="font-display text-3xl font-bold text-ivory">{a.name} · {a.symbol}</h1>
+        <PageHeader title={<>{a.name} · {a.symbol}</>} breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Assets", href: "/ops/assets" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...INSTRUMENT_STATUS_LABEL[a.status]} />
           <span className="text-sm text-stone">{ASSET_TYPE_LABEL[a.assetType]}</span>
