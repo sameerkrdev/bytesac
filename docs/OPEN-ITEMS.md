@@ -33,7 +33,10 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Jurisdiction-specific organization requirement templates; re-apply cooldown after a rejected manager application.
 - [ ] Adoption count masking (per-cell "<5" can be differenced; accepted for launch, joint masking open in D-084).
 - [ ] Tax and reporting obligations for fees and earnings.
-- [ ] Legal classification of baskets; RWA issuer terms and eligibility values (Spec 11).
+- [ ] Legal classification of baskets; RWA issuer terms.
+- [ ] Real eligibility rule values for each RWA (jurisdiction, action, outcome, investor statuses) from provider terms, and the investor-status definitions (retail, accredited, qualified, professional) per jurisdiction (D-025, Spec 11).
+- [ ] Final wording of the eligibility attestation (`ELIGIBILITY_ATTESTATION`, placeholder, version `2026-10-03`; changing it needs a new version).
+- [ ] Legal review of offering tokenized assets on self-declared country and investor status, and of the 365-day expiry.
 
 ## 4. Business decisions
 
@@ -61,6 +64,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 
 - [ ] Deploy the BullMQ worker (`start:worker`) with non-evicting Redis.
 - [ ] Load balancer must overwrite `X-Forwarded-For` (API trusts only the Next hop).
+- [ ] Set `GEO_COUNTRY_HEADER` (for example `CF-IPCountry`) and make the edge strip any client-supplied value of that header; unset means no geo signal (Spec 11).
 - [ ] Enforce CSP after the manual wallet E2E; add a CSP report-uri.
 - [ ] Choose an ivfflat or hnsw index for pgvector at scale.
 - [ ] Linux CI (or a newer Node) to escape the Windows vitest worker crash 3221226505.
@@ -98,6 +102,11 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Native EVM received amount is a whole-block balance change; ops leg resolve is not bound to the leg's own transactions; treasury token-account rent is not estimated.
 - [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts; portfolio shows basket slugs rather than names.
 
+**Spec 11**
+- [ ] Data: which RWA tokens have real DEX liquidity through LI.FI and CoinMarketCap ids (no RWA is offered until ops add a route, a market price reference and rules).
+- [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
+- [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
+
 **Spec 7**
 - [ ] Discovery "Load more" replaces the page; organization filter is an id field; tag filter takes typed keys; instrument/organization name edits refresh only nightly.
 - [ ] Assignment ends that keep the lead are not re-indexed until the next refresh; profile hide/unhide email untested; IP-day AI cap counter untested; a skipped first price day can miss a subscription period start.
@@ -115,6 +124,5 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 
 ## 8. Open decisions in the register
 
-- [ ] D-026 RWA execution per instrument/provider (Spec 11).
-- [ ] D-025 eligibility legal policy values (Spec 11).
+- [ ] D-025 eligibility rule values and D-026 issuer routes: the engine and secondary-market tokens are decided (ADR-018); legal policy values and issuer subscription/redemption remain open.
 - [ ] D-058 fee caps confirmation; D-059 disclosure copy; D-066 sector list; D-084 joint adoption masking.

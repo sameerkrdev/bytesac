@@ -67,6 +67,8 @@ const iso = z.iso.datetime({ offset: true });
 export const discoverySearchItemSchema = z.object({
   slug: z.string(), name: z.string(), shortDescription: z.string().nullable(), organizationName: z.string(), category: basketCategorySchema, status: basketStatusSchema,
   topAssets: z.array(z.object({ symbol: z.string(), bps: z.number() })), minimumInvestmentUsdc: z.string(), managementFeeBps: z.number(), netReturn1y: z.string().nullable(), available: z.boolean(),
+  /** The basket holds tokenized assets, which need an eligibility declaration to buy. */
+  hasEligibilityRequirements: z.boolean(),
 });
 export type DiscoverySearchItem = z.infer<typeof discoverySearchItemSchema>;
 export const discoverySearchResponseSchema = z.object({ items: z.array(discoverySearchItemSchema), nextCursor: z.string().nullable() });

@@ -24,7 +24,7 @@ export const basketsRouter = Router();
 /** Session optional: eligibility is only computed for a signed-in user. */
 basketsRouter.get("/:slug/investability", optionalSession, validate({ params: z.object({ slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(90) }) }), async (req, res) => {
   await consume(limits.publicBasketIp, req.ctx.ip);
-  const { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility } = await getInvestability(db, { slug: req.params.slug as string }, req.auth?.userId ?? null);
+  const { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility } = await getInvestability(db, { slug: req.params.slug as string }, req.auth ? { userId: req.auth.userId, ipCountry: req.ctx.ipCountry } : null);
   const body: Investability = { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility };
   res.json(body);
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { assetTypeSchema, instrumentStatusSchema } from "./assets";
+import { RWA_PROBLEMS } from "./eligibility";
 import { publicBasketResearchSchema } from "./performance";
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -164,7 +165,7 @@ export interface BasketValidationInput {
   };
   assets: {
     instrumentId: string; targetWeightBps: number; minWeightBps: number | null; maxWeightBps: number | null;
-    instrument: { status: z.infer<typeof instrumentStatusSchema>; assetType: z.infer<typeof assetTypeSchema>; hasActiveDeployment: boolean };
+    instrument: { status: z.infer<typeof instrumentStatusSchema>; assetType: z.infer<typeof assetTypeSchema>; hasActiveDeployment: boolean; rwaProblem?: keyof typeof RWA_PROBLEMS | null };
   }[];
   versionNumber: number;
   hasActiveLead: boolean;
@@ -199,6 +200,7 @@ export function validateBasketVersion(i: BasketValidationInput): { issues: Baske
     seen.add(a.instrumentId);
     if (a.instrument.status !== "ACTIVE" || !a.instrument.hasActiveDeployment) add(issues, "ASSET_UNSUPPORTED", "assets", "This asset is not available for baskets.", a.instrumentId);
     if (a.instrument.status === "PAUSED" || a.instrument.status === "DEPRECATED") add(warnings, "ASSET_UNSUPPORTED", "assets", "This asset is paused or deprecated in the registry.", a.instrumentId);
+    if (a.instrument.rwaProblem) add(warnings, "ASSET_UNSUPPORTED", "assets", `Investors can't buy this tokenized asset yet: ${RWA_PROBLEMS[a.instrument.rwaProblem]}`, a.instrumentId);
     const w = a.targetWeightBps;
     const bandOk = (a.minWeightBps ?? 0) <= w && w <= (a.maxWeightBps ?? 10_000);
     if (!Number.isInteger(w) || w < 100 || !bandOk) add(issues, "ALLOCATION_WEIGHT_INVALID", "assets", "Each weight must be a whole number of at least 1% and inside its band.", a.instrumentId);
@@ -424,6 +426,8 @@ const publicPriceSchema = z.object({
 });
 export const publicBasketDetailSchema = publicBasketResearchSchema.extend({
   slug: z.string(), status: basketStatusSchema, hasAssetWarning: z.boolean(),
+  /** Spec 11: `requirements` = some asset is a tokenized one (signed-out notice); `assets` (signed in) = the viewer's outcome for each of them. */
+  eligibility: z.object({ requirements: z.boolean(), assets: z.array(z.object({ instrumentId: z.string(), outcome: z.string(), reason: z.string() })).optional() }),
   organization: z.object({ id: z.string(), displayName: z.string().nullable() }),
   version: z.object({
     versionNumber: z.number(), publishedAt: iso, name: z.string(), shortDescription: z.string().nullable(), longDescription: z.string().nullable(), category: basketCategorySchema, tags: z.array(z.string()),

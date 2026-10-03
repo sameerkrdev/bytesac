@@ -164,3 +164,12 @@ describe("basketRebalanceSchema thresholds", () => {
     expect(ok({ minTradeUsdc: "100.01" })).toBe(false);
   });
 });
+
+describe("tokenized asset structural warning (Spec 11)", () => {
+  it("warns, without blocking, when a tokenized asset can't be bought yet", () => {
+    const rwa = asset("a", 4000, { instrument: { status: "ACTIVE", assetType: "TOKENIZED_TREASURY", hasActiveDeployment: true, rwaProblem: "RWA_PERMISSIONED" } });
+    const r = validateBasketVersion(valid({ assets: [rwa, asset("b", 6000)] }));
+    expect(r.issues).toEqual([]);
+    expect(r.warnings.find((w) => w.field === "a")?.message).toMatch(/can't buy this tokenized asset yet.*restricts who can hold it/);
+  });
+});

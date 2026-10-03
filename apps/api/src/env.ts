@@ -59,6 +59,8 @@ export const env = cleanEnv(process.env, {
   ALLOWED_ORIGINS: origins(),
   COOKIE_SECURE: bool({ default: true }),
   TRUST_PROXY: trustProxy({ default: "loopback" }),
+  /** Name of the edge header carrying the client country (for example CF-IPCountry). Unset = no geo signal; the edge must strip client-supplied values. */
+  GEO_COUNTRY_HEADER: str({ default: "" }),
   R2_ACCOUNT_ID: nonEmpty(),
   R2_ACCESS_KEY_ID: nonEmpty(),
   R2_SECRET_ACCESS_KEY: nonEmpty(),

@@ -7,7 +7,7 @@ import { createUserWithWallet, findAddressOwner } from "../../src/services/walle
 import { adminSql, resetDb, testDb } from "../helpers/db";
 
 const db = testDb.db;
-const meta = { requestId: "req-1", ip: "203.0.113.9", ipPrefix: "203.0.113.0/24", userAgent: "vitest" };
+const meta = { requestId: "req-1", ip: "203.0.113.9", ipPrefix: "203.0.113.0/24", userAgent: "vitest", ipCountry: null };
 const PEPPER = "p".repeat(32);
 beforeEach(resetDb);
 

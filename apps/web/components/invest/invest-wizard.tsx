@@ -4,6 +4,7 @@ import { SLIPPAGE_DEFAULT_BPS, SLIPPAGE_MAX_BPS, type OperationView } from "@rep
 import { useMutation } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
+import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { Button } from "@/components/ui/button";
@@ -80,7 +81,8 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
             </Button>
           </form>
         )}
-        {err && <div role="alert" className="rounded-xl border border-danger/40 p-3 text-sm text-ivory"><p className="font-medium">{toDisplayError(err).title}</p><p className="text-stone">{toDisplayError(err).message}</p></div>}
+        {isDeclarationRequired(preview.error) && <DeclarationForm onSaved={() => preview.mutate()} />}
+        {err && !isDeclarationRequired(err) && <div role="alert" className="rounded-xl border border-danger/40 p-3 text-sm text-ivory"><p className="font-medium">{toDisplayError(err).title}</p><p className="text-stone">{toDisplayError(err).message}</p></div>}
       </DialogContent>
     </Dialog>
   );

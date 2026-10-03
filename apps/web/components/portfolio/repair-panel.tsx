@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { ErrorBox } from "@/components/portfolio/exit-dialogs";
@@ -44,7 +45,8 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
           </div>
         </div>
       ) : <Button className="min-h-11" disabled={preview.isPending} onClick={() => preview.mutate()}>{preview.isPending && <Loader2 aria-hidden className="animate-spin" />}Get cost preview</Button>}
-      {err && <ErrorBox error={err} />}
+      {isDeclarationRequired(preview.error) && <DeclarationForm onSaved={() => preview.mutate()} />}
+      {err && !isDeclarationRequired(err) && <ErrorBox error={err} />}
     </div>
   );
 }

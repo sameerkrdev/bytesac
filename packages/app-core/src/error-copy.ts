@@ -39,6 +39,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   HANDLE_TAKEN: { title: "Handle taken", message: "That handle is already in use. Choose another.", recovery: "fix-input" },
   NOT_INVESTABLE: { title: "Not investable yet", message: "This basket can't be invested in right now. See the reasons on the basket page.", recovery: "wait" },
   NOT_ELIGIBLE: { title: "Not eligible yet", message: "Finish the steps listed on the basket page before investing.", recovery: "fix-input" },
+  DECLARATION_REQUIRED: { title: "Eligibility declaration needed", message: "Tell us your country and investor status to continue with tokenized assets.", recovery: "fix-input" },
   OPERATION_IN_PROGRESS: { title: "Another operation is running", message: "Finish or cancel your current operation first.", recovery: "wait" },
   QUOTE_EXPIRED: { title: "Quote expired", message: "Get a new quote and sign again.", recovery: "retry" },
   TX_MISMATCH: { title: "Transaction changed", message: "The transaction no longer matches the prepared one. Nothing was sent. Get a new quote.", recovery: "retry" },

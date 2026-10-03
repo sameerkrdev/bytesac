@@ -138,8 +138,9 @@ describe("structuredSearch filters", () => {
     const [alpha] = (await structuredSearch({ q: "bitcoin" })).items;
     expect(alpha).toEqual({
       slug: expect.any(String), name: "Alpha Bitcoin", shortDescription: "Bitcoin and ether core", organizationName: expect.any(String), category: "thematic", status: "ACTIVE",
-      topAssets: [{ symbol: "BTC", bps: 7000 }, { symbol: "ETH", bps: 3000 }], minimumInvestmentUsdc: "100", managementFeeBps: 50, netReturn1y: "0.30", available: true,
+      topAssets: [{ symbol: "BTC", bps: 7000 }, { symbol: "ETH", bps: 3000 }], minimumInvestmentUsdc: "100", managementFeeBps: 50, netReturn1y: "0.30", available: true, hasEligibilityRequirements: false,
     });
+    expect((await structuredSearch({ q: "treasury" })).items[0]).toMatchObject({ name: "Beta Stable", hasEligibilityRequirements: true }); // holds a tokenized asset
     const gamma = (await structuredSearch({ q: "token" })).items[0]!;
     expect(gamma).toMatchObject({ netReturn1y: null, available: false });
   });

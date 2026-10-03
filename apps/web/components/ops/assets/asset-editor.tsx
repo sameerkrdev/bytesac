@@ -16,7 +16,7 @@ import { AssetRoutes } from "./asset-routes";
 import { AssetRules } from "./asset-rules";
 
 type Client = Pick<ApiClient,
-  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetTags" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction" | "opsSetFeeOnTransfer"
+  | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetTags" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction" | "opsSetFeeOnTransfer" | "opsSetPermissioned"
   | "opsCreateRoute" | "opsUpdateRoute" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets" | "opsCreateRule" | "opsUpdateRule"
   | "opsPutPriceReference" | "opsRecordNav" | "opsSubmitAsset" | "opsDecideAsset" | "opsAssetAction">;
 
@@ -46,6 +46,7 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
         {a.status === "RETIRED" && <p role="status" className="text-sm text-stone">This asset is retired and read-only.</p>}
         {a.status === "UNDER_REVIEW" && <p role="status" className="text-sm text-stone">This asset is under review and read-only until a decision is made.</p>}
       </div>
+      {a.warnings.map((w) => <p key={w} role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-3 text-sm text-ivory">{w}</p>)}
       <AssetDetailsForm {...p} />
       <AssetClassification {...p} />
       <AssetDeployments {...p} />

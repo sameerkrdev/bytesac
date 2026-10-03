@@ -194,7 +194,7 @@ describe("payout wallet replacement on a verified organization", () => {
     const o = await verified();
     await proveWallet(app, o.h, o.id);
     const pending = (await wallets(o.id))[1]!;
-    const ctx = { userId: o.userId, sessionId: "00000000-0000-7000-8000-000000000000", meta: { requestId: "race", ip: "127.0.0.1", ipPrefix: null, userAgent: null } };
+    const ctx = { userId: o.userId, sessionId: "00000000-0000-7000-8000-000000000000", meta: { requestId: "race", ip: "127.0.0.1", ipPrefix: null, userAgent: null, ipCountry: null } };
     const results = await Promise.allSettled([
       decidePayoutWallet({ userId: reviewer.userId, meta: ctx.meta }, o.id, pending.id, { decision: "approved" }),
       enterPayoutWallet(ctx, o.id, newSolanaWallet().address),

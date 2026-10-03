@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import {
-  assetDecisionRequestSchema, assetProviderRequestSchema, feeOnTransferRequestSchema, routePolicyInputSchema, type FeeOnTransferRequest, type RoutePolicyInput, createDeploymentRequestSchema, createInstrumentRequestSchema, createRouteRequestSchema, createRuleRequestSchema, issuerRequestSchema, navEntryRequestSchema,
+  assetDecisionRequestSchema, assetProviderRequestSchema, feeOnTransferRequestSchema, permissionedRequestSchema, routePolicyInputSchema, type FeeOnTransferRequest, type PermissionedRequest, type RoutePolicyInput, createDeploymentRequestSchema, createInstrumentRequestSchema, createRouteRequestSchema, createRuleRequestSchema, issuerRequestSchema, navEntryRequestSchema,
   opsAssetListQuerySchema, priceKindSchema, putPriceReferenceRequestSchema, updateAssetProviderRequestSchema, updateDeploymentRequestSchema, updateInstrumentRequestSchema, updateIssuerRequestSchema,
   updateRouteRequestSchema, updateRuleRequestSchema,
   type AssetDecisionRequest, type AssetProviderRequest, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest, type IssuerRequest, type NavEntryRequest,
@@ -31,7 +31,7 @@ import {
 import { grantRole, listRoles, revokeRole } from "../services/platform-roles";
 import {
   createAssetProvider, createAssetTag, listAssetTags, retireAssetTag, createDeployment, createInstrument, createIssuer, createRoute, createRule, getAssetForOps, listAssetProviders, listAssetsForOps, listIssuers, putPriceReference,
-  recordNav, setFeeOnTransfer, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
+  recordNav, setDeploymentFlag, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment,
 } from "../services/assets";
 import { hideProfile, listProfilesForOps, unhideProfile } from "../services/manager-profiles";
 import { decideInstrument, submitInstrument, transitionAssetItem, transitionInstrument } from "../services/asset-review";
@@ -161,7 +161,12 @@ opsRouter.patch("/assets/:id/deployments/:did", reviewer, validate({ params: did
 });
 
 opsRouter.patch("/assets/:id/deployments/:did/fee-on-transfer", requireRole("ops_admin"), validate({ params: didParam, body: feeOnTransferRequestSchema }), async (req, res) => {
-  res.json(await setFeeOnTransfer(ctx(req), req.params.id as string, req.params.did as string, (req.body as FeeOnTransferRequest).feeOnTransfer));
+  res.json(await setDeploymentFlag(ctx(req), req.params.id as string, req.params.did as string, "feeOnTransfer", (req.body as FeeOnTransferRequest).feeOnTransfer));
+});
+
+/** Spec 11: a permissioned token is never investable. */
+opsRouter.patch("/assets/:id/deployments/:did/permissioned", requireRole("ops_admin"), validate({ params: didParam, body: permissionedRequestSchema }), async (req, res) => {
+  res.json(await setDeploymentFlag(ctx(req), req.params.id as string, req.params.did as string, "permissioned", (req.body as PermissionedRequest).permissioned));
 });
 
 opsRouter.post("/assets/:id/deployments/:did/verify", reviewer, validate({ params: didParam }), async (req, res) => {

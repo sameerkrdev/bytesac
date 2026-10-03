@@ -1,7 +1,7 @@
 "use client";
 
 import type { ApiClient } from "@repo/api-client";
-import { createRuleRequestSchema, eligibilityActionSchema, eligibilityOutcomeSchema } from "@repo/validator";
+import { INVESTOR_STATUSES, createRuleRequestSchema, eligibilityActionSchema, eligibilityOutcomeSchema, type InvestorStatus } from "@repo/validator";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
@@ -18,9 +18,10 @@ const blank = { routeId: "", jurisdiction: "", action: "acquire", outcome: "ALLO
 export function AssetRules({ a, locked, onChange, client = api }: SectionProps & { client?: Client }) {
   const id = useId();
   const [f, setF] = useState(blank);
+  const [statuses, setStatuses] = useState<InvestorStatus[]>([]);
   const [invalid, setInvalid] = useState<string | null>(null);
   const set = (k: keyof typeof blank) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
-  const create = useMutation({ mutationFn: (b: Parameters<Client["opsCreateRule"]>[1]) => client.opsCreateRule(a.id, b), onSuccess: (d) => { setF(blank); onChange(d); } });
+  const create = useMutation({ mutationFn: (b: Parameters<Client["opsCreateRule"]>[1]) => client.opsCreateRule(a.id, b), onSuccess: (d) => { setF(blank); setStatuses([]); onChange(d); } });
   const retire = useMutation({ mutationFn: (rid: string) => client.opsUpdateRule(a.id, rid, { status: "RETIRED" }), onSuccess: onChange });
   const error = [create, retire].find((m) => m.isError)?.error;
   const live = a.routes.filter((r) => r.status !== "RETIRED");
@@ -30,12 +31,13 @@ export function AssetRules({ a, locked, onChange, client = api }: SectionProps &
       <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Eligibility rules</h2>
       {a.rules.length === 0 ? <p className="text-sm text-stone">No rules yet.</p> : (
         <table className="w-full text-left text-sm">
-          <thead className="text-xs text-stone"><tr><th className="py-2 pr-4 font-medium">Jurisdiction</th><th className="pr-4 font-medium">Action</th><th className="pr-4 font-medium">Outcome</th><th className="pr-4 font-medium">Status</th><th className="font-medium"><span className="sr-only">Actions</span></th></tr></thead>
+          <thead className="text-xs text-stone"><tr><th className="py-2 pr-4 font-medium">Jurisdiction</th><th className="pr-4 font-medium">Action</th><th className="pr-4 font-medium">Investor status</th><th className="pr-4 font-medium">Outcome</th><th className="pr-4 font-medium">Status</th><th className="font-medium"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {a.rules.map((r) => (
               <tr key={r.id} className="border-t border-border-dark">
                 <td className="py-3 pr-4 text-ivory">{r.jurisdiction === "*" ? "All" : r.jurisdiction}</td>
                 <td className="pr-4 text-stone">{r.action}</td>
+                <td className="pr-4 text-stone">{r.investorStatuses.length === 0 ? "Any" : r.investorStatuses.join(", ")}</td>
                 <td className="pr-4 text-stone">{r.outcome.replaceAll("_", " ").toLowerCase()}</td>
                 <td className="pr-4 text-stone">{r.status === "RETIRED" ? "Retired" : "Active"}</td>
                 <td>{r.status !== "RETIRED" && <ConfirmAction label="Retire" destructive disabled={locked} pending={retire.isPending} description="Retiring this rule is permanent." onConfirm={() => retire.mutate(r.id)} />}</td>
@@ -49,7 +51,7 @@ export function AssetRules({ a, locked, onChange, client = api }: SectionProps &
         <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => {
           e.preventDefault();
           const parsed = createRuleRequestSchema.safeParse({
-            routeId: f.routeId || undefined, jurisdiction: f.jurisdiction.trim().toUpperCase(), action: f.action, outcome: f.outcome,
+            routeId: f.routeId || undefined, jurisdiction: f.jurisdiction.trim().toUpperCase(), action: f.action, outcome: f.outcome, investorStatuses: statuses,
             kycRequirement: f.kycRequirement.trim() || undefined, sourceText: f.sourceText.trim() || undefined, sourceUrl: f.sourceUrl.trim() || undefined,
           });
           if (!parsed.success) return setInvalid("Use a two-letter country code or * for everywhere, and an https source URL.");
@@ -69,6 +71,14 @@ export function AssetRules({ a, locked, onChange, client = api }: SectionProps &
             <Label htmlFor={`${id}-o`} className="text-xs font-medium text-ivory">Outcome</Label>
             <Select id={`${id}-o`} value={f.outcome} onChange={set("outcome")}>{eligibilityOutcomeSchema.options.map((o) => <option key={o} value={o}>{o.replaceAll("_", " ").toLowerCase()}</option>)}</Select>
           </div>
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium text-ivory">Investor statuses (none selected means every status)</legend>
+            {INVESTOR_STATUSES.map((s) => (
+              <label key={s} className="flex min-h-11 items-center gap-3 text-sm text-ivory">
+                <input type="checkbox" className="accent-mint" checked={statuses.includes(s)} onChange={(e) => setStatuses(e.target.checked ? [...statuses, s] : statuses.filter((x) => x !== s))} />{s}
+              </label>
+            ))}
+          </fieldset>
           <div className="space-y-2">
             <Label htmlFor={`${id}-r`} className="text-xs font-medium text-ivory">Applies to route (optional)</Label>
             <Select id={`${id}-r`} value={f.routeId} onChange={set("routeId")}>

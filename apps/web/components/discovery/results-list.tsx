@@ -23,7 +23,10 @@ export function ResultsList({ items }: { items: DiscoverySearchItem[] }) {
                 <div><dt className="inline">Minimum </dt><dd className="inline text-ivory">{b.minimumInvestmentUsdc} USDC</dd></div>
                 <div><dt className="inline">Management fee </dt><dd className="inline text-ivory">{formatBps(b.managementFeeBps)}</dd></div>
               </dl>
-              <StatusBadge {...BASKET_STATUS_LABEL[b.status]} />
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge {...BASKET_STATUS_LABEL[b.status]} />
+                {b.hasEligibilityRequirements && <StatusBadge tone="neutral" label="Eligibility requirements" />}
+              </div>
             </CardContent>
           </Card>
         </li>

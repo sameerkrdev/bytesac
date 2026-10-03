@@ -161,6 +161,7 @@ export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
     navObservations: navs.map((n) => ({ ...n, currency: "USD" as const, createdAt: n.createdAt.toISOString() })),
     events: events.map((e) => ({ id: e.id, entityType: e.entityType, entityId: e.entityId, kind: e.kind, fromStatus: e.fromStatus, toStatus: e.toStatus, actorUserId: e.actorUserId, message: e.message, internalNote: e.internalNote, createdAt: e.createdAt.toISOString() })),
     missing, prices,
+    warnings: missing.includes("eligibility_rule") ? ["Restricted everywhere until eligibility rules exist."] : [],
   };
 }
 
@@ -366,15 +367,18 @@ async function changeDeployment(ctx: OpsCtx, id: string, did: string, patch: Upd
 
 export const updateDeployment = (ctx: OpsCtx, id: string, did: string, body: UpdateDeploymentRequest) => changeDeployment(ctx, id, did, body, "updated");
 
-/** The fee-on-transfer flag: an ops_admin note for previews, no effect on identity, so it is editable while the asset is active; recorded as an asset event and audited. */
-export async function setFeeOnTransfer(ctx: OpsCtx, id: string, did: string, feeOnTransfer: boolean): Promise<OpsAssetDetail> {
+/**
+ * An ops_admin flag on a deployment: `feeOnTransfer` (a note for previews) or `permissioned` (never investable, Spec 11). Neither changes identity, so both
+ * are editable while the asset is active; recorded as an asset event and audited.
+ */
+export async function setDeploymentFlag(ctx: OpsCtx, id: string, did: string, flag: "feeOnTransfer" | "permissioned", value: boolean): Promise<OpsAssetDetail> {
   await db.transaction(async (tx) => {
     await lockInstrument(tx, id);
     const [row] = await tx.select().from(instrumentDeployments).where(and(eq(instrumentDeployments.id, did), eq(instrumentDeployments.instrumentId, id))).for("update");
     if (!row) throw notFound("Deployment");
-    if (row.feeOnTransfer === feeOnTransfer) return;
-    await tx.update(instrumentDeployments).set({ feeOnTransfer, updatedAt: sql`now()` }).where(eq(instrumentDeployments.id, did));
-    await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "deployment", entityId: did, kind: "updated", fromStatus: row.status, toStatus: row.status, metadata: { feeOnTransfer } });
+    if (row[flag] === value) return;
+    await tx.update(instrumentDeployments).set({ [flag]: value, updatedAt: sql`now()` }).where(eq(instrumentDeployments.id, did));
+    await recordAssetEvent(tx, ctx, { instrumentId: id, entityType: "deployment", entityId: did, kind: "updated", fromStatus: row.status, toStatus: row.status, metadata: { [flag]: value } });
   });
   return getAssetForOps(id);
 }

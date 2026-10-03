@@ -103,9 +103,11 @@ Represent:
 - **Deployment:** chain-specific token address, mint or other identifier, decimals and status.
 - **Route:** provider/venue and permitted action (swap, subscription, secondary market, transfer, redemption), limits and status.
 - **Price reference:** source, type, currency, freshness and confidence.
-- **Eligibility policy:** applicable user/jurisdiction/route/action rules and effective period.
+- **Eligibility policy:** applicable user/jurisdiction/investor-status/route/action rules and effective period.
 
 Implemented in Spec 5 (ADR-010): ops draft, verify, review and activate instruments; signed-in users read `ACTIVE` ones through `/v1/assets`. Managers select only platform-approved instruments. Arbitrary token addresses must not become investable merely by being entered in a basket. The initial scope is crypto, crypto tokens and approved RWAs on supported routes. Future asset categories remain disabled until explicitly approved.
+
+Implemented in Spec 11 (ADR-018): permissionless secondary-market RWA tokens through LI.FI, gated by a pure eligibility engine in `@repo/validator` (`evaluateEligibility`) fed by the user's append-only, 365-day self-declaration (country, investor status), an optional geo-IP signal (`GEO_COUNTRY_HEADER`) and the registry rules. RWAs are denied by default, crypto and stablecoins are unaffected, and every RWA leg stores its decision. The API enforces it at investability, plan creation and leg quote; the web only displays outcomes.
 
 ### Basket and versioning
 Implemented in Spec 6 (ADR-011); nothing invests, executes or charges yet.
@@ -175,7 +177,7 @@ Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind 
 1. User may explore public baskets without logging in.
 2. User opens basket research, manager and organization information.
 3. User connects a wallet and authenticates.
-4. Backend checks eligibility for the selected instrument/routes and action.
+4. Backend checks eligibility for the selected instrument/routes and action (for a tokenized asset: the user's current declaration, geo signal and rules, ADR-018).
 5. User reviews investment amount, target allocation, expected assets, fees (network, manager and platform, each with its recipient), route, risks and estimated outcomes.
 6. User signs every transaction of the plan in their own wallet(s), one leg at a time with a fresh quote per leg; nothing is delegated (ADR-013).
 7. Planner creates operation steps; orchestrator executes them (`POST /v1/operations/invest`, then per leg `quote` and `submit`).
@@ -231,7 +233,8 @@ Names are indicative; align final names with existing migrations and implementat
 - `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
 - `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
 - `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `member_verification_documents`, `membership_events`, `organization_payout_wallets`, `organization_events`
-- `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010)
+- `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010; `instrument_deployments.permissioned` and `eligibility_rules.investor_statuses` added in Spec 11)
+- `eligibility_declarations`, `eligibility_decisions` (append-only; implemented in Spec 11, ADR-018)
 - `asset_tags`, `instrument_tags`, `manager_profiles`, `instrument_price_snapshots`, `basket_performance_days`, `basket_search_index` (derived; implemented in Spec 7, ADR-012; `instruments.sector`)
 - `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` (revisioned), `disclosure_templates`, `basket_version_disclosures` (revisioned), `basket_assignments`, `basket_reviews`, `basket_events` (implemented, ADR-011)
 - `basket_positions` (with `allocation_status`), `position_ledger_entries` (append-only), `position_reconciliations` (append-only history; cash rows have a null deployment) (implemented, Spec 8, ADR-014); `position_cash_entries` (append-only), `position_decisions` (append-only: skip, keep_custom, revert_custom, sync), `notifications`, `push_tokens` (implemented, Spec 9, ADR-015); later: `user_portfolios`, `wallet_asset_balances`, `unassigned_positions`
@@ -272,7 +275,7 @@ Use foreign keys, unique constraints, check constraints and indexes for invarian
 | EVM authentication | SIWE |
 | Solana authentication | SIWS |
 | Blockchain RPC/events | Alchemy, behind adapters |
-| Swaps/cross-chain | LI.FI only, behind the `RouteProvider` abstraction (ADR-014); further providers arrive with RWAs (Spec 11) |
+| Swaps/cross-chain | LI.FI only, behind the `RouteProvider` abstraction (ADR-014); RWA tokens use the same provider; issuer routes are future plans (ADR-018) |
 | Native BTC | `providers/bitcoin.ts` (BIP-322/BIP-137 verification on `@scure/btc-signer` and `@noble/*`, PSBT output checks, Alchemy Bitcoin REST for balance, transaction and broadcast); Solana transactions through `@solana/web3.js` 1.99.0 |
 | Crypto prices | CoinMarketCap |
 | Files | Cloudflare R2 (private bucket, S3 API via `@aws-sdk/client-s3` behind `providers/r2.ts`; presigned direct upload to `incoming/`, verified copy to `documents/`, ops-only presigned download) |
@@ -298,6 +301,7 @@ Current provider capabilities, supported chains, plan limits and commercial term
 - Discovery needs the `vector` (pgvector) extension and a running worker with non-evicting Redis; Gemini terms and defaults must be verified before launch (ADR-012).
 - Retention depends on the `pg_cron` extension: enable it on Supabase (Dashboard, Database, Extensions) and monitor `cron.job_run_details`.
 - Apply least privilege, input validation, rate limits, monitoring, backups and restore drills.
+- Eligibility signal integrity: `GEO_COUNTRY_HEADER` names a request header carrying the client's country (for example `CF-IPCountry`). It is trusted only when set, so the edge must overwrite it on every request; an unset variable means no geo signal.
 - Obtain jurisdiction-specific legal/compliance review for investment, custody, RWA distribution and fee models.
 
 ## 10. Open decisions that must not be silently assumed
@@ -305,11 +309,11 @@ Current provider capabilities, supported chains, plan limits and commercial term
 1. Real-key verification of LI.FI coverage per chain/asset, terms and limits, and the gas cap values (the provider, gas model and network fee are decided in ADR-014; custody, attribution and spend authority in ADR-013; rebalance routing, repair and notifications in ADR-015).
 2. Platform fee rates (business decision; default 0), legal review of manager and platform fees, and revenue treasury funding (fee collection is decided in ADR-016 and implemented).
 3. Whether bridging is permitted for each RWA instrument.
-4. RWA acquisition, transfer, redemption and settlement method per issuer/instrument.
+4. Issuer subscription, redemption and settlement methods per issuer/instrument (release 1 offers only secondary-market tokens, D-026).
 5. Price-source hierarchy, freshness limits and fallback behavior.
 6. Rebalance threshold tuning (defaults decided: 50 bps, 5 USDC, drift 500 bps; D-077, D-081) and residual-cash policy beyond basket cash (D-078).
 7. ~~Fix semantics and customization~~ — decided: Buy back or Sync for shortfalls, Rebalance or Keep custom for drift (D-023, D-080, D-081).
 8. Supported chains and asset types for each release.
-9. Legal eligibility and KYC requirements by jurisdiction, instrument and action.
+9. The real eligibility rule values and investor-status definitions by jurisdiction, instrument and action (the engine is decided, D-025), the attestation wording, and a KYC vendor.
 
 Record each decision in `docs/decisions/DECISION-REGISTER.md` and create an ADR for material choices.

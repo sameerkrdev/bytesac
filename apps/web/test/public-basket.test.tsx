@@ -5,10 +5,12 @@ import { ETH, SOL, emptyDiff } from "./org-fixtures";
 
 const permanentRedirect = vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT ${path}`); });
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NEXT_NOT_FOUND"); }, permanentRedirect: (p: string) => permanentRedirect(p) }));
+const session = { current: null as string | null };
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => (session.current ? { value: session.current } : undefined) }) }));
 vi.mock("@/components/invest/invest-button", () => ({ InvestButton: (p: { slug: string; minimumUsdc: string | null }) => <span>invest:{p.slug}:{p.minimumUsdc}</span> }));
 import PublicBasketPage from "@/app/baskets/[slug]/page";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); session.current = null; });
 const T = "2026-09-30T00:00:00.000Z";
 const serve = (body: unknown, status = 200) => vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status })));
 
@@ -17,7 +19,7 @@ const NO_WINDOWS = { sinceLaunch: null, d30: null, d90: null, y1: null };
 const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => ({
   performance: { available: false, dataDays: 0, series: [] }, metrics: { available: false, dataDays: 0, net: NO_WINDOWS, gross: NO_WINDOWS, volatility: null, maxDrawdown: null },
   sectors: [], tags: [], label: PERFORMANCE_LABEL, platformFee: [],
-  slug: "core-crypto", status: "ACTIVE", hasAssetWarning: false, organization: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: "Ada Capital" },
+  slug: "core-crypto", status: "ACTIVE", hasAssetWarning: false, eligibility: { requirements: false }, organization: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: "Ada Capital" },
   version: {
     versionNumber: 2, publishedAt: T, name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "A <b>bold</b> thesis", methodology: null,
     intendedInvestor: null, horizon: null, keyAssumptions: null, knownLimitations: null, strategyRisks: "Prices move", liquidityNotes: null, conflictsOfInterest: null, constraints: {},
@@ -93,6 +95,14 @@ describe("Public basket page", () => {
     serve({ redirectTo: "new-slug" });
     await expect(page("old-slug")).rejects.toThrow("NEXT_REDIRECT /baskets/new-slug");
     expect(permanentRedirect).toHaveBeenCalledWith("/baskets/new-slug");
+  });
+
+  it("forwards the session so the API can say which assets the viewer may buy, and shows the notice", async () => {
+    session.current = "tok";
+    serve(detail({ eligibility: { requirements: true, assets: [{ instrumentId: SOL, outcome: "RESTRICTED", reason: "RULE" }] } }));
+    await page();
+    expect(vi.mocked(fetch).mock.calls[0]![1]!.headers).toMatchObject({ Cookie: expect.stringContaining("tok") });
+    expect(screen.getByText("Solana (SOL): Not available in your region / for your investor status")).toBeInTheDocument();
   });
 
   it("404s an unknown slug", async () => {

@@ -1,5 +1,5 @@
 import {
-  lifiTransfersSchema, routePolicyEntrySchema, routingViewSchema, type FeeOnTransferRequest, type LifiTransfers, type RoutePolicyEntry, type RoutePolicyInput, type RoutingView,
+  eligibilityResponseSchema, lifiTransfersSchema, routePolicyEntrySchema, routingViewSchema, type EligibilityDeclarationInput, type EligibilityResponse, type FeeOnTransferRequest, type PermissionedRequest, type LifiTransfers, type RoutePolicyEntry, type RoutePolicyInput, type RoutingView,
   earningsSchema, platformFeeListSchema, platformFeeScheduleViewSchema, publicFeesSchema, revenueSchema,
   type Earnings, type EarningsQuery, type PlatformFeeList, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type PublicFees, type Revenue,
   bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, adoptionSchema, notificationsPageSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type Adoption, type NotificationsPage, type PushToken, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
@@ -214,6 +214,9 @@ export function createApiClient(options: ApiClientOptions) {
     opsUpdateAsset: (id: string, b: UpdateInstrumentRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}`, opsAssetDetailSchema, b),
     opsCreateDeployment: (id: string, b: CreateDeploymentRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/deployments`, opsAssetDetailSchema, b),
     opsUpdateDeployment: (id: string, did: string, b: UpdateDeploymentRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/deployments/${e(did)}`, opsAssetDetailSchema, b),
+    getEligibility: (): Promise<EligibilityResponse> => request("GET", "/v1/me/eligibility", eligibilityResponseSchema),
+    declareEligibility: (b: EligibilityDeclarationInput): Promise<EligibilityResponse> => request("POST", "/v1/me/eligibility", eligibilityResponseSchema, b),
+    opsSetPermissioned: (id: string, did: string, b: PermissionedRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/deployments/${e(did)}/permissioned`, opsAssetDetailSchema, b),
     opsSetFeeOnTransfer: (id: string, did: string, b: FeeOnTransferRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/deployments/${e(did)}/fee-on-transfer`, opsAssetDetailSchema, b),
     opsGetRouting: (): Promise<RoutingView> => request("GET", "/v1/ops/routing", routingViewSchema),
     opsDenyRouteTool: (b: RoutePolicyInput): Promise<RoutePolicyEntry> => request("POST", "/v1/ops/routing/deny", routePolicyEntrySchema, b),

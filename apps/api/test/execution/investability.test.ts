@@ -29,11 +29,11 @@ describe("basket investability", () => {
     expect(connections).toHaveBeenCalledWith(expect.objectContaining({ fromChain: "solana", toChain: "bitcoin", toToken: null }));
   });
 
-  it("reports a tokenized (RWA) constituent", async () => {
+  it("needs a market price for a tokenized (RWA) constituent (the full RWA rules are in eligibility/enforcement.test.ts)", async () => {
     const b = await seedBasket({ assets: [SOL, { symbol: "BUIDL", chain: "ethereum", tokenStandard: "erc20", bps: 5000, assetType: "TOKENIZED_FUND" }] });
     const res = await investability(b.slug);
     expect(res.body.investable).toBe(false);
-    expect(res.body.reasons).toEqual([expect.objectContaining({ code: "RWA_NOT_SUPPORTED", instrumentId: b.deployments[1]!.instrumentId })]);
+    expect(res.body.reasons).toEqual([expect.objectContaining({ code: "RWA_PRICE_REQUIRED", instrumentId: b.deployments[1]!.instrumentId })]);
   });
 
   it("reports a constituent without an execution route, with a disabled provider, or without a connection", async () => {

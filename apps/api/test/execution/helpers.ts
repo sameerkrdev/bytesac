@@ -22,6 +22,9 @@ export interface SeedAsset {
   /** Skip the route (no execution route). */
   noRoute?: boolean;
   providerName?: string;
+  /** Route method (default `swap`). */
+  method?: "swap" | "secondary_market" | "subscription";
+  permissioned?: boolean;
 }
 
 const addressFor = (chain: SeedAsset["chain"]) => (chain === "solana" ? newSolanaWallet().address : "0x" + randomBytes(20).toString("hex"));
@@ -47,14 +50,14 @@ export async function seedBasket(over: { assets: SeedAsset[]; status?: string; m
       INSERT INTO app.instruments (id, name, symbol, asset_type, status, created_by_user_id)
       VALUES (gen_random_uuid(), ${a.symbol}, ${a.symbol}, ${a.assetType ?? "CRYPTO"}, 'ACTIVE', ${owner.userId}) RETURNING id`;
     const [d] = await adminSql<{ id: string }[]>`
-      INSERT INTO app.instrument_deployments (id, instrument_id, chain, token_standard, address, decimals, verification, status)
-      VALUES (gen_random_uuid(), ${i!.id}, ${a.chain}, ${standard}, ${address}, ${decimals}, 'manual', 'ACTIVE') RETURNING id`;
+      INSERT INTO app.instrument_deployments (id, instrument_id, chain, token_standard, address, decimals, verification, status, permissioned)
+      VALUES (gen_random_uuid(), ${i!.id}, ${a.chain}, ${standard}, ${address}, ${decimals}, 'manual', 'ACTIVE', ${a.permissioned ?? false}) RETURNING id`;
     if (!a.noRoute) {
       const providerId = a.providerName
         ? (await adminSql<{ id: string }[]>`INSERT INTO app.asset_providers (id, name, kind) VALUES (gen_random_uuid(), ${a.providerName}, 'other') ON CONFLICT (name) DO UPDATE SET name = excluded.name RETURNING id`)[0]!.id
         : provider!.id;
       await adminSql`INSERT INTO app.execution_routes (id, instrument_id, deployment_id, provider_id, venue, method, processing_model, status)
-        VALUES (gen_random_uuid(), ${i!.id}, ${d!.id}, ${providerId}, 'LI.FI', 'swap', 'sync', 'ACTIVE')`;
+        VALUES (gen_random_uuid(), ${i!.id}, ${d!.id}, ${providerId}, 'LI.FI', ${a.method ?? 'swap'}, 'sync', 'ACTIVE')`;
     }
     await adminSql`INSERT INTO app.basket_version_assets (id, version_id, revision, instrument_id, target_weight_bps) VALUES (gen_random_uuid(), ${version!.id}, 1, ${i!.id}, ${a.bps})`;
     deployments.push({ instrumentId: i!.id, deploymentId: d!.id, chain: a.chain, address, decimals, bps: a.bps, symbol: a.symbol });

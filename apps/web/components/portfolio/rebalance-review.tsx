@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { DiffSummary } from "@/components/baskets/version-history";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
@@ -97,7 +98,8 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
         </div>
       )}
 
-      {failure && <ErrorBox error={failure} />}
+      {isDeclarationRequired(create.error) && <DeclarationForm onSaved={() => create.mutate()} />}
+      {failure && !isDeclarationRequired(failure) && <ErrorBox error={failure} />}
       {repairNeeded && <p className="text-sm text-ivory"><Link href={`/portfolio/repair/${repairAsset}`} className="text-mint underline">Go to repair</Link></p>}
     </section>
   );

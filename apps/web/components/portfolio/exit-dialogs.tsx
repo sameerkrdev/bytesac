@@ -4,6 +4,7 @@ import { SLIPPAGE_DEFAULT_BPS, type OperationView, type Portfolio } from "@repo/
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useId, useState } from "react";
+import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,9 @@ export function SellDialog({ position }: { position: Position }) {
           </DialogHeader>
           {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
             <div className="space-y-4">
+              {plan.excluded && plan.excluded.length > 0 && (
+                <ul aria-label="Left out of this sale" className="space-y-1 rounded-xl border border-warning/40 bg-warning/5 p-3 text-sm text-ivory">{plan.excluded.map((x) => <li key={x.instrumentId}>{x.notice}</li>)}</ul>
+              )}
               <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying={false} />)}</ol>
               <FeeLines fees={plan.fees} />
               <p className="text-xs text-stone">{plan.legs[0]?.kind === "network_fee" ? "Fees are paid first from the USDC already in your wallet." : "Fees are taken from your proceeds."}</p>
@@ -89,7 +93,8 @@ export function SellDialog({ position }: { position: Position }) {
               <Button type="submit" className="min-h-11" disabled={!valid || preview.isPending}>{preview.isPending && <Loader2 aria-hidden className="animate-spin" />}Get preview</Button>
             </form>
           )}
-          {err && <ErrorBox error={err} />}
+          {isDeclarationRequired(preview.error) && <DeclarationForm onSaved={() => preview.mutate()} />}
+          {err && !isDeclarationRequired(err) && <ErrorBox error={err} />}
         </DialogContent>
       </Dialog>
     </>

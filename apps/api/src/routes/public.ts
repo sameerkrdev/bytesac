@@ -1,6 +1,7 @@
 import { Router } from "express";
 import createHttpError from "http-errors";
 import { aiSearchRequestSchema, discoveryFiltersSchema, discoveryQuerySchema, managerHandleParamSchema, publicBasketQuerySchema, z } from "@repo/validator";
+import { optionalSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import { aiSearch, structuredSearch } from "../services/discovery";
@@ -27,9 +28,10 @@ publicRouter.get("/baskets", async (req, res) => {
   res.json(await listPublicBaskets(publicBasketQuerySchema.parse(req.query)));
 });
 
-publicRouter.get("/baskets/:slug", validate({ params: z.object({ slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(90) }) }), async (req, res) => {
+publicRouter.get("/baskets/:slug", optionalSession, validate({ params: z.object({ slug: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(90) }) }), async (req, res) => {
   await consume(limits.publicBasketIp, req.ctx.ip);
-  res.json(await getPublicBasket(req.params.slug as string));
+  if (req.auth) res.set("Cache-Control", "private, no-store"); // the response carries this viewer's eligibility
+  res.json(await getPublicBasket(req.params.slug as string, req.auth ? { userId: req.auth.userId, ipCountry: req.ctx.ipCountry } : null));
 });
 
 /** Filters travel as one `f` param: base64url JSON of DiscoveryFilters (unknown keys dropped). */
