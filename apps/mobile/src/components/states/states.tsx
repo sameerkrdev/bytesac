@@ -34,5 +34,5 @@ export const StaleNotice = ({ children }: { children: string }) => <AppText acce
 export const ErrorText = ({ error }: { error: unknown }) => {
   if (!error) return null;
   const e = displayError(error);
-  return <View accessibilityRole="alert" className="gap-1 rounded-xl border border-danger/40 p-3"><AppText className="font-sans-semibold">{e.title}</AppText>{e.message ? <AppText tone="stone">{e.message}</AppText> : null}</View>;
+  return <View accessible accessibilityRole="alert" className="gap-1 rounded-xl border border-danger/40 p-3"><AppText className="font-sans-semibold">{e.title}</AppText>{e.message ? <AppText tone="stone">{e.message}</AppText> : null}</View>;
 };

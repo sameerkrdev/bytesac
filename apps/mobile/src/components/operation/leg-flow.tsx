@@ -65,7 +65,7 @@ export function LegFlow({ operationId }: { operationId: string }) {
       {o.legs.map((l) => <LegRow key={l.id} leg={l} buying={legBuys(o.kind, l)} />)}
 
       {failure && (
-        <View accessibilityRole="alert" className="gap-1 rounded-xl border border-danger/40 p-3">
+        <View accessible accessibilityRole="alert" className="gap-1 rounded-xl border border-danger/40 p-3">
           <AppText className="font-sans-semibold">{failure.title}</AppText>
           {failure.message ? <AppText tone="stone">{failure.message}</AppText> : null}
         </View>
