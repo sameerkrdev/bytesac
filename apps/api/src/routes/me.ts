@@ -3,8 +3,8 @@ import createHttpError from "http-errors";
 import { Router } from "express";
 import { contacts, db, investmentWallets, sessions, userPermissions, users } from "@repo/db";
 import {
-  bitcoinChallengeRequestSchema, bitcoinVerifySchema, familyOf, listNotificationsQuerySchema, managerProfileRequestSchema, markReadSchema, pushTokenSchema, z,
-  type BitcoinChallengeRequest, type BitcoinVerify, type ManagerProfileRequest, type MeResponse, type SessionsResponse,
+  bitcoinChallengeRequestSchema, bitcoinVerifySchema, eligibilityDeclarationInputSchema, familyOf, listNotificationsQuerySchema, managerProfileRequestSchema, markReadSchema, pushTokenSchema, z,
+  type BitcoinChallengeRequest, type BitcoinVerify, type EligibilityDeclarationInput, type ManagerProfileRequest, type MeResponse, type SessionsResponse,
 } from "@repo/validator";
 import { requireSession } from "../middleware/auth";
 import { consume, limits } from "../middleware/rate-limit";
@@ -13,6 +13,7 @@ import { respondVerified } from "./auth";
 import { issueChallenge, verifyChallenge } from "../services/sign-in";
 import { writeAudit } from "../services/audit";
 import { contactView } from "../services/contacts";
+import { currentDeclaration, declare } from "../services/eligibility";
 import { activeRoles } from "../services/platform-roles";
 import { listMyInvitations } from "../services/members";
 import { listNotifications, markRead, registerPushToken, revokePushToken } from "../services/notifications";
@@ -49,6 +50,16 @@ meRouter.get("/", async (req, res) => {
     organizations: (await listMyOrganizations(userId)).organizations.map((o) => ({ id: o.id, displayName: o.displayName, role: o.role, status: o.status, membershipId: o.membershipId, membershipStatus: o.membershipStatus })),
   };
   res.json(body);
+});
+
+/** Spec 11: the self-declared country and investor status that tokenized-asset eligibility rests on (append-only; the latest row is current for 365 days). */
+meRouter.get("/eligibility", async (req, res) => {
+  res.json(await currentDeclaration(db, req.auth!.userId));
+});
+
+meRouter.post("/eligibility", validate({ body: eligibilityDeclarationInputSchema }), async (req, res) => {
+  await consume(limits.eligibilityUser, req.auth!.userId);
+  res.status(201).json(await declare({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx }, req.body as EligibilityDeclarationInput));
 });
 
 /** Bitcoin is link-only (add-chain): a BIP-322 or BIP-137 proof over the challenge message, with the Spec 1 rules (one address per family, not linked elsewhere, session rotation, audit). */

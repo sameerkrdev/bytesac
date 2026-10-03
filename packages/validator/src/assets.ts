@@ -247,6 +247,8 @@ export const opsAssetDetailSchema = z.object({
     message: z.string().nullable(), internalNote: z.string().nullable(), createdAt: isoTime,
   })),
   missing: z.array(z.string()),
+  /** Review warnings (Spec 11): a tokenized asset without an ACTIVE eligibility rule is restricted everywhere. */
+  warnings: z.array(z.string()),
   prices: z.array(priceViewSchema),
 });
 export type OpsAssetDetail = z.infer<typeof opsAssetDetailSchema>;

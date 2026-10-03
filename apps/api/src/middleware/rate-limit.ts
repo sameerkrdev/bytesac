@@ -38,6 +38,7 @@ export const limits = {
   quotesUser: limiter("ops:quote:user", 60, 60),
   submitsUser: limiter("ops:submit:user", 60, 60),
   bitcoinLinkUser: limiter("btc:link:user", 10, 3600),
+  eligibilityUser: limiter("eligibility:user", 10, 86_400),
   aiSearchIp: limiter("ai:search:ip", 10, 60),
   aiSearchIpDay: limiter("ai:search:ip:d", 100, 86_400),
   aiSearchGlobalDay: limiter("ai:search:global:d", 5000, 86_400),

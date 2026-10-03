@@ -4,10 +4,10 @@ import {
   assetProviders, basketVersionAssets, basketVersions, baskets, contacts, executionRoutes, instrumentDeployments, instruments, investmentWallets, operations, walletAddresses,
   type DbOrTx,
 } from "@repo/db";
-import { ASSET_CHAINS, USDC_SOLANA_MINT, type AssetChain, type AssetType, type ChainFamily, type Investability } from "@repo/validator";
+import { ASSET_CHAINS, RWA_PROBLEMS, RWA_ROUTE_METHODS, USDC_SOLANA_MINT, rwaProblem, type AssetChain, type AssetType, type ChainFamily, type Investability } from "@repo/validator";
 import { selectRouteProvider } from "../providers/routes";
 import type { RouteProvider } from "../providers/routes/types";
-import { RWA_ROUTE_METHODS, evaluateFor, isRwa, type Evaluated } from "./eligibility";
+import { evaluateFor, isRwa, type Evaluated } from "./eligibility";
 import { getPrices } from "./pricing";
 
 export interface Constituent {
@@ -56,10 +56,9 @@ export async function getInvestability(db: DbOrTx, basket: { slug: string } | { 
       if (options.length === 0) return no("NO_ROUTE", "no active deployment with an active execution route.");
       if (isRwa(a.assetType)) {
         // Spec 11 section 4: permissionless token, synchronous secondary-market route through the provider, a fresh CoinMarketCap market price.
-        if (options.every((c) => c.permissioned)) return no("RWA_PERMISSIONED", "this token restricts who can hold it, so it can't be offered yet.");
-        options = options.filter((c) => !c.permissioned && RWA_ROUTE_METHODS.includes(c.method as (typeof RWA_ROUTE_METHODS)[number]));
-        if (options.length === 0) return no("RWA_ROUTE_UNSUPPORTED", "only trading on the open market is supported for tokenized assets.");
-        if (!priced.has(a.instrumentId)) return no("RWA_PRICE_REQUIRED", "a current market price is required for tokenized assets.");
+        const problem = rwaProblem(options, priced.has(a.instrumentId));
+        if (problem) return no(problem, RWA_PROBLEMS[problem]);
+        options = options.filter((c) => !c.permissioned && RWA_ROUTE_METHODS.includes(c.method));
       }
       let why: [string, string] = ["NO_ROUTE", "no enabled route provider."];
       for (const d of options) {

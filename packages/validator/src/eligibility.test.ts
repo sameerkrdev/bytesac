@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateEligibility, type EligibilityRuleInput, type InvestorStatus } from "./eligibility";
+import { evaluateEligibility, rwaProblem, type EligibilityRuleInput, type InvestorStatus } from "./eligibility";
 
 const now = new Date("2026-10-03T00:00:00Z");
 const decl = (country = "DE", investorStatus: InvestorStatus = "retail", ageDays = 1) => ({ country, investorStatus, createdAt: new Date(now.getTime() - ageDays * 86_400_000) });
@@ -54,5 +54,15 @@ describe("evaluateEligibility", () => {
   it("applies only * rules to crypto without a declaration", () => {
     const rules = [rule({ id: "de", outcome: "RESTRICTED" }), rule({ id: "star", jurisdiction: "*", outcome: "REVIEW_REQUIRED" })];
     expect(run({ rwa: false, declaration: null, rules })).toMatchObject({ outcome: "REVIEW_REQUIRED", ruleIds: ["star"] });
+  });
+});
+
+describe("rwaProblem", () => {
+  const opt = (permissioned: boolean, method = "swap") => ({ permissioned, method });
+  it("names why a tokenized asset can't be offered", () => {
+    expect(rwaProblem([opt(true)], true)).toBe("RWA_PERMISSIONED");
+    expect(rwaProblem([opt(false, "subscription")], true)).toBe("RWA_ROUTE_UNSUPPORTED");
+    expect(rwaProblem([opt(true), opt(false, "secondary_market")], false)).toBe("RWA_PRICE_REQUIRED");
+    expect(rwaProblem([opt(true), opt(false)], true)).toBeNull();
   });
 });

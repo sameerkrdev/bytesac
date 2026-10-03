@@ -3,10 +3,10 @@ import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, lt, max, sql } from "drizzle-orm";
 import {
   basketAssignments, basketEvents, basketReviews, contacts, basketVersionAssets, basketVersionDisclosures, basketVersions, baskets, db, disclosureTemplates,
-  instruments, isUniqueViolation, organizationMemberships, organizations, type DbOrTx, type Tx,
+  executionRoutes, instrumentDeployments, instruments, isUniqueViolation, organizationMemberships, organizations, priceReferences, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
-  ASSIGNMENT_FLAGS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS, ROLE_PERMISSIONS, basketConstraintsSchema, basketFeesSchema, canonicalJson, diffBasketVersions, validateBasketVersion,
+  ASSIGNMENT_FLAGS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS, ROLE_PERMISSIONS, basketConstraintsSchema, basketFeesSchema, canonicalJson, diffBasketVersions, rwaProblem, validateBasketVersion,
   type AssignmentFlag, type BasketAssignmentView, type BasketDetail, type BasketEventView, type BasketDiff, type BasketDiffInput, type BasketPreview, type BasketStatus, type BasketValidation, type BasketValidationInput,
   type BasketVersionView, type CreateAssignmentRequest, type CreateBasketRequest, type EndAssignmentRequest, type ListBasketsQuery, type ListBasketsResponse,
   type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
@@ -15,6 +15,7 @@ import { logger } from "@repo/logger";
 import { enqueue } from "../queues";
 import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "../providers/resend";
 import { writeAudit } from "./audit";
+import { isRwa } from "./eligibility";
 import { requirePermission, type MembershipRow } from "./members";
 import type { OrganizationRow, OwnerCtx } from "./organizations";
 
@@ -85,15 +86,26 @@ export async function loadValidationInput(conn: DbOrTx, versionId: string): Prom
   const { v } = row;
   const [lead] = await conn.select({ id: basketAssignments.id }).from(basketAssignments)
     .where(and(eq(basketAssignments.basketId, v.basketId), eq(basketAssignments.role, "lead"), eq(basketAssignments.status, "ACTIVE")));
+  const assets = await currentAssets(conn, v);
+  // Spec 11 section 8: a tokenized asset that can't be bought for structural reasons is a warning (a market price reference stands in for a fresh price here).
+  const rwaIds = assets.filter((a) => isRwa(a.assetType)).map((a) => a.instrumentId);
+  const routed = rwaIds.length === 0 ? [] : await conn.select({ instrumentId: instrumentDeployments.instrumentId, permissioned: instrumentDeployments.permissioned, method: executionRoutes.method }).from(instrumentDeployments)
+    .innerJoin(executionRoutes, and(eq(executionRoutes.deploymentId, instrumentDeployments.id), eq(executionRoutes.status, "ACTIVE")))
+    .where(and(inArray(instrumentDeployments.instrumentId, rwaIds), eq(instrumentDeployments.status, "ACTIVE")));
+  const priced = new Set(rwaIds.length === 0 ? [] : (await conn.select({ id: priceReferences.instrumentId }).from(priceReferences)
+    .where(and(inArray(priceReferences.instrumentId, rwaIds), eq(priceReferences.kind, "market"), eq(priceReferences.status, "ACTIVE")))).map((r) => r.id));
   return {
     version: {
       name: v.name, shortDescription: v.shortDescription, strategyRisks: v.strategyRisks, thesis: v.thesis, methodology: v.methodology, rationale: v.rationale,
       constraints: basketConstraintsSchema.parse(v.constraints), fees: basketFeesSchema.parse(v.fees), minimumInvestmentUsdc: v.minimumInvestmentUsdc, minimumIncrementUsdc: v.minimumIncrementUsdc,
     },
-    assets: (await currentAssets(conn, v)).map((a) => ({
-      instrumentId: a.instrumentId, targetWeightBps: a.targetWeightBps, minWeightBps: a.minWeightBps, maxWeightBps: a.maxWeightBps,
-      instrument: { status: a.instrumentStatus, assetType: a.assetType, hasActiveDeployment: a.hasActiveDeployment },
-    })),
+    assets: assets.map((a) => {
+      const options = routed.filter((r) => r.instrumentId === a.instrumentId);
+      return {
+        instrumentId: a.instrumentId, targetWeightBps: a.targetWeightBps, minWeightBps: a.minWeightBps, maxWeightBps: a.maxWeightBps,
+        instrument: { status: a.instrumentStatus, assetType: a.assetType, hasActiveDeployment: a.hasActiveDeployment, rwaProblem: isRwa(a.assetType) && options.length ? rwaProblem(options, priced.has(a.instrumentId)) : null },
+      };
+    }),
     versionNumber: v.versionNumber, hasActiveLead: lead !== undefined, orgVerified: row.orgStatus === "VERIFIED",
   };
 }

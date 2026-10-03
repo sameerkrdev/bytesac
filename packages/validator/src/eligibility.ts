@@ -61,3 +61,21 @@ export function evaluateEligibility(i: {
   const worst = tier.reduce((w, r) => (SEVERITY[r.outcome] > SEVERITY[w.outcome] ? r : w));
   return { outcome: worst.outcome, ruleIds: tier.filter((r) => r.outcome === worst.outcome).map((r) => r.id), reason: "RULE" };
 }
+
+/** Route methods an RWA may use in release 1: synchronous secondary-market trades through the route provider (Spec 11 decision 1). */
+export const RWA_ROUTE_METHODS: readonly string[] = ["swap", "secondary_market"];
+export const RWA_PROBLEMS = {
+  RWA_PERMISSIONED: "this token restricts who can hold it, so it can't be offered yet.",
+  RWA_ROUTE_UNSUPPORTED: "only trading on the open market is supported for tokenized assets.",
+  RWA_PRICE_REQUIRED: "a current market price is required for tokenized assets.",
+} as const;
+
+/** Spec 11 section 4: why a tokenized asset cannot be offered at all, from its ACTIVE routed deployments (`priced`: it has the market price the caller requires). */
+export function rwaProblem(options: { permissioned: boolean; method: string }[], priced: boolean): keyof typeof RWA_PROBLEMS | null {
+  if (options.every((o) => o.permissioned)) return "RWA_PERMISSIONED";
+  if (!options.some((o) => !o.permissioned && RWA_ROUTE_METHODS.includes(o.method))) return "RWA_ROUTE_UNSUPPORTED";
+  return priced ? null : "RWA_PRICE_REQUIRED";
+}
+
+export const eligibilityResponseSchema = z.object({ declaration: eligibilityDeclarationViewSchema.nullable() });
+export type EligibilityResponse = z.infer<typeof eligibilityResponseSchema>;

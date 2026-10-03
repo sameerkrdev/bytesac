@@ -6,14 +6,14 @@ import {
 } from "@repo/db";
 import { logger } from "@repo/logger";
 import {
-  ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, MIN_TRADE_USDC_DEFAULT, USDC_SOLANA_MINT, feePlacement, micro, minOut, networkFeeMicro, planRebalance,
+  ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, RWA_ROUTE_METHODS, MIN_TRADE_USDC_DEFAULT, USDC_SOLANA_MINT, feePlacement, micro, minOut, networkFeeMicro, planRebalance,
   type AssetChain, type BasketFees, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult,
 } from "@repo/validator";
 import { maxBtcMinerFee } from "../providers/bitcoin";
 import { solanaBalance } from "../providers/solana-tx";
 import { writeAudit } from "./audit";
 import { planFees } from "./fees";
-import { assertAllowed, decisionOf, evaluateFor, isRwa, RWA_ROUTE_METHODS } from "./eligibility";
+import { assertAllowed, decisionOf, evaluateFor, isRwa } from "./eligibility";
 import { getInvestability } from "./investability";
 import {
   FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, addressOn, applyVersion, assertEligible, assertNoneInFlight, auditBase, basketCashMicro, findByKey, freeUsdcMicro, getOperation, insertPlan, operationView,
@@ -225,7 +225,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
       .innerJoin(executionRoutes, and(eq(executionRoutes.deploymentId, instrumentDeployments.id), eq(executionRoutes.status, "ACTIVE")))
       .where(and(eq(instrumentDeployments.id, body.deploymentId), eq(instrumentDeployments.status, "ACTIVE"))).orderBy(asc(executionRoutes.createdAt), asc(executionRoutes.id)))
       // Spec 11: a tokenized asset is bought back only on a permissionless token with a synchronous secondary-market route.
-      .filter((r) => !isRwa(r.assetType) || (!r.permissioned && RWA_ROUTE_METHODS.includes(r.method as (typeof RWA_ROUTE_METHODS)[number])));
+      .filter((r) => !isRwa(r.assetType) || (!r.permissioned && RWA_ROUTE_METHODS.includes(r.method)));
     if (!d) throw createHttpError(409, "There is no active route to buy this asset right now.", { code: "NOT_INVESTABLE" });
     const eligibility = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: isRwa(d.assetType) ? [{ instrumentId: d.instrumentId, assetType: d.assetType, deploymentId: body.deploymentId, action: "acquire" }] : [] });
     assertAllowed(eligibility);

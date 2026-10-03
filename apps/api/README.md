@@ -101,6 +101,12 @@ Operations run on the same worker as discovery: `track-leg` (after each submissi
 | Tokens | `GET /v1/tokens` (`chains`) documents no verified or flagged field | A `flagged` signal; today only listed / not listed |
 | Analytics | Documented as `GET /v2/analytics/transfers` (`wallet`, `status`, `fromTimestamp`, `toTimestamp`, `limit`, cursor); the design said v1 | Access for our key, the timestamp unit (seconds assumed) and pagination beyond the first page |
 
+## Tokenized assets and eligibility (Spec 11)
+
+- Tokenized (RWA) assets are bought and sold through LI.FI like crypto, but only for permissionless tokens with a synchronous `swap`/`secondary_market` route and a fresh CoinMarketCap price; every RWA acquire or sell is gated by the eligibility engine (declared country and investor status, deny by default) and each decision is stored in `eligibility_decisions`.
+- `GEO_COUNTRY_HEADER` (optional): name of the request header that carries the client country (for example `CF-IPCountry`). Unset means no geo signal and the header is ignored. **The edge must strip any client-supplied value of this header**, otherwise a client can choose its own country. A country that differs from the declared one needs review (`REVIEW_REQUIRED`).
+- Users declare country and investor status with `POST /v1/me/eligibility` (append-only, valid 365 days, 10 per day); `GET /v1/me/eligibility` returns the current one.
+
 ## Cloudflare R2 (organization documents)
 
 Organization verification documents are private and live in one R2 bucket (ADR-008). The API never streams files: it signs short-lived URLs. Every step below is a user action; the API refuses to start without the four `R2_*` variables.

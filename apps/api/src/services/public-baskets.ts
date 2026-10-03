@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
-  assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations,
+  assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations,
   platformFeeSchedules,
 } from "@repo/db";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@repo/validator";
 import { cursorSchema } from "./applications";
 import { currentDisclosures, versionDiff } from "./baskets";
+import { evaluateFor, isRwa } from "./eligibility";
 import { orgDisplayName } from "./members";
 import { PAGE_SIZE } from "./organization-review";
 import { getPrices } from "./pricing";
@@ -58,7 +59,7 @@ export async function listPublicBaskets(q: { cursor?: string }): Promise<PublicB
  * The current published version only, built from an explicit select list (no row is passed through). An old slug answers `{ redirectTo }`;
  * a basket that was never published, was rejected or does not exist is a 404. A RETIRED basket is served.
  */
-export async function getPublicBasket(slug: string): Promise<PublicBasketResponse> {
+export async function getPublicBasket(slug: string, viewer: { userId: string; ipCountry: string | null } | null): Promise<PublicBasketResponse> {
   const notFound = () => createHttpError("Basket not found", { code: "NOT_FOUND" });
   const [b] = await db.select({ id: baskets.id, slug: baskets.slug, status: baskets.status, organizationId: baskets.organizationId, currentVersionId: baskets.currentVersionId, orgName: orgDisplayName })
     .from(baskets).innerJoin(organizations, eq(organizations.id, baskets.organizationId)).where(eq(baskets.slug, slug));
@@ -76,6 +77,11 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
   }).from(basketVersionAssets).innerJoin(instruments, eq(instruments.id, basketVersionAssets.instrumentId))
     .where(and(eq(basketVersionAssets.versionId, v!.id), eq(basketVersionAssets.revision, v!.assetsRevision))).orderBy(desc(basketVersionAssets.targetWeightBps), asc(instruments.id));
   const prices = await getPrices(assets.map((a) => a.instrumentId));
+  // Spec 11 section 8: a signed-in viewer sees their own outcome for each tokenized asset (acquire, on the asset's first ACTIVE deployment); anyone sees that requirements exist.
+  const rwa = assets.filter((a) => isRwa(a.assetType));
+  const deployed = viewer && rwa.length ? await db.selectDistinctOn([instrumentDeployments.instrumentId], { instrumentId: instrumentDeployments.instrumentId, id: instrumentDeployments.id }).from(instrumentDeployments)
+    .where(and(inArray(instrumentDeployments.instrumentId, rwa.map((a) => a.instrumentId)), eq(instrumentDeployments.status, "ACTIVE"))).orderBy(instrumentDeployments.instrumentId, asc(instrumentDeployments.createdAt), asc(instrumentDeployments.id)) : [];
+  const outcomes = viewer ? await evaluateFor(db, { userId: viewer.userId, ipCountry: viewer.ipCountry, items: rwa.flatMap((a) => { const d = deployed.find((x) => x.instrumentId === a.instrumentId); return d ? [{ instrumentId: a.instrumentId, assetType: a.assetType, deploymentId: d.id, action: "acquire" as const }] : []; }) }) : null;
   const history = await db.select().from(basketVersions).where(and(eq(basketVersions.basketId, b.id), inArray(basketVersions.status, ["published", "superseded"]))).orderBy(desc(basketVersions.versionNumber));
   // Opted-in public names only; a member who did not opt in is "Team member". Assignments that never became ACTIVE are not history.
   // A published manager profile supplies the name and handle; a hidden or unpublished one falls back to the opt-in name.
@@ -95,6 +101,7 @@ export async function getPublicBasket(slug: string): Promise<PublicBasketRespons
   return {
     performance: { available: metrics.available, dataDays: metrics.dataDays, series }, metrics, label: PERFORMANCE_LABEL, tags,
     sectors: [...sectors].map(([sector, bps]) => ({ sector: sector as (typeof assets)[number]["sector"], bps })),
+    eligibility: { requirements: rwa.length > 0, ...(outcomes ? { assets: [...outcomes].map(([instrumentId, r]) => ({ instrumentId, outcome: r.outcome, reason: r.reason })) } : {}) },
     slug: b.slug, status: b.status, hasAssetWarning: assets.some((a) => a.instrumentStatus === "PAUSED" || a.instrumentStatus === "DEPRECATED"),
     organization: { id: b.organizationId, displayName: b.orgName },
     version: {

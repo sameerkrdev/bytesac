@@ -1,11 +1,11 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { assetProviders, eligibilityDecisions, eligibilityDeclarations, eligibilityRules, executionRoutes, type DbOrTx } from "@repo/db";
-import { RWA_ASSET_TYPES, evaluateEligibility, type AssetType, type EligibilityResult } from "@repo/validator";
+import { assetProviders, db, eligibilityDecisions, eligibilityDeclarations, eligibilityRules, executionRoutes, type DbOrTx } from "@repo/db";
+import { DECLARATION_TTL_DAYS, RWA_ASSET_TYPES, RWA_ROUTE_METHODS, evaluateEligibility, type AssetType, type EligibilityDeclarationInput, type EligibilityResponse, type EligibilityResult } from "@repo/validator";
+import type { RequestMeta } from "../middleware/request-context";
 import { selectRouteProvider } from "../providers/routes";
+import { writeAudit } from "./audit";
 
-/** Route methods an RWA may use in release 1: synchronous secondary-market trades through LI.FI (Spec 11 decision 1). */
-export const RWA_ROUTE_METHODS = ["swap", "secondary_market"] as const;
 export const isRwa = (assetType: AssetType): boolean => RWA_ASSET_TYPES.includes(assetType);
 
 export type Evaluated = EligibilityResult & { declarationId: string | null; routeId: string | null };
@@ -21,7 +21,7 @@ export async function evaluateFor(conn: DbOrTx, i: { userId: string; ipCountry: 
   const rules = await conn.select().from(eligibilityRules).where(and(inArray(eligibilityRules.instrumentId, i.items.map((x) => x.instrumentId)), eq(eligibilityRules.status, "ACTIVE")));
   const routes = await conn.select({ id: executionRoutes.id, deploymentId: executionRoutes.deploymentId, provider: assetProviders.name }).from(executionRoutes)
     .innerJoin(assetProviders, eq(assetProviders.id, executionRoutes.providerId))
-    .where(and(inArray(executionRoutes.deploymentId, i.items.map((x) => x.deploymentId)), eq(executionRoutes.status, "ACTIVE"), inArray(executionRoutes.method, RWA_ROUTE_METHODS)))
+    .where(and(inArray(executionRoutes.deploymentId, i.items.map((x) => x.deploymentId)), eq(executionRoutes.status, "ACTIVE"), inArray(executionRoutes.method, RWA_ROUTE_METHODS as (typeof executionRoutes.method.enumValues)[number][])))
     .orderBy(asc(executionRoutes.createdAt), asc(executionRoutes.id));
   const [declaration] = await conn.select().from(eligibilityDeclarations).where(eq(eligibilityDeclarations.userId, i.userId)).orderBy(desc(eligibilityDeclarations.createdAt), desc(eligibilityDeclarations.id)).limit(1);
   const now = new Date();
@@ -55,3 +55,23 @@ export function assertAllowed(results: Map<string, Evaluated>): void {
 /** What a plan records for a leg (or a sell exclusion) once the operation and leg ids exist. */
 export interface DecisionDraft { instrumentId: string; action: "acquire" | "sell"; result: Evaluated }
 export const decisionOf = (m: Map<string, Evaluated>, instrumentId: string, action: DecisionDraft["action"]): DecisionDraft | undefined => (m.has(instrumentId) ? { instrumentId, action, result: m.get(instrumentId)! } : undefined);
+
+/** The user's latest declaration with its expiry (365 days after it was made), or `null`. */
+export async function currentDeclaration(conn: DbOrTx, userId: string): Promise<EligibilityResponse> {
+  const [d] = await conn.select().from(eligibilityDeclarations).where(eq(eligibilityDeclarations.userId, userId)).orderBy(desc(eligibilityDeclarations.createdAt), desc(eligibilityDeclarations.id)).limit(1);
+  if (!d) return { declaration: null };
+  const expiresAt = new Date(d.createdAt.getTime() + DECLARATION_TTL_DAYS * 86_400_000);
+  return { declaration: { country: d.country, investorStatus: d.investorStatus, attestationVersion: d.attestationVersion, createdAt: d.createdAt.toISOString(), expiresAt: expiresAt.toISOString(), expired: expiresAt.getTime() < Date.now() } };
+}
+
+/** Appends a declaration (never edits one) with the request's geo signal, audited as `eligibility.declared`. */
+export async function declare(ctx: { userId: string; sessionId: string; meta: RequestMeta }, body: EligibilityDeclarationInput): Promise<EligibilityResponse> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx.insert(eligibilityDeclarations).values({ userId: ctx.userId, country: body.country, investorStatus: body.investorStatus, attestationVersion: body.attestationVersion, ipCountry: ctx.meta.ipCountry }).returning({ id: eligibilityDeclarations.id });
+    await writeAudit(tx, {
+      actorType: "user", actorUserId: ctx.userId, sessionId: ctx.sessionId, requestId: ctx.meta.requestId, action: "eligibility.declared", entityType: "eligibility_declaration", entityId: row!.id,
+      metadata: { country: body.country, investorStatus: body.investorStatus, attestationVersion: body.attestationVersion, ipCountry: ctx.meta.ipCountry },
+    });
+  });
+  return currentDeclaration(db, ctx.userId);
+}
