@@ -101,6 +101,15 @@ Merge-time decisions (after the whole-branch review):
 | 5 | When does the full verification gate run | before the fix wave · after the fix wave | **After the fix wave** | Controller runs the gate once the fixes are committed |
 
 
+## Spec 15 — Basic UI for web and mobile (2026-10-03)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Scope | A web consistency pass + mobile investor parity (rec.) · B mobile only · C A + manager screens on mobile | **A** | As A; manager/ops web-only |
+| 2 | Mobile signing | A Solana + EVM on mobile, Bitcoin hands off to web (rec.) · B full Bitcoin on mobile · C view-only mobile | **A** | As A; AppKit RN Bitcoin checked in docs |
+| 3 | Shared logic | A move pure logic to `@repo/app-core` (rec.) · B duplicate in mobile · C React Native Web | **A** | Shared `legSigner` + helpers |
+
+
 ---
 
 ## Roadmap decisions
