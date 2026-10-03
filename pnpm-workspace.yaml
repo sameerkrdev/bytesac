@@ -24,3 +24,5 @@ minimumReleaseAgeExclude:
   - turbo@2.11.5
 overrides:
   '@wagmi/connectors': 6.2.0
+  '@wagmi/core': 2.22.1
+  viem: 2.56.9

@@ -25,13 +25,16 @@ export async function getPrices(instrumentIds: string[]): Promise<PriceView[]> {
   const market = refs.filter((r) => r.kind === "market");
   const cached = market.length ? await redis.mget(market.map((r) => `price:cmc:${r.externalId}`)).catch(() => []) : [];
   const quotes = new Map<string, { value: string; observedAt: string }>();
-  market.forEach((r, i) => { const hit = cached[i]; if (hit) quotes.set(r.externalId!, JSON.parse(hit)); });
-  const missing = [...new Set(market.map((r) => r.externalId!).filter((cmcId) => !quotes.has(cmcId)))];
+  const cachedUnavailable = new Set<string>();
+  market.forEach((r, i) => { const hit = cached[i]; if (hit === "null") cachedUnavailable.add(r.externalId!); else if (hit) quotes.set(r.externalId!, JSON.parse(hit)); });
+  const missing = [...new Set(market.map((r) => r.externalId!).filter((cmcId) => !quotes.has(cmcId) && !cachedUnavailable.has(cmcId)))];
   if (missing.length && env.COINMARKETCAP_API_KEY) {
     try {
       const fresh = await fetchQuotes(missing);
       const pipe = redis.pipeline();
       for (const [cmcId, q] of fresh) { quotes.set(cmcId, q); pipe.set(`price:cmc:${cmcId}`, JSON.stringify(q), "EX", 60); }
+      // An id the provider answered without a usable price is cached as unavailable for the same TTL (one bad entry never hides the others).
+      for (const cmcId of missing) if (!fresh.has(cmcId)) pipe.set(`price:cmc:${cmcId}`, "null", "EX", 60);
       await pipe.exec();
     } catch (err) {
       logger.warn("coinmarketcap quotes unavailable", { errMessage: err instanceof Error ? err.message : "unknown" });

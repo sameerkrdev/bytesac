@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { app } from "../../src/app";
+import { redis } from "../../src/middleware/rate-limit";
 import { adminSql, resetDb } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { act, activeCrypto, admin, decide, evmAddress, get, itemAct, mkAsset, mkDeployment, mkIssuer, mkProvider, mkRoute, mkRule, patch, plainUser, post, putRef, readyCrypto, reviewer, setStatus, submit } from "./helpers";
@@ -104,6 +105,7 @@ describe("allow-list", () => {
     await mkRoute(r.h, id, deploymentId, await mkProvider(r.h));
     await putRef(r.h, id, "nav");
     fakes.cmc.quotes.set("1027", { value: "1.0001", observedAt: new Date().toISOString() });
+    await redis.del("price:cmc:1027"); // building the fixtures priced it once, unavailable (cached for 60 s)
     await submit(r.h, id);
     await decide(a.h, id, { decision: "approved", message: "SECRET-MESSAGE", internalNote: "SECRET-NOTE" });
     await act(a.h, id, "activate");

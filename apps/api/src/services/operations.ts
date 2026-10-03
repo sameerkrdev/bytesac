@@ -20,7 +20,7 @@ import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, buildFeeTransfer, cosign
 import type { RequestMeta } from "../middleware/request-context";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { assertWalletsCanFund, platformAddress, releaseRecoveryGas, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
+import { assertWalletsCanFund, platformAddress, releaseUnspentGas, reserveGas, sendGasDrop } from "./gas";
 import { type DecisionDraft, assertAllowed, decisionOf, evaluateFor, isRwa, recordDecisions } from "./eligibility";
 import { getInvestability } from "./investability";
 import { notify } from "./notifications";
@@ -108,8 +108,13 @@ export async function setOperationStatus(tx: Tx, ctx: OpCtx | null, op: Pick<Op,
   const rows = await tx.update(operations).set({ status: to, updatedAt: sql`now()` }).where(and(eq(operations.id, op.id), eq(operations.status, op.status))).returning({ id: operations.id });
   if (rows.length !== 1) throw invalidTransition("This operation changed. Reload and try again.");
   await writeAudit(tx, { ...auditBase(ctx, op.id), action: `operation.${to.toLowerCase()}`, entityType: "operation", entityId: op.id, metadata: { from: op.status, to } });
-  if (to === "CANCELLED") await releaseUnspentGas(tx, op.id);
+  // Every terminal status gives back what was reserved and will never be spent (idempotent; a sent drop and a submitted leg's fee stay counted).
+  if (to !== "IN_PROGRESS") await releaseUnspentGas(tx, op.id);
 }
+
+/** What a stopped IN_PROGRESS operation becomes: PARTIAL once an asset leg settled, a recovery token arrived or a leg's outcome is unknown, otherwise FAILED. */
+export const stopStatus = (legs: Pick<Leg, "kind" | "status" | "recoveryToken">[]): "PARTIAL" | "FAILED" =>
+  legs.some((l) => l.status === "UNKNOWN" || l.recoveryToken || (l.kind !== "network_fee" && l.status === "SETTLED")) ? "PARTIAL" : "FAILED";
 
 /** Basket cash of a position in micro-USDC: what rebalance sells credited, buys and fees spent, sells released. */
 export async function basketCashMicro(conn: DbOrTx, positionId: string): Promise<bigint> {
@@ -262,8 +267,8 @@ export async function legCost(q: PlanQuote, toChain: AssetChain, toToken: string
   return sponsoredCost(q, !q.transaction && toChain === "solana" && toToken && (await tokenAccountMissing(solanaOwner, toToken)) ? TOKEN_ACCOUNT_RENT_LAMPORTS : 0n);
 }
 
-/** An estimated leg records what it reserved, so the quote it later signs can top the reservation up. */
-export const reservedExpectedTx = (c: { lamports: bigint; estimated?: boolean }): Record<string, unknown> | null => (c.estimated ? { reservedNative: c.lamports.toString() } : null);
+/** A leg records what it reserved: the quote it later signs can top the reservation up, and a stop or terminal status gives it back if the leg never sent. */
+export const reservedExpectedTx = (c: { lamports: bigint }): Record<string, unknown> => ({ reservedNative: c.lamports.toString() });
 
 /** Reserves platform-paid gas, then inserts the operation and its legs, all in one transaction (a refused budget leaves no operation). */
 export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$inferInsert, "userId" | "expiresAt" | "gasReserved">; legs: LegDraft[]; gas: Map<AssetChain, bigint>; fees: PlannedFee[]; excluded?: DecisionDraft[] }): Promise<string> {
@@ -612,6 +617,8 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
 async function reserveLegGas(op: Op, leg: Leg, chain: AssetChain, needed: bigint): Promise<void> {
   await db.transaction(async (tx) => {
     const locked = await lockOperation(tx, op.id);
+    // A stop, expiry or completion may have happened since the quote began: a closed operation reserves nothing.
+    if (locked.status !== "PLANNED" && locked.status !== "IN_PROGRESS") throw createHttpError(409, "This operation is no longer open.", { code: "INVALID_TRANSITION" });
     const [current] = await tx.select({ expectedTx: operationLegs.expectedTx, status: operationLegs.status }).from(operationLegs).where(eq(operationLegs.id, leg.id));
     const ex = (current!.expectedTx ?? {}) as { gasReserved?: boolean; reservedNative?: string };
     const have = ex.gasReserved === false ? 0n : ex.reservedNative !== undefined ? BigInt(ex.reservedNative) : null;
@@ -723,8 +730,7 @@ export async function cancelOperation(ctx: OpCtx, opId: string): Promise<Operati
     if (legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"].includes(l.status))) throw invalidTransition("A transaction is still pending. Wait for it to finish.");
     if (op.status === "PLANNED") return setOperationStatus(tx, ctx, op, "CANCELLED");
     if (op.status === "IN_PROGRESS") {
-      await releaseRecoveryGas(tx, opId); // a recovery leg that was never sent gives back the gas reserved for it
-      return setOperationStatus(tx, ctx, op, legs.some((l) => l.status === "UNKNOWN" || l.recoveryToken || (l.kind !== "network_fee" && l.status === "SETTLED")) ? "PARTIAL" : "FAILED");
+      return setOperationStatus(tx, ctx, op, stopStatus(legs));
     }
     throw invalidTransition(`This operation is ${op.status.toLowerCase()}.`);
   });

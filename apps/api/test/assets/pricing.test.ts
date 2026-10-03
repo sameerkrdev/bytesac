@@ -74,6 +74,7 @@ describe("market prices", () => {
   it("a provider failure is unavailable, never an error, and is not cached", async () => {
     const r = await reviewer();
     const id = await withMarket(r.h, "1");
+    await quiet();
     fakes.cmc.fail = true;
     expect((await getPrices([id]))[0]).toMatchObject({ status: "unavailable", value: null });
     fakes.cmc.fail = false;
@@ -99,14 +100,29 @@ describe("market prices", () => {
     const r = await reviewer();
     const a = await withMarket(r.h, "1");
     const b = await withMarket(r.h, "999");
+    await quiet();
     fakes.cmc.quotes.set("1", quote("1"));
     expect((await getPrices([a, b])).map((p) => p.status)).toEqual(["ok", "unavailable"]);
+  });
+
+  it("an id answered without a usable price is cached as unavailable; the others stay ok and cached", async () => {
+    const r = await reviewer();
+    const a = await withMarket(r.h, "1");
+    const b = await withMarket(r.h, "999");
+    await quiet();
+    fakes.cmc.quotes.set("1", quote("1"));
+    expect((await getPrices([a, b])).map((p) => p.status)).toEqual(["ok", "unavailable"]);
+    expect(await redis.get("price:cmc:999")).toBe("null");
+    expect((await redis.ttl("price:cmc:1"))).toBeGreaterThan(0);
+    expect((await getPrices([a, b])).map((p) => p.status)).toEqual(["ok", "unavailable"]);
+    expect(fakes.cmc.calls).toEqual([["1", "999"]]);
   });
 
   it("a quote observed more than 5 minutes ago is stale", async () => {
     const r = await reviewer();
     const a = await withMarket(r.h, "1");
     const b = await withMarket(r.h, "2");
+    await quiet();
     fakes.cmc.quotes.set("1", quote("1", 6 * 60_000));
     fakes.cmc.quotes.set("2", quote("2", 60_000));
     expect((await getPrices([a, b])).map((p) => p.stale)).toEqual([true, false]);
@@ -166,6 +182,7 @@ describe("NAV", () => {
   it("the ops prices route returns the same view", async () => {
     const r = await reviewer();
     const id = await withMarket(r.h, "1");
+    await quiet();
     fakes.cmc.quotes.set("1", quote("5"));
     const res = await get(r.h, `/v1/ops/assets/${id}/prices`);
     expect(res.status).toBe(200);
