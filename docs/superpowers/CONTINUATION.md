@@ -1,6 +1,6 @@
 # Bytesac — Continuation Guide (for a new session or a different AI model)
 
-Written 2026-10-03 after Spec 11 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
+Written 2026-10-03 after Spec 12 was merged. Read this **first**, then `docs/superpowers/HANDOFF.md` (§3 rules and §4 working method are mandatory), then `AGENTS.md`. This guide tells you where the project is, how the user wants work done, exactly what to build next, and the traps that cost time in earlier sessions.
 
 Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Local path: `D:\Coding\projects\bytesac` (Windows 11; Git Bash + PowerShell; **Python is not installed** — edit files with your editor tools or `node -e`).
 
@@ -29,8 +29,9 @@ Repository: `git@github.com:sameerkrdev/bytesac.git` (default branch `main`). Lo
 | 10 Manager fees, platform fees, earnings | Manager entry/rebalance fees to the org payout wallet, ops-configured platform fee per operation (overrides), one user-signed fee leg with all transfers, waivers, earnings (Owner/Admin) and ops revenue with CSV, daily revenue reconciliation, public fees page | ADR-016, D-085..D-092 |
 | 10.1 LI.FI hardening | Plan-time estimates via routes, `SOL_REQUIRED`, Mayan rule, recovery leg after a failed destination swap, refund messaging, 5% price impact, ops deny list, route fees, LI.FI transfer lookup, token verification, fee-on-transfer flag | ADR-017, D-093..D-099 |
 | 11 Secondary-market RWAs and eligibility | Permissionless tokenized RWAs via LI.FI, eligibility engine (declarations, geo signal, deny by default), enforcement at every acquire/sell point, decision audit, declaration UI and notices | ADR-018, D-100..D-106 |
+| 12 Launch hardening | Price batch, mobile types, price-impact backstop, gas reservation lifecycle, sweep isolation, position auto/dust close, recovery auto-stop, bought-only investability + ops alert, revenue bucketing, functional bug fixes | D-107..D-113 |
 
-Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`, Spec 10.1 `b23da86`, Spec 11 `d24d0ad`. Migrations `0000..0015`. Decision register up to **D-106**; ADRs up to **ADR-018**.
+Latest merges: Spec 7 `9d56ef2`, ADR-013 `545b187`, Spec 8 `4170ee8`, Spec 9 `14e1fde`, Spec 10 `ee86cd4`, Spec 10.1 `b23da86`, Spec 11 `d24d0ad`, Spec 12 `2f05253`. Migrations `0000..0016`. Decision register up to **D-113**; ADRs up to **ADR-018**.
 
 Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (Spec 9 review artifacts lived in the git-ignored SDD workspace and were deleted after merge; findings and rulings are summarized in HANDOFF §5).
 
@@ -72,7 +73,7 @@ Specs: `docs/superpowers/specs/` · Plans: `docs/superpowers/plans/` · Spec 8 r
 
 ---
 
-## 5. Next phase — Spec 12: Launch hardening
+## 5. Done — Spec 12: Launch hardening (next: Spec 13, see §6 and HANDOFF)
 
 **Go-ahead given 2026-10-03; brainstorm in progress.** Scope (user answer A): (1) must-fix — CoinMarketCap `price: null` batch bug, `mobile#check-types` duplicate wagmi peers; (2) money/ops correctness — gas-budget counter leaks (top-up after stop/expiry, Stop not releasing top-ups, abandoned `IN_PROGRESS` reservations until midnight, refused drop keeping its reservation, retried drop skipping its status re-check), fully sold positions not auto-closed, sweeps without per-record isolation, a stuck recovery holding the active-operation slot, a rebalance blocked by a structurally non-investable held RWA, server-side price-impact backstop, revenue reconciliation bucketing; (3) small functional bugs — concurrent invite aborting sign-in, rejected invite consuming the budget, Spec 2 "Not approved" option, Spec 3 orphan R2 copy, publish slug-collision retry, `VERSION_CONFLICT` ms compare, double-click contact add 404, portfolio slugs instead of names. Code-quality debt goes to Spec 13, CI/deploy to Spec 16, UI gaps to Spec 15. Sources: `docs/OPEN-ITEMS.md` §6–§7 and HANDOFF §5.
 
