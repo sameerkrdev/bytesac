@@ -35,6 +35,18 @@ describe("contacts", () => {
     expect(JSON.stringify(audit[0]!.metadata)).not.toContain("alice@example.com");
   });
 
+  it("adding the same value twice (a double click) returns the existing pending verification: same contact, one code sent, never a 404", async () => {
+    const { app, fakes, h } = await setup();
+    const first = await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: "twice@example.com" });
+    const second = await request(app).post("/v1/me/contacts").set(h).send({ type: "email", value: " Twice@Example.com " });
+    expect(second.status).toBe(201);
+    expect(second.body.contact.id).toBe(first.body.contact.id);
+    expect(second.body.verification).toEqual(first.body.verification);
+    expect(fakes.email.sent).toHaveLength(1);
+    const ok = await request(app).post(`/v1/me/contacts/${first.body.contact.id}/verify`).set(h).send({ code: fakes.email.sent[0]!.code });
+    expect(ok.body.status).toBe("verified");
+  });
+
   it("phone: Twilio Verify start/check with the stored destination", async () => {
     const { app, fakes, h } = await setup();
     const add = await request(app).post("/v1/me/contacts").set(h).send({ type: "phone", value: "+1 415 555 2671" });

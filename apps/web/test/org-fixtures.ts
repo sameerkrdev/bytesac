@@ -51,7 +51,7 @@ export const basketVersion = (over: Partial<BasketVersionView> = {}): BasketVers
   id: VID, versionNumber: 1, status: "draft", name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "Thesis", methodology: "Method",
   intendedInvestor: null, horizon: null, keyAssumptions: null, knownLimitations: null, strategyRisks: "Prices move", liquidityNotes: null, conflictsOfInterest: null, constraints: {}, rebalance: { reviewFrequency: "none" },
   fees: { entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 50 }, rebalance: { type: "percent", bps: 0 }, subscription: null }, minimumInvestmentUsdc: "100", minimumIncrementUsdc: null,
-  rationale: null, contentHash: null, submittedAt: null, approvedAt: null, publishedAt: null, createdAt: T, updatedAt: T,
+  rationale: null, contentHash: null, submittedAt: null, approvedAt: null, publishedAt: null, createdAt: T, updatedAt: T, revision: 0,
   assets: [basketAsset(), basketAsset({ instrumentId: ETH, name: "Ether", symbol: "ETH", targetWeightBps: 4000 })], disclosures: [], ...over,
 });
 

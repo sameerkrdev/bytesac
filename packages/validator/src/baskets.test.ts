@@ -94,7 +94,9 @@ describe("fixed fee cap (exact micro-USDC)", () => {
 });
 
 describe("requests", () => {
-  it("requires expectedUpdatedAt and rejects unknown keys", () => {
+  it("requires expectedRevision or expectedUpdatedAt and rejects unknown keys", () => {
+    expect(saveBasketDraftRequestSchema.safeParse({ expectedRevision: 3, shortDescription: "x" }).success).toBe(true);
+    expect(saveBasketDraftRequestSchema.safeParse({ expectedRevision: -1 }).success).toBe(false);
     expect(saveBasketDraftRequestSchema.safeParse({ name: "Core" }).success).toBe(false);
     expect(saveBasketDraftRequestSchema.safeParse({ expectedUpdatedAt: new Date().toISOString(), status: "ACTIVE" }).success).toBe(false);
     expect(saveBasketDraftRequestSchema.safeParse({ expectedUpdatedAt: new Date().toISOString(), shortDescription: null }).success).toBe(true);

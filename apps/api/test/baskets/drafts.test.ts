@@ -112,6 +112,22 @@ describe("save draft", () => {
     expect(now).toMatchObject({ thesis: "First writer", assets: [] });
   });
 
+  it("a stale expectedRevision is VERSION_CONFLICT even when expectedUpdatedAt is current; the revision rises with every save; the legacy updatedAt path still works", async () => {
+    const { id, openVersion } = await createBasket(ctx.owner.h, ctx.owner.id);
+    expect(openVersion.revision).toBe(0);
+    const first = await save(ctx.owner.h, id, { expectedRevision: 0, thesis: "First writer" });
+    expect(first.status).toBe(200);
+    expect(first.body.openVersion.revision).toBe(1);
+    const stale = await save(ctx.owner.h, id, { expectedRevision: 0, expectedUpdatedAt: first.body.openVersion.updatedAt, thesis: "Second writer" });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe("VERSION_CONFLICT");
+    expect((await getBasket(ctx.owner.h, id)).body.openVersion).toMatchObject({ thesis: "First writer", revision: 1 });
+    const legacy = await save(ctx.owner.h, id, { expectedUpdatedAt: first.body.openVersion.updatedAt, thesis: "Legacy writer" });
+    expect(legacy.status).toBe(200);
+    expect(legacy.body.openVersion.revision).toBe(2);
+    expect((await save(ctx.owner.h, id, { thesis: "No token" })).status).toBe(400);
+  });
+
   it("lets exactly one of two simultaneous saves win", async () => {
     const { id, openVersion } = await createBasket(ctx.owner.h, ctx.owner.id);
     const results = await Promise.all(["One", "Two"].map((t) => save(ctx.owner.h, id, { expectedUpdatedAt: openVersion.updatedAt, thesis: t })));

@@ -1,7 +1,8 @@
 import request from "supertest";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../../src/app";
 import { redis } from "../../src/middleware/rate-limit";
+import * as basketsService from "../../src/services/baskets";
 import { adminSql } from "../helpers/db";
 import { fakes } from "../helpers/fakes";
 import { opsUser } from "../managers/helpers";
@@ -135,6 +136,29 @@ describe("next versions", () => {
     const aliases = await adminSql<{ slug: string; basket_id: string }[]>`SELECT slug, basket_id FROM app.basket_slug_aliases WHERE basket_id = ${r.id}`;
     expect(aliases).toEqual([{ slug: oldSlug, basket_id: r.id }]);
     expect((await request(app).get(`/v1/public/baskets/${oldSlug}`)).body).toEqual({ redirectTo: row.slug });
+  });
+
+  it("a slug collision on publish is retried with a fresh suffix (up to 3 attempts), then fails", async () => {
+    const other = await publishedBasket(ctx.owner, ctx.owner.id, admin, a, b, "Rival Basket");
+    const taken = (await basketRow(other.id)).slug as string;
+    const rename = async (name: string) => {
+      const r = await publishedBasket(ctx.owner, ctx.owner.id, admin, a, b, name);
+      const v2 = (await post(ctx.owner.h, `/v1/baskets/${r.id}/versions`)).body.openVersion.id as string;
+      await saveOpen(ctx.owner.h, r.id, { name: `${name} Renamed`, rationale: "New direction" });
+      await submitBasket(ctx.owner.h, r.id);
+      await decideBasket(admin.h, r.id, v2, decision("approved"));
+      return r;
+    };
+    const first = await rename("Retry Basket");
+    const slugs = vi.spyOn(basketsService, "newSlug").mockReturnValueOnce(taken).mockReturnValueOnce(taken);
+    expect((await publishBasket(ctx.owner.h, first.id)).status).toBe(200); // collides twice, the third attempt draws a fresh slug
+    expect(slugs).toHaveBeenCalledTimes(3);
+    expect((await basketRow(first.id)).slug).toMatch(/^retry-basket-renamed-[a-z0-9]{6}$/);
+    const second = await rename("Doomed Basket");
+    slugs.mockReset().mockReturnValue(taken);
+    expect((await publishBasket(ctx.owner.h, second.id)).status).toBe(500); // three collisions in a row
+    expect(slugs).toHaveBeenCalledTimes(3);
+    slugs.mockRestore();
   });
 
   it("keeps the slug when the name is unchanged", async () => {

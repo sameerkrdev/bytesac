@@ -528,7 +528,7 @@ export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
     await reconcilePositions(ctx.userId).catch((err) => logger.warn("reconciliation failed", { errMessage: err instanceof Error ? err.message : "unknown" }));
   }
   const positions = await db.select({
-    p: basketPositions, slug: baskets.slug, currentVersionId: baskets.currentVersionId, assetsRevision: basketVersions.assetsRevision, appliedNumber: basketVersions.versionNumber, rebalance: basketVersions.rebalance,
+    p: basketPositions, slug: baskets.slug, name: sql<string>`coalesce((select v.name from app.basket_versions v where v.id = ${baskets.currentVersionId}), ${basketVersions.name})`, currentVersionId: baskets.currentVersionId, assetsRevision: basketVersions.assetsRevision, appliedNumber: basketVersions.versionNumber, rebalance: basketVersions.rebalance,
   }).from(basketPositions)
     .innerJoin(baskets, eq(baskets.id, basketPositions.basketId)).innerJoin(basketVersions, eq(basketVersions.id, basketPositions.appliedVersionId))
     .where(eq(basketPositions.userId, ctx.userId)).orderBy(desc(basketPositions.openedAt));
@@ -551,7 +551,7 @@ export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
   const diffs = new Map(await Promise.all(newer.map(async (v) => [v.id, await versionDiff(db, v)] as const)));
   const open = await db.select().from(operations).where(and(eq(operations.userId, ctx.userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"])));
 
-  const view = positions.map(({ p, slug, currentVersionId, assetsRevision, appliedNumber, rebalance }) => {
+  const view = positions.map(({ p, slug, name, currentVersionId, assetsRevision, appliedNumber, rebalance }) => {
     // Display only: values are decimal approximations of quantity x market price.
     const mine = holdings.filter((h) => h.positionId === p.id && BigInt(h.quantity) > 0n).map((h) => {
       const price = prices.find((x) => x.instrumentId === h.instrumentId && x.kind === "market" && x.status === "ok");
@@ -568,7 +568,7 @@ export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
       execution: open.some((o) => o.positionId === p.id) ? "PENDING" : ["PARTIAL", "FAILED"].includes(latestRebalance.find((o) => o.positionId === p.id)?.status ?? "") ? "INCOMPLETE" : "NONE",
     };
     return {
-      id: p.id, basketId: p.basketId, basketSlug: slug, status: p.status, openedAt: p.openedAt.toISOString(), closedAt: p.closedAt?.toISOString() ?? null,
+      id: p.id, basketId: p.basketId, basketSlug: slug, basketName: name, status: p.status, openedAt: p.openedAt.toISOString(), closedAt: p.closedAt?.toISOString() ?? null,
       holdings: mine.map(({ h, usd }) => ({
         deploymentId: h.deploymentId, instrumentId: h.instrumentId, symbol: h.symbol, chain: h.chain, quantity: h.quantity, decimals: h.decimals, valueUsd: usd === null ? null : usd.toFixed(2),
         actualBps: total && usd !== null ? Math.round((usd / total) * 10_000) : null,
