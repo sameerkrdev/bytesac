@@ -100,23 +100,24 @@ export function headlineOf(s: PositionStates): Headline {
   return "ALIGNED";
 }
 
-export const NOTIFICATION_KINDS = ["rebalance_available", "drifted", "repair_required", "execution_incomplete", "basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired", "lead_changed"] as const;
+export const NOTIFICATION_KINDS = ["rebalance_available", "drifted", "repair_required", "execution_incomplete", "basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired", "lead_changed", "instrument_not_investable"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /** Placeholder wording (compliance review later). Never states that a trade happened. */
-export function notificationText(kind: NotificationKind, data: { basketName?: string; basketSlug?: string; positionId?: string; asset?: string }): { title: string; body: string; link: string } {
+export function notificationText(kind: NotificationKind, data: { basketName?: string; basketSlug?: string; positionId?: string; asset?: string; autoStopped?: boolean; instrumentName?: string; instrumentId?: string; baskets?: string[] }): { title: string; body: string; link: string } {
   const basket = data.basketName ?? "Your basket";
-  const rebalance = `/portfolio/${data.positionId ?? ""}/rebalance`;
+  const rebalance = data.positionId ? `/portfolio/${data.positionId}/rebalance` : "/portfolio";
   const basketLink = data.basketSlug ? `/baskets/${data.basketSlug}` : "/portfolio";
   switch (kind) {
     case "rebalance_available": return { title: `${basket}: new version available`, body: "A new basket version is available. Applying creates a plan you review and sign; skipping changes nothing.", link: rebalance };
     case "drifted": return { title: `${basket} has drifted`, body: "Your basket has drifted from its target. You can review a rebalance plan or keep your allocation.", link: rebalance };
     case "repair_required": return { title: `${basket} needs attention`, body: "Wallet activity changed this basket's holdings. Review to buy back or update your baskets.", link: `/portfolio/repair/${data.asset ?? "cash"}` };
-    case "execution_incomplete": return { title: `${basket}: plan incomplete`, body: "Your last plan did not finish. Review where it stopped and continue when you are ready.", link: data.asset ? `/portfolio/repair/${data.asset}` : rebalance };
+    case "execution_incomplete": return { title: `${basket}: plan incomplete`, body: data.autoStopped ? "We stopped your unfinished swap; the tokens that arrived are in your wallet." : "Your last plan did not finish. Review where it stopped and continue when you are ready.", link: data.asset ? `/portfolio/repair/${data.asset}` : rebalance };
     case "basket_paused": return { title: `${basket} is paused`, body: "The basket is paused. Your holdings are unchanged.", link: basketLink };
     case "basket_unpaused": return { title: `${basket} is active again`, body: "The basket is no longer paused.", link: basketLink };
     case "basket_retirement_pending": return { title: `${basket} is being retired`, body: "The basket is pending retirement. Your holdings are unchanged; nothing happens without your signature.", link: basketLink };
     case "basket_retired": return { title: `${basket} is retired`, body: "The basket has been retired. Your holdings are unchanged; you can sell or leave at any time.", link: basketLink };
+    case "instrument_not_investable": return { title: `${data.instrumentName ?? "An asset"} is no longer investable`, body: `Baskets whose current version holds it: ${data.baskets?.join(", ") || "none"}.`, link: `/ops/assets/${data.instrumentId ?? ""}` };
     case "lead_changed": return { title: `${basket}: lead manager changed`, body: "The lead manager of this basket changed.", link: basketLink };
   }
 }

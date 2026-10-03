@@ -17,7 +17,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("Portfolio", () => {
   it("shows an open position with its value, actual against target weights and exit actions", async () => {
     show({ positions: [position()] });
-    const link = await screen.findByRole("link", { name: "core-crypto" });
+    const link = await screen.findByRole("link", { name: "Core Crypto" });
     expect(link).toHaveAttribute("href", "/baskets/core-crypto");
     expect(screen.getByText("$125.00")).toBeInTheDocument();
     expect(screen.getByText("0.03 ETH")).toBeInTheDocument();
@@ -27,6 +27,14 @@ describe("Portfolio", () => {
     expect(screen.getByRole("button", { name: "Leave basket (keep assets)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sell to USDC" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close position" })).toBeNull();
+  });
+
+  it("offers Close position only for a position worth under $1", async () => {
+    const p = position();
+    p.holdings = p.holdings.map((h) => ({ ...h, valueUsd: "0.40" }));
+    show({ positions: [p] });
+    expect(await screen.findByRole("button", { name: "Close position" })).toBeInTheDocument();
   });
 
   it("a SHORT holding gets a notice that nothing is bought or sold automatically", async () => {

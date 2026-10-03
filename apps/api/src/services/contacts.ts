@@ -120,6 +120,8 @@ export async function addContact(ctx: Ctx, i: { type: ContactType; rawValue: str
   const contact = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM app.users WHERE id = ${ctx.userId} FOR UPDATE`);
     const [replaced] = await tx.select().from(contacts).where(and(eq(contacts.userId, ctx.userId), eq(contacts.type, i.type), ne(contacts.status, "replaced")));
+    // The same value added again (a double click, a retry) is the contact already waiting for its code: not replaced, so the first request's send is not orphaned.
+    if (replaced?.status === "unverified" && replaced.value === value) return replaced;
     if (replaced) {
       await tx.update(contacts).set({ status: "replaced" }).where(eq(contacts.id, replaced.id));
       await supersedePending(tx, replaced.id);
@@ -130,7 +132,10 @@ export async function addContact(ctx: Ctx, i: { type: ContactType; rawValue: str
     await writeAudit(tx, { ...base, action: "contact.added", entityId: created!.id, metadata: { type: i.type, value: maskContact(i.type, value) } });
     return created!;
   }).catch((err: unknown) => { throw mapSendRace(err); });
-  return response(contact, await send(contact, ctx));
+  // The pending verification of that contact (if it still has one) is the answer; otherwise a new code goes out.
+  const [pending] = await db.select().from(contactVerifications).where(and(eq(contactVerifications.contactId, contact.id), eq(contactVerifications.status, "pending"), sql`${contactVerifications.expiresAt} > now()`))
+    .orderBy(desc(contactVerifications.createdAt)).limit(1);
+  return response(contact, pending ?? (await send(contact, ctx)));
 }
 
 export async function resendContact(ctx: Ctx, contactId: string): Promise<AddContactResponse> {

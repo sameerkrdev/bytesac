@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, gasDrops, isUniqueViolation, operationLegs, operations, platformWallets, sponsorUsage, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
 import { ASSET_CHAINS, type AssetChain } from "@repo/validator";
@@ -67,41 +67,41 @@ export async function reserveGas(tx: Tx, i: { userId: string; chain: AssetChain;
 /** Gas drops a user may receive per chain per UTC day (a second limit next to the budget, so repeated small drops cannot be farmed). */
 const MAX_DROPS_PER_DAY = 5;
 
+/** A drop the node refused (nothing was sent): its amount went back to the budget when it was refused, so it is neither spent nor counted toward the daily limit. */
+const refusedDrop = sql`(${gasDrops.status} = 'failed' and ${gasDrops.txHash} is null)`;
+
 /**
- * Gives back what a CANCELLED operation reserved but did not spend: the reservation per chain minus the drops actually sent for its legs (a Solana
- * fee is only ever spent after the first submission, which is after the last chance to cancel). Runs in the cancelling transaction; idempotent.
+ * Gives back what an operation reserved but will never spend. Runs in the transaction that makes it terminal (cancel, stop, completion, failure) and is
+ * idempotent: the remaining reservation is cleared. CANCELLED (nothing was ever submitted): the reservation per chain minus the drops actually sent for its
+ * legs. Any other terminal status: only the reservation of legs that never sent (a Solana leg without a source transaction, an EVM drop never recorded),
+ * because a submitted leg has spent its Solana fee and a recorded drop stays counted. ponytail: credited to the operation's creation day.
  */
 export async function releaseUnspentGas(tx: Tx, opId: string): Promise<void> {
-  const [op] = await tx.select({ userId: operations.userId, reserved: operations.gasReserved, day: sql<string>`(${operations.createdAt} at time zone 'utc')::date` }).from(operations).where(eq(operations.id, opId));
-  const sent = await tx.select({ chain: gasDrops.chain, total: sql<string>`sum(${gasDrops.amountNative})` }).from(gasDrops).innerJoin(operationLegs, eq(operationLegs.id, gasDrops.legId))
-    .where(eq(operationLegs.operationId, opId)).groupBy(gasDrops.chain);
-  for (const [chain, reserved] of Object.entries(op!.reserved)) {
-    const unspent = BigInt(reserved) - BigInt(sent.find((s) => s.chain === chain)?.total ?? 0);
-    if (unspent > 0n) {
-      await tx.update(sponsorUsage).set({ amountNative: sql`greatest(${sponsorUsage.amountNative} - ${unspent.toString()}::numeric, 0)` })
+  const [op] = await tx.select({ userId: operations.userId, status: operations.status, reserved: operations.gasReserved, day: sql<string>`(${operations.createdAt} at time zone 'utc')::date` }).from(operations).where(eq(operations.id, opId));
+  const reserved = op!.reserved;
+  const unspent = new Map<string, bigint>();
+  if (op!.status === "CANCELLED") {
+    const sent = await tx.select({ chain: gasDrops.chain, total: sql<string>`sum(${gasDrops.amountNative})` }).from(gasDrops).innerJoin(operationLegs, eq(operationLegs.id, gasDrops.legId))
+      .where(and(eq(operationLegs.operationId, opId), sql`not ${refusedDrop}`)).groupBy(gasDrops.chain);
+    for (const [chain, r] of Object.entries(reserved)) unspent.set(chain, BigInt(r) - BigInt(sent.find((s) => s.chain === chain)?.total ?? 0));
+  } else {
+    const legs = await tx.select({ chain: operationLegs.fromChain, sourceTx: operationLegs.sourceTx, payer: operationLegs.gasPayer, expectedTx: operationLegs.expectedTx, hasDrop: sql<boolean>`exists (select 1 from app.gas_drops d where d.leg_id = app.operation_legs.id)` })
+      .from(operationLegs).where(eq(operationLegs.operationId, opId));
+    for (const l of legs) {
+      const ex = (l.expectedTx ?? {}) as { gasReserved?: boolean; reservedNative?: string; gasDropNative?: string };
+      const [chain, n] = l.payer === "platform_gas_drop" ? [l.chain, ex.gasReserved && !l.hasDrop ? ex.gasDropNative : undefined] : l.payer === "platform_fee_payer" && !l.sourceTx ? ["solana", ex.reservedNative] : [l.chain, undefined];
+      if (n) unspent.set(chain, (unspent.get(chain) ?? 0n) + BigInt(n));
+    }
+    // Never more than what is still reserved (a refused drop already gave its amount back).
+    for (const [chain, n] of unspent) unspent.set(chain, n < BigInt(reserved[chain] ?? 0) ? n : BigInt(reserved[chain] ?? 0));
+  }
+  for (const [chain, n] of unspent) {
+    if (n > 0n) {
+      await tx.update(sponsorUsage).set({ amountNative: sql`greatest(${sponsorUsage.amountNative} - ${n.toString()}::numeric, 0)` })
         .where(and(eq(sponsorUsage.userId, op!.userId), eq(sponsorUsage.chain, chain as AssetChain), sql`${sponsorUsage.day} = ${op!.day}`));
     }
   }
   await tx.update(operations).set({ gasReserved: {} }).where(eq(operations.id, opId));
-}
-
-/**
- * A stopped operation gives back what its recovery legs reserved (Solana, at quote time: `expectedTx.reservedNative`) but never sent. An EVM recovery's drop is
- * reserved and sent in one step, so it is never unspent. ponytail: returned to today's budget row, so a stop after UTC midnight credits the new day.
- */
-export async function releaseRecoveryGas(tx: Tx, opId: string): Promise<void> {
-  const unsent = await tx.select({ chain: operationLegs.fromChain, expectedTx: operationLegs.expectedTx }).from(operationLegs)
-    .where(and(eq(operationLegs.operationId, opId), isNotNull(operationLegs.recoveryOf), eq(operationLegs.status, "PLANNED")));
-  const [op] = await tx.select({ userId: operations.userId, reserved: operations.gasReserved }).from(operations).where(eq(operations.id, opId));
-  const reserved = { ...op!.reserved };
-  for (const l of unsent) {
-    const n = BigInt((l.expectedTx as { reservedNative?: string } | null)?.reservedNative ?? 0);
-    if (n <= 0n) continue;
-    await tx.update(sponsorUsage).set({ amountNative: sql`greatest(${sponsorUsage.amountNative} - ${n.toString()}::numeric, 0)` })
-      .where(and(eq(sponsorUsage.userId, op!.userId), eq(sponsorUsage.chain, l.chain), sql`${sponsorUsage.day} = (now() at time zone 'utc')::date`));
-    reserved[l.chain] = (BigInt(reserved[l.chain] ?? 0) > n ? BigInt(reserved[l.chain]!) - n : 0n).toString();
-  }
-  await tx.update(operations).set({ gasReserved: reserved }).where(eq(operations.id, opId));
 }
 
 /** A plan is refused (503) while a platform wallet cannot fund the gas it needs: the Solana fee payer in lamports, the EVM gas wallet in wei per chain. */
@@ -137,7 +137,7 @@ export async function sendGasDrop(legId: string, chain: AssetChain, recipient: s
         const [op] = await tx.select({ status: operations.status, expiresAt: operations.expiresAt }).from(operations).where(eq(operations.id, leg.operationId)).for("update");
         if (!op || (op.status !== "PLANNED" && op.status !== "IN_PROGRESS") || (op.status === "PLANNED" && op.expiresAt <= new Date())) throw createHttpError(409, "This operation is no longer open.", { code: "INVALID_TRANSITION" });
         const [{ n }] = (await tx.select({ n: sql<number>`count(*)::int` }).from(gasDrops).innerJoin(operationLegs, eq(operationLegs.id, gasDrops.legId)).innerJoin(operations, eq(operations.id, operationLegs.operationId))
-          .where(and(eq(operations.userId, leg.userId), eq(gasDrops.chain, chain), sql`(${gasDrops.createdAt} at time zone 'utc')::date = (now() at time zone 'utc')::date`))) as [{ n: number }];
+          .where(and(eq(operations.userId, leg.userId), eq(gasDrops.chain, chain), sql`not ${refusedDrop}`, sql`(${gasDrops.createdAt} at time zone 'utc')::date = (now() at time zone 'utc')::date`))) as [{ n: number }];
         if (n >= MAX_DROPS_PER_DAY) throw createHttpError(409, "Today's gas top-ups for this network are used up. Try again tomorrow.", { code: "GAS_BUDGET_EXHAUSTED" });
         // A planned leg's drop was reserved with its plan (so a refused budget refuses the plan); only an unplanned drop reserves here.
         if (!(leg.expectedTx as { gasReserved?: boolean } | null)?.gasReserved) await reserveGas(tx, { userId: leg.userId, chain, amountNative });
@@ -160,9 +160,22 @@ export async function sendGasDrop(legId: string, chain: AssetChain, recipient: s
       await writeAudit(db, { actorType: "system", action: "gas_drop.sent", entityType: "gas_drop", entityId: drop!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, txHash } });
     } catch (err) {
       if ((err as { refused?: boolean }).refused) {
-        // The node refused it (insufficient funds, nonce): nothing was sent, so this is a definite failure, not an unknown outcome.
-        [drop] = await db.update(gasDrops).set({ status: "failed", updatedAt: sql`now()` }).where(eq(gasDrops.id, drop!.id)).returning();
-        await writeAudit(db, { actorType: "system", action: "gas_drop.failed", entityType: "gas_drop", entityId: drop!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, refused: true } });
+        // The node refused it (insufficient funds, nonce): nothing was sent, so this is a definite failure, not an unknown outcome. The amount goes back
+        // to the budget (and to the operation's reservation when it was reserved with the plan); a stop that already released it as "sent" is not repeated.
+        await db.transaction(async (tx) => {
+          const [row] = await tx.update(gasDrops).set({ status: "failed", updatedAt: sql`now()` }).where(eq(gasDrops.id, drop!.id)).returning();
+          const [{ operationId, expectedTx }] = (await tx.select({ operationId: operationLegs.operationId, expectedTx: operationLegs.expectedTx }).from(operationLegs).where(eq(operationLegs.id, legId))) as [{ operationId: string; expectedTx: unknown }];
+          const [op] = await tx.select({ userId: operations.userId, reserved: operations.gasReserved, day: sql<string>`(${operations.createdAt} at time zone 'utc')::date` }).from(operations).where(eq(operations.id, operationId)).for("update");
+          const planned = !!(expectedTx as { gasReserved?: boolean } | null)?.gasReserved;
+          const n = amountNative.toString();
+          await tx.update(sponsorUsage).set({ amountNative: sql`greatest(${sponsorUsage.amountNative} - ${n}::numeric, 0)` })
+            .where(and(eq(sponsorUsage.userId, op!.userId), eq(sponsorUsage.chain, chain), planned ? sql`${sponsorUsage.day} = ${op!.day}` : sql`${sponsorUsage.day} = (now() at time zone 'utc')::date`));
+          if (planned) {
+            const left = BigInt(op!.reserved[chain] ?? 0) - amountNative;
+            await tx.update(operations).set({ gasReserved: { ...op!.reserved, [chain]: (left > 0n ? left : 0n).toString() } }).where(eq(operations.id, operationId));
+          }
+          await writeAudit(tx, { actorType: "system", action: "gas_drop.failed", entityType: "gas_drop", entityId: row!.id, requestId: `gas-drop-${legId}`, metadata: { legId, chain, refused: true } });
+        });
         return { status: "failed", txHash: null };
       }
       logger.error("gas drop send outcome unknown", { legId, chain, errMessage: err instanceof Error ? err.message : "unknown" });

@@ -58,6 +58,8 @@ export const operationFees = app.table(
     scheduleId: uuid("schedule_id").references(() => platformFeeSchedules.id),
     waivedReason: text("waived_reason"),
     settledAt: ts("settled_at"),
+    /** Block time of the fee transaction on Solana, when it could be read; revenue reconciliation buckets by `coalesce(settled_chain_at, settled_at)`. */
+    settledChainAt: ts("settled_chain_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [

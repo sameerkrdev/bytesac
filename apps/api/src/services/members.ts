@@ -167,7 +167,6 @@ export async function inviteMember(ctx: OwnerCtx, orgId: string, body: InviteMem
   const mid = await db.transaction(async (tx) => {
     const { org } = await requirePermission(tx, ctx.userId, orgId, body.role === "ADMIN" ? "members.manage_admins" : "members.manage", true);
     if (org.status !== "VERIFIED") throw invalid("Your organization must be verified before inviting members.");
-    await consume(limits.inviteOrg, orgId); // after the permission check: outsiders cannot burn the organization's budget
     // A typed address never links anyone by itself: only a wallet already proven by an active user makes the invite INVITED.
     const known = await findAddressOwner(tx, body.walletChain, address);
     const userId = known?.status === "active" && known.userStatus === "active" ? known.userId : null;
@@ -183,6 +182,8 @@ export async function inviteMember(ctx: OwnerCtx, orgId: string, body: InviteMem
       actorType: "user", actorUserId: ctx.userId, action: "membership.invited", entityType: "organization_membership", entityId: m!.id, requestId: ctx.meta.requestId,
       sessionId: ctx.sessionId, metadata: { organizationId: orgId, role: body.role, chain: body.walletChain, address },
     });
+    // Only an invite that was actually created uses the 20/h budget (a rejected one, or an outsider's, never does).
+    await consume(limits.inviteOrg, orgId);
     return m!.id;
   }).catch((err: unknown) => {
     if (isUniqueViolation(err, "organization_memberships_one_open_invite") || isUniqueViolation(err, "organization_memberships_one_open")) {
@@ -354,12 +355,21 @@ export async function linkInvitesIfProven(tx: Tx, i: { userId: string; chain: Ch
     i.method === "erc1271" || i.method === "erc6492" ? eq(organizationMemberships.invitedWalletChain, i.chain) : sql`true`,
   )).orderBy(organizationMemberships.id).for("update");
   for (const m of invites) {
-    const [open] = await tx.select({ id: organizationMemberships.id }).from(organizationMemberships).where(and(
-      eq(organizationMemberships.organizationId, m.organizationId), eq(organizationMemberships.userId, i.userId),
-      notInArray(organizationMemberships.status, ["REJECTED", "REVOKED"])));
-    const to = open ? "REVOKED" : "INVITED";
-    await tx.update(organizationMemberships).set({ status: to, userId: open ? null : i.userId, updatedAt: sql`now()` }).where(eq(organizationMemberships.id, m.id));
-    await tx.insert(membershipEvents).values({ membershipId: m.id, organizationId: m.organizationId, actorType: "system", kind: open ? "cancelled" : "linked", fromStatus: m.status, toStatus: to, reason: open ? "duplicate" : null, requestId: i.requestId });
-    await writeAudit(tx, { actorType: "system", action: open ? "membership.invite_revoked" : "membership.linked", entityType: "organization_membership", entityId: m.id, requestId: i.requestId, metadata: { userId: i.userId } });
+    // A savepoint per invite: an invite for this organization created concurrently for the same user (a unique conflict) rolls back only this one and leaves it
+    // pending for the next sign-in, instead of failing the whole sign-in.
+    try {
+      await tx.transaction(async (sp) => {
+        const [open] = await sp.select({ id: organizationMemberships.id }).from(organizationMemberships).where(and(
+          eq(organizationMemberships.organizationId, m.organizationId), eq(organizationMemberships.userId, i.userId),
+          notInArray(organizationMemberships.status, ["REJECTED", "REVOKED"])));
+        const to = open ? "REVOKED" : "INVITED";
+        await sp.update(organizationMemberships).set({ status: to, userId: open ? null : i.userId, updatedAt: sql`now()` }).where(eq(organizationMemberships.id, m.id));
+        await sp.insert(membershipEvents).values({ membershipId: m.id, organizationId: m.organizationId, actorType: "system", kind: open ? "cancelled" : "linked", fromStatus: m.status, toStatus: to, reason: open ? "duplicate" : null, requestId: i.requestId });
+        await writeAudit(sp, { actorType: "system", action: open ? "membership.invite_revoked" : "membership.linked", entityType: "organization_membership", entityId: m.id, requestId: i.requestId, metadata: { userId: i.userId } });
+      });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      logger.warn("invite link skipped: a conflicting membership was created concurrently", { membershipId: m.id });
+    }
   }
 }

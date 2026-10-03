@@ -35,7 +35,7 @@ export const post = (h: Headers, path: string, body?: object) => request(app).po
 export async function createBasket(h: Headers, orgId: string, body?: object) {
   const res = await create(h, orgId, body);
   if (res.status !== 201) throw new Error(`create failed: ${JSON.stringify(res.body)}`);
-  return res.body as { id: string; openVersion: { id: string; updatedAt: string } };
+  return res.body as { id: string; openVersion: { id: string; updatedAt: string; revision: number } };
 }
 
 /** Saves `over` on the open version using its current `updatedAt` and returns the response body. */

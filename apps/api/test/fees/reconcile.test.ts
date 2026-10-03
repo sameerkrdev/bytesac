@@ -19,10 +19,10 @@ const DAY = "2026-09-10";
 const at = (hour: number) => Date.parse(`${DAY}T${String(hour).padStart(2, "0")}:00:00Z`) / 1000;
 const parsed = (owner: string, pre: string, post: string) => ({ meta: { err: null, preTokenBalances: [{ owner, mint: USDC_MINT, uiTokenAmount: { amount: pre } }], postTokenBalances: [{ owner, mint: USDC_MINT, uiTokenAmount: { amount: post } }] } });
 
-async function settledPlatformFee(amount: bigint, settledAt: string) {
+async function settledPlatformFee(amount: bigint, settledAt: string, chainAt: string | null = null) {
   const basket = await seedBasket({ assets: [{ symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 10_000 }] });
   const { legId, operationId } = await seedLeg(basket.ownerId, basket, { kind: "network_fee" });
-  await adminSql`INSERT INTO app.operation_fees (id, operation_id, leg_id, kind, base_micro, amount_micro, settled_at) VALUES (gen_random_uuid(), ${operationId}, ${legId}, 'platform', 100000000, ${amount.toString()}, ${settledAt})`;
+  await adminSql`INSERT INTO app.operation_fees (id, operation_id, leg_id, kind, base_micro, amount_micro, settled_at, settled_chain_at) VALUES (gen_random_uuid(), ${operationId}, ${legId}, 'platform', 100000000, ${amount.toString()}, ${settledAt}, ${chainAt})`;
 }
 
 let warn: ReturnType<typeof vi.spyOn>;
@@ -58,6 +58,15 @@ describe("revenue reconciliation", () => {
     expect(txs.mock.calls.flatMap((c) => c[0])).toEqual(["late", "early"]);
     const ata = PublicKey.findProgramAddressSync([new PublicKey(revenue.address).toBuffer(), new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").toBuffer(), new PublicKey(USDC_MINT).toBuffer()], new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"))[0];
     expect((sigs.mock.calls[0]![0] as PublicKey).equals(ata)).toBe(true);
+  });
+
+  it("buckets by the fee's on-chain time when known: recorded after midnight but landed before it counts in that day, and the reverse", async () => {
+    await settledPlatformFee(2_000_000n, "2026-09-11T00:00:40Z", `${DAY}T23:59:50Z`); // recorded the next day, landed on DAY
+    await settledPlatformFee(500_000n, `${DAY}T23:59:50Z`, "2026-09-11T00:00:05Z"); // recorded on DAY, landed the next day
+    await settledPlatformFee(300_000n, `${DAY}T10:00:00Z`); // no block time: recorded time
+    chain({ early: "2300000" });
+    await reconcileRevenue(DAY);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("different totals: warns with both", async () => {

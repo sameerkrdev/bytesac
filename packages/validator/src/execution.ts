@@ -186,6 +186,8 @@ export const positionSchema = z.object({
   id: z.uuid(),
   basketId: z.uuid(),
   basketSlug: z.string(),
+  /** The current version's name (the applied one while the basket has none). */
+  basketName: z.string(),
   status: z.enum(["OPEN", "CLOSED"]),
   openedAt: z.iso.datetime({ offset: true }),
   closedAt: z.iso.datetime({ offset: true }).nullable(),

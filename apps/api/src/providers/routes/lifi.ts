@@ -102,13 +102,20 @@ const statusSchema = z.object({
 /** Gas (from `gas` estimates: the source chain's), route fees (from `all` estimates) and price impact (from the USD totals) of a quote or route. */
 function summarize(gas: z.infer<typeof stepEstimate>[], all: z.infer<typeof stepEstimate>[], total: { fromAmountUSD?: string | null; toAmountUSD?: string | null }) {
   const gasCosts = gas.flatMap((e) => e.gasCosts ?? []);
+  const routeFees = all.flatMap((e) => e.feeCosts ?? []).map((f): RouteFee => ({ name: f.name, amountUsd: Number(f.amountUSD ?? 0), included: f.included }));
+  // Fee-excluded impact: route fees already reduce toAmountUSD, so add the included ones back before comparing. Display/gate math only; it never sizes money.
   const from = Number(total.fromAmountUSD);
+  const to = Number(total.toAmountUSD);
+  const includedFees = routeFees.filter((f) => f.included).reduce((s, f) => s + f.amountUsd, 0);
+  const priceImpact = total.fromAmountUSD && total.toAmountUSD && from > 0 && Number.isFinite(to) ? Math.max(0, 1 - (to + includedFees) / from) : null;
+  // Backstop independent of LI.FI honoring maxPriceImpact; trades under $10 are not checked (USD values are too coarse).
+  if (priceImpact !== null && from >= 10 && priceImpact > MAX_PRICE_IMPACT) throw createHttpError(503, "Price impact too high for this trade size.", { code: "ROUTE_UNAVAILABLE" });
   return {
     gasEstimateUsd: gasCosts.reduce((s, g) => s + Number(g.amountUSD ?? 0), 0),
     gasNative: gasCosts.reduce((s, g) => s + BigInt(g.amount ?? 0), 0n),
     nativePriceUsd: Number(gasCosts.find((g) => g.token?.priceUSD)?.token?.priceUSD) || null,
-    priceImpact: total.fromAmountUSD && total.toAmountUSD && from > 0 ? 1 - Number(total.toAmountUSD) / from : null,
-    routeFees: all.flatMap((e) => e.feeCosts ?? []).map((f): RouteFee => ({ name: f.name, amountUsd: Number(f.amountUSD ?? 0), included: f.included })),
+    priceImpact,
+    routeFees,
   };
 }
 

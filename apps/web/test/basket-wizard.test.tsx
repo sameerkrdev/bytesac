@@ -28,13 +28,13 @@ describe("Basket wizard", () => {
     expect(client.saveBasketDraft).toHaveBeenCalledWith(BID, expect.objectContaining({ rebalance: expect.objectContaining({ minTradeBps: 75, minTradeUsdc: "10" }) }));
   });
 
-  it("saves with the version's updatedAt as expectedUpdatedAt", async () => {
+  it("saves with the version's revision as expectedRevision", async () => {
     const client = basketClient();
     wizard(client);
     const name = await screen.findByLabelText("Name");
     await userEvent.type(name, " II");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(client.saveBasketDraft).toHaveBeenCalledWith(BID, expect.objectContaining({ name: "Core Crypto II", expectedUpdatedAt: T }));
+    expect(client.saveBasketDraft).toHaveBeenCalledWith(BID, expect.objectContaining({ name: "Core Crypto II", expectedRevision: 0 }));
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 

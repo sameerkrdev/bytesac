@@ -30,14 +30,15 @@ describe("fetchQuotes", () => {
     expect([...(await fetchQuotes(["1", "2"])).keys()]).toEqual(["1"]);
   });
 
+  it("an entry with a null, negative or non-numeric price only drops that id", async () => {
+    cmc({ data: { "1": entry(1), "2": entry(null as unknown as number), "3": entry("x" as unknown as number), "4": entry(-5), "5": entry(1, "yesterday") } });
+    expect([...(await fetchQuotes(["1", "2", "3", "4", "5"])).keys()]).toEqual(["1"]);
+  });
+
   it("HTTP errors, malformed bodies and bad prices throw", async () => {
     cmc({ status: { error_code: 1001 } }, 401);
     await expect(fetchQuotes(["1"])).rejects.toThrow();
     cmc({ data: "nope" });
-    await expect(fetchQuotes(["1"])).rejects.toThrow();
-    cmc({ data: { "1": entry(-5) } });
-    await expect(fetchQuotes(["1"])).rejects.toThrow();
-    cmc({ data: { "1": entry(1, "yesterday") } });
     await expect(fetchQuotes(["1"])).rejects.toThrow();
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
     await expect(fetchQuotes(["1"])).rejects.toThrow();

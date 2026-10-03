@@ -40,7 +40,8 @@ describe("sync", () => {
     expect(entries.map((e) => [e.position_id, e.quantity_delta, e.leg_id, e.decision_id !== null])).toEqual([[pA, "-10", null, true], [pB, "-5", null, true]]);
     expect(await decisions("sync")).toHaveLength(2);
     expect(await adminSql`SELECT 1 FROM app.audit_events WHERE action = 'position.synced'`).toHaveLength(2);
-    expect(await latest(pA)).toMatchObject({ status: "OK", ledger_quantity: "0" });
+    // A gave up everything it recorded: nothing is left of it, so it closed (Spec 12) and is no longer reconciled.
+    expect((await adminSql`SELECT status FROM app.basket_positions WHERE id = ${pA}`)[0]).toEqual({ status: "CLOSED" });
     expect(await latest(pB)).toMatchObject({ status: "OK", ledger_quantity: "10" });
   });
 

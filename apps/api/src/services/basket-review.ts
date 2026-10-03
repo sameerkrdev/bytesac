@@ -2,7 +2,7 @@ import createHttpError from "http-errors";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import {
-  basketAssignments, basketEvents, basketReviews, basketSlugAliases, basketVersionDisclosures, basketVersions, baskets, db, disclosureTemplates, organizations, type Tx,
+  basketAssignments, basketEvents, basketReviews, basketSlugAliases, basketVersionDisclosures, basketVersions, baskets, db, disclosureTemplates, isUniqueViolation, organizations, type Tx,
 } from "@repo/db";
 import {
   BASKET_TRANSITIONS, BASKET_VERSION_TRANSITIONS, validateBasketVersion,
@@ -111,7 +111,7 @@ export async function withdrawVersion(ctx: OwnerCtx, bid: string): Promise<Baske
 
 /** Publishes the approved version. Idempotent: an already published current version returns as is. The content must still match what ops approved; a disclosure change since submit only re-pins. */
 export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<BasketDetail> {
-  const published = await db.transaction(async (tx) => {
+  const attempt = () => db.transaction(async (tx) => {
     const { basket } = await requireBasketAction(tx, ctx.userId, bid, "publish", true);
     const [v] = await tx.select().from(basketVersions).where(and(eq(basketVersions.basketId, bid), inArray(basketVersions.status, ["approved", "published"]))).orderBy(desc(basketVersions.versionNumber)).limit(1);
     if (v?.status === "published" && basket.currentVersionId === v.id) return null;
@@ -137,6 +137,16 @@ export async function publishVersion(ctx: OwnerCtx, bid: string): Promise<Basket
     });
     return { eventId, versionId: v.id, replaced: basket.currentVersionId !== null };
   });
+  // A slug collision (1 in 36^6) aborts the transaction: each attempt draws a fresh suffix, up to 3 in all.
+  let published: Awaited<ReturnType<typeof attempt>>;
+  for (let n = 1; ; n++) {
+    try {
+      published = await attempt();
+      break;
+    } catch (err) {
+      if (n === 3 || !isUniqueViolation(err, "baskets_slug_unique")) throw err;
+    }
+  }
   if (published) await notifyBasket(bid, "published", {}, published.eventId);
   // Holders only hear about a version that replaced one they could be on; the first publish has no holders.
   if (published?.replaced) await enqueue("notifications", { job: "version-published", basketId: bid, versionId: published.versionId });

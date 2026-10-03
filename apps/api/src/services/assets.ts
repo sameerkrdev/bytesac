@@ -3,10 +3,11 @@ import { alias } from "drizzle-orm/pg-core";
 import { and, desc, eq, exists, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import {
   assetEvents, assetIssuers, assetProviders, assetTags, basketVersionAssets, baskets, db, eligibilityRules, executionRoutes, instrumentDeployments, instrumentTags, instruments, isUniqueViolation, navObservations,
-  priceReferences, type DbOrTx, type Tx,
+  platformRoles, priceReferences, basketVersions, type DbOrTx, type Tx,
 } from "@repo/db";
+import { logger } from "@repo/logger";
 import {
-  ASSET_CHAINS, RWA_ASSET_TYPES, createDeploymentRequestSchema,
+  ASSET_CHAINS, RWA_ASSET_TYPES, RWA_ROUTE_METHODS, createDeploymentRequestSchema,
   type AssetChain, type AssetTagView, type CreateAssetTagRequest, type ListAssetTagsResponse, type AssetProviderRequest, type AssetListQuery, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest,
   type IssuerRequest, type IssuerView, type NavEntryRequest, type OpsAssetDetail, type OpsAssetListResponse, type OpsAssetListQuery, type PublicAssetDetail, type PublicAssetListResponse, type PutPriceReferenceRequest,
   type TokenStandard, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
@@ -18,6 +19,7 @@ import { cursorSchema, type OpsCtx } from "./applications";
 import { writeAudit } from "./audit";
 import { lifiVerification } from "./routing";
 import { enqueue } from "../queues";
+import { notify } from "./notifications";
 import { getPrices } from "./pricing";
 import { canonicalizeAddress } from "./wallets";
 
@@ -43,6 +45,24 @@ export async function recordAssetEvent(
     actorType: "user", actorUserId: ctx.userId, action: `asset.${e.entityType}.${e.kind}`, entityType: e.entityType, entityId: e.entityId, requestId: ctx.meta.requestId,
     metadata: { instrumentId: e.instrumentId, ...e.metadata },
   });
+  // Spec 12: a live asset that can no longer be bought (paused, deprecated, retired, set permissioned) tells every ops_admin once a day, with the baskets that
+  // hold it. A price reference is only ever replaced (the new one is created right after), so it never alerts.
+  const restricts = ["paused", "deprecated", "retired"].includes(e.kind) || (e.kind === "updated" && e.metadata?.permissioned === true);
+  if (e.entityType === "price" || !restricts || (e.fromStatus !== undefined && e.fromStatus !== "ACTIVE")) return;
+  const [inst] = await tx.select({ name: instruments.name, status: instruments.status, assetType: instruments.assetType }).from(instruments).where(eq(instruments.id, e.instrumentId));
+  const live = await tx.select({ permissioned: instrumentDeployments.permissioned, method: executionRoutes.method }).from(instrumentDeployments)
+    .innerJoin(executionRoutes, and(eq(executionRoutes.deploymentId, instrumentDeployments.id), eq(executionRoutes.status, "ACTIVE")))
+    .where(and(eq(instrumentDeployments.instrumentId, e.instrumentId), eq(instrumentDeployments.status, "ACTIVE")));
+  const rwa = RWA_ASSET_TYPES.includes(inst!.assetType);
+  if (inst!.status === "ACTIVE" && live.some((d) => !rwa || (!d.permissioned && RWA_ROUTE_METHODS.includes(d.method)))) return;
+  const held = await tx.select({ name: basketVersions.name }).from(baskets).innerJoin(basketVersions, eq(basketVersions.id, baskets.currentVersionId))
+    .innerJoin(basketVersionAssets, and(eq(basketVersionAssets.versionId, basketVersions.id), eq(basketVersionAssets.revision, basketVersions.assetsRevision)))
+    .where(eq(basketVersionAssets.instrumentId, e.instrumentId));
+  const admins = await tx.select({ userId: platformRoles.userId }).from(platformRoles).where(and(eq(platformRoles.role, "ops_admin"), isNull(platformRoles.revokedAt)));
+  const day = new Date().toISOString().slice(0, 10);
+  const data = { instrumentId: e.instrumentId, instrumentName: inst!.name, baskets: held.map((b) => b.name) };
+  const created = await Promise.all(admins.map((a) => notify(tx, { userId: a.userId, kind: "instrument_not_investable", data, dedupeKey: `not-investable:${e.instrumentId}:${day}` })));
+  if (!admins.length || created.some(Boolean)) logger.warn("an asset is no longer investable", { instrumentId: e.instrumentId, baskets: data.baskets.length });
 }
 
 /** Locks the instrument row for the rest of the transaction. */

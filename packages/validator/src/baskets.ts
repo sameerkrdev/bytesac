@@ -100,7 +100,10 @@ const text = (max: number) => z.string().trim().max(max).nullable().optional();
 export const createBasketRequestSchema = z.strictObject({ name: z.string().trim().min(3).max(80), category: basketCategorySchema });
 export type CreateBasketRequest = z.infer<typeof createBasketRequestSchema>;
 
-/** Omitted = unchanged, `null` = clear. `expectedUpdatedAt` is the `updatedAt` of the version as the client last saw it. */
+/**
+ * Omitted = unchanged, `null` = clear. `expectedRevision` is the `revision` of the version as the client last saw it (incremented on every save); the older
+ * `expectedUpdatedAt` (its `updatedAt`) is still accepted when `expectedRevision` is absent. One of the two is required.
+ */
 export const saveBasketDraftRequestSchema = z.strictObject({
   name: z.string().trim().min(3).max(80).optional(),
   shortDescription: z.string().trim().min(1).max(160).nullable().optional(),
@@ -125,8 +128,9 @@ export const saveBasketDraftRequestSchema = z.strictObject({
   rationale: text(2000),
   /** A duplicate is refused here (the unique row per instrument could not store it); ALLOCATION_DUPLICATE still guards the pure validator. */
   assets: z.array(basketAssetInputSchema).max(50).refine((a) => new Set(a.map((x) => x.instrumentId)).size === a.length, "Each asset can appear only once.").optional(),
-  expectedUpdatedAt: z.iso.datetime(),
-});
+  expectedRevision: z.number().int().min(0).optional(),
+  expectedUpdatedAt: z.iso.datetime().optional(),
+}).refine((b) => b.expectedRevision !== undefined || b.expectedUpdatedAt !== undefined, { message: "Send expectedRevision.", path: ["expectedRevision"] });
 export type SaveBasketDraftRequest = z.infer<typeof saveBasketDraftRequestSchema>;
 
 export const listBasketsQuerySchema = z.strictObject({ status: basketStatusSchema.optional() });
@@ -292,7 +296,7 @@ export const basketVersionViewSchema = z.object({
   strategyRisks: z.string().nullable(), liquidityNotes: z.string().nullable(), conflictsOfInterest: z.string().nullable(),
   constraints: basketConstraintsSchema, rebalance: basketRebalanceSchema, fees: basketFeesSchema, minimumInvestmentUsdc: z.string().nullable(), minimumIncrementUsdc: z.string().nullable(),
   rationale: z.string().nullable(), contentHash: z.string().nullable(), submittedAt: iso.nullable(), approvedAt: iso.nullable(), publishedAt: iso.nullable(),
-  createdAt: iso, updatedAt: iso,
+  createdAt: iso, updatedAt: iso, revision: z.number().int(),
   assets: z.array(basketAssetViewSchema),
   disclosures: z.array(z.object({ templateId: z.string(), key: z.string(), title: z.string(), body: z.string() })),
 });

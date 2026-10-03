@@ -72,7 +72,7 @@ export async function versionView(conn: DbOrTx, v: VersionRow): Promise<BasketVe
     knownLimitations: v.knownLimitations, strategyRisks: v.strategyRisks, liquidityNotes: v.liquidityNotes, conflictsOfInterest: v.conflictsOfInterest,
     constraints: basketConstraintsSchema.parse(v.constraints), rebalance: v.rebalance, fees: basketFeesSchema.parse(v.fees),
     minimumInvestmentUsdc: v.minimumInvestmentUsdc, minimumIncrementUsdc: v.minimumIncrementUsdc, rationale: v.rationale, contentHash: v.contentHash,
-    submittedAt: iso(v.submittedAt), approvedAt: iso(v.approvedAt), publishedAt: iso(v.publishedAt), createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
+    submittedAt: iso(v.submittedAt), approvedAt: iso(v.approvedAt), publishedAt: iso(v.publishedAt), createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(), revision: v.revision,
     assets,
     disclosures: await currentDisclosures(conn, v),
   };
@@ -246,7 +246,7 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
 // Draft editing and versions
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** Saves the open version under the version row lock. A stale `expectedUpdatedAt` is a 409 and nothing is written. Replaced assets are a new revision: the old rows stay. */
+/** Saves the open version under the version row lock. A stale `expectedRevision` (or, when it is absent, `expectedUpdatedAt`) is a 409 and nothing is written. Replaced assets are a new revision: the old rows stay. */
 export async function saveDraft(ctx: OwnerCtx, bid: string, body: SaveBasketDraftRequest): Promise<BasketDetail> {
   await db.transaction(async (tx) => {
     const { basket } = await requireBasketAction(tx, ctx.userId, bid, "edit", true);
@@ -254,8 +254,9 @@ export async function saveDraft(ctx: OwnerCtx, bid: string, body: SaveBasketDraf
     const v = await openVersionOf(tx, bid, true);
     if (!v) throw invalid("There is no open version to edit.");
     if (!EDITABLE.includes(v.status)) throw invalid("This version is frozen; it can't be edited now.");
-    if (body.expectedUpdatedAt !== v.updatedAt.toISOString()) throw createHttpError("This draft changed since you opened it.", { code: "VERSION_CONFLICT" });
-    const { assets, expectedUpdatedAt: _expected, ...fields } = body;
+    const stale = body.expectedRevision !== undefined ? body.expectedRevision !== v.revision : body.expectedUpdatedAt !== v.updatedAt.toISOString();
+    if (stale) throw createHttpError("This draft changed since you opened it.", { code: "VERSION_CONFLICT" });
+    const { assets, expectedUpdatedAt: _updatedAt, expectedRevision: _revision, ...fields } = body;
     if (assets) {
       const known = assets.length === 0 ? [] : await tx.select({ id: instruments.id }).from(instruments).where(inArray(instruments.id, assets.map((a) => a.instrumentId)));
       if (known.length !== assets.length) throw createHttpError("One of the assets does not exist.", { code: "VALIDATION_FAILED" });
@@ -265,7 +266,7 @@ export async function saveDraft(ctx: OwnerCtx, bid: string, body: SaveBasketDraf
         })));
       }
     }
-    await tx.update(basketVersions).set({ ...fields, ...(assets ? { assetsRevision: v.assetsRevision + 1 } : {}), updatedAt: sql`now()` }).where(eq(basketVersions.id, v.id));
+    await tx.update(basketVersions).set({ ...fields, ...(assets ? { assetsRevision: v.assetsRevision + 1 } : {}), revision: sql`${basketVersions.revision} + 1`, updatedAt: sql`now()` }).where(eq(basketVersions.id, v.id));
     await tx.update(baskets).set({ updatedAt: sql`now()` }).where(eq(baskets.id, bid));
     await tx.insert(basketEvents).values({ basketId: bid, versionId: v.id, kind: "draft_saved", actorType: "member", actorUserId: ctx.userId, requestId: ctx.meta.requestId });
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "basket.draft_saved", entityType: "basket", entityId: bid, requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { versionId: v.id } });

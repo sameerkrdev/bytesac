@@ -6,7 +6,7 @@ import { basketPositions } from "./execution";
 import { users } from "./identity";
 
 export const notificationKind = app.enum("notification_kind", [
-  "rebalance_available", "drifted", "repair_required", "execution_incomplete", "basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired", "lead_changed",
+  "rebalance_available", "drifted", "repair_required", "execution_incomplete", "basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired", "lead_changed", "instrument_not_investable",
 ]);
 
 const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());

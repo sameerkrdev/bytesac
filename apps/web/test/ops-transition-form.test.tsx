@@ -12,6 +12,14 @@ describe("TransitionForm", () => {
     expect(APPLICATION_TRANSITIONS.SUBMITTED).toHaveLength(2);
   });
 
+  it("offers no rejection for an approval whose wallet is proven, but does for an unproven one", () => {
+    const { rerender } = render(<TransitionForm status="SCREENING_APPROVED" pending={false} onSubmit={vi.fn()} />);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Select a status", "Not approved"]);
+    rerender(<TransitionForm status="SCREENING_APPROVED" walletProven pending={false} onSubmit={vi.fn()} />);
+    expect(screen.queryByRole("option", { name: "Not approved" })).toBeNull();
+    expect(screen.getByText(/No further status changes/)).toBeInTheDocument();
+  });
+
   it("offers nothing for terminal statuses", () => {
     render(<TransitionForm status="SCREENING_REJECTED" pending={false} onSubmit={vi.fn()} />);
     expect(screen.queryByRole("combobox")).toBeNull();

@@ -70,7 +70,7 @@ describe("lifi estimate", () => {
     expect(e).toMatchObject({ estimatedOut: 5_000_000n, minOut: 4_950_000n, toolSummary: "jupiter > across", transaction: null, gasNative: 5000n, nativePriceUsd: 150 });
     expect(e.gasEstimateUsd).toBeCloseTo(0.05);
     expect(e.routeFees).toEqual([{ name: "LI.FI Fixed Fee", amountUsd: 0.025, included: true }, { name: "Bridge fee", amountUsd: 0.1, included: false }]);
-    expect(e.priceImpact).toBeCloseTo(0.03);
+    expect(e.priceImpact).toBeCloseTo(0.0275);
   });
 
   it("priceImpact is null without USD values; a route for another trade is a provider error; no routes is ROUTE_UNAVAILABLE", async () => {
@@ -98,7 +98,7 @@ describe("lifi quote", () => {
     expect(params.getAll("denyBridges")).toEqual(DENY.bridges);
     expect(params.getAll("denyExchanges")).toEqual(DENY.exchanges);
     expect(q.routeFees).toEqual([{ name: "LI.FI Fixed Fee", amountUsd: 0.025, included: true }]);
-    expect(q.priceImpact).toBeCloseTo(0.05);
+    expect(q.priceImpact).toBeCloseTo(0.0475);
   });
 
   it("omits the deny params when nothing is denied", async () => {

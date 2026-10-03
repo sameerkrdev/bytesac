@@ -38,7 +38,7 @@ export const operation = (o: Partial<OperationView> = {}): OperationView => ({
 
 type Position = Portfolio["positions"][number];
 export const position = (o: Partial<Position> = {}): Position => ({
-  id: ID(40), basketId: ID(3), basketSlug: "core-crypto", status: "OPEN", openedAt: "2026-10-01T12:00:00.000Z", closedAt: null,
+  id: ID(40), basketId: ID(3), basketSlug: "core-crypto", basketName: "Core Crypto", status: "OPEN", openedAt: "2026-10-01T12:00:00.000Z", closedAt: null,
   states: { version: "CURRENT", backing: "VERIFIED", allocation: "ALIGNED", execution: "NONE" }, headline: "ALIGNED", cashMicro: "0", latestVersion: null, appliedVersionNumber: 1, driftThresholdBps: 500,
   holdings: [
     { deploymentId: ID(30), instrumentId: ID(31), symbol: "ETH", chain: "ethereum", quantity: "30000000000000000", decimals: 18, valueUsd: "75.00", actualBps: 6000, targetBps: 5000, reconciliation: "OK" },

@@ -214,12 +214,19 @@ export async function storeUpload(doc: typeof organizationDocuments.$inferSelect
     throw createHttpError(422, "This file doesn't match its type or size. Upload a PDF, JPEG or PNG up to 10 MB.", { code: "DOCUMENT_REJECTED" });
   }
   await r2.send(new CopyObjectCommand({ Bucket: R2_BUCKET, CopySource: `${R2_BUCKET}/${doc.r2Key}`, Key: finalKey }));
-  await db.transaction(async (tx) => {
-    const done = await tx.update(organizationDocuments).set({ status: "uploaded", r2Key: finalKey, uploadedAt: sql`now()` })
-      .where(and(eq(organizationDocuments.id, doc.id), eq(organizationDocuments.status, "pending_upload"))).returning({ id: organizationDocuments.id });
-    if (done.length === 0) throw createHttpError("This document was already processed.", { code: "INVALID_TRANSITION" });
-    await link(tx);
-  });
+  try {
+    await db.transaction(async (tx) => {
+      const done = await tx.update(organizationDocuments).set({ status: "uploaded", r2Key: finalKey, uploadedAt: sql`now()` })
+        .where(and(eq(organizationDocuments.id, doc.id), eq(organizationDocuments.status, "pending_upload"))).returning({ id: organizationDocuments.id });
+      if (done.length === 0) throw createHttpError("This document was already processed.", { code: "INVALID_TRANSITION" });
+      await link(tx);
+    });
+  } catch (err) {
+    // The copy has no row: delete it (best effort), unless a concurrent confirm already linked this same final key.
+    const [linked] = await db.select({ id: organizationDocuments.id }).from(organizationDocuments).where(eq(organizationDocuments.r2Key, finalKey)).limit(1);
+    if (!linked) await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: finalKey })).catch((e: unknown) => logger.warn("could not delete an orphan document copy", { key: finalKey, errMessage: e instanceof Error ? e.message : "unknown" }));
+    throw err;
+  }
   // Best effort: the bucket lifecycle rule clears leftovers in incoming/.
   await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: doc.r2Key })).catch(() => undefined);
 }

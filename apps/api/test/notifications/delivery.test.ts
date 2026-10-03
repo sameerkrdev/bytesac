@@ -22,9 +22,9 @@ describe("deliverNotification", () => {
     const id = await notification(user.userId);
     await deliverNotification(id);
     expect(fakes.email.notification).toEqual([expect.objectContaining({ to: `u-${user.userId.slice(0, 8)}@example.com`, title: "Blue has drifted", idempotencyKey: `notification/${id}` })]);
-    expect(fakes.email.notification[0]!.link).toBe("/portfolio//rebalance"); // no position on this synthetic row
+    expect(fakes.email.notification[0]!.link).toBe("/portfolio"); // no position on this synthetic row: falls back to the list
     expect(fakes.fcm.sent).toHaveLength(1);
-    expect(fakes.fcm.sent[0]).toMatchObject({ tokens: ["tok-a"], title: "Blue has drifted", link: expect.stringMatching(/^https?:\/\/.+\/portfolio\//) });
+    expect(fakes.fcm.sent[0]).toMatchObject({ tokens: ["tok-a"], title: "Blue has drifted", link: expect.stringMatching(/^https?:\/\/.+\/portfolio$/) });
   });
 
   it("is gated by the preference of each kind", async () => {
