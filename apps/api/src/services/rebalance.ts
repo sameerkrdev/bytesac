@@ -122,7 +122,8 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
 
     const [version] = await db.select({ rebalance: basketVersions.rebalance, fees: basketVersions.fees, assetsRevision: basketVersions.assetsRevision }).from(basketVersions).where(eq(basketVersions.id, targetVersionId));
     const val = await valuePosition(db, position.id, inv.constituents.map((c) => c.instrumentId));
-    if (!val.fresh || inv.constituents.some((c) => !val.priceByInstrument.has(c.instrumentId))) throw stale("A market price is unavailable right now. Try again in a moment.");
+    const unpriced = val.holdings.find((h) => h.priceMicro === null) ?? inv.constituents.find((c) => !val.priceByInstrument.has(c.instrumentId));
+    if (unpriced) throw stale(`No current price for ${unpriced.symbol}; the basket can't be valued right now.`);
     if (val.holdings.some((h) => !h.reconciledAt || h.reconciledAt.getTime() < startedAt - FRESH_MS)) throw stale("Your wallet balances could not be confirmed right now. Try again in a moment.");
 
     // The target weight of every asset of the version that is not investable right now: kept in the plan at its held deployment (so weights stay right),
@@ -173,7 +174,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     });
     for (const s of sells) if (!["ACTIVE", "PAUSED"].includes(sellDeployments.find((d) => d.id === s.deploymentId)?.status ?? "")) throw noSellRoute(s);
     const sellQuotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })
-      .catch((err: unknown) => { throw (err as { code?: string }).code === "ROUTE_UNAVAILABLE" ? noSellRoute(s) : err; })));
+      .catch((err: unknown) => { throw (err as { code?: string }).code === "ROUTE_UNAVAILABLE" && !/price impact/i.test((err as Error).message) ? noSellRoute(s) : err; })));
     const buyConstituents = plan.buys.map((b) => inv.constituents.find((c) => c.deployment.id === b.deploymentId)!);
     const buyQuotes = await Promise.all(plan.buys.map((b, n) => planQuote({
       fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: b.chain, toToken: buyConstituents[n]!.deployment.address, amount: b.amountMicro, slippageBps: body.slippageBps, addresses,
@@ -211,7 +212,7 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     assertAllowed(new Map([...sellDecisions, ...[...inv.rwaDecisions].filter(([id]) => bought.has(id) && !sellDecisions.has(id))]));
 
     const gas = new Map<AssetChain, bigint>([["solana", SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports]]);
-    const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: placement.fromCash ? { fromCash: true } : null, expectedTx: null, gasPayer: "platform_fee_payer" };
+    const feeLeg: LegDraft = { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: placement.fromCash ? { fromCash: true } : null, expectedTx: reservedExpectedTx({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports }), gasPayer: "platform_fee_payer" };
     const legs: LegDraft[] = placement.at === "first" ? [feeLeg] : [];
     sells.forEach((s, n) => legs.push({ ...sellLeg(s, sellQuotes[n]!, sellCosts[n]!, body.slippageBps, gas), decision: decisionOf(sellDecisions, s.instrumentId, "sell") }));
     if (placement.at === "after_sells") legs.push(feeLeg);
@@ -281,7 +282,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
     if (free < fee + buy) throw createHttpError(409, "Your Solana wallet doesn't hold enough free USDC for the buy-back and the fees (basket cash is not available).", { code: "INSUFFICIENT_BALANCE", details: { requiredUsdc: (fee + buy).toString() } });
 
     const legs: LegDraft[] = [
-      { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: null, gasPayer: "platform_fee_payer" },
+      { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: reservedExpectedTx({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports }), gasPayer: "platform_fee_payer" },
       {
         kind: d.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: d.chain, toDeploymentId: body.deploymentId, amountIn: buy, minOut: minOut(q.estimatedOut, body.slippageBps),
         routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact }, expectedTx: reservedExpectedTx(cost), gasPayer: "platform_fee_payer",

@@ -106,7 +106,7 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 /** Placeholder wording (compliance review later). Never states that a trade happened. */
 export function notificationText(kind: NotificationKind, data: { basketName?: string; basketSlug?: string; positionId?: string; asset?: string; autoStopped?: boolean; instrumentName?: string; instrumentId?: string; baskets?: string[] }): { title: string; body: string; link: string } {
   const basket = data.basketName ?? "Your basket";
-  const rebalance = `/portfolio/${data.positionId ?? ""}/rebalance`;
+  const rebalance = data.positionId ? `/portfolio/${data.positionId}/rebalance` : "/portfolio";
   const basketLink = data.basketSlug ? `/baskets/${data.basketSlug}` : "/portfolio";
   switch (kind) {
     case "rebalance_available": return { title: `${basket}: new version available`, body: "A new basket version is available. Applying creates a plan you review and sign; skipping changes nothing.", link: rebalance };

@@ -56,6 +56,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction (Xverse, Leather, Unisat, OKX).
 - [ ] CoinMarketCap `/v2/cryptocurrency/quotes/latest` shape with a real key; Alchemy `getTokenSupply`; one real token per chain.
 - [ ] Gemini forced tool-calling with a real key.
+- [ ] Manual WalletConnect/AppKit smoke test on web and mobile (the wallet stack's zod peer resolved from 3 to 4 in Spec 12's lockfile dedupe).
 - [ ] Web push end to end in Chrome, Firefox and Safari.
 - [ ] Earnings and revenue CSV downloads in a real browser.
 - [ ] Small-amount mainnet run of every flow (checklist in `apps/api/README.md`): invest, partial stop, leave, sell, sell former, rebalance (sell → fees → buys), drift fix, buy back, sync, with manager and platform fees.
@@ -99,13 +100,15 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 **Spec 8**
 - [ ] Optional fee-payer `simulateTransaction` check.
 - [x] Fully sold positions not auto-closed; sweeps lack per-record isolation.
-- [x] Abandoned `IN_PROGRESS` operations keep gas reservations until UTC midnight; a retried gas drop skips its status re-check; a refused drop keeps its reservation.
+- [x] Gas reservations are released on every terminal status (cancel, stop, completion, failure), including the network-fee leg; a retried gas drop re-checks its status; a refused drop returns its reservation.
+- [ ] An `IN_PROGRESS` operation the user abandons without Stop, with no recovery leg, keeps its reservation (and the user's slot) until UTC midnight.
 - [ ] Native EVM received amount is a whole-block balance change; ops leg resolve is not bound to the leg's own transactions; treasury token-account rent is not estimated.
 - [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts.
 - [x] Portfolio shows basket slugs rather than names.
 
 **Spec 11**
-- [x] A rebalance is refused when a held RWA is structurally non-investable (permissioned, no supported route, no price) because Spec 9 requires the target version investable (scheduled in Spec 12).
+- [x] A rebalance is no longer refused when a held RWA is structurally non-investable (permissioned, no supported route): only buying it, or a sale with no route, refuses (D-111).
+- [ ] A held asset with no price still blocks a rebalance (valuation needs every price); the refusal names the asset. Disposition flow in `FUTURE-PLANS.md` (Q5).
 - [ ] Data: which RWA tokens have real DEX liquidity through LI.FI and CoinMarketCap ids (no RWA is offered until ops add a route, a market price reference and rules).
 - [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
 - [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
@@ -125,7 +128,8 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [x] A concurrent invite during sign-in can abort that sign-in with a 500 (savepoint); a rejected invite consumes the 20/h invite budget.
 - [ ] `/me.organizations` `displayName` uses the latest version name.
 - [x] Spec 2 ops form offers "Not approved" for a proven approved application; Spec 3 orphan final R2 copy on DB failure after copy.
-- [x] Double-click contact add can show 404.
+- [x] Re-adding a contact with a pending verification returns it (no 404); the web form guards double submit.
+- [ ] Two truly concurrent contact-add requests can still return the resend-cooldown error to the second.
 - [ ] Resend countdown resets on remount; logout awaits wallet disconnect; iOS keyboard double-adjust check; ops/app Switch hit area on device; `@wagmi/connectors` pinned 6.2.0 until Reown RN supports wagmi 3.
 
 ## 8. Open decisions in the register

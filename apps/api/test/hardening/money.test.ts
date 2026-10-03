@@ -142,6 +142,15 @@ describe("gas reservations", () => {
     expect((await opRow(a.opId)).gas_reserved).toEqual({});
   });
 
+  it("an unsent network-fee leg is returned on Stop exactly once", async () => {
+    mockChains();
+    const a = await seedOp({ reserved: { solana: "15000" }, legs: [{ seq: 1, kind: "network_fee", status: "PLANNED", payer: "platform_fee_payer", expected: { reservedNative: "15000" } }] });
+    expect((await post(a.user.h, `/v1/operations/${a.opId}/cancel`)).status).toBe(200);
+    expect(await usage(a.user.userId, "solana")).toBe(0n);
+    await db.transaction((tx) => gas.releaseUnspentGas(tx, a.opId));
+    expect(await usage(a.user.userId, "solana")).toBe(0n);
+  });
+
   it("completion then a later release returns the reservation exactly once (Review Focus 1)", async () => {
     mockChains();
     // Two operations of one user reserved 900 each on Ethereum; the first completes with its drop never needed (the wallet already held gas).

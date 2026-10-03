@@ -181,7 +181,7 @@ export async function stopStalledRecoveries(): Promise<void> {
         const [b] = op.basketId ? await tx.select({ slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, op.basketId)) : [];
         return notify(tx, {
           userId: op.userId, kind: "execution_incomplete", basketId: op.basketId ?? undefined, positionId: op.positionId ?? undefined,
-          data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id, autoStopped: true }, dedupeKey: `incomplete:${op.id}`,
+          data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id, asset: op.deploymentId ?? undefined, autoStopped: true }, dedupeKey: `incomplete:${op.id}`,
         });
       });
       if (notificationId) await enqueue("notifications", { job: "deliver", notificationId });

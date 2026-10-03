@@ -178,13 +178,13 @@ describe("close position (dust)", () => {
 
 describe("rebalance with a held asset that is not investable", () => {
   /** SOL ($100) and a permissioned tokenized bond ($1), 50/50. The position holds `bond` BOND, `cash` basket cash. */
-  async function arrange(over: { bond: bigint; cash: bigint; v2?: number[] }) {
+  async function arrange(over: { bond: bigint; cash: bigint; v2?: number[]; noBondPrice?: boolean }) {
     const chain = mockChains();
     await seedPlatformWallets();
     const basket = await seedBasket({ assets: [SOL, BOND] });
     const user = await seedUser({ wallet: solanaTestWallet() });
     const [sol, bond] = basket.deployments;
-    await seedPrices(basket.deployments, ["100", "1"]);
+    await seedPrices(basket.deployments, ["100", over.noBondPrice ? null : "1"]);
     const positionId = await seedPosition(user.userId, basket, [{ deploymentId: bond!.deploymentId, quantity: over.bond }]);
     if (over.cash > 0n) await seedCash(user.userId, basket, positionId, over.cash);
     chain.balances.set(balanceKey(user.solanaAddress, bond!.address), over.bond);
@@ -219,6 +219,36 @@ describe("rebalance with a held asset that is not investable", () => {
     const res = await rebalance(a.user.h, a.positionId);
     expect(res.status).toBe(409);
     expect(res.body.error).toMatchObject({ code: "NOT_INVESTABLE", message: expect.stringContaining("BOND can't be sold") });
+  });
+
+  it("a sale refused for price impact keeps the price-impact message, not \"no route\"", async () => {
+    const a = await arrange({ bond: 50_000_000n, cash: 50_000_000n, v2: [8000, 2000] });
+    const quote = vi.mocked(lifi.quote).getMockImplementation()!;
+    vi.mocked(lifi.quote).mockImplementation(async (i) => {
+      if (i.fromToken === a.bond.address) throw createHttpError(503, "Price impact too high for this trade size.", { code: "ROUTE_UNAVAILABLE" });
+      return quote(i);
+    });
+    const res = await rebalance(a.user.h, a.positionId);
+    expect(res.status).toBe(503);
+    expect(res.body.error.message).toBe("Price impact too high for this trade size.");
+  });
+
+  it("a held asset with no price refuses the plan, naming it", async () => {
+    const a = await arrange({ bond: 50_000_000n, cash: 50_000_000n, noBondPrice: true });
+    const res = await rebalance(a.user.h, a.positionId, { target: "applied" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: "DATA_STALE", message: "No current price for BOND; the basket can't be valued right now." });
+  });
+
+  it("every leg of a rebalance records its gas reservation, the network-fee leg included, summing to what the operation reserved", async () => {
+    const a = await arrange({ bond: 50_000_000n, cash: 50_000_000n });
+    const res = await rebalance(a.user.h, a.positionId, { target: "applied" });
+    expect(res.status).toBe(201);
+    const legs = await adminSql<{ kind: string; expected_tx: { reservedNative?: string } | null }[]>`SELECT kind, expected_tx FROM app.operation_legs WHERE operation_id = ${res.body.id}`;
+    const fee = legs.find((l) => l.kind === "network_fee")!;
+    expect(BigInt(fee.expected_tx?.reservedNative ?? "0")).toBeGreaterThan(0n);
+    const [op] = await adminSql<{ gas_reserved: { solana?: string } }[]>`SELECT gas_reserved FROM app.operations WHERE id = ${res.body.id}`;
+    expect(legs.reduce((t, l) => t + BigInt(l.expected_tx?.reservedNative ?? "0"), 0n).toString()).toBe(op!.gas_reserved.solana);
   });
 
   it("a sale needs an ACTIVE or PAUSED deployment: a retired one is refused, a paused one is not", async () => {
