@@ -62,6 +62,17 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Earnings and revenue CSV downloads in a real browser.
 - [ ] Small-amount mainnet run of every flow (checklist in `apps/api/README.md`): invest, partial stop, leave, sell, sell former, rebalance (sell → fees → buys), drift fix, buy back, sync, with manager and platform fees.
 
+### Spec 15 manual checks (basic UI)
+
+- [ ] Mobile device run (iOS and Android) with AppKit RN: connect Phantom and MetaMask mobile; Solana sign (active-account requirement, base58 vs base64 responses), EVM chain switch, approval and send; wallet returns only a `signature` is rejected.
+- [ ] Bitcoin "Continue on web" opens `<EXPO_PUBLIC_WEB_URL>/portfolio#operation-<id>` and "Link Bitcoin on web" opens `/profile`.
+- [ ] SecureStore session survives restart; logout clears it and disconnects the wallet.
+- [ ] Notifications tab unread badge updates after mark read.
+- [ ] Web at 360 px in a real browser: shell, navigation and every page layout.
+- [ ] Leftover unconverted loading and error spots on web pages (convert to the shared states opportunistically).
+- [ ] Discover filter parity on mobile (asset and sector ranges, fee ceilings, performance) is not ported.
+- [ ] Mobile push notifications remain future work.
+
 ## 6. Deployment and operations
 
 - [ ] Deploy the BullMQ worker (`start:worker`) with non-evicting Redis.

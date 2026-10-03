@@ -44,6 +44,7 @@ Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migr
 | 12 Launch hardening | Price batch fix, price-impact backstop, gas reservation lifecycle, sweep isolation, position auto-close, recovery auto-stop, functional fixes | `2f05253` | D-107..D-113 |
 | 13 Code and docs cleanup | API restructured into feature modules (route/controller/service, `@/` alias, server/worker graceful shutdown, redacted error logging), route-table and no-cycles tests, dead code and duplicates removed, docs consolidated to one home per topic | `9febc6a` | spec `2026-10-03-code-docs-cleanup-design.md` |
 | 14 Integration audit | Every provider and library checked against official docs (LI.FI and Alchemy live): no-SOL shape, deny-key filtering, `toAmountMin` tolerance max(1 ppm, 10^(decimals−8)) using registry decimals, stale deny-key flag, BullMQ fail-fast producers, reverted-approval guard, Next 16.3.8, CSP directives; deferrals in OPEN-ITEMS (Spec 14 block) | `40cd4a3` | `docs/engineering/INTEGRATION-AUDIT.md` |
+| 15 Basic UI | `@repo/app-core` shared leg signer and money-flow helpers, web app shell with role-aware nav and shared page states, mobile investor tabs (Discover, Portfolio, Notifications, Profile) with Solana/EVM signing via AppKit RN and Bitcoin web handoff | branch `feat/spec15-basic-ui` (controller sets the merge commit) | spec `2026-10-03-basic-ui-design.md` |
 
 Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (later review artifacts lived in the git-ignored SDD workspace and were deleted after merge). Layout, conventions and behavior are in `ARCHITECTURE.md`, `CODING-STANDARDS.md` and `docs/domains/*`, not repeated here. Pre-launch checks, user actions and leftovers are all in `docs/OPEN-ITEMS.md`.
 
@@ -93,7 +94,7 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 - **Do not run tests while a sub-agent is running tests** (shared test DB); a run that overlaps produces false failures — re-run alone.
 - **Never stage (user/noise files):** `.claude/settings.json`, `.gitignore` and `apps/api/.env.example` (the user's own edits), `firebase-service-account.json` (a credential — git-ignored; never open it), root `AGENTS.md` and `apps/api/test/__snapshots__/route-table.test.ts.snap` (line-ending-only changes), generated `apps/*/AGENTS.md`/`CLAUDE.md`, anything under `.superpowers/`.
 
-## 6. Next phase — Spec 15: basic UI for web and mobile (IN PROGRESS — resume here)
+## 6. Next phase — Spec 15: basic UI for web and mobile (implemented on `feat/spec15-basic-ui`; awaiting review, final gate and merge)
 
 **Status (2026-10-03):** brainstorm done (3 questions, all answered A — see `BRAINSTORM-LOG.md` "Spec 15"); spec `docs/superpowers/specs/2026-10-03-basic-ui-design.md` and plan `docs/superpowers/plans/2026-10-03-spec15-basic-ui.md` approved and committed on branch `feat/spec15-basic-ui` (`5afeaaa`). Implementer #1 stopped at a usage limit before writing any code: **no code commits, nothing to salvage**. The user pre-approved execution and a local merge to `main` after a green gate.
 
