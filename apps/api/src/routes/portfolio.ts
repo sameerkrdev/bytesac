@@ -5,7 +5,7 @@ import { consume, limits } from "../middleware/rate-limit";
 import { validate } from "../middleware/validate";
 import { leavePosition } from "../services/operations";
 import { getPortfolio } from "../services/positions";
-import { keepCustom, revertCustom, skipVersion, syncShortfall } from "../services/rebalance";
+import { closeDustPosition, keepCustom, revertCustom, skipVersion, syncShortfall } from "../services/rebalance";
 
 const ctx = (req: Request) => ({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, meta: req.ctx });
 
@@ -36,6 +36,10 @@ positionsRouter.post("/:id/custom", positionParam, async (req, res) => {
 positionsRouter.post("/:id/custom/revert", positionParam, async (req, res) => {
   await consume(limits.notificationsUser, req.auth!.userId);
   await revertCustom(ctx(req), req.params.id as string);
+  res.status(204).end();
+});
+positionsRouter.post("/:id/close", positionParam, async (req, res) => {
+  await closeDustPosition(ctx(req), req.params.id as string);
   res.status(204).end();
 });
 positionsRouter.post("/:id/leave", validate({ params: z.object({ id: z.uuid() }) }), async (req, res) => {

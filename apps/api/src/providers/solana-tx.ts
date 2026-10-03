@@ -135,6 +135,12 @@ export async function solanaFinality(signature: string, recentBlockhash?: string
   return value.confirmationStatus === "finalized" ? "finalized" : "pending";
 }
 
+/** Block time of a finalized transaction; null when it cannot be read. */
+export async function solanaBlockTime(signature: string): Promise<Date | null> {
+  const tx = await connection.getParsedTransaction(signature, { commitment: "finalized", maxSupportedTransactionVersion: 0 });
+  return tx?.blockTime != null ? new Date(tx.blockTime * 1000) : null;
+}
+
 /** Balance in base units (lamports, or the token's raw amount summed over the owner's token accounts). */
 export async function solanaBalance(owner: string, mint: string | null): Promise<bigint> {
   const ownerKey = new PublicKey(owner);

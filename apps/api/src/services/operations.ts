@@ -737,13 +737,33 @@ export async function cancelOperation(ctx: OpCtx, opId: string): Promise<Operati
   return getOperation(ctx, opId);
 }
 
+/** An operation that is not over (a plan or a running one) on the position blocks closing it. */
+export const hasOpenOperation = async (tx: DbOrTx, positionId: string): Promise<boolean> =>
+  (await tx.select({ id: operations.id }).from(operations).where(and(eq(operations.positionId, positionId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"]))).limit(1)).length > 0;
+
+/**
+ * Closes the OPEN position when every holding and its basket cash are exactly 0 (a sale, Sync or Accept took the last of it), no operation on it is still open
+ * (the settling operation counts until it is COMPLETED), ending a keep-custom with it. The ledger stays as the former-basket record. Returns whether it closed.
+ */
+export async function closeIfEmpty(tx: Tx, ctx: OpCtx | null, positionId: string): Promise<boolean> {
+  const [p] = await tx.select().from(basketPositions).where(eq(basketPositions.id, positionId)).for("update");
+  if (!p || p.status !== "OPEN" || (await hasOpenOperation(tx, positionId))) return false;
+  const [held] = await tx.select({ deploymentId: positionLedgerEntries.deploymentId }).from(positionLedgerEntries).where(eq(positionLedgerEntries.positionId, positionId))
+    .groupBy(positionLedgerEntries.deploymentId).having(sql`sum(${positionLedgerEntries.quantityDelta}) <> 0`).limit(1);
+  if (held || (await basketCashMicro(tx, positionId)) !== 0n) return false;
+  await tx.update(basketPositions).set({ status: "CLOSED", closedAt: sql`now()` }).where(eq(basketPositions.id, positionId));
+  if (await activeCustom(tx, positionId)) await tx.insert(positionDecisions).values({ positionId, kind: "revert_custom", data: { reason: "closed" }, actorUserId: p.userId });
+  await writeAudit(tx, { ...auditBase(ctx, positionId), action: "position.auto_closed", entityType: "basket_position", entityId: positionId, metadata: { basketId: p.basketId } });
+  return true;
+}
+
 /** Leave the basket and keep the assets: the position closes (its ledger is kept as the former-basket record); no transaction is made. */
-export async function leavePosition(ctx: OpCtx, positionId: string): Promise<void> {
+export async function leavePosition(ctx: OpCtx, positionId: string, action: "position.left" | "position.closed" = "position.left"): Promise<void> {
   await db.transaction(async (tx) => {
     const [p] = await tx.select().from(basketPositions).where(and(eq(basketPositions.id, positionId), eq(basketPositions.userId, ctx.userId))).for("update");
     if (!p) throw createHttpError("Position not found", { code: "NOT_FOUND" });
     if (p.status !== "OPEN") throw invalidTransition("This position is already closed.");
     await tx.update(basketPositions).set({ status: "CLOSED", closedAt: sql`now()` }).where(eq(basketPositions.id, positionId));
-    await writeAudit(tx, { ...auditBase(ctx, positionId), action: "position.left", entityType: "basket_position", entityId: positionId, metadata: { basketId: p.basketId } });
+    await writeAudit(tx, { ...auditBase(ctx, positionId), action, entityType: "basket_position", entityId: positionId, metadata: { basketId: p.basketId } });
   });
 }

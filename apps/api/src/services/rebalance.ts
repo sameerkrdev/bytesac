@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
-  basketPositions, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations,
+  basketPositions, basketVersionAssets, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionDecisions, positionLedgerEntries, positionReconciliations,
   type DbOrTx,
 } from "@repo/db";
 import { logger } from "@repo/logger";
@@ -17,7 +17,7 @@ import { assertAllowed, decisionOf, evaluateFor, isRwa } from "./eligibility";
 import { getInvestability } from "./investability";
 import {
   FEE_LEG_GAS_USD, SOLANA_FEE_TRANSFER_LAMPORTS, activeCustom, addressOn, applyVersion, assertEligible, assertNoneInFlight, auditBase, basketCashMicro, findByKey, freeUsdcMicro, getOperation, insertPlan, operationView,
-  legCost, lockOperation, planQuote, reservedExpectedTx, reused, sellLeg, setOperationStatus, usdcPrice, userAddresses, type LegDraft, type OpCtx,
+  closeIfEmpty, hasOpenOperation, leavePosition, legCost, lockOperation, planQuote, reservedExpectedTx, reused, sellLeg, setOperationStatus, usdcPrice, userAddresses, type LegDraft, type OpCtx,
 } from "./operations";
 import { fanOutToHolders } from "./notifications";
 import { getPrices, priceToMicro } from "./pricing";
@@ -115,24 +115,42 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
 
     if (body.target === "applied" && position.appliedVersionId !== basket!.currentVersionId) throw createHttpError(409, "The basket was updated: review the latest version instead.", { code: "VERSION_NOT_CURRENT" });
     const inv = await getInvestability(db, { id: position.basketId }, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry });
-    // Spec 11: only an RWA the plan buys or sells is evaluated (below); one that is merely held never refuses a plan.
-    assertEligible({ ...inv, eligibility: inv.eligibility && { ...inv.eligibility, reasons: inv.eligibility.reasons.filter((r) => !r.instrumentId || !inv.rwaDecisions.has(r.instrumentId)) } });
+    // Spec 11: only an RWA the plan buys or sells is evaluated (below); one that is merely held never refuses a plan. Spec 12: likewise an asset that is not investable
+    // right now blocks only a plan that buys it (or sells it with no route, below); basket-level reasons (the basket is not open) still refuse.
+    assertEligible({ ...inv, investable: !inv.reasons.some((r) => !r.instrumentId), eligibility: inv.eligibility && { ...inv.eligibility, reasons: inv.eligibility.reasons.filter((r) => !r.instrumentId || !inv.rwaDecisions.has(r.instrumentId)) } });
     const targetVersionId = inv.versionId!;
 
-    const [version] = await db.select({ rebalance: basketVersions.rebalance, fees: basketVersions.fees }).from(basketVersions).where(eq(basketVersions.id, targetVersionId));
+    const [version] = await db.select({ rebalance: basketVersions.rebalance, fees: basketVersions.fees, assetsRevision: basketVersions.assetsRevision }).from(basketVersions).where(eq(basketVersions.id, targetVersionId));
     const val = await valuePosition(db, position.id, inv.constituents.map((c) => c.instrumentId));
     if (!val.fresh || inv.constituents.some((c) => !val.priceByInstrument.has(c.instrumentId))) throw stale("A market price is unavailable right now. Try again in a moment.");
     if (val.holdings.some((h) => !h.reconciledAt || h.reconciledAt.getTime() < startedAt - FRESH_MS)) throw stale("Your wallet balances could not be confirmed right now. Try again in a moment.");
 
+    // The target weight of every asset of the version that is not investable right now: kept in the plan at its held deployment (so weights stay right),
+    // never bought. One that is not held but would need a buy refuses the plan, naming it.
+    const versionAssets = await db.select({ instrumentId: basketVersionAssets.instrumentId, bps: basketVersionAssets.targetWeightBps, symbol: instruments.symbol }).from(basketVersionAssets)
+      .innerJoin(instruments, eq(instruments.id, basketVersionAssets.instrumentId)).where(and(eq(basketVersionAssets.versionId, targetVersionId), eq(basketVersionAssets.revision, version!.assetsRevision)));
+    const unavailable = versionAssets.filter((a) => !inv.constituents.some((c) => c.instrumentId === a.instrumentId));
+    const notBuyable = (a: { instrumentId: string; symbol: string }) => createHttpError(409, `${a.symbol} can't be bought right now.`, { code: "NOT_INVESTABLE", details: { reasons: inv.reasons.filter((r) => r.instrumentId === a.instrumentId) } });
+    const heldTargets = unavailable.flatMap((a) => {
+      const h = val.holdings.find((x) => x.instrumentId === a.instrumentId && x.quantity > 0n);
+      return h ? [{ deploymentId: h.deploymentId, chain: h.chain, decimals: h.decimals, priceMicro: h.priceMicro!, bps: a.bps, symbol: a.symbol, instrumentId: a.instrumentId }] : [];
+    });
     const input = {
       holdings: val.holdings.filter((h) => h.quantity > 0n).map((h) => ({ deploymentId: h.deploymentId, chain: h.chain, quantity: h.quantity, decimals: h.decimals, priceMicro: h.priceMicro! })),
       cashMicro: val.cashMicro,
-      targets: inv.constituents.map((c) => ({ deploymentId: c.deployment.id, chain: c.deployment.chain, decimals: c.deployment.decimals, priceMicro: val.priceByInstrument.get(c.instrumentId)!, bps: c.weightBps })),
+      targets: [
+        ...inv.constituents.map((c) => ({ deploymentId: c.deployment.id, chain: c.deployment.chain, decimals: c.deployment.decimals, priceMicro: val.priceByInstrument.get(c.instrumentId)!, bps: c.weightBps })),
+        ...heldTargets.map(({ deploymentId, chain, decimals, priceMicro, bps }) => ({ deploymentId, chain, decimals, priceMicro, bps })),
+      ],
       minTradeBps: version!.rebalance.minTradeBps ?? MIN_TRADE_BPS_DEFAULT,
       minTradeMicro: micro(version!.rebalance.minTradeUsdc ?? MIN_TRADE_USDC_DEFAULT),
       reserveMicro: 0n,
     };
     const plan = planRebalance(input);
+    const blockedBuy = plan.buys.map((b) => heldTargets.find((t) => t.deploymentId === b.deploymentId)).find((t) => t);
+    if (blockedBuy) throw notBuyable(blockedBuy);
+    const unheld = unavailable.find((a) => !heldTargets.some((t) => t.instrumentId === a.instrumentId) && a.bps >= input.minTradeBps && (plan.valueMicro * BigInt(a.bps)) / 10_000n >= input.minTradeMicro);
+    if (unheld) throw notBuyable(unheld);
     // Sells never exceed what the wallet holds (Bitcoin keeps the miner-fee ceiling back, as a sell does).
     const sells = plan.sells.flatMap((s) => {
       const h = val.holdings.find((x) => x.deploymentId === s.deploymentId)!;
@@ -148,7 +166,14 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
     }
 
     const addresses = await userAddresses(db, ctx.userId);
-    const sellQuotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
+    // A sale needs an ACTIVE or PAUSED deployment (an exit ignores route status) and any route the provider can quote; otherwise the plan is refused, naming the asset.
+    const sellDeployments = sells.length ? await db.select({ id: instrumentDeployments.id, status: instrumentDeployments.status }).from(instrumentDeployments).where(inArray(instrumentDeployments.id, sells.map((s) => s.deploymentId))) : [];
+    const noSellRoute = (s: { instrumentId: string; symbol: string }) => createHttpError(409, `${s.symbol} can't be sold through Bytesac right now: no route is available.`, {
+      code: "NOT_INVESTABLE", details: { reasons: [{ instrumentId: s.instrumentId, code: "NO_ROUTE", message: `${s.symbol}: no route is available.` }] },
+    });
+    for (const s of sells) if (!["ACTIVE", "PAUSED"].includes(sellDeployments.find((d) => d.id === s.deploymentId)?.status ?? "")) throw noSellRoute(s);
+    const sellQuotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })
+      .catch((err: unknown) => { throw (err as { code?: string }).code === "ROUTE_UNAVAILABLE" ? noSellRoute(s) : err; })));
     const buyConstituents = plan.buys.map((b) => inv.constituents.find((c) => c.deployment.id === b.deploymentId)!);
     const buyQuotes = await Promise.all(plan.buys.map((b, n) => planQuote({
       fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: b.chain, toToken: buyConstituents[n]!.deployment.address, amount: b.amountMicro, slippageBps: body.slippageBps, addresses,
@@ -306,12 +331,29 @@ export async function syncShortfall(ctx: OpCtx, body: SyncRequest): Promise<Sync
         if (quantity > 0n && assetId) await tx.insert(positionLedgerEntries).values({ positionId, deploymentId: assetId, quantityDelta: (-quantity).toString(), reason: "sync", decisionId: decision!.id });
         if (quantity > 0n && !assetId) await tx.insert(positionCashEntries).values({ positionId, amountMicro: (-quantity).toString(), reason: "sync", decisionId: decision!.id });
         await writeAudit(tx, { ...auditBase(ctx, positionId), action: "position.synced", entityType: "basket_position", entityId: positionId, metadata: { asset: assetId ?? "cash", quantity: quantity.toString() } });
+        await closeIfEmpty(tx, ctx, positionId); // accepting the loss of the last of a position closes it
       }
     });
     // Record the new state right away so the shortfall shows as resolved; a provider outage here only delays that to the next reconciliation.
     await reconcilePositions(ctx.userId).catch((err) => logger.warn("reconciliation after sync failed", { errMessage: err instanceof Error ? err.message : "unknown" }));
     return { synced: [...split].map(([positionId, quantity]) => ({ positionId, quantity: quantity.toString() })).sort((a, b) => (a.positionId < b.positionId ? -1 : 1)) };
   });
+}
+
+const DUST_MICRO = 1_000_000n; // $1
+
+/**
+ * "Close position" for dust: allowed while the whole position (holdings at fresh prices plus basket cash) is worth under $1 and anything without a price is
+ * below one display unit. It behaves like Leave: no transaction, the remaining tokens and cash become outside-basket. Anything larger is refused.
+ */
+export async function closeDustPosition(ctx: OpCtx, positionId: string): Promise<void> {
+  await ownOpenPosition(ctx.userId, positionId);
+  if (await hasOpenOperation(db, positionId)) throw createHttpError(409, "Finish or cancel the current operation on this position first.", { code: "OPERATION_IN_PROGRESS" });
+  const val = await valuePosition(db, positionId);
+  if (val.valueMicro >= DUST_MICRO || val.holdings.some((h) => h.priceMicro === null && h.quantity >= 10n ** BigInt(h.decimals))) {
+    throw createHttpError(409, "This position is worth $1 or more. Sell it, or leave the basket to keep what it holds.", { code: "INVALID_TRANSITION" });
+  }
+  await leavePosition(ctx, positionId, "position.closed");
 }
 
 /** Skipping the current version is recorded once per (position, version); the position keeps its applied version and Apply stays available. */

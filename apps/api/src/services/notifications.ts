@@ -13,7 +13,7 @@ import { enqueue } from "../queues";
 /** Which of the user's preferences gates the email and push of a kind (the inbox row is always written). */
 const PREFERENCE: Record<NotificationKind, keyof NotificationPreferences> = {
   rebalance_available: "rebalance", drifted: "portfolioUpdates", repair_required: "portfolioUpdates", execution_incomplete: "portfolioUpdates",
-  basket_paused: "managerUpdates", basket_unpaused: "managerUpdates", basket_retirement_pending: "managerUpdates", basket_retired: "managerUpdates", lead_changed: "managerUpdates",
+  basket_paused: "managerUpdates", basket_unpaused: "managerUpdates", basket_retirement_pending: "managerUpdates", basket_retired: "managerUpdates", lead_changed: "managerUpdates", instrument_not_investable: "managerUpdates",
 };
 
 interface NewNotification { userId: string; kind: NotificationKind; basketId?: string; positionId?: string; data: Record<string, unknown>; dedupeKey: string }

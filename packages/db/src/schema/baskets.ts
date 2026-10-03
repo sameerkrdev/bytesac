@@ -83,6 +83,8 @@ export const basketVersions = app.table(
     rationale: text("rationale"),
     /** Replaceable child rows are revisioned (the runtime role cannot DELETE): reads use the rows whose `revision` equals these counters. */
     assetsRevision: integer("assets_revision").notNull().default(0),
+    /** Incremented on every draft save: the optimistic-lock token of `expectedRevision` (replaces the millisecond `updated_at` compare). */
+    revision: integer("revision").notNull().default(0),
     disclosuresRevision: integer("disclosures_revision").notNull().default(0),
     contentHash: text("content_hash"),
     approvedHash: text("approved_hash"),

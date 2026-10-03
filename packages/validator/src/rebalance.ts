@@ -100,11 +100,11 @@ export function headlineOf(s: PositionStates): Headline {
   return "ALIGNED";
 }
 
-export const NOTIFICATION_KINDS = ["rebalance_available", "drifted", "repair_required", "execution_incomplete", "basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired", "lead_changed"] as const;
+export const NOTIFICATION_KINDS = ["rebalance_available", "drifted", "repair_required", "execution_incomplete", "basket_paused", "basket_unpaused", "basket_retirement_pending", "basket_retired", "lead_changed", "instrument_not_investable"] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 /** Placeholder wording (compliance review later). Never states that a trade happened. */
-export function notificationText(kind: NotificationKind, data: { basketName?: string; basketSlug?: string; positionId?: string; asset?: string; autoStopped?: boolean }): { title: string; body: string; link: string } {
+export function notificationText(kind: NotificationKind, data: { basketName?: string; basketSlug?: string; positionId?: string; asset?: string; autoStopped?: boolean; instrumentName?: string; instrumentId?: string; baskets?: string[] }): { title: string; body: string; link: string } {
   const basket = data.basketName ?? "Your basket";
   const rebalance = `/portfolio/${data.positionId ?? ""}/rebalance`;
   const basketLink = data.basketSlug ? `/baskets/${data.basketSlug}` : "/portfolio";
@@ -117,6 +117,7 @@ export function notificationText(kind: NotificationKind, data: { basketName?: st
     case "basket_unpaused": return { title: `${basket} is active again`, body: "The basket is no longer paused.", link: basketLink };
     case "basket_retirement_pending": return { title: `${basket} is being retired`, body: "The basket is pending retirement. Your holdings are unchanged; nothing happens without your signature.", link: basketLink };
     case "basket_retired": return { title: `${basket} is retired`, body: "The basket has been retired. Your holdings are unchanged; you can sell or leave at any time.", link: basketLink };
+    case "instrument_not_investable": return { title: `${data.instrumentName ?? "An asset"} is no longer investable`, body: `Baskets whose current version holds it: ${data.baskets?.join(", ") || "none"}.`, link: `/ops/assets/${data.instrumentId ?? ""}` };
     case "lead_changed": return { title: `${basket}: lead manager changed`, body: "The lead manager of this basket changed.", link: basketLink };
   }
 }

@@ -11,11 +11,11 @@ import { env } from "../env";
 import { bitcoinTx } from "../providers/bitcoin";
 import { evmBalance, evmNativeReceived, evmReceipt, gasWalletAddress } from "../providers/evm-rpc";
 import { routeProviderById } from "../providers/routes";
-import { feePayer, solanaBalance, solanaFinality, solanaReceived } from "../providers/solana-tx";
+import { feePayer, solanaBalance, solanaBlockTime, solanaFinality, solanaReceived } from "../providers/solana-tx";
 import { redis } from "../middleware/rate-limit";
 import { enqueue } from "../queues";
 import { writeAudit } from "./audit";
-import { activeCustom, addressOn, gasPayerFor, basketCashMicro, cancelIfExpired, inFlightAssets, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, setOperationStatus, stopStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
+import { activeCustom, addressOn, closeIfEmpty, gasPayerFor, basketCashMicro, cancelIfExpired, inFlightAssets, lockOperation, markSubmitted, operationView, refreshOperationStatus, setLegStatus, setOperationStatus, stopStatus, userAddresses, walletBalance, type OpCtx } from "./operations";
 import { versionDiff } from "./baskets";
 import { notify } from "./notifications";
 import { getPrices } from "./pricing";
@@ -103,6 +103,8 @@ async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinatio
     }
   }
   await refreshOperationStatus(tx, ctx, op.id);
+  // A sale that settled the last of the position closes it (after the operation itself is over).
+  if (op.kind === "sell_to_usdc") await closeIfEmpty(tx, ctx, op.positionId!);
 }
 
 /**
@@ -314,6 +316,15 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
     await lockOperation(tx, op.id);
     await settleLeg(tx, null, op, leg, destinationTx, received);
   });
+  if (leg.kind === "network_fee") {
+    // The fee's on-chain time buckets revenue by day (settled_at is when this server noticed). Outside the transaction: a read failure only leaves the fallback.
+    try {
+      const blockTime = await solanaBlockTime(sourceTx);
+      if (blockTime) await db.update(operationFees).set({ settledChainAt: blockTime }).where(and(eq(operationFees.legId, leg.id), isNull(operationFees.settledChainAt)));
+    } catch (err) {
+      logger.warn("fee block time unavailable", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
+    }
+  }
   return false;
 }
 

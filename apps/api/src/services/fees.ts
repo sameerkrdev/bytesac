@@ -220,6 +220,9 @@ export async function getRevenueCsv(q: EarningsQuery): Promise<string> {
 // Revenue reconciliation (read-only)
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** The fee's on-chain time when known, else when it was recorded: the day it belongs to for comparison with the treasury's history. */
+const chainDay = sql<Date>`coalesce(${operationFees.settledChainAt}, ${operationFees.settledAt})`;
+
 /**
  * Compares the platform fees settled in a UTC day (default: yesterday) with the USDC that arrived in the revenue treasury's token account that day (signatures
  * and parsed balance changes from Solana RPC). A difference logs `revenue reconciliation mismatch` with both totals; an RPC failure logs a warning. Never throws,
@@ -232,7 +235,7 @@ export async function reconcileRevenue(day = new Date(Date.now() - 86_400_000).t
   try {
     const owner = new PublicKey(env.REVENUE_TREASURY_SOLANA_ADDRESS);
     const [settled] = await db.select({ total: sql<string>`coalesce(sum(${operationFees.amountMicro}), 0)` }).from(operationFees)
-      .where(and(eq(operationFees.kind, "platform"), gte(operationFees.settledAt, start), lt(operationFees.settledAt, end)));
+      .where(and(eq(operationFees.kind, "platform"), sql`${chainDay} >= ${start.toISOString()}::timestamptz`, sql`${chainDay} < ${end.toISOString()}::timestamptz`));
     // Signatures come newest first, up to 1,000 per page: page back until the day is behind us.
     const signatures: string[] = [];
     for (let before: string | undefined; ;) {
