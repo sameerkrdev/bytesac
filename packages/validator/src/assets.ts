@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { investorStatusSchema } from "./eligibility";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Enums and lifecycle
@@ -107,6 +108,9 @@ export const createDeploymentRequestSchema = z.object({ ...deploymentFields, add
   .refine((d) => d.tokenStandard !== "erc20" || ASSET_CHAINS[d.chain].family === "evm", { message: "ERC-20 tokens live on EVM chains.", path: ["tokenStandard"] })
   .refine((d) => !d.tokenStandard.startsWith("spl") || d.chain === "solana", { message: "SPL tokens live on Solana.", path: ["tokenStandard"] });
 export type CreateDeploymentRequest = z.infer<typeof createDeploymentRequestSchema>;
+/** Ops flag (ops_admin): a permissioned token is never investable (Spec 11). */
+export const permissionedRequestSchema = z.object({ permissioned: z.boolean() });
+export type PermissionedRequest = z.infer<typeof permissionedRequestSchema>;
 export const feeOnTransferRequestSchema = z.object({ feeOnTransfer: z.boolean() });
 export type FeeOnTransferRequest = z.infer<typeof feeOnTransferRequestSchema>;
 export const updateDeploymentRequestSchema = z.object(deploymentFields).partial();
@@ -132,13 +136,15 @@ const ruleFields = {
   jurisdiction: z.string().regex(/^([A-Z]{2}|\*)$/),
   action: eligibilityActionSchema,
   outcome: eligibilityOutcomeSchema,
+  /** Empty = every investor status. */
+  investorStatuses: z.array(investorStatusSchema).max(4).refine((a) => new Set(a).size === a.length),
   kycRequirement: z.string().trim().max(500),
   transferRestrictions: z.string().trim().max(1000),
   sourceText: z.string().trim().max(500),
   sourceUrl: httpsUrl.nullable(),
 };
 export const createRuleRequestSchema = z.object({
-  ...ruleFields, routeId: ruleFields.routeId.optional(), kycRequirement: ruleFields.kycRequirement.optional(), transferRestrictions: ruleFields.transferRestrictions.optional(),
+  ...ruleFields, investorStatuses: ruleFields.investorStatuses.default([]), routeId: ruleFields.routeId.optional(), kycRequirement: ruleFields.kycRequirement.optional(), transferRestrictions: ruleFields.transferRestrictions.optional(),
   sourceText: ruleFields.sourceText.optional(), sourceUrl: ruleFields.sourceUrl.optional(),
 });
 export type CreateRuleRequest = z.infer<typeof createRuleRequestSchema>;
@@ -216,6 +222,8 @@ export const opsAssetDetailSchema = z.object({
     observedDecimals: z.number().int().nullable(), observedSymbol: z.string().nullable(), observedName: z.string().nullable(), observedAt: isoTime.nullable(), sourceUrl: z.string().nullable(),
     /** Ops flag: the token takes a fee on transfer (previews warn that less can arrive). */
     feeOnTransfer: z.boolean(),
+    /** Ops flag: permissioned tokens are never investable. */
+    permissioned: z.boolean(),
     /** LI.FI token list: listed = verified; null when unknown (native asset, Bitcoin, LI.FI unavailable). */
     lifiVerification: z.enum(["verified", "unverified", "flagged"]).nullable(),
     status: assetItemStatusSchema, approvedByUserId: uuid.nullable(), createdAt: isoTime, updatedAt: isoTime,
@@ -225,7 +233,7 @@ export const opsAssetDetailSchema = z.object({
     processingModel: processingModelSchema, notes: z.string().nullable(), status: assetItemStatusSchema, approvedByUserId: uuid.nullable(), createdAt: isoTime, updatedAt: isoTime,
   })),
   rules: z.array(z.object({
-    id: uuid, routeId: uuid.nullable(), jurisdiction: z.string(), action: eligibilityActionSchema, outcome: eligibilityOutcomeSchema, kycRequirement: z.string().nullable(),
+    id: uuid, routeId: uuid.nullable(), jurisdiction: z.string(), action: eligibilityActionSchema, outcome: eligibilityOutcomeSchema, investorStatuses: z.array(investorStatusSchema), kycRequirement: z.string().nullable(),
     transferRestrictions: z.string().nullable(), sourceText: z.string().nullable(), sourceUrl: z.string().nullable(), status: ruleStatusSchema, createdAt: isoTime, updatedAt: isoTime,
   })),
   priceReferences: z.array(z.object({

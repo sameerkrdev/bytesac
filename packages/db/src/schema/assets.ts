@@ -20,6 +20,7 @@ export const executionMethod = app.enum("execution_method", ["swap", "subscripti
 export const processingModel = app.enum("processing_model", ["sync", "async"]);
 export const eligibilityAction = app.enum("eligibility_action", ["acquire", "sell", "redeem", "transfer"]);
 export const eligibilityOutcome = app.enum("eligibility_outcome", ["ALLOWED", "RESTRICTED", "KYC_REQUIRED", "REVIEW_REQUIRED"]);
+export const investorStatus = app.enum("investor_status", ["retail", "accredited", "qualified", "professional"]);
 export const priceKind = app.enum("price_kind", ["market", "nav"]);
 export const priceProvider = app.enum("price_provider", ["coinmarketcap", "issuer"]);
 export const assetProviderKind = app.enum("asset_provider_kind", ["dex_aggregator", "issuer_platform", "venue", "bridge", "other"]);
@@ -95,6 +96,8 @@ export const instrumentDeployments = app.table(
     sourceUrl: text("source_url"),
     /** Ops flag: the token takes a fee on transfer, so the received amount can be below the quote (previews say so; the ledger is unchanged). */
     feeOnTransfer: boolean("fee_on_transfer").notNull().default(false),
+    /** Ops flag: the token restricts who can hold it, so it is never investable (Spec 11). */
+    permissioned: boolean("permissioned").notNull().default(false),
     status: assetItemStatus("status").notNull().default("DRAFT"),
     approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
     createdAt: ts("created_at").notNull().defaultNow(),
@@ -142,6 +145,8 @@ export const eligibilityRules = app.table(
     jurisdiction: text("jurisdiction").notNull(),
     action: eligibilityAction("action").notNull(),
     outcome: eligibilityOutcome("outcome").notNull(),
+    /** Empty = every investor status. */
+    investorStatuses: investorStatus("investor_statuses").array().notNull().default(sql`'{}'::app.investor_status[]`),
     kycRequirement: text("kyc_requirement"),
     transferRestrictions: text("transfer_restrictions"),
     sourceText: text("source_text"),
