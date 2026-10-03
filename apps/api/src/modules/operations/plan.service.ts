@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, isUniqueViolation, operationLegs, operations, eligibilityDecisions, operationFees, positionLedgerEntries } from "@repo/db";
-import { ASSET_CHAINS, USDC_SOLANA_MINT, micro, minOut, networkFeeMicro, splitInvestment, type AssetChain, type AssetType, type BasketFees, type InvestRequest, type OperationView, type SellRequest } from "@repo/validator";
+import { ASSET_CHAINS, USDC_DECIMALS, USDC_SOLANA_MINT, micro, minOut, networkFeeMicro, splitInvestment, type AssetChain, type AssetType, type BasketFees, type InvestRequest, type OperationView, type SellRequest } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
 import { routeProviderById } from "@/providers/routes";
@@ -36,10 +36,10 @@ export type PlanQuote = LegQuote | LegEstimate;
  * does not hold the funds yet (a rebalance buy paid from sale proceeds), so LI.FI's balance-free route estimate is used. A quote LI.FI refuses because it
  * cannot build the transaction for this wallet (code 1001) falls back to an estimate as well.
  */
-export async function planQuote(i: { fromChain: AssetChain; fromToken: string | null; toChain: AssetChain; toToken: string | null; amount: bigint; slippageBps: number; addresses: Addresses; estimate?: boolean }): Promise<PlanQuote> {
+export async function planQuote(i: { fromChain: AssetChain; fromToken: string | null; toChain: AssetChain; toToken: string | null; toDecimals: number; amount: bigint; slippageBps: number; addresses: Addresses; estimate?: boolean }): Promise<PlanQuote> {
   const provider = routeProviderById(env.ROUTE_PROVIDER_ORDER[0]!)!;
   const toAddress = addressOn(i.addresses, i.toChain);
-  const trade = { fromChain: i.fromChain, fromToken: i.fromToken, toChain: i.toChain, toToken: i.toToken, fromAmount: i.amount, slippageBps: i.slippageBps, toAddress, deny: await routeDenyList(i.toChain, toAddress) };
+  const trade = { fromChain: i.fromChain, fromToken: i.fromToken, toChain: i.toChain, toToken: i.toToken, fromAmount: i.amount, slippageBps: i.slippageBps, toAddress, toDecimals: i.toDecimals, deny: await routeDenyList(i.toChain, toAddress) };
   if (i.estimate) return provider.estimate(trade);
   try {
     return await provider.quote({ ...trade, fromAddress: addressOn(i.addresses, i.fromChain), svmSponsor: i.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined });
@@ -142,7 +142,7 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   const weights = inv.constituents.map((c) => ({ deploymentId: c.deployment.id, bps: c.weightBps }));
   const provisional = splitInvestment(amount, 0n, weights);
   const quotes = await Promise.all(inv.constituents.map((c, n) => planQuote({
-    fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: c.deployment.chain, toToken: c.deployment.address, amount: provisional[n]!.amountMicro, slippageBps: body.slippageBps, addresses,
+    fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: c.deployment.chain, toToken: c.deployment.address, toDecimals: c.deployment.decimals, amount: provisional[n]!.amountMicro, slippageBps: body.slippageBps, addresses,
   })));
   const costs = await Promise.all(quotes.map((q, n) => legCost(q, inv.constituents[n]!.deployment.chain, inv.constituents[n]!.deployment.address, addressOn(addresses, "solana"))));
   const price = await usdcPrice();
@@ -236,7 +236,7 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   if (sells.length === 0) assertAllowed(sellDecisions);
   const excluded = candidates.filter(blocked).map((s) => ({ instrumentId: s.instrumentId, symbol: s.symbol, notice: sellDecisions.get(s.instrumentId)?.outcome === "DECLARATION_REQUIRED" ? `Confirm your eligibility to sell ${s.symbol} through Bytesac.` : restrictedNotice(s.symbol) }));
 
-  const quotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
+  const quotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, toDecimals: USDC_DECIMALS, amount: s.quantity, slippageBps: body.slippageBps, addresses })));
   const costs = await Promise.all(quotes.map((q, n) => (sells[n]!.chain === "solana" ? legCost(q, "solana", USDC_SOLANA_MINT, addressOn(addresses, "solana")) : { lamports: 0n, usd: q.gasEstimateUsd, estimated: false })));
   const price = await usdcPrice();
   // The platform fee is charged on the planned sale value; a sell with any price missing is waived "no_price".

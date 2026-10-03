@@ -126,7 +126,7 @@ function summarize(gas: z.infer<typeof stepEstimate>[], all: z.infer<typeof step
 /**
  * LI.FI computes `toAmountMin` in floating point or rounds it per tool, so it can sit a hair under `toAmount x (1 - slippage)`: live checks (2026-10-03) on 18-decimal outputs showed
  * 350,000,000 base units under, where the old 1-unit tolerance refused a valid quote, and layerswap rounds 18-decimal amounts to 1e10 wei (about 2.7 ppm on a 0.00185 ETH leg).
- * Accepted: `quotedMin >= expectedMin - max(floor(expectedMin / 1e6), 10^(decimals - 8), 1)`, with the destination token's decimals capped at 18 (the response is untrusted); a minimum
+ * Accepted: `quotedMin >= expectedMin - max(floor(expectedMin / 1e6), 10^(decimals - 8), 1)`, with the destination token's decimals taken from our registry, capped at 18 (the response is untrusted; a response whose decimals differ is refused); a minimum
  * weaker than the chosen slippage by more than that is still refused. ADR-017.
  */
 export function minOutAccepted(quotedMin: bigint, estimatedOut: bigint, slippageBps: number, decimals = 0): boolean {
@@ -164,7 +164,7 @@ export const lifi: RouteProvider = {
     const minOut = BigInt(r.toAmountMin);
     if (
       r.fromChainId !== CHAIN_IDS[i.fromChain] || r.toChainId !== CHAIN_IDS[i.toChain] || !same(r.fromToken.address, fromToken) || !same(r.toToken.address, toToken) || BigInt(r.fromAmount) !== i.fromAmount
-      || !minOutAccepted(minOut, estimatedOut, i.slippageBps, r.toToken.decimals)
+      || (r.toToken.decimals !== undefined && r.toToken.decimals !== i.toDecimals) || !minOutAccepted(minOut, estimatedOut, i.slippageBps, i.toDecimals)
     ) throw unavailable("The route provider returned a route that does not match the trade.");
     // The gas the user pays is the source chain's: steps that start on another chain are paid there.
     const own = r.steps.filter((s) => s.action.fromChainId === CHAIN_IDS[i.fromChain]).map((s) => s.estimate);
@@ -188,7 +188,7 @@ export const lifi: RouteProvider = {
       a.fromChainId !== CHAIN_IDS[i.fromChain] || a.toChainId !== CHAIN_IDS[i.toChain] || !same(a.fromToken.address, fromToken) || !same(a.toToken.address, toToken)
       || BigInt(a.fromAmount) !== i.fromAmount || !same(a.toAddress, i.toAddress)
       // The route must enforce at least the slippage the user chose (rounding allowed, see `minOutAccepted`).
-      || !minOutAccepted(minOut, estimatedOut, i.slippageBps, a.toToken.decimals)
+      || (a.toToken.decimals !== undefined && a.toToken.decimals !== i.toDecimals) || !minOutAccepted(minOut, estimatedOut, i.slippageBps, i.toDecimals)
     ) throw unavailable("The route provider returned a quote that does not match the leg.");
 
     const tx = q.transactionRequest;

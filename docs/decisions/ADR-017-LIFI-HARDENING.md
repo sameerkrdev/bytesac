@@ -40,7 +40,7 @@ The status check persists LI.FI's `substatus`. `NOT_PROCESSABLE_REFUND_NEEDED` a
 
 ### 6. Price impact (D-097)
 
-Minimum output (user ruling, Spec 14): a quoted `toAmountMin` is accepted when `quotedMin >= expectedMin - max(floor(expectedMin / 1e6), 10^(decimals - 8), 1)` (BigInt, destination token decimals from the response, capped at 18; 1 ppm or 1 unit for tokens of 8 decimals or fewer). Layerswap rounds 18-decimal amounts to 1e10 wei (about 2.7 ppm on a 0.00185 ETH leg), which a flat 1 ppm refused. A weaker minimum is still refused; D-073 is unaffected. Deeper fix: FUTURE-PLANS (Routing provider robustness).
+Minimum output (user ruling, Spec 14): a quoted `toAmountMin` is accepted when `quotedMin >= expectedMin - max(floor(expectedMin / 1e6), 10^(decimals - 8), 1)` (BigInt, destination token decimals from our registry (USDC on Solana: `USDC_DECIMALS`), never the response, capped at 18; a response whose `toToken.decimals` differs is refused; 1 ppm or 1 unit for tokens of 8 decimals or fewer). Layerswap rounds 18-decimal amounts to 1e10 wei (about 2.7 ppm on a 0.00185 ETH leg), which a flat 1 ppm refused. A weaker minimum is still refused; D-073 is unaffected. Deeper fix: FUTURE-PLANS (Routing provider robustness).
 
 Every estimate and quote sends `maxPriceImpact = 0.05`. Because LI.FI's honoring of the parameter is unverified, the server also computes the impact itself: 1 - (`toAmountUSD` + included route fees USD) / `fromAmountUSD` (D-107), so a fee-heavy route is not mistaken for slippage. Above 5% it is refused with 503 `ROUTE_UNAVAILABLE`, "Price impact too high for this trade size."; there is no check under $10 or without USD values. Previews show this figure for each leg in warning style from 2%.
 

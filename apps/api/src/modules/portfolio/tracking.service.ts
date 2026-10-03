@@ -2,7 +2,7 @@ import createHttpError from "http-errors";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFees, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
-import { CONFIRMATIONS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
+import { CONFIRMATIONS, USDC_DECIMALS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
 import { bitcoinTx } from "@/providers/bitcoin";
 import { evmNativeReceived, evmReceipt } from "@/providers/evm-rpc";
 import { routeProviderById } from "@/providers/routes";
@@ -261,7 +261,7 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
           // The token that arrived is the intended one already: there is nothing to swap, a person resolves it.
           const arrivedAsTarget = !native && toToken !== null && delivered.token.address.toLowerCase() === toToken.toLowerCase();
           const estimate = arrivedAsTarget ? null : await routeProviderById(leg.provider ?? "")!.estimate({
-            fromChain: leg.toChain, fromToken: native ? null : delivered.token.address, toChain: leg.toChain, toToken, fromAmount: evidenced, toAddress: owner, slippageBps: op.slippageBps, deny: await routeDenyList(leg.toChain, owner),
+            fromChain: leg.toChain, fromToken: native ? null : delivered.token.address, toChain: leg.toChain, toToken, toDecimals: leg.toDeploymentId ? target!.decimals : USDC_DECIMALS, fromAmount: evidenced, toAddress: owner, slippageBps: op.slippageBps, deny: await routeDenyList(leg.toChain, owner),
           }).catch((err: unknown) => {
             logger.warn("recovery estimate failed; the leg stays unknown", { legId, errMessage: err instanceof Error ? err.message : "unknown" });
             return null;

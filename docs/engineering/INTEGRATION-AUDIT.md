@@ -41,7 +41,7 @@ Audit of every third-party library and provider integration against its official
 
 - LI.FI no-SOL refusal is read from `errors.filteredOut[].reason` (HTTP 404, code 1002) when no route failed for another reason; `svmSponsor` does not avoid it for tools that need a temporary token account (observed with `mayanFastMCTP` only; ADR-017).
 - Deny keys unknown to `/v1/tools` are dropped before sending (an unknown key made LI.FI fail the whole request with code 1011).
-- The quote acceptance check allows `toAmountMin` to sit below `toAmount x (1 - slippage)` by at most max(1 ppm, 10^(decimals-8), 1 unit); a weaker minimum is still refused and the stored minimum is LI.FI's own (ADR-014, ADR-017).
+- The quote acceptance check allows `toAmountMin` to sit below `toAmount x (1 - slippage)` by at most max(1 ppm, 10^(decimals-8), 1 unit), with decimals from our registry (a response that disagrees is refused); a weaker minimum is still refused and the stored minimum is LI.FI's own (ADR-014, ADR-017).
 - A deny key unknown to `/v1/tools` is also logged once per key per process-hour and shown as stale in ops routing (fails open for a renamed tool; user ruling).
 - LI.FI analytics requests `limit=100`; only `verificationStatus === "verified"` counts as a verified token; CoinMarketCap sends `skip_invalid=true`.
 - BullMQ queues use `enableOfflineQueue: false` (producers fail fast during a Redis outage after the first successful connection; a cold start with Redis down still waits for the first connection; `enqueue` logs and moves on); queues, workers and the rate-limit Redis client log connection errors through winston.

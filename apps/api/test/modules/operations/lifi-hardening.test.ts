@@ -22,7 +22,7 @@ const DENY = { bridges: ["across", "mayan", "mayanSwift"], exchanges: ["uniswap"
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const calls = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => ({ url: new URL(c[0] as string), init: c[1] as RequestInit }));
-const trade = { fromChain: "solana", fromToken: USDC_MINT, toChain: "ethereum", toToken: TOKEN, fromAmount: 10_000_000n, toAddress: USER_EVM, slippageBps: 100 } as const;
+const trade = { fromChain: "solana", fromToken: USDC_MINT, toChain: "ethereum", toToken: TOKEN, fromAmount: 10_000_000n, toAddress: USER_EVM, slippageBps: 100, toDecimals: 6 } as const;
 
 const route = (over: Record<string, unknown> = {}) => ({
   fromChainId: SOLANA, toChainId: 1, fromToken: { address: USDC_MINT, chainId: SOLANA }, toToken: { address: TOKEN, chainId: 1 }, fromAmount: "10000000", toAmount: "5000000", toAmountMin: "4950000",
@@ -109,7 +109,7 @@ describe("lifi quote", () => {
   });
   const quoteMin = async (toAmount: string, toAmountMin: bigint, decimals: number, slippageBps = 50) => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(withMin(toAmount, toAmountMin.toString(), decimals)));
-    return lifi.quote({ ...input, slippageBps });
+    return lifi.quote({ ...input, slippageBps, toDecimals: decimals });
   };
   const EXPECTED_18 = 1_840_819_650_000_000n; // 1850070000000000 x 0.995
   it("an 18-decimal minimum up to 10^10 under the slippage floor is accepted (the live layerswap case); one wei more, or a weaker minimum, is refused", async () => {
@@ -132,6 +132,13 @@ describe("lifi quote", () => {
   });
   it("the decimals in the response are capped at 18, so a lying provider cannot widen the tolerance past 10^10", async () => {
     await expect(quoteMin("1850070000000000", EXPECTED_18 - 10_000_000_001n, 36)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
+  });
+
+  it("refuses a response whose destination decimals differ from ours (18 claimed for a 6-decimal USDC)", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(withMin("5000000", "4000000", 18)));
+    await expect(lifi.quote({ ...input, slippageBps: 100, toDecimals: 6 })).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ routes: [route({ toToken: { address: TOKEN, chainId: 1, decimals: 18 } })] }));
+    await expect(lifi.estimate({ ...trade, toDecimals: 6 })).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
   });
 
   it("omits the deny params when nothing is denied", async () => {
