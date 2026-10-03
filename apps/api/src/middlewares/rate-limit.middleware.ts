@@ -1,9 +1,11 @@
 import createHttpError from "http-errors";
 import { Redis } from "ioredis";
 import { RateLimiterRedis, RateLimiterRes } from "rate-limiter-flexible";
+import { logger } from "@repo/logger";
 import { env } from "@/config/dotenv";
 
 export const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
+redis.on("error", (err) => logger.warn("redis error", { errMessage: err.message }));
 
 const limiter = (keyPrefix: string, points: number, duration: number) => new RateLimiterRedis({ storeClient: redis, keyPrefix, points, duration });
 

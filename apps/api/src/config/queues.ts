@@ -3,11 +3,18 @@ import { logger } from "@repo/logger";
 import type { NotificationKind } from "@repo/validator";
 import { env } from "./dotenv";
 
-/** `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. */
-const queue = (name: string) => new Queue(name, {
-  connection: { url: env.REDIS_URL },
-  defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 30_000 }, removeOnComplete: 1000, removeOnFail: 5000 },
-});
+/**
+ * `:` is not allowed in BullMQ queue names or custom job ids, so ids join their parts with `_`. Producers fail fast when Redis is down
+ * (`enableOfflineQueue: false`, per the BullMQ production guide) so a request never waits on a dead queue; `enqueue` logs and moves on.
+ */
+const queue = (name: string) => {
+  const q = new Queue(name, {
+    connection: { url: env.REDIS_URL, enableOfflineQueue: false },
+    defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 30_000 }, removeOnComplete: 1000, removeOnFail: 5000 },
+  });
+  q.on("error", (err) => logger.warn("queue error", { queue: name, errMessage: err.message }));
+  return q;
+};
 
 export const queues = {
   "price-snapshot": queue("price-snapshot"),

@@ -6,12 +6,13 @@ import { adminSql, resetDb } from "../../helpers/db";
 import { fakes } from "../../helpers/fakes";
 import { orgWithOwner } from "../members/helpers";
 
-const bull = vi.hoisted(() => ({ workers: [] as Array<{ name: string }>, schedulers: new Map<string, unknown>() }));
+const bull = vi.hoisted(() => ({ workers: [] as Array<{ name: string; events: string[] }>, schedulers: new Map<string, unknown>() }));
 vi.mock("bullmq", () => ({
   Worker: class {
     name: string;
+    events: string[] = [];
     constructor(name: string) { this.name = name; bull.workers.push(this); }
-    on() { return this; }
+    on(event: string) { this.events.push(event); return this; }
     close = async () => undefined;
   },
 }));
@@ -39,6 +40,7 @@ describe("worker start", () => {
     expect(bull.schedulers.get("reconcile-positions-nightly")).toMatchObject({ repeat: { pattern: "30 2 * * *", tz: "UTC" } });
     expect(bull.schedulers.get("gas-wallet-check-15m")).toMatchObject({ repeat: { every: 900_000 } });
     expect(bull.schedulers.get("revenue-reconcile-daily")).toMatchObject({ repeat: { pattern: "0 4 * * *", tz: "UTC" } });
+    expect(bull.workers.every((w) => w.events.includes("error"))).toBe(true);
     expect(bull.workers.map((w) => w.name).slice(0, 7)).toEqual(["price-snapshot", "basket-performance", "search-index-refresh", "embed-basket", "track-leg", "reconcile-positions", "gas-wallet-check"]);
   });
 });
