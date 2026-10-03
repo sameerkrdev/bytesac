@@ -103,6 +103,7 @@ Consolidated list of everything still open after Spec 10 (2026-10-02). Sources: 
 - [ ] Bitcoin wallet never run against a real wallet; EVM approval and main transaction are two prompts; portfolio shows basket slugs rather than names.
 
 **Spec 11**
+- [ ] A rebalance is refused when a held RWA is structurally non-investable (permissioned, no supported route, no price) because Spec 9 requires the target version investable (scheduled in Spec 12).
 - [ ] Data: which RWA tokens have real DEX liquidity through LI.FI and CoinMarketCap ids (no RWA is offered until ops add a route, a market price reference and rules).
 - [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
 - [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
