@@ -2,7 +2,7 @@ import createHttpError from "http-errors";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { basketPositions, basketVersionAssets, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionDecisions, positionLedgerEntries } from "@repo/db";
 import { logger } from "@repo/logger";
-import { ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, RWA_ROUTE_METHODS, MIN_TRADE_USDC_DEFAULT, USDC_SOLANA_MINT, feePlacement, micro, minOut, networkFeeMicro, planRebalance, type AssetChain, type BasketFees, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult } from "@repo/validator";
+import { ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, RWA_ROUTE_METHODS, MIN_TRADE_USDC_DEFAULT, USDC_DECIMALS, USDC_SOLANA_MINT, feePlacement, micro, minOut, networkFeeMicro, planRebalance, type AssetChain, type BasketFees, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult } from "@repo/validator";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
 import { solanaBalance } from "@/providers/solana-tx";
 import { writeAudit } from "@/modules/audit/audit.service";
@@ -112,11 +112,11 @@ export async function createRebalancePlan(ctx: OpCtx, body: RebalanceRequest): P
       code: "NOT_INVESTABLE", details: { reasons: [{ instrumentId: s.instrumentId, code: "NO_ROUTE", message: `${s.symbol}: no route is available.` }] },
     });
     for (const s of sells) if (!["ACTIVE", "PAUSED"].includes(sellDeployments.find((d) => d.id === s.deploymentId)?.status ?? "")) throw noSellRoute(s);
-    const sellQuotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, amount: s.quantity, slippageBps: body.slippageBps, addresses })
+    const sellQuotes = await Promise.all(sells.map((s) => planQuote({ fromChain: s.chain, fromToken: s.address, toChain: "solana", toToken: USDC_SOLANA_MINT, toDecimals: USDC_DECIMALS, amount: s.quantity, slippageBps: body.slippageBps, addresses })
       .catch((err: unknown) => { throw (err as { code?: string }).code === "ROUTE_UNAVAILABLE" && !/price impact/i.test((err as Error).message) ? noSellRoute(s) : err; })));
     const buyConstituents = plan.buys.map((b) => inv.constituents.find((c) => c.deployment.id === b.deploymentId)!);
     const buyQuotes = await Promise.all(plan.buys.map((b, n) => planQuote({
-      fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: b.chain, toToken: buyConstituents[n]!.deployment.address, amount: b.amountMicro, slippageBps: body.slippageBps, addresses,
+      fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: b.chain, toToken: buyConstituents[n]!.deployment.address, toDecimals: buyConstituents[n]!.deployment.decimals, amount: b.amountMicro, slippageBps: body.slippageBps, addresses,
       // Funded by sale proceeds that are not in the wallet yet: LI.FI's balance-free estimate, never a quote (execution takes a real quote per leg).
       estimate: true,
     })));
@@ -208,7 +208,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
     const buy = (total * priceMicro * BigInt(10_000 + body.slippageBps) + den - 1n) / den;
 
     const addresses = await userAddresses(db, ctx.userId);
-    const q = await planQuote({ fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: d.chain, toToken: d.address, amount: buy, slippageBps: body.slippageBps, addresses });
+    const q = await planQuote({ fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: d.chain, toToken: d.address, toDecimals: d.decimals, amount: buy, slippageBps: body.slippageBps, addresses });
     const cost = await legCost(q, d.chain, d.address, addressOn(addresses, "solana"));
     const usdc = await usdcPrice();
     const fees = await planFees(db, { networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, cost.usd], usdc), operation: "repair", platformBaseMicro: buy, usdcPrice: usdc, solPriceUsd: q.nativePriceUsd, manager: null, organizationId: null, basketId: null });

@@ -23,7 +23,7 @@ const quoteBody = (over: { toAddress?: string; toToken?: string; toAmountMin?: s
   estimate: { toAmount: "5000000", toAmountMin: over.toAmountMin ?? "4950000", gasCosts: [{ amountUSD: "0.05" }, { amountUSD: "0.02" }] },
   transactionRequest: { data: "AQID" },
 });
-const input = { fromChain: "solana", fromToken: USDC_MINT, toChain: "ethereum", toToken: TOKEN, fromAmount: 10_000_000n, fromAddress: USER_SOL, toAddress: USER_EVM, slippageBps: 100, svmSponsor: SPONSOR } as const;
+const input = { fromChain: "solana", fromToken: USDC_MINT, toChain: "ethereum", toToken: TOKEN, fromAmount: 10_000_000n, fromAddress: USER_SOL, toAddress: USER_EVM, slippageBps: 100, toDecimals: 6, svmSponsor: SPONSOR } as const;
 
 beforeEach(async () => {
   await redis.flushdb();

@@ -86,8 +86,18 @@ describe("route policy", () => {
     expect((await request(app).post("/v1/ops/routing/deny").set(admin.h).send({ kind: "exchange", toolKey: "uniswap", reason: "Again" })).status).toBe(201);
   });
 
+  it("an active entry whose key LI.FI no longer lists is stale in the ops view; listed, removed and current entries are not", async () => {
+    lifiStub({ "/v1/tools": tools });
+    const admin = await opsUser(app, "ops_admin");
+    await adminSql`INSERT INTO app.route_policy_entries (id, kind, tool_key, reason, created_by) VALUES (gen_random_uuid(), 'bridge', 'stargate', 'live', ${admin.userId}), (gen_random_uuid(), 'bridge', 'stargateOld', 'renamed', ${admin.userId})`;
+    const res = await request(app).get("/v1/ops/routing").set(admin.h);
+    expect(res.status).toBe(200);
+    expect(Object.fromEntries(res.body.entries.map((e: { toolKey: string; stale: boolean }) => [e.toolKey, e.stale]))).toEqual({ stargate: false, stargateOld: true });
+  });
+
   it("another process’s change is picked up when the 60 s cache expires", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
+    lifiStub({ "/v1/tools": tools }); // a denied key is checked against LI.FI's tools
     expect((await routeDenyList("solana", "SomeSolanaAddress")).bridges).toEqual([]);
     const admin = await opsUser(app, "ops_admin");
     await adminSql`INSERT INTO app.route_policy_entries (id, kind, tool_key, reason, created_by) VALUES (gen_random_uuid(), 'bridge', 'stargate', 'direct', ${admin.userId})`;
@@ -119,7 +129,7 @@ describe("LI.FI transfer lookup", () => {
     expect(res.status).toBe(200);
     expect(res.body.wallet).toBe(user.evmAddress);
     expect(res.body.transfers.map((t: { id: string }) => t.id)).toEqual(["in", "edge", "no-time"]);
-    expect(Object.fromEntries(seen[0]!.searchParams)).toEqual({ wallet: user.evmAddress, status: "ALL", fromTimestamp: String(at - WINDOW), toTimestamp: String(at + WINDOW) });
+    expect(Object.fromEntries(seen[0]!.searchParams)).toEqual({ wallet: user.evmAddress, status: "ALL", limit: "100", fromTimestamp: String(at - WINDOW), toTimestamp: String(at + WINDOW) });
   });
 
   it("a leg that was never submitted, or an operation that does not own the leg, is refused; a LI.FI outage is a 503", async () => {
@@ -140,11 +150,11 @@ describe("asset review: LI.FI verification and the fee-on-transfer flag", () => 
   const OTHER: SeedAsset = { symbol: "BBB", chain: "ethereum", tokenStandard: "erc20", bps: 3000, decimals: 18 };
   const NATIVE: SeedAsset = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 3000, decimals: 9 };
 
-  it("lifiVerification: listed in LI.FI's token list is verified, unlisted is unverified, a native asset is null; an outage is null, never an error", async () => {
+  it("lifiVerification: a token LI.FI marks verified is verified; unlisted or listed-but-unverified is unverified, a native asset is null; an outage is null, never an error", async () => {
     const basket = await seedBasket({ assets: [ERC20, OTHER, NATIVE] });
     const [listed, unlisted, native] = basket.deployments;
     const admin = await opsUser(app, "ops_admin");
-    const seen = lifiStub({ "/v1/tokens": { tokens: { 1: [{ address: listed!.address!.toUpperCase().replace("0X", "0x") }, { address: "0x" + "99".repeat(20) }] } } });
+    const seen = lifiStub({ "/v1/tokens": { tokens: { 1: [{ address: listed!.address!.toUpperCase().replace("0X", "0x"), verificationStatus: "verified" }, { address: unlisted!.address!, verificationStatus: "unverified" }, { address: "0x" + "99".repeat(20), verificationStatus: "verified" }] } } });
     const detail = async (instrumentId: string) => (await request(app).get(`/v1/ops/assets/${instrumentId}`).set(admin.h)).body.deployments[0];
     expect(await detail(listed!.instrumentId)).toMatchObject({ lifiVerification: "verified", feeOnTransfer: false });
     expect((await detail(unlisted!.instrumentId)).lifiVerification).toBe("unverified");

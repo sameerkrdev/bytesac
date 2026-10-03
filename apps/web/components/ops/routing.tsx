@@ -73,7 +73,7 @@ export function Routing({ client = api }: { client?: Client }) {
         <h2 className="font-display text-xl font-semibold text-ivory">History</h2>
         {view.data.entries.length === 0 ? <p className="text-sm text-stone">Nothing denied yet.</p> : (
           <ul className="space-y-1 text-sm text-stone">
-            {view.data.entries.map((x) => <li key={x.id}>{x.kind} {x.toolKey}: denied {new Date(x.createdAt).toLocaleDateString()} · {x.reason}{x.removedAt && ` · allowed again ${new Date(x.removedAt).toLocaleDateString()}`}</li>)}
+            {view.data.entries.map((x) => <li key={x.id}>{x.kind} {x.toolKey}: denied {new Date(x.createdAt).toLocaleDateString()} · {x.reason}{x.removedAt && ` · allowed again ${new Date(x.removedAt).toLocaleDateString()}`}{x.stale && <span className="font-medium text-warning"> · Stale — LI.FI no longer lists this key; re-deny under the new key</span>}</li>)}
           </ul>
         )}
       </section>

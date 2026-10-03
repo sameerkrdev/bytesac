@@ -2,6 +2,7 @@ import createHttpError from "http-errors";
 import { desc, eq, isNull, sql } from "drizzle-orm";
 import { db, isUniqueViolation, operationLegs, operations, routePolicyEntries } from "@repo/db";
 import { ASSET_CHAINS, z, type AssetChain, type RoutePolicyInput } from "@repo/validator";
+import { logger } from "@repo/logger";
 import { redis } from "@/middlewares/rate-limit.middleware";
 import { evmCode } from "@/providers/evm-rpc";
 import { CHAIN_IDS, lifiCall } from "@/providers/routes/lifi";
@@ -27,6 +28,16 @@ let policy: { at: number; rows: { kind: "bridge" | "exchange"; toolKey: string }
 /** An ops change takes effect on this process at once; other processes pick it up within 60 s. */
 export const forgetRoutePolicy = () => { policy = null; };
 
+const STALE_WARN_MS = 3_600_000;
+const warned = new Map<string, number>();
+/** A deny entry whose key LI.FI no longer lists is dropped from the request (fails open for a renamed tool): warn once per key per process-hour so ops see it. */
+function warnStale(kind: string, toolKey: string) {
+  const id = `${kind}:${toolKey}`;
+  if (Date.now() - (warned.get(id) ?? 0) < STALE_WARN_MS) return;
+  warned.set(id, Date.now());
+  logger.warn("route policy: denied key not in LI.FI tools; dropped from the request", { kind, toolKey });
+}
+
 /**
  * What every LI.FI estimate and quote leaves out: the ops deny list (active `route_policy_entries`, cached 60 s in-process) plus, when the destination is an
  * EVM address with code (a contract: `eth_getCode`, cached 1 h), every Mayan bridge (`/v1/tools` keys starting with `mayan`), which delivers to EOAs only.
@@ -45,17 +56,25 @@ export async function routeDenyList(toChain: AssetChain, toAddress: string): Pro
     }
     if (contract === "1") for (const b of (await lifiTools()).bridges) if (b.key.toLowerCase().startsWith("mayan")) bridges.add(b.key);
   }
-  return { bridges: [...bridges], exchanges: policy.rows.filter((r) => r.kind === "exchange").map((r) => r.toolKey) };
+  // LI.FI answers 400 (code 1011) for the whole request when a deny key is not in /v1/tools (live check 2026-10-03), so a tool LI.FI has since retired is dropped here instead of failing every route.
+  const exchanges = policy.rows.filter((r) => r.kind === "exchange").map((r) => r.toolKey);
+  if (bridges.size === 0 && exchanges.length === 0) return { bridges: [], exchanges: [] };
+  const tools = await lifiTools();
+  const known = (list: { key: string }[]) => new Set(list.map((t) => t.key));
+  const [bridgeKeys, exchangeKeys] = [known(tools.bridges), known(tools.exchanges)];
+  for (const r of policy.rows) if (!(r.kind === "bridge" ? bridgeKeys : exchangeKeys).has(r.toolKey)) warnStale(r.kind, r.toolKey);
+  return { bridges: [...bridges].filter((k) => bridgeKeys.has(k)), exchanges: exchanges.filter((k) => exchangeKeys.has(k)) };
 }
 
 /** The route policy for ops: every LI.FI bridge and exchange with its deny state, and the full history of deny/allow entries. */
 export async function getRouting() {
   const [tools, entries] = await Promise.all([lifiTools(), db.select().from(routePolicyEntries).orderBy(desc(routePolicyEntries.createdAt), desc(routePolicyEntries.id))]);
+  const listed = { bridge: new Set(tools.bridges.map((t) => t.key)), exchange: new Set(tools.exchanges.map((t) => t.key)) };
   const denied = (kind: "bridge" | "exchange", key: string) => entries.find((e) => e.kind === kind && e.toolKey === key && !e.removedAt)?.id ?? null;
   return {
     bridges: tools.bridges.map((t) => ({ key: t.key, name: t.name, denyEntryId: denied("bridge", t.key) })),
     exchanges: tools.exchanges.map((t) => ({ key: t.key, name: t.name, denyEntryId: denied("exchange", t.key) })),
-    entries: entries.map((e) => ({ id: e.id, kind: e.kind, toolKey: e.toolKey, reason: e.reason, createdBy: e.createdBy, createdAt: e.createdAt.toISOString(), removedBy: e.removedBy, removedAt: e.removedAt?.toISOString() ?? null })),
+    entries: entries.map((e) => ({ id: e.id, kind: e.kind, toolKey: e.toolKey, reason: e.reason, createdBy: e.createdBy, createdAt: e.createdAt.toISOString(), removedBy: e.removedBy, removedAt: e.removedAt?.toISOString() ?? null, stale: !e.removedAt && !listed[e.kind].has(e.toolKey) })),
   };
 }
 
@@ -105,27 +124,27 @@ export async function getLifiTransfers(opId: string, legId: string) {
   if (!row.leg.submittedAt) throw createHttpError(409, "This leg was never submitted.", { code: "INVALID_TRANSITION" });
   const wallet = addressOn(await userAddresses(db, row.userId), row.leg.fromChain);
   const at = Math.floor(row.leg.submittedAt.getTime() / 1000);
-  const { data } = transfersSchema.parse(await lifiCall("/analytics/transfers", { base: ANALYTICS_BASE, params: { wallet, status: "ALL", fromTimestamp: at - WINDOW_S, toTimestamp: at + WINDOW_S } }));
+  const { data } = transfersSchema.parse(await lifiCall("/analytics/transfers", { base: ANALYTICS_BASE, params: { wallet, status: "ALL", limit: 100, fromTimestamp: at - WINDOW_S, toTimestamp: at + WINDOW_S } }));
   // The request carries the window; a record whose own timestamp is outside it is dropped as well.
   return { wallet, transfers: data.filter((t) => t.sending?.timestamp === undefined || Math.abs(t.sending.timestamp - at) <= WINDOW_S) };
 }
 
-const tokenListSchema = z.object({ tokens: z.record(z.string(), z.array(z.object({ address: z.string() }))) });
+const tokenListSchema = z.object({ tokens: z.record(z.string(), z.array(z.object({ address: z.string(), verificationStatus: z.string().optional() }))) });
 
 /**
- * Whether LI.FI lists a token (`/v1/tokens`, cached 24 h per chain as an address list). LI.FI's token endpoint documents no verified or flagged field, so only
- * listed ("verified") and not listed ("unverified") are told apart; "flagged" is reserved until a real-key check shows a field for it. null = unknown (native
+ * Whether LI.FI verifies a token (`/v1/tokens`, cached 24 h per chain as the verified-address list). Each token carries `verificationStatus` (live check 2026-10-03: "verified" or
+ * "unverified"; not in the docs); a listed but unverified token is "unverified". "flagged" is reserved until a value for it is seen. null = unknown (native
  * asset, Bitcoin, or LI.FI unavailable): the asset review never fails because of it.
  */
 export async function lifiVerification(chain: AssetChain, address: string | null): Promise<"verified" | "unverified" | "flagged" | null> {
   if (!address || chain === "bitcoin") return null;
-  const key = `lifi:tokens:${CHAIN_IDS[chain]}`;
+  const key = `lifi:tokens:v2:${CHAIN_IDS[chain]}`; // v2: the list holds verified addresses only
   if (await redis.get(`${key}:down`).catch(() => null)) return null; // LI.FI failed a moment ago: not asked again for a minute
   const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
   try {
     let listed: string[] | null = JSON.parse((await redis.get(key).catch(() => null)) ?? "null");
     if (!listed) {
-      listed = (tokenListSchema.parse(await lifiCall("/tokens", { params: { chains: CHAIN_IDS[chain] } })).tokens[String(CHAIN_IDS[chain])] ?? []).map((t) => norm(t.address));
+      listed = (tokenListSchema.parse(await lifiCall("/tokens", { params: { chains: CHAIN_IDS[chain] } })).tokens[String(CHAIN_IDS[chain])] ?? []).filter((t) => t.verificationStatus === "verified").map((t) => norm(t.address));
       await redis.set(key, JSON.stringify(listed), "EX", 24 * 3600).catch(() => undefined);
     }
     return listed.includes(norm(address)) ? "verified" : "unverified";

@@ -1,13 +1,13 @@
 # Bytesac — Open Items
 
-Consolidated list of everything still open after Spec 13 (2026-10-03). This is the single home for open work: `docs/superpowers/HANDOFF.md` points here and keeps no lists of its own. Sources: the decision register (`OPEN` statuses), the Spec 8–12 reviews and earlier handoff notes. Future product scope lives in `docs/domains/FUTURE-PLANS.md`, not here. Tick items as they are closed and rewrite the affected docs in place.
+Consolidated list of everything still open after Spec 14 (2026-10-03). This is the single home for open work: `docs/superpowers/HANDOFF.md` points here and keeps no lists of its own. Sources: the decision register (`OPEN` statuses), the Spec 8–12 reviews and earlier handoff notes. Future product scope lives in `docs/domains/FUTURE-PLANS.md`, not here. Tick items as they are closed and rewrite the affected docs in place.
 
 ## 1. Accounts, keys and credentials (user actions)
 
 - [ ] Reown project ID (web + mobile).
 - [ ] Resend API key and verified sender domain.
 - [ ] Twilio Verify service and allowed countries.
-- [ ] Alchemy key; confirm the BNB, Arbitrum, Solana and Bitcoin hosts.
+- [ ] Alchemy key; confirm the BNB, Arbitrum, Solana and Bitcoin hosts (EVM, BNB, Polygon, Base and Solana hosts verified with the audited key on 2026-10-03). The Bitcoin REST API needs the UTXO add-on: it answers 401 "UTXO requests are not allowed." today (Spec 14 section below).
 - [ ] Supabase project: enable `pg_cron` and `vector`, set runtime/role passwords, pooler URL.
 - [ ] LI.FI API key, terms, rate limits and integrator fee settings.
 - [ ] CoinMarketCap plan (limits, attribution, terms) and real key.
@@ -49,12 +49,13 @@ Consolidated list of everything still open after Spec 13 (2026-10-03). This is t
 
 - [ ] Spec 1 wallet checklists: web (MetaMask, Phantom) and mobile (dev build).
 - [ ] AppKit Solana signing and real R2 uploads (Specs 3–4).
-- [ ] LI.FI with a real key: `toAddress` echo, `svmSponsor` on every Solana leg type, base64 versioned transactions, Bitcoin PSBT encoding and output shape, rounding tolerance.
-- [ ] LI.FI hardening (Spec 10.1, ADR-017) with a real key: the no-SOL refusal shape (matched on "SOL" plus balance/rent/fee/gas wording) and whether `svmSponsor` avoids it; the price-impact no-route shape; that code 1001 is what an unfunded wallet gets; the `NOT_PROCESSABLE_REFUND_NEEDED` status mapping; Mayan tool key names (prefix `mayan`); deny-list parameter encoding (repeated parameters); a token flag field in `/v1/tokens`; whether a `FAILED` status with a receiving transaction and token can occur (only `DONE`/`PARTIAL` is recovered); `advanced/routes` without `fromAddress` for Solana sources; analytics `/v2/analytics/transfers` access, timestamp unit (seconds assumed) and pagination. Details in `apps/api/README.md`.
-- [ ] Alchemy Bitcoin `/tx/{txid}` and `POST /sendtx/` response shapes.
+- [x] LI.FI keyless live check, 2026-10-03 (`docs/engineering/INTEGRATION-AUDIT.md`): `toAddress` echo (case-insensitive for `0x`); `svmSponsor` on Solana quote legs (v0 base64 transaction, payer at index 0, 2 signatures, ComputeBudget 1.4M / 16001); deny encoding (repeated query parameters on quote, body arrays on routes; unknown keys give 400 code 1011); `maxPriceImpact` honored (`routes: []` with a reason); no-SOL and price-impact shapes; Mayan keys `mayan`, `mayanMCTP`, `mayanFastMCTP`; `advanced/routes` without `fromAddress` for Solana; analytics keyless access, seconds timestamps, cursor pagination (default limit 10, now `limit=100`); token flag is `verificationStatus`.
+- [ ] LI.FI still open with a real key: Bitcoin PSBT encoding and output shape (needs a UTXO-holding address), the code 1001 shape, `NOT_PROCESSABLE_REFUND_NEEDED`, a `FAILED` status with a receiving transaction, `svmSponsor` on non-quote leg types, and the `toAmountMin` tolerance (max(1 ppm, 10^(decimals-8))) against real quotes.
+- [ ] Alchemy Bitcoin `/address`, `/tx/{txid}` and `POST /sendtx/` response shapes: blocked until the UTXO add-on is on the key (every REST call answered 401 on 2026-10-03; Core JSON-RPC `getrawtransaction` works, no balance without the add-on).
 - [ ] Phantom and Solflare: wallets that add instructions get `TX_MISMATCH` by design.
 - [ ] Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction (Xverse, Leather, Unisat, OKX).
-- [ ] CoinMarketCap `/v2/cryptocurrency/quotes/latest` shape with a real key; Alchemy `getTokenSupply`; one real token per chain.
+- [ ] CoinMarketCap `/v2/cryptocurrency/quotes/latest` shape with a real key (not run in Spec 14: no key); real token metadata (decimals, symbol) for one token per chain.
+- [x] Alchemy `getTokenSupply` on Solana (USDC decimals 6; non-mint, missing and garbage accounts give -32602), EVM `balanceOf`, `getCode`, null receipt, historical balance and Multicall3 (present on Base, BNB, Polygon): verified live 2026-10-03.
 - [ ] Gemini forced tool-calling with a real key.
 - [ ] Manual WalletConnect/AppKit smoke test on web and mobile (the wallet stack's zod peer resolved from 3 to 4 in Spec 12's lockfile dedupe).
 - [ ] Web push end to end in Chrome, Firefox and Safari.
@@ -66,8 +67,8 @@ Consolidated list of everything still open after Spec 13 (2026-10-03). This is t
 - [ ] Deploy the BullMQ worker (`start:worker`) with non-evicting Redis.
 - [ ] Load balancer must overwrite `X-Forwarded-For` (API trusts only the Next hop).
 - [ ] Set `GEO_COUNTRY_HEADER` (for example `CF-IPCountry`) and make the edge strip any client-supplied value of that header; unset means no geo signal (Spec 11).
-- [ ] Enforce CSP after the manual wallet E2E; add a CSP report-uri.
-- [ ] Choose an ivfflat or hnsw index for pgvector at scale.
+- [ ] Enforce CSP after the manual wallet E2E: it is report-only with no report endpoint (violations reach only the browser console), so add collection first. Spec 14 added `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` to the report-only policy.
+- [ ] Choose an ivfflat or hnsw index for pgvector at scale (no ANN index today; sequential scan is fine pre-launch).
 - [ ] Linux CI (or a newer Node) to escape the Windows vitest worker crash 3221226505.
 
 ## 7. Technical debt (fix opportunistically, don't expand scope)
@@ -92,7 +93,7 @@ Consolidated list of everything still open after Spec 13 (2026-10-03). This is t
 - [ ] Review Minors 2, 3, 5, 6, 7, 9, 10, 11 (cosmetic or low risk).
 
 **Spec 9**
-- [ ] Unbounded push tokens per user; Firebase registration tokens deprecated (Installation ID migration is a future plan).
+- [ ] Unbounded push tokens per user; Firebase registration tokens deprecated (Installation ID migration: see Spec 14).
 - [x] `positions` ↔ `rebalance` import cycle (valuation moved to `portfolio/valuation.service`); D-071 message duplicated in sell and rebalance (one `insufficientFee`) (Spec 13).
 - [ ] Millisecond race between leg submit and the in-flight guard (bounded by the one-active-operation index).
 - [ ] `organization-payout-wallet` web test times out under a parallel full run (passes alone).
@@ -113,9 +114,24 @@ Consolidated list of everything still open after Spec 13 (2026-10-03). This is t
 - [ ] Token-2022 RWAs: confirm the balance and received-amount readers and the token-account rent estimate against a real RPC (tested with mocks only; the rent estimate over-reserves for a Token-2022 destination; transfer-fee and hook extensions are not read).
 - [ ] Each RWA leg quote appends an `eligibility_decisions` row (growth); investability reads CoinMarketCap prices for RWA constituents on every request (60 s cache); a recovery leg to an RWA created while the user became ineligible cannot be quoted; mobile has no declaration form or notices.
 
+**Spec 14** (integration audit, deferred findings; details in `docs/engineering/INTEGRATION-AUDIT.md`)
+- [ ] Alchemy Bitcoin: buy the UTXO add-on on the key, then verify `/address`, `/tx` and `/sendtx/` shapes (without it, Core JSON-RPC `getrawtransaction`/`sendrawtransaction` could serve tx lookup and broadcast; balance still needs the add-on).
+- [ ] `broadcastBitcoin` maps every 4xx to `BROADCAST_REJECTED` (the claim is released as "nothing sent"), false for an already-known transaction; classify `/sendtx/` errors (already known, rejected, auth, rate limit) once the body is known.
+- [ ] Token-account rent constant 2,039,280 lamports is stale (live `getMinimumBalanceForRentExemption(165)` = 1,488,440, safe direction); read it from RPC or refresh with the gas-cap review.
+- [ ] Gemini default `GEMINI_MODEL` `gemini-3.1-flash-lite` shuts down 2027-05-07 (replacement `gemini-3.5-flash-lite`); switch after a forced-tool-call check with a real key.
+- [ ] Firebase Installation IDs: web `getToken` ("will be removed") and admin `tokens` (deprecated in firebase-admin 14.5) migrate together (web `register`/`onRegistered`, token storage, sender); `messaging/invalid-registration-token` never occurs in `sendEach` so malformed tokens are never revoked; cap tokens per user below 500 (a multicast over 500 rejects).
+- [ ] iOS Keychain keeps the Bytesac session token across uninstall and reinstall (SecureStore docs); decide on a first-launch clear.
+- [ ] Leather signs only the first PSBT input (reown connector `signAtIndex`): test multi-input BTC exits with Leather (the server rejects incomplete PSBTs).
+- [ ] Approval with a non-zero leftover allowance (mainnet-USDT style) reverts and fails with a clearer message (wagmi already threw on a reverted approval; the status guard is defense in depth); consider a server-side allowance read and reset.
+- [ ] LI.FI plan-time estimate (`/advanced/routes`) cannot pass `svmSponsor`, and with it only relaydepository, across, gasZipBridge, unit, near, mayanFastMCTP, layerswap and lifiIntents are eligible, so an estimate can pick a tool the sponsored quote excludes (the quote re-checks).
+- [ ] Transitive advisories (47 in `pnpm audit --prod`, none critical): axios and valibot (reown bitcoin adapter), bigint-buffer and node-forge (no patch), uuid and stream-json (majors), grpc-js (firebase), Expo toolchain globs; re-audit on each Reown, Expo or firebase bump.
+- [ ] Housekeeping: `pnpm-workspace.yaml` `minimumReleaseAgeExclude` for turbo@2.11.5 and its platform binaries is probably obsolete; remove after confirming a clean install.
+- [ ] Config checks: role-level `statement_timeout` in Postgres; `NEXT_PUBLIC_APP_URL` must be the production domain (AppKit metadata); set `EXPO_PUBLIC_API_URL` in the EAS profiles (default is the Android emulator address).
+- [ ] Patch releases left behind under the upgrade ruling: bullmq 6.3.11, vitest 5.0.3, turbo 2.11.7, viem 2.57.2, resend 6.32.0, twilio 6.1.2, `@google/genai` 2.27.0, aws-sdk 3.1146.0.
+
 **Spec 13**
 - [ ] Inline guard arrows (`router.use(requireSession, async ...)` rate-limit and guard logic) remain in four route files because naming them would change the frozen route-table snapshot.
-- [ ] Unused `*Schema` and type exports in `@repo/validator` and unused db enums were left as contract surface; prune with Spec 14 if the audit finds them unneeded.
+- [ ] Unused `*Schema` and type exports in `@repo/validator` and unused db enums were left as contract surface; prune opportunistically (the Spec 14 audit did not cover them).
 - [ ] Composition routers (`me`, `organizations`, `public`, `ops`) mount sub-routers that carry no session middleware; keep that rule documented in code if more are added.
 
 

@@ -37,6 +37,12 @@ describe("Ops routing", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Allow Stargate" }));
     await waitFor(() => expect(c.opsAllowRouteTool).toHaveBeenCalledWith(ID));
   });
+  it("marks an entry whose key LI.FI no longer lists as stale", async () => {
+    const stale = { ...view, entries: [{ ...view.entries[0]!, toolKey: "stargateOld", stale: true }] };
+    const client = { opsGetRouting: vi.fn(async () => stale), opsDenyRouteTool: vi.fn(), opsAllowRouteTool: vi.fn() };
+    shell(["ops_reviewer"], <Routing client={client as never} />);
+    expect(await screen.findByText(/Stale — LI.FI no longer lists this key; re-deny under the new key/)).toBeInTheDocument();
+  });
   it("a reviewer reads the tables and history but has no actions", async () => {
     routing(["ops_reviewer"]);
     expect(await screen.findByText("Denied")).toBeInTheDocument();

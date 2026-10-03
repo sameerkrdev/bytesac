@@ -15,7 +15,7 @@ describe("fetchQuotes", () => {
     const fetchMock = cmc({ status: { error_code: 0 }, data: { "1": entry(60000.5), "1027": entry(2500) } });
     const quotes = await fetchQuotes(["1", "1027"]);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id=1,1027&convert=USD");
+    expect(url).toBe("https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?id=1,1027&convert=USD&skip_invalid=true");
     expect(init.headers).toMatchObject({ "X-CMC_PRO_API_KEY": expect.any(String), Accept: "application/json" });
     expect(quotes).toEqual(new Map([["1", { value: "60000.5", observedAt: "2026-09-30T10:00:00.000Z" }], ["1027", { value: "2500", observedAt: "2026-09-30T10:00:00.000Z" }]]));
   });

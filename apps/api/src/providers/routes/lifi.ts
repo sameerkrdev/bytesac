@@ -55,7 +55,10 @@ function refusal(status: number, body: unknown): Error {
   const b = (body ?? {}) as { message?: unknown; code?: unknown };
   const text = JSON.stringify(body) ?? "";
   const message = typeof b.message === "string" ? b.message : "";
-  if (/\bSOL\b/.test(message) && /balance|rent|fee|gas|fund/i.test(message)) return createHttpError(409, "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", { code: "SOL_REQUIRED" });
+  // Live check 2026-10-03: a wallet with no SOL gets 404 code 1002 "No available quotes" with the cause in `errors.filteredOut[].reason` ("SOL balance insufficient to cover temporary token account creation"); svmSponsor does not avoid it. SOL is the cause only when no route failed and every filtered reason is the SOL one. The evidence is mayanFastMCTP-only: with all tools, the same wallet got sponsored quotes.
+  const errs = (body as { errors?: { filteredOut?: { reason?: unknown }[]; failed?: unknown[] } } | null)?.errors;
+  const needsSol = !errs?.failed?.length && !!errs?.filteredOut?.length && errs.filteredOut.every((r) => typeof r.reason === "string" && /SOL balance insufficient/i.test(r.reason));
+  if (needsSol || (/\bSOL\b/.test(message) && /balance|rent|fee|gas|fund/i.test(message))) return createHttpError(409, "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", { code: "SOL_REQUIRED" });
   if (/price.?impact/i.test(text)) return createHttpError("Price impact too high for this trade size.", { code: "ROUTE_UNAVAILABLE" });
   return createHttpError(`LI.FI responded ${status}`, { code: "ROUTE_UNAVAILABLE", lifiCode: typeof b.code === "number" ? b.code : undefined });
 }
@@ -67,6 +70,7 @@ const parse = <T extends z.ZodType>(schema: T, body: unknown): z.infer<T> => {
 };
 
 const token = z.object({ address: z.string(), chainId: z.number() });
+const toTokenSchema = token.extend({ decimals: z.number().int().min(0).optional().catch(undefined) });
 const connectionsSchema = z.object({ connections: z.array(z.object({ fromTokens: z.array(token), toTokens: z.array(token) })) });
 /** `estimate.gasCosts[]` as LI.FI returns it: decimal strings (`amount` in the native token's base units), plus the native token with its USD price. */
 const gasCost = z.object({
@@ -80,14 +84,14 @@ const feeCost = z.object({ name: z.string(), amountUSD: usd, included: z.boolean
 const stepEstimate = z.object({ gasCosts: z.array(gasCost).optional(), feeCosts: z.array(feeCost).optional() });
 const quoteSchema = z.object({
   tool: z.string(),
-  action: z.object({ fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: token, fromAmount: z.string(), toAddress: z.string() }),
+  action: z.object({ fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: toTokenSchema, fromAmount: z.string(), toAddress: z.string() }),
   estimate: stepEstimate.extend({ toAmount: z.string(), toAmountMin: z.string(), approvalAddress: z.string().nullish(), fromAmountUSD: usd, toAmountUSD: usd }),
   transactionRequest: z.object({ to: z.string().optional(), data: z.string(), value: z.string().nullish(), chainId: z.number().optional() }),
 });
 /** `POST /advanced/routes`: routes carry the USD totals; each step its tool and estimate. `routes: []` means nothing is available (`unavailableRoutes` says why). */
 const routesSchema = z.object({
   routes: z.array(z.object({
-    fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: token, fromAmount: z.string(), toAmount: z.string(), toAmountMin: z.string(), fromAmountUSD: usd, toAmountUSD: usd,
+    fromChainId: z.number(), toChainId: z.number(), fromToken: token, toToken: toTokenSchema, fromAmount: z.string(), toAmount: z.string(), toAmountMin: z.string(), fromAmountUSD: usd, toAmountUSD: usd,
     steps: z.array(z.object({ tool: z.string(), action: z.object({ fromChainId: z.number() }), estimate: stepEstimate })).min(1),
   })),
   unavailableRoutes: z.unknown().optional(),
@@ -119,6 +123,17 @@ function summarize(gas: z.infer<typeof stepEstimate>[], all: z.infer<typeof step
   };
 }
 
+/**
+ * LI.FI computes `toAmountMin` in floating point or rounds it per tool, so it can sit a hair under `toAmount x (1 - slippage)`: live checks (2026-10-03) on 18-decimal outputs showed
+ * 350,000,000 base units under, where the old 1-unit tolerance refused a valid quote, and layerswap rounds 18-decimal amounts to 1e10 wei (about 2.7 ppm on a 0.00185 ETH leg).
+ * Accepted: `quotedMin >= expectedMin - max(floor(expectedMin / 1e6), 10^(decimals - 8), 1)`, with the destination token's decimals taken from our registry, capped at 18 (the response is untrusted; a response whose decimals differ is refused); a minimum
+ * weaker than the chosen slippage by more than that is still refused. ADR-017.
+ */
+export function minOutAccepted(quotedMin: bigint, estimatedOut: bigint, slippageBps: number, decimals = 0): boolean {
+  const expected = slippageFloor(estimatedOut, slippageBps);
+  const [ppm, unit] = [expected / 1_000_000n, 10n ** BigInt(Math.max(0, Math.min(decimals, 18) - 8))];
+  return quotedMin + (ppm > unit ? ppm : unit) >= expected;
+}
 const PSBT_HEX_MAGIC = "70736274ff";
 const QUOTE_TTL_MS = 60_000;
 
@@ -149,7 +164,7 @@ export const lifi: RouteProvider = {
     const minOut = BigInt(r.toAmountMin);
     if (
       r.fromChainId !== CHAIN_IDS[i.fromChain] || r.toChainId !== CHAIN_IDS[i.toChain] || !same(r.fromToken.address, fromToken) || !same(r.toToken.address, toToken) || BigInt(r.fromAmount) !== i.fromAmount
-      || minOut + 1n < slippageFloor(estimatedOut, i.slippageBps)
+      || (r.toToken.decimals !== undefined && r.toToken.decimals !== i.toDecimals) || !minOutAccepted(minOut, estimatedOut, i.slippageBps, i.toDecimals)
     ) throw unavailable("The route provider returned a route that does not match the trade.");
     // The gas the user pays is the source chain's: steps that start on another chain are paid there.
     const own = r.steps.filter((s) => s.action.fromChainId === CHAIN_IDS[i.fromChain]).map((s) => s.estimate);
@@ -172,8 +187,8 @@ export const lifi: RouteProvider = {
     if (
       a.fromChainId !== CHAIN_IDS[i.fromChain] || a.toChainId !== CHAIN_IDS[i.toChain] || !same(a.fromToken.address, fromToken) || !same(a.toToken.address, toToken)
       || BigInt(a.fromAmount) !== i.fromAmount || !same(a.toAddress, i.toAddress)
-      // The route must enforce at least the slippage the user chose (1 unit of rounding allowed).
-      || minOut + 1n < slippageFloor(estimatedOut, i.slippageBps)
+      // The route must enforce at least the slippage the user chose (rounding allowed, see `minOutAccepted`).
+      || (a.toToken.decimals !== undefined && a.toToken.decimals !== i.toDecimals) || !minOutAccepted(minOut, estimatedOut, i.slippageBps, i.toDecimals)
     ) throw unavailable("The route provider returned a quote that does not match the leg.");
 
     const tx = q.transactionRequest;

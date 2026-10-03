@@ -14,6 +14,8 @@ export interface LegQuoteInput extends ConnectionInput {
   /** The user's own address on the destination chain. */
   toAddress: string;
   slippageBps: number;
+  /** The destination token's decimals from OUR registry (never the provider's response): the output tolerance scales with it. */
+  toDecimals: number;
   /** Platform fee payer; required when the source is Solana. */
   svmSponsor?: string;
 }

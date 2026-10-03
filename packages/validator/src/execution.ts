@@ -232,6 +232,8 @@ export type RoutePolicyInput = z.infer<typeof routePolicyInputSchema>;
 const routeToolView = z.object({ key: z.string(), name: z.string(), denyEntryId: z.uuid().nullable() });
 export const routePolicyEntrySchema = z.object({
   id: z.uuid(), kind: z.enum(ROUTE_TOOL_KINDS), toolKey: z.string(), reason: z.string(), createdBy: z.uuid(), createdAt: z.iso.datetime({ offset: true }), removedBy: z.uuid().nullable(), removedAt: z.iso.datetime({ offset: true }).nullable(),
+  /** Active entry whose key LI.FI no longer lists: it is dropped from every request until ops re-deny under the new key. */
+  stale: z.boolean().optional(),
 });
 export type RoutePolicyEntry = z.infer<typeof routePolicyEntrySchema>;
 /** `GET /v1/ops/routing`: LI.FI bridges and exchanges with their deny state, and the deny/allow history. */

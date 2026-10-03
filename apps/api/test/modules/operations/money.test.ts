@@ -63,7 +63,7 @@ describe("price-impact backstop", () => {
   const SOLANA = 1151111081099710;
   const TOKEN = "0x1111111111111111111111111111111111111111";
   const USER_EVM = "0xAbCdEf0123456789aBcDeF0123456789AbCdEf01";
-  const trade = { fromChain: "solana", fromToken: USDC_MINT, toChain: "ethereum", toToken: TOKEN, fromAmount: 10_000_000n, toAddress: USER_EVM, slippageBps: 100 } as const;
+  const trade = { fromChain: "solana", fromToken: USDC_MINT, toChain: "ethereum", toToken: TOKEN, fromAmount: 10_000_000n, toAddress: USER_EVM, slippageBps: 100, toDecimals: 6 } as const;
   const route = (fromUsd: string, toUsd: string, feeUsd: string) => ({
     fromChainId: SOLANA, toChainId: 1, fromToken: { address: USDC_MINT, chainId: SOLANA }, toToken: { address: TOKEN, chainId: 1 }, fromAmount: "10000000", toAmount: "5000000", toAmountMin: "4950000",
     fromAmountUSD: fromUsd, toAmountUSD: toUsd,

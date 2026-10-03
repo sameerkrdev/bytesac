@@ -19,7 +19,7 @@ The LI.FI FAQ and a review of the Spec 8 to 10 flows showed gaps: a rebalance bu
 
 ### 2. `SOL_REQUIRED` (D-094)
 
-LI.FI's refusal of a Solana wallet without SOL is mapped to 409 `SOL_REQUIRED`: "Add a small amount of SOL (~0.003) to your Solana wallet to continue." The platform does not drop SOL to users in this release. The refusal wording is not documented; the match is a real-key check.
+LI.FI's refusal of a Solana wallet without SOL is mapped to 409 `SOL_REQUIRED`: "Add a small amount of SOL (~0.003) to your Solana wallet to continue." The platform does not drop SOL to users in this release. LI.FI documents no wording for it. Verified live (2026-10-03): the refusal is HTTP 404, code 1002, with the cause only in `errors.filteredOut[].reason` ("SOL balance insufficient to cover temporary token account creation"); `svmSponsor` does not avoid it for tools that need a temporary token account (observed with `mayanFastMCTP` only; with the full tool set the same wallet got sponsored layerswap and jupiter quotes). `SOL_REQUIRED` is raised when every filtered reason says so and `errors.failed` is empty (no route failed for another reason).
 
 ### 3. Mayan and contract destinations (D-095)
 
@@ -40,14 +40,16 @@ The status check persists LI.FI's `substatus`. `NOT_PROCESSABLE_REFUND_NEEDED` a
 
 ### 6. Price impact (D-097)
 
+Minimum output (user ruling, Spec 14): a quoted `toAmountMin` is accepted when `quotedMin >= expectedMin - max(floor(expectedMin / 1e6), 10^(decimals - 8), 1)` (BigInt, destination token decimals from our registry (USDC on Solana: `USDC_DECIMALS`), never the response, capped at 18; a response whose `toToken.decimals` differs is refused; 1 ppm or 1 unit for tokens of 8 decimals or fewer). Layerswap rounds 18-decimal amounts to 1e10 wei (about 2.7 ppm on a 0.00185 ETH leg), which a flat 1 ppm refused. A weaker minimum is still refused; D-073 is unaffected. Deeper fix: FUTURE-PLANS (Routing provider robustness).
+
 Every estimate and quote sends `maxPriceImpact = 0.05`. Because LI.FI's honoring of the parameter is unverified, the server also computes the impact itself: 1 - (`toAmountUSD` + included route fees USD) / `fromAmountUSD` (D-107), so a fee-heavy route is not mistaken for slippage. Above 5% it is refused with 503 `ROUTE_UNAVAILABLE`, "Price impact too high for this trade size."; there is no check under $10 or without USD values. Previews show this figure for each leg in warning style from 2%.
 
 ### 7. Route deny list and ops tools (D-098, D-099)
 
-- `route_policy_entries` (kind `bridge` or `exchange`, LI.FI tool key, reason 1 to 500 characters, who and when, removed by and when; rows are never deleted). `ops_admin` denies and allows (audited); ops roles read. Active entries are sent as LI.FI deny lists on every estimate and quote (60 s in-process cache). A deny list only narrows routes. `/ops/routing` lists LI.FI's bridges and exchanges (`/v1/tools`, cached 1 h) with deny state and history. Denying an already-denied entry returns 400 `VALIDATION_FAILED`, not 409.
+- `route_policy_entries` (kind `bridge` or `exchange`, LI.FI tool key, reason 1 to 500 characters, who and when, removed by and when; rows are never deleted). `ops_admin` denies and allows (audited); ops roles read. Active entries are sent as LI.FI deny lists on every estimate and quote (60 s in-process cache); keys absent from LI.FI's current `/v1/tools` are dropped first, because an unknown key makes LI.FI fail the whole request (400, code 1011). This fails open for a renamed tool (user ruling, Spec 14): the drop is logged (`logger.warn`, once per key per process-hour) and `GET /v1/ops/routing` marks the entry `stale: true`; `/ops/routing` shows "Stale: LI.FI no longer lists this key; re-deny under the new key". Quote encoding is repeated query parameters, routes use body arrays. A deny list only narrows routes. `/ops/routing` lists LI.FI's bridges and exchanges (`/v1/tools`, cached 1 h) with deny state and history. Denying an already-denied entry returns 400 `VALIDATION_FAILED`, not 409.
 - Route fees: LI.FI `feeCosts` become `routeFees` (`name`, `amountUsd`, `included`) stored with the leg; previews show "Route fees (LI.FI, DEX, bridge): $X — included in the estimate".
 - LI.FI transfers (`ops_admin`, read-only): `GET /v1/ops/operations/:id/legs/:legId/lifi-transfers` proxies LI.FI `GET /v2/analytics/transfers` for the leg's source address within 24 h of the submission (the design said v1; the documented path is v2). The records are provider data, an aid and never evidence.
-- Token verification: the asset review deployment view shows `lifiVerification` (`verified` when LI.FI lists the token, `unverified` when not, null when unknown; cached 24 h per chain). LI.FI's token list documents no flag field, so `flagged` is in the type and never produced until a real-key check finds one.
+- Token verification: the asset review deployment view shows `lifiVerification` (`verified` when the token's `verificationStatus` is `verified`, `unverified` otherwise, null when unknown; cached 24 h per chain). `flagged` is in the type and never produced until a real-key check finds a flag value.
 - Fee-on-transfer: `ops_admin` flags a deployment (`instrument_deployments.fee_on_transfer`, audited as an asset event). Legs touching it carry `feeOnTransfer` and previews say "This token charges a transfer tax; amounts are estimates."
 
 ### 8. Recovery auto-stop (D-109)
@@ -83,5 +85,5 @@ Unit and integration tests with mocked LI.FI, RPC and wallets (`lifi-hardening`,
 
 ## Open questions
 
-- The exact no-SOL and price-impact refusal shapes, `NOT_PROCESSABLE_REFUND_NEEDED`, Mayan key names, deny-list parameter encoding, a token flag field, `advanced/routes` without `fromAddress` for Solana, analytics access and timestamp unit (real-key checks).
+- Confirmed by the keyless live check of 2026-10-03: no-SOL and price-impact shapes, Mayan key names, deny-list encoding, `advanced/routes` without `fromAddress` for Solana, analytics access (seconds, cursor pagination, request `limit=100`), token flag (`verificationStatus`; only `verified` counts). Still open with a real key: `NOT_PROCESSABLE_REFUND_NEEDED`, the code 1001 shape, a `FAILED` status with a receiving transaction (`docs/OPEN-ITEMS.md` section 5).
 - Release of unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); an operation planned before Spec 12 releases a quote-time leg's top-up only with the whole plan.

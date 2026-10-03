@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import createHttpError from "http-errors";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db, instrumentDeployments, instruments, operationLegs, operations, operationFees } from "@repo/db";
-import { USDC_SOLANA_MINT, minOut, scaleBuys, type AssetChain, type LegQuoteResponse } from "@repo/validator";
+import { USDC_DECIMALS, USDC_SOLANA_MINT, minOut, scaleBuys, type AssetChain, type LegQuoteResponse } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { expectedBtcTx, psbtInputs } from "@/providers/bitcoin";
 import { routeProviderById } from "@/providers/routes";
@@ -131,7 +131,7 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
 
   const provider = routeProviderById(leg.provider ?? "")!;
   const q = await provider.quote({
-    fromChain: leg.fromChain, fromToken, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, fromAmount: BigInt(leg.amountIn),
+    fromChain: leg.fromChain, fromToken, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, toDecimals: to ? to.decimals : USDC_DECIMALS, fromAmount: BigInt(leg.amountIn),
     slippageBps: op.slippageBps, fromAddress: addressOn(addresses, leg.fromChain), toAddress: addressOn(addresses, leg.toChain),
     svmSponsor: leg.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,
     deny: await routeDenyList(leg.toChain, addressOn(addresses, leg.toChain)),
@@ -179,6 +179,6 @@ async function reserveLegGas(op: Op, leg: Leg, chain: AssetChain, needed: bigint
 
 async function legDeployment(id: string | null) {
   if (!id) return null;
-  const [d] = await db.select({ address: instrumentDeployments.address }).from(instrumentDeployments).where(eq(instrumentDeployments.id, id));
+  const [d] = await db.select({ address: instrumentDeployments.address, decimals: instrumentDeployments.decimals }).from(instrumentDeployments).where(eq(instrumentDeployments.id, id));
   return d ?? null;
 }

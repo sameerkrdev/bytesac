@@ -41,6 +41,7 @@ export async function startWorker(): Promise<Worker[]> {
   workers[4]!.on("failed", async (job) => {
     if (job?.name === "track-leg" && !job.data.recheck && job.attemptsMade >= (job.opts.attempts ?? 1)) await enqueue("track-leg", { legId: job.data.legId, recheck: 1 });
   });
+  for (const w of workers) w.on("error", (err) => logger.warn("worker error", { queue: w.name, errMessage: err.message }));
   for (const w of workers) w.on("failed", (job, err) => logger.error("job failed", { queue: w.name, job: job?.name, attempt: job?.attemptsMade, errMessage: err.message }));
   await queues["price-snapshot"].upsertJobScheduler("price-snapshot-daily", { pattern: "5 0 * * *", tz: "UTC" }, { name: "price-snapshot", data: {} });
   await queues["embed-basket"].upsertJobScheduler("embed-sweep", { every: 900_000 }, { name: "sweep", data: {}, opts: { attempts: 1 } });

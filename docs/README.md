@@ -16,9 +16,10 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
    - `domains/USER-FEATURES.md`
    - `domains/FUND-MANAGER-FEATURES.md`
 5. `engineering/CODING-STANDARDS.md` — conventions, tests and the agent workflow.
-6. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
-7. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
-8. `BYTESAC_Design_System.md` — UI design system.
+6. `engineering/INTEGRATION-AUDIT.md` — third-party integration audit against official documentation (Spec 14): versions, findings, fixes, deferrals.
+7. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
+8. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
+9. `BYTESAC_Design_System.md` — UI design system.
 
 ## Document roles (one home per topic)
 
@@ -30,6 +31,7 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
 | Current product behavior | `domains/*.md` |
 | Architecture | `architecture/ARCHITECTURE.md` |
 | Conventions and agent workflow | `engineering/CODING-STANDARDS.md` and root `AGENTS.md` |
+| Provider and library audit (versions, deprecations, live-check evidence) | `engineering/INTEGRATION-AUDIT.md` |
 | Deferred scope | `domains/FUTURE-PLANS.md` |
 | History (dated, never rewritten) | `superpowers/specs/`, `superpowers/plans/`, `superpowers/reviews/`, `superpowers/audits/`, `superpowers/BRAINSTORM-LOG.md` |
 

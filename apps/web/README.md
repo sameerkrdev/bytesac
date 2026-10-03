@@ -40,4 +40,4 @@ The web app proxies `/api/*` to the API with a Next.js rewrite. That rewrite **n
 - The API's `TRUST_PROXY` must trust only the Next server hop (its private CIDR, or loopback when co-located), not the entire chain.
 - If either is wrong, the API's per-IP rate limits and the session `ip_prefix` become spoofable, or collapse into a single global bucket.
 
-Security headers (HSTS, Permissions-Policy, a report-only CSP, frame and referrer policy) are set in `next.config.js`. Review CSP reports, then promote `Content-Security-Policy-Report-Only` to an enforcing `Content-Security-Policy`.
+Security headers (HSTS, Permissions-Policy, a report-only CSP with `object-src 'none'`, `base-uri 'self'` and `form-action 'self'`, frame and referrer policy) are set in `next.config.js`. There is no report endpoint yet (violations reach only the browser console): add collection, then promote `Content-Security-Policy-Report-Only` to an enforcing `Content-Security-Policy`.
