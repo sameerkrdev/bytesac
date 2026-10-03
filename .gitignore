@@ -43,3 +43,8 @@ yarn-error.log*
 
 # Local agent workspaces and scratch
 .superpowers/
+
+# Firebase / GCP service account keys (never commit)
+firebase-service-account.json
+*firebase*service*account*.json
+*-firebase-adminsdk-*.json

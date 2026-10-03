@@ -39,12 +39,13 @@ export function BitcoinLink({ me }: { me: MeResponse }) {
         if (isUserRejection(err)) throw new WalletRejectedError();
         // BIP-137 covers legacy and SegWit addresses; Taproot has no BIP-137.
         if (address.toLowerCase().startsWith("bc1p")) throw err;
-        method = "bip137";
         try {
           signature = toBase64(await walletProvider.signMessage({ message: challenge.message, address, protocol: "ecdsa" }));
         } catch (err2) {
           throw isUserRejection(err2) ? new WalletRejectedError() : err2;
         }
+        // Wallet Standard wallets (e.g. MetaMask) ignore `protocol` and return a BIP-322 "simple" witness; a BIP-137 signature is always 65 bytes.
+        method = atob(signature).length === 65 ? "bip137" : "bip322";
       }
       return api.verifyBitcoin({ challengeId: challenge.challengeId, address, signature, method });
     },

@@ -138,6 +138,7 @@ pnpm --filter api ops:address-disable -- --chain base --address 0xabc... --reaso
 pnpm --filter api ops:address-reactivate -- --chain base --address 0xabc... --operator alice@bytesac.example
 pnpm --filter api ops:user-suspend -- --user <user-uuid> --reason "compliance hold" --operator alice@bytesac.example
 pnpm --filter api ops:grant-role -- --user <user-uuid> --role ops_admin --operator alice@bytesac.example   # bootstrap the first ops admin; later roles are managed in /ops/roles
+pnpm --filter api ops:seed-assets -- --user <user-uuid>   # local/dev: seed natives, tokens, Ondo + xStocks RWAs as ACTIVE (idempotent; created_by = user)
 ```
 
 ## Security notes

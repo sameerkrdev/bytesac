@@ -58,6 +58,18 @@ describe("BitcoinLink", () => {
     expect(Uint8Array.from(atob(sent.signature), (c) => c.charCodeAt(0))).toHaveLength(65);
   });
 
+  it("a fallback signature that is not 65 bytes (a BIP-322 simple witness, e.g. MetaMask) is sent as bip322", async () => {
+    connected();
+    api.createBitcoinChallenge.mockResolvedValue(challenge);
+    provider.signPSBT.mockRejectedValue(new Error("method not supported"));
+    const witness = btoa(String.fromCharCode(2, 71, ...new Array(71).fill(1), 33, ...new Array(33).fill(2)));
+    provider.signMessage.mockResolvedValue(witness);
+    api.verifyBitcoin.mockResolvedValue({});
+    show();
+    await userEvent.click(screen.getByRole("button", { name: "Link this Bitcoin wallet" }));
+    await vi.waitFor(() => expect(api.verifyBitcoin).toHaveBeenCalledWith({ challengeId: challenge.challengeId, address: ADDRESS, signature: witness, method: "bip322" }));
+  });
+
   it("a cancelled wallet request is reported and never falls back or verifies", async () => {
     connected();
     api.createBitcoinChallenge.mockResolvedValue(challenge);
