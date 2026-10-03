@@ -94,7 +94,7 @@ export function ApplicationDetailView({ id, client = api }: { id: string; client
 
       <section aria-labelledby="action-h" className="max-w-xl space-y-4">
         <h2 id="action-h" className="font-display text-xl font-semibold text-ivory">Change status</h2>
-        <TransitionForm key={a.status} status={a.status} pending={transition.isPending} onSubmit={(b) => transition.mutate(b)} />
+        <TransitionForm key={a.status} status={a.status} walletProven={a.walletProvenAt !== null} pending={transition.isPending} onSubmit={(b) => transition.mutate(b)} />
         {transition.isError && <OpsError error={transition.error} />}
       </section>
 

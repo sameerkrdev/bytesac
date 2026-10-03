@@ -46,6 +46,31 @@ export function LeaveDialog({ position }: { position: Position }) {
   );
 }
 
+/** Dust only (the API refuses a position worth $1 or more): closes the position without a transaction. */
+export function CloseDialog({ position }: { position: Position }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const close = useMutation({ mutationFn: () => api.closePosition(position.id), onSuccess: () => { setOpen(false); void qc.invalidateQueries({ queryKey: ["portfolio"] }); } });
+  return (
+    <>
+      <Button variant="secondary" className="min-h-11" onClick={() => setOpen(true)}>Close position</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="border-border-dark bg-space">
+          <DialogHeader>
+            <DialogTitle className="text-ivory">Close this position?</DialogTitle>
+            <DialogDescription>Remaining tokens stay in your wallet outside this basket.</DialogDescription>
+          </DialogHeader>
+          {close.error && <ErrorBox error={close.error} />}
+          <DialogFooter>
+            <Button variant="secondary" className="min-h-11" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button className="min-h-11" disabled={close.isPending} onClick={() => close.mutate()}>{close.isPending && <Loader2 aria-hidden className="animate-spin" />}Close position</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 /** Sell part or all of a position back to USDC ("Sell to USDC" for an open one, "Sell former assets" for a closed one). The network fee comes out of the proceeds. */
 export function SellDialog({ position }: { position: Position }) {
   const id = useId();

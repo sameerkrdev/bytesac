@@ -31,6 +31,16 @@ describe("ContactVerifier", () => {
     expect(await screen.findByText("Verified")).toBeInTheDocument();
   });
 
+  it("sends the contact once when the button is clicked twice", async () => {
+    const c = client();
+    render(<ContactVerifier type="email" client={c} />);
+    await userEvent.type(screen.getByLabelText("Email address"), "a@b.co");
+    const send = screen.getByRole("button", { name: "Send code" });
+    await userEvent.dblClick(send);
+    await screen.findByRole("button", { name: /resend in/i });
+    expect(c.addContact).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps entered value and shows field error on validation failure", async () => {
     const c = client();
     c.addContact.mockRejectedValueOnce(new ApiError("VALIDATION_FAILED", 400, "Enter the phone number with its country code, e.g. +91 98765 43210"));

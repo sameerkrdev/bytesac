@@ -108,7 +108,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
         liquidityNotes: x.liquidityNotes, conflictsOfInterest: x.conflictsOfInterest, constraints: x.constraints, rebalance: x.rebalance, fees: x.fees,
         minimumInvestmentUsdc: x.minimumInvestmentUsdc, minimumIncrementUsdc: x.minimumIncrementUsdc, rationale: x.rationale,
         assets: x.assets.map((a) => ({ instrumentId: a.instrumentId, targetWeightBps: a.targetWeightBps, minWeightBps: a.minWeightBps, maxWeightBps: a.maxWeightBps, rationale: a.rationale?.trim() || null })),
-        expectedUpdatedAt: (open as BasketVersionView).updatedAt,
+        expectedRevision: (open as BasketVersionView).revision,
       };
       return client.saveBasketDraft(bid, body);
     },

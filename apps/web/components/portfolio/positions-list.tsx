@@ -4,7 +4,7 @@ import { formatBps, formatUnits } from "@repo/app-core";
 import { ASSET_CHAINS, type Portfolio } from "@repo/validator";
 import Link from "next/link";
 import { PositionActions } from "@/components/portfolio/position-actions";
-import { LeaveDialog, SellDialog } from "@/components/portfolio/exit-dialogs";
+import { CloseDialog, LeaveDialog, SellDialog } from "@/components/portfolio/exit-dialogs";
 import { StatusBadge } from "@/components/status-badge";
 
 type Position = Portfolio["positions"][number];
@@ -25,12 +25,13 @@ export function PositionsList({ positions, former, repairs = [] }: { positions: 
         const values = p.holdings.map((h) => h.valueUsd);
         const total = values.length > 0 && values.every((v) => v !== null) ? values.reduce((s, v) => s + Number(v), 0).toFixed(2) : null;
         const short = p.holdings.filter((h) => h.reconciliation === "SHORT");
+        const dust = !former && total !== null && Number(total) + Number(p.cashMicro) / 1e6 < 1;
         const surplus = p.holdings.filter((h) => h.reconciliation === "SURPLUS");
         return (
           <li key={p.id} className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <Link href={`/baskets/${p.basketSlug}`} className="font-display text-xl font-semibold text-mint underline">{p.basketSlug}</Link>
+                <Link href={`/baskets/${p.basketSlug}`} className="font-display text-xl font-semibold text-mint underline">{p.basketName}</Link>
                 <p className="text-sm text-stone">{former ? `Left ${new Date(p.closedAt ?? p.openedAt).toLocaleDateString()} · assets are in your wallets, outside the basket` : `Opened ${new Date(p.openedAt).toLocaleDateString()}`}</p>
               </div>
               <p className="text-lg text-ivory">{total === null ? "Value unavailable" : `$${total}`}</p>
@@ -56,6 +57,7 @@ export function PositionsList({ positions, former, repairs = [] }: { positions: 
             </ul>
             <div className="flex flex-wrap gap-3">
               {!former && <LeaveDialog position={p} />}
+              {dust && <CloseDialog position={p} />}
               <SellDialog position={p} />
             </div>
           </li>

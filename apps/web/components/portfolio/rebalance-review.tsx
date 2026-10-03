@@ -56,7 +56,7 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
     <section aria-labelledby="rebalance-title" className="max-w-3xl space-y-6">
       <div className="space-y-1">
         <h1 id="rebalance-title" className="font-display text-3xl font-bold text-ivory">{target === "latest" ? "Review update" : "Rebalance to target"}</h1>
-        <p className="text-sm text-stone">{p.basketSlug} · <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>
+        <p className="text-sm text-stone">{p.basketName} · <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>
       </div>
 
       {target === "latest" && latest && (

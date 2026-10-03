@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-export function TransitionForm({ status, pending, onSubmit }: { status: ApplicationStatus; pending: boolean; onSubmit(body: TransitionApplicationRequest): void }) {
+export function TransitionForm({ status, pending, walletProven, onSubmit }: { status: ApplicationStatus; walletProven?: boolean; pending: boolean; onSubmit(body: TransitionApplicationRequest): void }) {
   const id = useId();
-  const targets = APPLICATION_TRANSITIONS[status];
+  // A wallet-proven approval cannot be rejected (the API answers 409), so no option is offered.
+  const targets = status === "SCREENING_APPROVED" && walletProven ? [] : APPLICATION_TRANSITIONS[status];
   const [to, setTo] = useState<ApplicationStatus | "">("");
   const [internalNote, setInternalNote] = useState("");
   const [message, setMessage] = useState("");

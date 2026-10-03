@@ -3,15 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { feeLeg, ID, operation, position, renderApp, sellLeg } from "./invest-fixtures";
 
-const api = { leavePosition: vi.fn(), sellPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn() };
+const api = { leavePosition: vi.fn(), closePosition: vi.fn(), sellPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn() };
 vi.mock("@/lib/api", () => ({
   api: {
-    leavePosition: (id: string) => api.leavePosition(id), sellPlan: (b: unknown) => api.sellPlan(b),
+    leavePosition: (id: string) => api.leavePosition(id), closePosition: (id: string) => api.closePosition(id), sellPlan: (b: unknown) => api.sellPlan(b),
     cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id),
   },
 }));
 vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({}) }));
-import { LeaveDialog, SellDialog } from "@/components/portfolio/exit-dialogs";
+import { CloseDialog, LeaveDialog, SellDialog } from "@/components/portfolio/exit-dialogs";
 
 const sellPlan = operation({ kind: "sell_to_usdc", sellPercent: 50, amountUsdc: null, legs: [sellLeg(), feeLeg({ id: ID(13), sequence: 2 })] });
 
@@ -26,6 +26,18 @@ describe("Leave basket", () => {
     expect(api.leavePosition).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Leave basket" }));
     expect(api.leavePosition).toHaveBeenCalledWith(ID(40));
+  });
+});
+
+describe("Close position", () => {
+  it("says the remaining tokens stay in the wallet and closes only after confirming", async () => {
+    api.closePosition.mockResolvedValue(undefined);
+    renderApp(<CloseDialog position={position()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Close position" }));
+    expect(await screen.findByText("Remaining tokens stay in your wallet outside this basket.")).toBeInTheDocument();
+    expect(api.closePosition).not.toHaveBeenCalled();
+    await userEvent.click(screen.getAllByRole("button", { name: "Close position" }).at(-1)!);
+    expect(api.closePosition).toHaveBeenCalledWith(ID(40));
   });
 });
 

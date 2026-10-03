@@ -307,6 +307,7 @@ export function createApiClient(options: ApiClientOptions) {
     cancelOperation: (id: string): Promise<OperationView> => request("POST", `/v1/operations/${e(id)}/cancel`, operationSchema),
     getPortfolio: (): Promise<Portfolio> => request("GET", "/v1/portfolio", portfolioSchema),
     leavePosition: (id: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(id)}/leave`, null),
+    closePosition: (id: string): Promise<void> => request<z.ZodVoid>("POST", `/v1/positions/${e(id)}/close`, null),
     getInvestability: (slug: string): Promise<Investability> => request("GET", `/v1/baskets/${e(slug)}/investability`, investabilitySchema),
 
     /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */

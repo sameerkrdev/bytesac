@@ -4,7 +4,7 @@ import { ApiError, type ApiClient } from "@repo/api-client";
 import { describeError, useCountdown } from "@repo/app-core";
 import type { ContactType, ContactView } from "@repo/validator";
 import { Loader2 } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,10 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
   const verified = contact?.status === "verified";
   const awaitingCode = contact !== null && !verified && resendAt !== null;
 
+  const busy = useRef(false);
   async function guard(fn: () => Promise<void>) {
+    if (busy.current) return;
+    busy.current = true;
     setPending(true);
     setError(null);
     try { await fn(); } catch (e) {
@@ -44,7 +47,7 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
         const d = describeError("INTERNAL");
         setError({ title: d.title, message: d.message });
       }
-    } finally { setPending(false); }
+    } finally { busy.current = false; setPending(false); }
   }
 
   const send = () => guard(async () => {
