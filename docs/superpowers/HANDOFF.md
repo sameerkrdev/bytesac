@@ -6,13 +6,15 @@ The one document to read first in a new session (human or AI). It holds the star
 
 ## 0. Paste-ready starter prompt
 
-> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows 11, Git Bash + PowerShell; **Python is not installed** — edit with Edit/Write or `node -e`; files are CRLF). Specs 1–14 are done (table in §2; Spec 14 is the integration audit, `docs/engineering/INTEGRATION-AUDIT.md`). The next phase is **Spec 15 — basic UI for web and mobile** (§6), then the roadmap 16–19 (§7). Start a phase only after the user's explicit go-ahead.
+> You are continuing the Bytesac monorepo at `D:\Coding\projects\bytesac` (Windows 11, Git Bash + PowerShell; **Python is not installed** — edit with Edit/Write or `node -e`; files are CRLF). Specs 1–14 are merged to local `main` (table in §2). **Spec 15 (basic UI for web and mobile) is in progress** on branch `feat/spec15-basic-ui`: spec, plan and brainstorm log are committed, no code yet — resume exactly as §6 says. Then continue the roadmap 16–19 (§7).
 >
-> **1. Load context (mandatory, in order):** this file (§3 rules and §4 method are binding), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ the linked ADRs), `docs/engineering/CODING-STANDARDS.md`, the domain doc and `docs/source/*` file for the phase, `docs/OPEN-ITEMS.md`. Check the memory files for user preferences.
+> **1. Load context (mandatory, in order):** this file (§3 rules and §4 method are binding), `AGENTS.md`, `docs/README.md`, `docs/architecture/ARCHITECTURE.md`, `docs/decisions/DECISION-REGISTER.md` (+ the linked ADRs), `docs/engineering/CODING-STANDARDS.md`, `docs/OPEN-ITEMS.md`, `docs/superpowers/BRAINSTORM-LOG.md`, the domain doc and `docs/source/*` file for the phase. Check the memory files for user preferences.
 >
-> **2. Per phase run the full cycle in §4** (brainstorm → spec → plan → subagent-driven execution → one Opus review → one fix wave → your own full gate → finishing menu, then wait for the user). Items touching permissions, money, custody or data migration go to the user (AskUserQuestion, recommended option first); otherwise decide and log `Ruling: <what> — <why> — <cost if wrong>`.
+> **2. Verify state:** `git log --oneline -5`, `git status --short` (the only expected changes are the user's/noise files listed in §5 — never stage them), `git branch --show-current`. Start Docker Desktop, `pnpm db:up`, `pnpm --filter @repo/db db:migrate`.
 >
-> **3. Style:** terse chat, tables for state, never claim a test, merge or push succeeded without observing it. Never move real assets, sign or broadcast transactions, or touch production data.
+> **3. Per phase run the full cycle in §4** (brainstorm → spec → plan → subagent-driven execution → one Opus review → one fix wave → your own full gate → finishing menu). The user pre-approved for Spec 15: execute the approved plan and merge to local `main` after a green gate, then start the next phase's brainstorm. Items touching permissions, money, custody or data migration go to the user (AskUserQuestion, recommended option first); otherwise decide and log `Ruling: <what> — <why> — <cost if wrong>`.
+>
+> **4. Style:** terse chat, tables for state, never claim a test, merge or push succeeded without observing it. Never move real assets, sign or broadcast transactions, or touch production data. Push only when the user says so (local `main` is ahead of `origin`).
 
 ---
 
@@ -71,6 +73,9 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 5. **Ask the user** (AskUserQuestion, recommended first) for anything touching permissions, money, custody or data migration where spec and plan are silent. Otherwise decide and log `Ruling: <what> — <why> — <cost if wrong>` and list every ruling in the final report.
 6. **Model choice:** Sonnet for code-writing sub-agents and re-reviews; Haiku only for tiny mechanical checks; Opus only for the final whole-branch review or genuinely hard design/concurrency work; never Opus for easy tasks. Spawn sub-agents only for independent or context-heavy work.
 7. **Sub-agent limits:** they hit usage limits. Check `git log` and `git status`, then resume the same agent with `SendMessage` (its context survives) instead of starting over, telling it exactly what survived. Confirm no sub-agent is still running tests before your own gate.
+8. **Dispatch prompt essentials** (every implementer): brief paths + plan Global Constraints + spec; previous implementer's report; `ponytail`; official docs first; exact pins, release-age rule, never `minimumReleaseAgeExclude`; tests in the foreground with stdin `< /dev/null`, one file at a time, no timers/monitors, never two suites at once, re-run a `3221226505` crash alone once; never stage the files listed in §5 "Never stage"; never `git add -f` anything under `.superpowers/`; commit per task with the attribution line; no subagents; report to a file in the workspace; reply ≤12 lines; "if you approach your context/usage limit, commit what is green, write what remains in the report and stop cleanly".
+9. **Staffing that worked:** split large phases across 2–3 Sonnet implementers (API / web / mobile / docs) so each context stays small; sub-agents of a previous session cannot be resumed — check `git log`/`git status` and re-dispatch from the brief.
+10. **Pre-approval:** when the user pre-approves ("merge to local main when done, then start the next spec"), record it in the ledger and still verify the gate yourself before merging; otherwise present the finishing menu and wait.
 
 ## 5. Environment, gate and traps
 
@@ -83,22 +88,37 @@ Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 r
 - **Windows long paths:** removing a worktree with `node_modules` may need `Remove-Item -LiteralPath '\\?\<path>' -Recurse -Force`.
 - **Branch deletion:** `git branch -d` may refuse when the GitHub copy is behind; check `git merge-base --is-ancestor <branch> main` before `-D`.
 - **Scratch:** `.superpowers/` is git-ignored and does not travel; regenerate briefs with the SDD skill's scripts.
+- **Gate without cache:** always add `--force` to the final gate (turbo's cache once hid a failing `mobile#check-types`). The gate takes longer than the 10-minute foreground tool limit: run it with `run_in_background` and wait for the completion notice.
+- **Memory:** Claude Code may kill a background gate when the machine is low on memory; do not restart it on your own — tell the user, then re-run at `--concurrency=1` when they agree.
+- **Do not run tests while a sub-agent is running tests** (shared test DB); a run that overlaps produces false failures — re-run alone.
+- **Never stage (user/noise files):** `.claude/settings.json`, `.gitignore` and `apps/api/.env.example` (the user's own edits), `firebase-service-account.json` (a credential — git-ignored; never open it), root `AGENTS.md` and `apps/api/test/__snapshots__/route-table.test.ts.snap` (line-ending-only changes), generated `apps/*/AGENTS.md`/`CLAUDE.md`, anything under `.superpowers/`.
 
-## 6. Next phase — Spec 15: basic UI for web and mobile
+## 6. Next phase — Spec 15: basic UI for web and mobile (IN PROGRESS — resume here)
 
-Spec 14 (integration audit) is complete: findings, evidence and versions are in `docs/engineering/INTEGRATION-AUDIT.md`; deferred findings are in `docs/OPEN-ITEMS.md` (Spec 14 block). Start Spec 15 with the brainstorm (§4) only after the user's go-ahead.
+**Status (2026-10-03):** brainstorm done (3 questions, all answered A — see `BRAINSTORM-LOG.md` "Spec 15"); spec `docs/superpowers/specs/2026-10-03-basic-ui-design.md` and plan `docs/superpowers/plans/2026-10-03-spec15-basic-ui.md` approved and committed on branch `feat/spec15-basic-ui` (`5afeaaa`). Implementer #1 stopped at a usage limit before writing any code: **no code commits, nothing to salvage**. The user pre-approved execution and a local merge to `main` after a green gate.
 
-## 7. Roadmap (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead)
+**What Spec 15 delivers:**
+- `@repo/app-core`: the shared `legSigner` state machine (exact `LegSignerState` / `Signer` contract in the plan's Global Constraints) plus fee lines, portfolio actions, sync-split validation, eligibility copy, formatters. Web switched to it; existing web tests must pass unchanged (they are the oracle).
+- Web: one app shell with role-aware navigation (Investor / Manager / Ops), shared `PageLayout` and loading/empty/error/stale components on every page, 360 px layout.
+- Mobile (Expo 57, Expo Router tabs Discover / Portfolio / Notifications / Profile): investor parity — discover + basket detail + invest wizard, portfolio and all actions (rebalance review, skip, keep custom, repair/sync, sell, leave, close dust, Continue, Complete swap), operation detail, notifications inbox, profile (contacts, preferences, eligibility, wallets). Solana + EVM signing through Reown AppKit React Native; Bitcoin legs and Bitcoin linking hand off to the web; manager/ops see "Manage on web".
 
-| # | Phase |
-|---|---|
-| 14 | Integration audit against official documentation (done, §2) |
-| 15 | Basic UI for web and mobile |
-| 16 | Deployment: Docker, GitHub Actions CI/CD, step-by-step launch guide |
-| 17 | Redesign the whole web and mobile UI/UX from user-supplied reference images and videos |
-| 18 | Motion-graphics promo/launch video (from a user-supplied reference) and a platform presentation in the Bytesac theme |
-| 19 | Future plans (`docs/domains/FUTURE-PLANS.md`), one at a time with approval — last |
+**Resume steps:**
+1. `git checkout feat/spec15-basic-ui`; `git merge main` if `main` moved.
+2. Regenerate the workspace (it is git-ignored and may be gone): `bash <superpowers>/skills/subagent-driven-development/scripts/sdd-workspace docs/superpowers/plans/2026-10-03-spec15-basic-ui.md`, then `task-brief <plan> 1..5`; recreate `progress.md` (identity line + "User pre-approved: execute and merge to local main after green gate").
+3. Dispatch **implementer #1 (Sonnet, background) for Tasks 1–2** (app-core extraction + web shell), **implementer #2 (Sonnet) for Tasks 3–4** (mobile; give it #1's report with the exported app-core API), **implementer #3 (Sonnet) for Task 5** (tests completion, docs, full gate). Dispatch prompt essentials are in §4 item 8.
+4. One **Opus** whole-branch review (trimmed diff, spec, plan, ledger, reports; focus = the plan's Review Focus), one **Sonnet** fix wave, your own full gate (§5), then merge to local `main`, gate on `main`, delete branch + workspace, update §2/§6 and `OPEN-ITEMS.md`, then start Spec 16's brainstorm.
+5. Mobile specifics to tell implementer #2: read `apps/mobile/AGENTS.md` and the Expo v57 docs first; use the `expo-overview`, `expo-router`, `expo-data-fetching`, `expo-native-ui` skills; confirm Reown AppKit RN Solana/EVM signing (and whether Bitcoin PSBT is officially supported) in the official docs; Jest + React Native Testing Library with mocked `@repo/api-client` and `Signer`; `expo export --platform android` must pass (temp dir outside the repo, delete it, revert generated tsconfig changes).
 
+## 7. Roadmap after Spec 15 (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead unless pre-approved)
+
+| # | Phase | What to ask / prepare at the start |
+|---|---|---|
+| 16 | **Deployment**: Docker images (api, worker, web; mobile via EAS), GitHub Actions CI/CD (lint, check-types, test on Linux — fixes the Windows crash — build, migrations, deploy), environments, secrets, step-by-step launch guide | Hosting choice (e.g. Fly/Render/Railway/AWS/GCP for api+worker, Vercel for web, Supabase for Postgres, Upstash/managed Redis), domains, who holds secrets; KMS for platform keys (OPEN-ITEMS); EAS for mobile builds (expo `eas-*` skills); CSP enforcement, `X-Forwarded-For`, `GEO_COUNTRY_HEADER`, worker deployment, pg_cron/pgvector on Supabase (OPEN-ITEMS §6). Never deploy or push without the user's explicit go-ahead. |
+| 17 | **Redesign** the whole web and mobile UI/UX | Ask the user for reference images and videos of other sites first; use `frontend-design`, `design:*` and `expo-design-system` skills; keep `@repo/app-core` logic and API untouched; update `docs/BYTESAC_Design_System.md` in place. |
+| 18 | **Motion-graphics promo/launch video + platform presentation** | Ask for the reference motion-design video; produce the video as code-built animation (e.g. Remotion or HTML/Canvas rendered to MP4) with script and storyboard; presentation via the slides artifact type or `.pptx` (`anthropic-skills:pptx`) in the Bytesac theme. |
+| 19 | **Future plans** (`docs/domains/FUTURE-PLANS.md`), one at a time with approval — last | Let the user pick; each is a full cycle. |
+
+The user's working pattern (keep it): one multiple-choice question at a time with a recommended option; "explain" means re-explain plainly with an example and re-ask; "A but add B to future plan" means implement A and write B in detail into `FUTURE-PLANS.md` **before** anything else; log every Q&A in `BRAINSTORM-LOG.md`; ask at plan approval whether the user pre-approves the local merge.
 ## 8. Where things are
 
 - Product sources (never edit): `docs/source/*`. Index and reading order: `docs/README.md`.
