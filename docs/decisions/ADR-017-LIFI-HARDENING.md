@@ -50,6 +50,10 @@ Every estimate and quote sends `maxPriceImpact = 0.05`. Because LI.FI's honoring
 - Token verification: the asset review deployment view shows `lifiVerification` (`verified` when LI.FI lists the token, `unverified` when not, null when unknown; cached 24 h per chain). LI.FI's token list documents no flag field, so `flagged` is in the type and never produced until a real-key check finds one.
 - Fee-on-transfer: `ops_admin` flags a deployment (`instrument_deployments.fee_on_transfer`, audited as an asset event). Legs touching it carry `feeOnTransfer` and previews say "This token charges a transfer tax; amounts are estimates."
 
+### 8. Recovery auto-stop (D-109)
+
+The 5-minute sweep stops an operation whose recovery leg has been `PLANNED` for more than 7 days, as the user's Stop would (`PARTIAL`, unsent reservations released, audit `operation.auto_stopped`), and notifies the user (`execution_incomplete`, "We stopped your unfinished swap; the tokens that arrived are in your wallet."). The deeper fix is in `docs/domains/FUTURE-PLANS.md` (Execution robustness).
+
 ## Alternatives considered
 
 - **A separate `recover` operation instead of an in-operation leg:** cleaner accounting boundary and its own network fee, but a second plan and signing flow for the user and no continuity with the failed operation. Kept as a future plan.

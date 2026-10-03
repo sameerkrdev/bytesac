@@ -8,7 +8,7 @@
 Portfolio valuation, basket displays and transition planning need normalized market data. The user selected CoinMarketCap.
 
 ## Decision
-CoinMarketCap is the primary crypto market-data provider, behind the platform-owned `getPrices` service (`apps/api/src/services/pricing.ts`) and a replaceable provider module (`providers/coinmarketcap.ts`). Market price, issuer NAV, indicative price and executable swap quote stay distinct; only the first two exist today.
+CoinMarketCap is the primary crypto market-data provider, behind the platform-owned `getPrices` service (`apps/api/src/modules/assets/pricing.service.ts`) and a replaceable provider module (`providers/coinmarketcap.ts`). Market price, issuer NAV, indicative price and executable swap quote stay distinct; only the first two exist today.
 
 | Topic | Implemented behavior |
 |---|---|

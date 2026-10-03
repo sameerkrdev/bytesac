@@ -18,7 +18,8 @@ Before planning, changing code, generating migrations, or answering implementati
 1. Read `docs/README.md` and note the platform name is **Bytesac** and initial settlement currency is **USDC on Solana**, with future currency expansion planned.
 2. Read `docs/architecture/ARCHITECTURE.md`.
 3. Read the domain documents relevant to the task.
-4. Read `docs/decisions/DECISION-REGISTER.md` and any relevant ADR.
+4. Read `docs/decisions/DECISION-REGISTER.md` (one line per decision) and the linked ADR for detail.
+   Also read `docs/engineering/CODING-STANDARDS.md` (module layout, conventions, tests, agent workflow) before changing code, and `docs/superpowers/HANDOFF.md` for session state, working method and the next phase. Open work is in `docs/OPEN-ITEMS.md`.
 5. **Always inspect and read the applicable files under `/docs` before making a change.** If the repository has additional `/docs` files not represented here, treat them as required context and read the relevant ones. Never assume this generated context pack is the only documentation.
 6. Consult the verbatim `docs/source/` project files whenever a synthesized domain document may omit detail; do not assume summaries preserve every edge case. If a required source or decision is missing or contradictory, stop and record the ambiguity in the implementation plan. Do not silently invent a product decision.
 

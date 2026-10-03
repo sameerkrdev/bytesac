@@ -67,6 +67,10 @@ A manager fee for an organization without a `VERIFIED` payout wallet is waived (
 - Reports read only fees whose leg settled (`settled_at` is stamped when the fee leg settles; `settled_chain_at` holds the fee transaction's block time).
 - Daily worker job `revenue-reconcile` (04:00 UTC) compares settled platform fees with the revenue treasury's USDC inflows for the previous UTC day and logs a mismatch; it is read-only. It buckets fees by `coalesce(settled_chain_at, settled_at)`, the on-chain block time where known (D-112), so a settlement recorded just after midnight does not cause a false warning.
 
+### 9. Revenue bucketing by chain time (D-112)
+
+`operation_fees.settled_chain_at` is the fee transaction's Solana block time, recorded when the fee leg settles. The daily reconciliation buckets by `coalesce(settled_chain_at, settled_at)`, so a settlement recorded just after midnight no longer raises a false mismatch.
+
 ## Alternatives considered
 
 - **Platform treasury with manager payouts** — one place to dispute and net fees, but Bytesac would hold manager money (custody and licensing burden) and need a payout job. Rejected: direct transfers keep ADR-013.

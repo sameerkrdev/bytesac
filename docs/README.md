@@ -1,12 +1,13 @@
 # Project Documentation and Context Index
 
-This directory is the project’s durable engineering context. Read the relevant docs before making changes. The root `AGENTS.md` makes this mandatory for coding agents.
+Bytesac is a manager-led, multi-chain investment-basket platform. Initial settlement currency is **USDC on Solana**, with future currency expansion planned. This directory is the project's durable engineering context; the root `AGENTS.md` makes reading it mandatory for coding agents.
 
 ## Reading order
 
-1. `architecture/ARCHITECTURE.md` — system boundaries and end-to-end behavior.
-2. `decisions/DECISION-REGISTER.md` — current decisions and unresolved items.
-3. Relevant domain specification:
+1. `superpowers/HANDOFF.md` — current state, working method, environment traps, next phase and roadmap (start here in a new session).
+2. `architecture/ARCHITECTURE.md` — runtime, module layout, data stores, stack.
+3. `decisions/DECISION-REGISTER.md` — one line per decision with status; the linked ADR holds the detail.
+4. The relevant domain document (current product behavior):
    - `domains/USER-AUTHENTICATION.md`
    - `domains/MANAGER-ORGANISATION-ONBOARDING.md`
    - `domains/ASSET-REGISTRY.md`
@@ -14,38 +15,27 @@ This directory is the project’s durable engineering context. Read the relevant
    - `domains/INVESTMENT-REBALANCING-DRIFT-FIX.md`
    - `domains/USER-FEATURES.md`
    - `domains/FUND-MANAGER-FEATURES.md`
-   - `domains/FUTURE-PLANS.md`
-4. `engineering/CODING-STANDARDS.md`
-5. `engineering/AGENT-GUARDRAILS.md`
-6. `engineering/CONTEXT-MANAGEMENT.md`
-7. `BYTESAC_Design_System.md`
-8. `superpowers/specs/` and `superpowers/plans/` — approved feature specs and implementation plans.
+5. `engineering/CODING-STANDARDS.md` — conventions, tests and the agent workflow.
+6. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
+7. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
+8. `BYTESAC_Design_System.md` — UI design system.
 
-## Document roles
+## Document roles (one home per topic)
 
-- **Architecture** explains how the system is divided and how components interact.
-- **Domain specifications** describe intended product behavior from supplied project files.
-- **Decision register** distinguishes confirmed direction from proposals and open questions.
-- **ADRs** record material decisions, context, consequences and status.
-- **Coding standards** define implementation conventions.
-- **Agent guardrails** define safe autonomous behavior.
-- **Context management** defines how docs stay current and how agents load context.
+| Topic | Home |
+|---|---|
+| Session state, working method, traps, next phase, roadmap, starter prompt | `superpowers/HANDOFF.md` |
+| Open work | `OPEN-ITEMS.md` |
+| Decisions | ADRs in `decisions/`, indexed by `DECISION-REGISTER.md` |
+| Current product behavior | `domains/*.md` |
+| Architecture | `architecture/ARCHITECTURE.md` |
+| Conventions and agent workflow | `engineering/CODING-STANDARDS.md` and root `AGENTS.md` |
+| Deferred scope | `domains/FUTURE-PLANS.md` |
+| History (dated, never rewritten) | `superpowers/specs/`, `superpowers/plans/`, `superpowers/reviews/`, `superpowers/audits/`, `superpowers/BRAINSTORM-LOG.md` |
 
 ## Source fidelity
 
-The domain files are synthesized from the project source files supplied with this request. They preserve the stated intent but may condense examples. If a specific field, state, permission or edge case is needed, inspect the original source file as well. Do not treat an implementation proposal as an approved product decision unless marked approved.
-
-## Updating documentation
-
-Update the relevant domain document and decision record in the same change as the code when behavior changes. Add an ADR for significant architecture decisions. Record unresolved choices as `OPEN`; do not convert them into facts by implication.
-
-## Current product scope reminder
-
-The supplied material describes an initial focus on crypto assets, crypto tokens and approved RWAs on supported chains. Conventional stocks, ETFs, fixed deposits, recurring deposits, treasuries, commodities, indices, rates/currencies and pre-IPO products appear as future plans unless separately approved.
-
-## Original project source files
-
-The complete supplied project source files are preserved verbatim under `docs/source/`. These are included so that no source details are lost in the synthesized domain documents. When exact field names, edge cases, wording or detailed feature behavior matter, consult the corresponding original source file. Do not replace the originals with summaries.
+The domain files are synthesized from the project source files and may condense examples. If a specific field, state, permission or edge case is needed, read the original in `docs/source/` (verbatim, never edited). Do not treat a proposal as an approved decision unless marked approved.
 
 - `docs/source/User-Authentication-Flow.txt`
 - `docs/source/Fund-Manager-&-Organisation-Onboarding-Flow.txt`
@@ -55,3 +45,7 @@ The complete supplied project source files are preserved verbatim under `docs/so
 - `docs/source/Assets-Registry.txt`
 - `docs/source/Basket-Creation.txt`
 - `docs/source/First-Investment,-Rebalancing,-Drift-&-Fix.txt`
+
+## Updating documentation
+
+Update the relevant domain document, the register line and the ADR in the same change as the code; rewrite in place (no "update" notes). Record unresolved choices as `OPEN`. Initial scope is crypto assets, crypto tokens and approved RWAs on supported chains; conventional stocks, ETFs, deposits, treasuries and similar are future plans.

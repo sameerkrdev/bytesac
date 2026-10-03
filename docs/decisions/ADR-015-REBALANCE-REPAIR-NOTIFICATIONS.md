@@ -52,6 +52,10 @@ Web push uses Firebase Cloud Messaging: `firebase-admin` on the API (`FIREBASE_S
 
 For each published version the manager sees, over **open** positions holding that version or older: how many applied, skipped, are in progress (an open rebalance to it) and have not responded. Each cell shows 1 to 4 as the string `"<5"`; there are no identities, wallets or amounts. Access needs basket `read`.
 
+### 10. Non-investable held assets and ops alert (D-111)
+
+A rebalance and a drift fix need investability only for assets they buy. A held non-investable asset keeps its target weight at the held deployment and the plan is refused (409 `NOT_INVESTABLE`) only if it would buy it; a non-held non-investable asset with a needed buy refuses the plan. Each sold deployment needs an `ACTIVE` or `PAUSED` deployment and a route LI.FI can quote, otherwise 409 `NOT_INVESTABLE` naming the asset (a transient route outage reads the same). When an instrument, deployment or route change makes an instrument non-investable, every `ops_admin` gets an `instrument_not_investable` notice listing the baskets whose current version holds it, once per instrument per UTC day; price-reference changes raise no alert. A held asset with no current price still refuses a rebalance (409 `DATA_STALE`, naming it) because valuing the basket needs every price (open in `docs/OPEN-ITEMS.md`).
+
 ## Alternatives considered
 
 - **Direct sell-to-buy pairing** (one hop per sell/buy pair instead of via USDC): fewer hops and fees on large rebalances, but pairing, partial fills and per-pair failure handling are much harder to make safe and to show. Deferred (`FUTURE-PLANS.md`); the hub keeps every leg independent and verifiable.

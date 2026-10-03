@@ -1,319 +1,113 @@
 # System Architecture
 
-**Status:** Consolidated architecture baseline; unresolved choices are explicitly marked.  
-**Product:** Bytesac-style multi-chain basket investing platform.
+**Product:** Bytesac, a manager-led multi-chain basket investing platform. Initial settlement currency is **USDC on Solana**; additional currencies are future work and must be added through explicit currency and settlement-asset configuration, never hard-coded as the only option.
 
-## 1. Product model
+Decisions live in `docs/decisions/` (register plus ADRs); product behavior in `docs/domains/`; conventions in `docs/engineering/CODING-STANDARDS.md`; open work in `docs/OPEN-ITEMS.md`.
 
-The platform lets users discover manager-created baskets, review a strategy and invest. A verified organization owns/manages baskets; individual users authenticate through wallet-linked platform accounts. Managers define target allocations and publish reviewed versions. Users decide whether to participate in updates and retain control over investment actions.
+## 1. Principles
 
-The platform coordinates execution and monitoring. Actual holdings must be grounded in reconciled chain or issuer state, not merely in the manager's target or a database estimate.
+1. **Separate identity from organization.** User, manager application, organization, membership, permission and payout wallet are distinct concepts.
+2. **Strategy is not execution.** A basket version is a target; each user's operation is planned and authorized separately, and a manager's publication is never user consent.
+3. **Self-custody.** Assets stay in the user's own wallets; the platform holds no keys or funds and the user signs every value-moving transaction (ADR-013). Wallet authentication is not spending authorization.
+4. **Instrument, deployment and route are different.** One economic instrument may have several chain deployments and several ways to acquire or sell it (ADR-010).
+5. **Policy is contextual.** Eligibility depends on user, instrument, route, jurisdiction and action (ADR-018).
+6. **Ownership and allocation differ.** Wallet balances do not reveal basket attribution; positions are a logical sub-ledger reconciled against chain state, and chain evidence (not provider webhooks or estimates) is the proof of holdings.
+7. **Auditable financial state.** Operations, legs, ledger entries and approvals are append-only or status-driven; nothing financial is deleted.
+8. **Provider independence.** External services sit behind adapters in `providers/`; internal models are normalized.
+9. **Modular monolith** (ADR-001): isolate boundaries in code (feature modules), not in services.
+10. **Keep currencies distinct:** display currency, settlement currency, on-chain settlement asset and instrument price reference are separate concepts; a future currency must define conversion source, freshness, rounding, fees, network and consent.
 
-## 2.1 Settlement currency
-
-**Initial platform settlement currency: USDC on Solana.** Investment amounts, basket execution budgets, cash residuals, fee calculations and settlement-facing user flows should use this as the initial settlement denomination where applicable. The design must not hard-code USDC-on-Solana as the only possible settlement currency: future expansion to additional currencies and/or chain-specific settlement assets must be supported through explicit currency and settlement-asset configuration.
-
-Keep these concepts distinct:
-- **Display currency:** the currency used to present portfolio values.
-- **Settlement currency:** the currency used to fund/settle a platform operation.
-- **On-chain settlement asset:** the actual token/asset used on a particular network (initially USDC on Solana).
-- **Instrument currency/reference:** the denomination used by a market price or issuer NAV.
-
-A future currency expansion must define conversion source, quote freshness, rounding, fees, settlement network, user consent and accounting treatment. Do not imply that changing display currency changes settlement currency.
-
-## 2. Architectural principles
-
-1. **Separate identity from organization.** A user account, manager application, organization, membership, permission and payout wallet are distinct concepts.
-2. **Strategy is not execution.** A basket version expresses a target; each user's operation is separately planned and authorized.
-3. **Chain-agnostic portfolio semantics.** Baskets and portfolio concepts use canonical instruments; transaction construction, signing, settlement and finality remain chain-specific.
-4. **Instrument ≠ deployment ≠ route.** An economic instrument may have several chain representations and several ways to acquire, transfer, sell or redeem it.
-5. **Policy is contextual.** Eligibility depends on user, instrument, provider, route, jurisdiction and action.
-6. **Ownership and allocation are different.** Physical wallet balances do not, by themselves, reveal basket-level attribution.
-7. **Explicit consent.** Manager updates do not silently move user assets.
-8. **Auditable financial state.** Operations, ledger entries, approvals and execution outcomes must be traceable.
-9. **Provider independence.** Use adapters around external providers and preserve normalized internal models.
-10. **MVP as a modular monolith.** Avoid premature microservices; isolate boundaries in code first.
-
-## 3. System context
+## 2. Runtime
 
 ```text
-Investor Web / Mobile                     Manager Web
-        |                                      |
-        +---------------- API / BFF ------------+
-                         |
-              Node.js + TypeScript
-                 Modular Monolith
-                         |
-  +----------------------+-----------------------+
-  | Identity & Access    | Manager Applications |
-  | Organizations        | Basket & Versions    |
-  | Asset Registry       | Eligibility/Policy   |
-  | Portfolio Ledger     | Pricing & Valuation  |
-  | Transition Planner   | Execution Orchestrator|
-  | Activity / Indexing  | Reconciliation       |
-  +----------------------+-----------------------+
-                         |
-                  Adapter interfaces
-       +-----------------+---------------------+
-       |                 |                     |
-    Alchemy             0x             RWA / issuer adapters
-  RPC/events       swaps/routes          subscriptions, NAV,
-       |                 |                settlement, transfers
-       +-----------------+---------------------+
-                         |
-                  Chain-specific adapters
-           EVM / Solana / Bitcoin / others
-                         |
-                 Chains / venues / issuers
-
- Durable state: PostgreSQL (Supabase-hosted; backend-only access, schema app)
- Sessions: backend-managed (sessions table)
- Cache/rate limits/queues: Redis; background jobs: BullMQ worker (ADR-006, ADR-012); retention: pg_cron
- AI search: Google Gemini (query text only; optional)
- Notifications: in-app inbox, Resend email, Firebase Cloud Messaging web push (ADR-015)
- Files: Cloudflare R2
+ Web (Next.js 16)        Mobile (Expo 57)
+        \                      /
+         \  /api/* rewrite    /  bearer + X-Client: mobile
+          +--------------------+
+                  API  (apps/api, Express 5)            Worker (BullMQ, same codebase)
+   app.ts -> middlewares -> modules/<feature>/*.route -> controller -> service -> @repo/db
+                  |                                              |
+        providers/ (LI.FI, Alchemy RPC, Solana, Bitcoin,         +-- Redis (BullMQ queues, rate limits, cache)
+        CoinMarketCap, Gemini, Resend, Twilio, FCM, R2)          +-- PostgreSQL (Supabase; pg_cron retention, pgvector)
 ```
 
-## 4. Major modules and responsibilities
+- **API** (`apps/api/src`): `app.ts` builds the express app (request context, security guards, JSON, cookies, morgan into `logger.http`, routers under `/api/v1/*`, one error handler); `server.ts` `startServer()` listens and, on SIGINT/SIGTERM, stops accepting, closes the HTTP server, BullMQ queues, Redis and the DB pool, then exits 0 (a startup failure logs and exits 1). `ops/cli.ts` is the ops-only CLI (address disable, user suspend, role grant); it must not import provider modules.
+- **Worker** (`worker.ts`, `pnpm --filter api start:worker`): one BullMQ worker per queue with fixed scheduler ids so schedules run once across instances, and the same graceful shutdown. Queues: `price-snapshot` (daily 00:05 UTC), `basket-performance`, `search-index-refresh`, `embed-basket` (sweep every 15 min), `track-leg` (claims sweep every 5 min), `reconcile-positions` (nightly 02:30 UTC), `gas-wallet-check` (15 min), `revenue-reconcile` (daily 04:00 UTC) and `notifications` (`deliver`, `version-published`, `basket-notice`). It needs Redis without eviction. Jobs never move money or user balances; they read chain state, write evidence and notify (ADR-006, ADR-012).
+- **Config** (`config/`): `dotenv.ts` validates env with envalid (the only place that reads `process.env`), `queues.ts` holds the BullMQ queues and `enqueue` (which swallows and logs queue errors so a committed change never fails).
+- **Middlewares** (`middlewares/*.middleware.ts`): `auth` (`requireSession`, `optionalSession`, `requireRole` for platform roles), `validate` (Zod), `rate-limit` (rate-limiter-flexible on Redis), `request-context` (request id, plus the `ctx` / `opsCtx` helpers controllers pass to services), `security` (`noCors`, `rejectDualAuth`, `csrfGuard`: Origin plus `X-Requested-With: bytesac` on cookie mutations), `error-handler` (one central handler: `{ error: { code, message, details? } }`, plus redacted request-context logging).
+- **Providers** (`providers/`): LI.FI behind `RouteProvider` (`routes/`), `solana-tx`, `solana-rpc`, `evm-rpc`, `bitcoin` (BIP-322/137 verification, PSBT checks, Alchemy Bitcoin REST), `coinmarketcap`, `gemini`, `resend`, `twilio`, `fcm`, `r2`. Provider SDKs never appear outside this folder; `modules/auth/wallets.service` stays free of provider imports so the ops CLI starts without provider keys.
+- **Modules** (`modules/<feature>/`): files are `<feature>.route.ts`, `<feature>.controller.ts`, `<feature>.service.ts` (large features keep several services; variants add `.me`, `.org`, `.public`, `.ops`). A module calls another only through its `*.service.ts`. Modules: `assets`, `audit`, `auth`, `baskets`, `contacts`, `discovery`, `eligibility`, `fees`, `health`, `manager-applications`, `me`, `members`, `notifications`, `operations`, `ops` (composes every `*.ops.route`), `organizations`, `portfolio`, `preferences`, `public` (composes `*.public.route`), `rebalance` (service only), `routing`.
+- **Web** (`apps/web`): Next.js App Router; routes `sign-in`, `onboarding`, `(app)` (home, profile, portfolio, organization, notifications), `(ops)`, `baskets`, `managers`, `organizations`, `fees`; calls the API only through the same-origin `/api/*` rewrite with the httpOnly `bx_session` cookie; Reown AppKit (wagmi, Solana, Bitcoin adapters); Firebase web push.
+- **Mobile** (`apps/mobile`): Expo SDK 57 / React Native 0.86 / Expo Router / NativeWind; bearer token in `expo-secure-store`; Reown AppKit RN behind one `useWalletConnector` hook. Release 1 covers sign-in, contacts and the shells; investing, portfolio, rebalance, eligibility and push screens are future work.
+- **Packages** (TypeScript source, no build step, extensionless imports): `@repo/db` (Drizzle schema `app`, client, migrations, test helpers), `@repo/validator` (Zod re-export, chains, error codes and HTTP map, request/response schemas, permission matrix), `@repo/api-client` (typed client), `@repo/app-core` (client logic shared by web and mobile), `@repo/logger` (winston), `@repo/design-tokens`, `@repo/ui`, `@repo/eslint-config`, `@repo/typescript-config`.
+- **Data stores:** PostgreSQL (source of truth; role `bytesac_api` with DML and no DELETE, RLS, retention by `app.purge_expired()` under `pg_cron`; ADR-005, ADR-006), Redis (queues, rate limits, 60 s price cache; per-chain gas locks are Postgres advisory locks), Cloudflare R2 (private documents).
 
-### Identity and access
-- Wallet connection is a client capability; signature verification and session issuance are backend responsibilities. Sessions are backend-managed (`sessions` table, opaque hashed tokens); Supabase is PostgreSQL only and is not the session issuer (ADR-003).
-- Maintain user identity separately from wallet addresses and chain accounts.
-- Chain-account association is scoped by verification method: an EOA signature registers all supported EVM chains, ERC-1271/6492 signatures register only the verified chain, and cross-family additions require an explicit logged-in "Add chain account" (ADR-004).
-- Release 1 has no user-initiated wallet unlink; compromised addresses are disabled through audited ops commands, and recovery is a future wallet-migration feature.
-- Enforce role and resource permissions on the server.
-- Support contact verification and notification preferences as separate account concerns.
-- Wallet authentication does not imply transaction authority.
+## 3. Domain components
 
-### Manager application and organization
-- Anyone may apply to become a manager, but application does not grant publication privileges.
-- Applications are email-confirmed before they enter the ops queue; the platform team screens them in the web ops area (`/ops`), gated by `platform_roles` (`ops_reviewer`, `ops_admin`), with every action audited (ADR-007).
-- The applicant supplies a chain and typed wallet address at application time; it is an identifier only. Wallet control is proven by the normal sign-in signature flow, and a typed address never creates or links a user.
-- The narrowly scoped `create_manager_organization` permission is granted when the application is `SCREENING_APPROVED` and the exact address is proven: immediately at approval if a proven user owns it, otherwise inside the sign-in/add-chain transaction (race-safe: the open application is locked by wallet family and address).
-- User creates an individual or firm organization (at most one owned organization that is not rejected) and fills template-driven public and private information. Content is versioned as a whole; private documents go to R2 by presigned upload and are readable only by ops. The organization is submitted for platform review in `/ops/organizations` (ADR-008).
-- Organization approval, membership verification and basket approval are separate gates.
-- Organization is the durable owner/manager context for baskets. Member removal revokes access but preserves history.
-- Members: one fixed permission matrix (`ROLE_PERMISSIONS` in `@repo/validator`) is checked server-side on every organization route and only `ACTIVE` memberships grant permissions. Owner/Admin invite by wallet and email; an invite attaches to a user only when the wallet is proven in the sign-in/add-chain transaction (never by a typed address). Admin and Manager members complete their own verification, reviewed by ops in `/ops/members`; exactly one `ACTIVE` `OWNER` is enforced by a partial unique index and ownership moves only through an audited `ops_admin` transfer. Memberships follow one transition table and are never deleted (ADR-009).
-- Organization payout wallet is distinct from personal/authentication wallets and requires a Solana signature over a payout-specific challenge; replacement also needs ops approval.
-- The public organization profile shows only the current approved version; later edits are change requests reviewed before they replace it.
+| Component | Responsibility | Decisions |
+|---|---|---|
+| Identity and access | Users, wallets, chain accounts (EVM, Solana, linked Bitcoin), backend sessions, contacts, preferences | ADR-003, ADR-004 |
+| Manager application and organization | Public application, ops screening, organizations with versioned profiles, payout wallet, ops review | ADR-007, ADR-008 |
+| Members and roles | Fixed permission matrix, invites by wallet proof, member verification, ownership transfer, public team | ADR-009 |
+| Asset registry | Instruments, deployments, routes, rules, price references, on-chain verification, lifecycle | ADR-010, ADR-002 |
+| Baskets | Versioned baskets, review, publication, assignments, disclosures, public pages | ADR-011 |
+| Discovery | Search index, AI search, simulated performance, manager profiles | ADR-012 |
+| Operations (execution) | Plans of legs, LI.FI quotes, signing support, gas sponsorship, tracking, recovery | ADR-013, ADR-014, ADR-017 |
+| Portfolio | Position ledger, reconciliation, valuation, drift, repair, sync, basket cash | ADR-014, ADR-015 |
+| Rebalance and notifications | Apply/skip versions, drift fix, inbox, email, web push, adoption counts | ADR-015 |
+| Fees | Manager and platform fees, combined fee leg, earnings, revenue reconciliation | ADR-016 |
+| Eligibility | Declarations, rule engine, enforcement, decision audit | ADR-018 |
 
-### Asset registry
-Represent:
-- **Instrument:** canonical economic identity and asset type.
-- **Deployment:** chain-specific token address, mint or other identifier, decimals and status.
-- **Route:** provider/venue and permitted action (swap, subscription, secondary market, transfer, redemption), limits and status.
-- **Price reference:** source, type, currency, freshness and confidence.
-- **Eligibility policy:** applicable user/jurisdiction/investor-status/route/action rules and effective period.
+## 4. Core flows
 
-Implemented in Spec 5 (ADR-010): ops draft, verify, review and activate instruments; signed-in users read `ACTIVE` ones through `/v1/assets`. Managers select only platform-approved instruments. Arbitrary token addresses must not become investable merely by being entered in a basket. The initial scope is crypto, crypto tokens and approved RWAs on supported routes. Future asset categories remain disabled until explicitly approved.
+- **Invest or exit:** investability and eligibility checks, then a plan of legs (fee leg first, then swap or cross-chain legs, routed by LI.FI to the user's own addresses); the user signs one leg at a time against a fresh 60 s quote; Solana legs are co-signed by the platform fee payer only when byte-identical to the provider message; each leg is tracked on chain to `SETTLED`, `FAILED` or `UNKNOWN`; the ledger is written only from chain evidence. Leg states `PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`; operations may end `PARTIAL`; unknown outcomes are reconciled, never blindly retried.
+- **Rebalance:** the manager publishes a reviewed version; the holder applies (a new plan from reconciled holdings, sells to USDC on Solana then buys) or skips; nothing moves without the holder's signature. Drift, shortfalls (Buy back or Sync) and repair are separate actions (ADR-015).
+- **Manager path:** apply, ops screening, sign-in with the proven wallet, organization draft and verification, invites, basket drafts, ops review, publication.
+- **Before any execution:** reconcile positions, confirm target version and intent, re-evaluate eligibility and routes, recompute if inputs changed, serialize shared assets (one active operation per user), execute idempotently with per-leg state, reconcile the final state.
 
-Implemented in Spec 11 (ADR-018): permissionless secondary-market RWA tokens through LI.FI, gated by a pure eligibility engine in `@repo/validator` (`evaluateEligibility`) fed by the user's append-only, 365-day self-declaration (country, investor status), an optional geo-IP signal (`GEO_COUNTRY_HEADER`) and the registry rules. RWAs are denied by default, crypto and stablecoins are unaffected, and every RWA leg stores its decision. The API enforces it at investability, plan creation and leg quote; the web only displays outcomes.
+## 5. Persistence (indicative; migrations in `packages/db/migrations` are authoritative)
 
-### Basket and versioning
-Implemented in Spec 6 (ADR-011); nothing invests, executes or charges yet.
-- A basket is a versioned investment strategy owned by a verified organization. The basket (slug, status, current version) and its versions (content) are separate state machines; one open version at a time, editable only as `draft` or `changes_required`.
-- New baskets begin as `DRAFT`; drafts are not public. The manager configures identity, thesis, registry instruments with hand-entered target weights, constraints, rebalance disclosures, fees and minimums; platform disclosures come from ops-managed templates pinned per version.
-- `validateBasketVersion` (`@repo/validator`) runs in the browser and on the server with stable issue codes; saving reports and never normalizes, submit and publish return 422.
-- Submit freezes and content-hashes the version; an `ops_admin` approves (reviewers request changes, reject or escalate); the manager publishes the approved hash. Published versions are immutable; asset rows and disclosure pins are revisioned, never deleted (the runtime role has no DELETE).
-- Per-basket assignments (lead, co-manager, flags) gate every action; a departing lead ends assignments and the basket waits in `REASSIGNMENT_REQUIRED` for an ops-approved lead.
-- Pause (manager or platform), retirement (manager request, ops decision, or direct) are explicit lifecycle operations. Public `/baskets` pages serve published content only; history, diffs and manager history are kept.
+- Identity: `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`, `platform_roles`, `user_permissions`.
+- Onboarding: `manager_applications` (+ events, email codes), `organizations`, `organization_versions`, `organization_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `organization_payout_wallets`, event tables.
+- Registry: `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events`, `asset_tags`, `instrument_tags`, `route_policy_entries`.
+- Baskets and discovery: `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` and `basket_version_disclosures` (revisioned), `disclosure_templates`, `basket_assignments`, `basket_reviews`, `basket_events`, `manager_profiles`, `instrument_price_snapshots`, `basket_performance_days`, `basket_search_index`.
+- Execution and portfolio: `operations`, `operation_legs`, `operation_fees`, `gas_drops`, `platform_wallets`, `sponsor_usage`, `basket_positions`, `position_ledger_entries`, `position_cash_entries`, `position_reconciliations`, `position_decisions` (ledgers are append-only), `eligibility_declarations`, `eligibility_decisions`, `platform_fee_schedules`, `notifications`, `push_tokens`.
+- `audit_events` is append-only with no foreign keys so audit history survives any change to referenced rows. Retention purges run inside Postgres (`app.purge_expired()` daily via `pg_cron`, writing `retention.purged`).
+- Money and token quantities are exact integers in base units or `numeric`; never floating point. Foreign keys, unique, check constraints and indexes enforce invariants in the database.
+- Not built: `outbox_events`, generic `idempotency_records` (idempotency is per feature), valuation snapshots, a separate activity feed.
 
-### Portfolio ledger
-Maintain separate representations for:
-- observed physical wallet/issuer holdings,
-- logical allocations to each basket,
-- unallocated/manual positions,
-- pending/in-flight amounts,
-- reserved amounts and applicable liabilities.
+## 6. Stack
 
-Custody and attribution are decided (ADR-013): assets stay in the user's own wallets; each basket position is a logical sub-ledger (user × basket × deployment, raw base units) reconciled against on-chain balances. A shortfall is allocated pro-rata across the baskets holding that deployment and marked `SHORT` until the user chooses Fix or Accept; wallet surplus is outside baskets and never touched. Never spend the same physical quantity twice. Leaving a basket keeps a former-basket record so the user can later sell `min(recorded, on-chain)` back to USDC.
-
-**Implemented (Spec 9, ADR-015):** basket cash (`position_cash_entries`, append-only micro-USDC) holds unspent sale proceeds and is reconciled against wallet USDC on Solana like a deployment (cash rows have no deployment). A shortfall blocks rebalancing for the affected baskets and is resolved per asset by Buy back (one repair operation for the deployment) or Sync (no transaction; user-edited split recorded as `position_decisions` plus negative ledger or cash entries).
-
-### Transition planner
-Inputs include current reconciled state, selected basket version, user intent, pricing, eligible routes, balances, reserved amounts, fees, slippage, minimums and pending operations.
-
-**Implemented (Spec 9):** `planRebalance`, `scaleBuys`, `feePlacement`, `splitRepair` and `headlineOf` are pure functions in `@repo/validator` (`rebalance.ts`); `services/rebalance.ts` applies them to reconciled holdings, fresh prices and basket cash (`valuePosition` is the single valuation used by planning, keep custom and drift).
-
-The planner:
-- calculates target quantities/values from weights and approved valuation;
-- compares targets with actual/allocated state;
-- nets changes within the user's own wallets only (no netting across users; ADR-013);
-- accounts for fees, dust, fractional precision, minimum notionals and cash residuals;
-- emits a deterministic plan with explicit steps and assumptions;
-- invalidates or recomputes plans when relevant state changes.
-
-Reconciliation, repair, rebalance and customization are different operations. A “Fix” action must make its intended outcome explicit: restore, accept/reallocate, rebalance to a version, or retain customization.
-
-### Execution orchestrator
-A user-level operation may contain multiple steps and transactions across chains/providers. Persist the plan, authorization, each step, provider request and transaction separately. Track partial completion. Resume only from verified state; never replay completed steps blindly.
-
-**LI.FI hardening (Spec 10.1, ADR-017):** `RouteProvider.estimate` plans rebalance buys without a balance; every estimate and quote carries `maxPriceImpact` and the ops deny lists (`services/routing.ts`, `route_policy_entries`); `trackOnce` turns a failed destination swap into a recovery leg inside the same operation, ledgered from chain evidence; ops get `/ops/routing`, a LI.FI transfers lookup, a token verification badge and a fee-on-transfer flag.
-
-**Implemented for first investment and exit (Spec 8, ADR-014):** `services/operations.ts` plans an operation (`invest`, `sell_to_usdc`, `sell_former`) as legs (`network_fee`, `swap`, `cross_chain`) with `createInvestPlan`/`createSellPlan`, quotes one leg at a time through the `RouteProvider` (LI.FI, `providers/routes/`), and accepts the user's proof per source chain: a signed Solana transaction (message hash checked against the stored one, then co-signed by the platform fee payer in `providers/solana-tx.ts`), an EVM transaction hash (`to`, `data` hash and `value` checked), or a signed Bitcoin PSBT (outputs checked, finalized and broadcast in `providers/bitcoin.ts`). `services/gas.ts` holds the platform wallets, EVM gas drops and the per-user and global daily caps. Every leg and operation transition is validated against the maps in `@repo/validator` under an operation row lock and audited. The BullMQ worker runs `track-leg` (source finality, LI.FI status, received amount; `UNKNOWN` after 30 minutes, re-checked hourly for 7 days), `reconcile-positions` (nightly at 02:30 UTC and on portfolio read) and `gas-wallet-check` (every 15 minutes).
-
-### Activity, indexing and reconciliation
-- Ingest provider notifications and chain events.
-- Validate, deduplicate and order events where possible.
-- Track confirmation/finality and reorg handling per chain.
-- Reconcile observed holdings with expected state.
-- Update the ledger from verified evidence and retain discrepancies.
-- External wallet activity is observation, not proof of user intent to change basket attribution.
-
-### Discovery, performance and AI search
-Implemented in Spec 7 (ADR-012). Nothing invests or executes.
-- **Worker:** a BullMQ process (`apps/api/src/worker.ts`) runs `price-snapshot` (daily, CoinMarketCap USD per instrument), `basket-performance`, `search-index-refresh`, `embed-basket` and an embedding sweep; services enqueue after commit and swallow queue errors.
-- **Index:** `basket_search_index` is a derived, in-place table of listed baskets (exposures, tags, fees, review frequency, manager data, metrics, `tsvector`, `vector(768)`); structured search is one parameterized query over it, with filters carried by one `DiscoveryFilters` schema.
-- **Performance:** `computePerformanceDays` (BigInt fixed-point, buy-and-hold per version, fees on net only) writes `basket_performance_days`; `performanceMetrics` derives windows, volatility and drawdown; the public detail shows a downsampled series with the simulated-performance label.
-- **AI flow:** query, rate limits, Gemini forced call of `search_baskets` (validated arguments, public index only), then semantic (pgvector) and keyword fallbacks; the response carries the mode and the filters used, never Gemini text.
-- **Profiles:** opt-in manager profiles at `/managers/[handle]`; ops can hide; verification badge only from real verifications.
-
-### Pricing and valuation
-Implemented (ADR-002): CoinMarketCap market prices are fetched on demand behind `getPrices`, batched, cached in Redis for 60 s and flagged stale after 5 minutes; a missing key or provider failure yields `unavailable`, never an error. Issuer NAV is entered by ops with history and returned as its own entry. There is no price history yet. Keep market price, indicative price, issuer NAV and executable quote distinct. Source priority, provider fallback and valuation freshness policy are still open (D-027). RWA prices and terms may require issuer-specific sources.
-
-## 5. End-to-end user flows
-
-### Discovery and first investment
-1. User may explore public baskets without logging in.
-2. User opens basket research, manager and organization information.
-3. User connects a wallet and authenticates.
-4. Backend checks eligibility for the selected instrument/routes and action (for a tokenized asset: the user's current declaration, geo signal and rules, ADR-018).
-5. User reviews investment amount, target allocation, expected assets, fees (network, manager and platform, each with its recipient), route, risks and estimated outcomes.
-6. User signs every transaction of the plan in their own wallet(s), one leg at a time with a fresh quote per leg; nothing is delegated (ADR-013).
-7. Planner creates operation steps; orchestrator executes them (`POST /v1/operations/invest`, then per leg `quote` and `submit`).
-8. `track-leg` and reconciliation verify settlement; a settled leg appends the amount actually received to the position ledger, which `GET /v1/portfolio` shows against the target weights.
-9. UI reports pending, partial, completed or failed status accurately.
-
-### Manager application and organization onboarding
-1. Applicant submits the Become a Fund Manager form (with chain and typed wallet address) and confirms their email with a code; they receive a private status link.
-2. Platform reviewers screen the application in `/ops`, contacting the applicant outside the app and recording status, internal notes and messages.
-3. On approval, the applicant signs in with the exact submitted wallet, which proves control.
-4. Narrowly scoped organization-creation permission is granted at that sign-in (or immediately at approval if a proven user already owns the address).
-5. The permission is the only outcome of Spec 2; no pending user is ever created.
-6. User signs in and creates an individual or firm organization.
-7. Organization submits required information and payout wallet.
-8. Platform verifies the organization; Owner/Admin invite members, invitees prove their wallet and accept, and Admin/Manager members are verified by the platform before they become active (ADR-009).
-9. Approved organization receives appropriate manager capabilities.
-10. Basket creation and publication remain separately gated.
-
-### Basket creation and publication
-Version: `draft → in_review → changes_required → in_review → approved → published → superseded` (or `rejected`), basket: `DRAFT → ACTIVE ⇄ PAUSED → RETIRED` with `REASSIGNMENT_REQUIRED` and `RETIREMENT_PENDING` side states (`BASKET_TRANSITIONS`, `BASKET_VERSION_TRANSITIONS`). Every transition locks the basket, writes an event and an audit row in one transaction. A draft or unapproved basket is never public or investable.
-
-### Rebalance, skip, drift and fix
-- Manager publishes a reviewed basket version and change reason/summary.
-- User is notified and chooses whether to apply or skip.
-- Applying creates a user-specific transition plan; it does not simply copy manager weights into holdings.
-- Skipped versions remain part of history; catch-up behavior must preserve the user's selected target.
-- Drift can arise from price movement, external activity, skipped versions, execution failure or RWA settlement.
-- Reconcile before planning a fix.
-- Fix/repair requires explicit user choice and authorization.
-- Coordinate shared-asset discrepancies to avoid duplicate repair trades.
-- Reconcile after execution before declaring alignment.
-
-**Implemented (Spec 10, ADR-016):** `services/fees.ts` holds `planFees` (manager entry and rebalance fee from the plan's target version, platform fee from the resolved schedule, dust and waiver rules, payout wallet lookup), the schedule and override admin (`/v1/ops/fees`, versioned rows under an advisory lock, audited), the earnings and revenue reports (settled fees only, CSV) and the daily `revenue-reconcile` worker job (read-only, compares settled platform fees with the revenue treasury's USDC inflows). `insertPlan` writes `operation_fees` rows beside the legs; `buildFeeTransfer` builds one transaction with a transfer per charged fee; settling the fee leg stamps `settled_at`. Public: `GET /v1/public/fees`, the basket detail `platformFee`. Web: `/ops/fees`, `/ops/revenue`, `/organization/earnings`, `/fees` and fee lines in every preview.
-
-**Implemented (Spec 9, ADR-015):** the flow above is built. Publishing a version enqueues `version-published` (cancels untouched `PLANNED` rebalances that target an older version, notifies open holders). Apply (`POST /v1/operations/rebalance`, target `latest`) and drift fix (target `applied`) plan sells to USDC on Solana, an optional network fee and buys from USDC on Solana sized from what actually arrived; `POST /v1/positions/:id/skip`, `/custom` and `/custom/revert` record decisions; `POST /v1/operations/repair` and `POST /v1/portfolio/sync` resolve a shortfall; `GET /v1/me/notifications`, `POST /v1/me/notifications/read` and `/v1/me/push-tokens` serve the inbox and push; `GET /v1/baskets/:id/adoption` serves managers. Web: `/portfolio/[positionId]/rebalance`, `/portfolio/repair/[asset]`, `/notifications`, the header bell and the profile push toggle.
-
-## 6. Multi-chain and asset routing
-
-A basket references instruments, not arbitrary chain addresses. At execution time:
-1. Find active deployments.
-2. Find supported routes for the requested action.
-3. Evaluate user, asset, provider, route and jurisdiction eligibility.
-4. Check settlement asset, liquidity, limits, price freshness and route status.
-5. Select route(s) and create explicit execution steps.
-6. Apply chain-specific signing, submission, confirmation and finality handling.
-
-Investments are funded with USDC on Solana; cross-chain legs come from LI.FI behind the `RouteProvider` adapter and deliver to the user's own linked address on the destination chain (Solana, EVM or native Bitcoin). Gas is paid by platform gas wallets (Solana fee payer co-signing, EVM gas drops) and recovered through the network fee leg, which also carries the manager and platform fees (ADR-016); Bitcoin miner fees come from the user's PSBT inputs (ADR-014). Every leg has its own state (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`); unknown outcomes are reconciled, never retried blindly (ADR-013). Do not force an asset onto the user's default chain. Do not assume a bridge exists or is permitted for an RWA. Native BTC (a `native` deployment on `bitcoin`, linked through a BIP-322 proof), wrapped BTC and tokenized BTC representations are distinct instruments/deployments and must be disclosed accurately.
-
-## 7. Suggested persistence model
-
-Names are indicative; align final names with existing migrations and implementation conventions.
-
-- `users`, `investment_wallets`, `wallet_addresses`, `auth_challenges`, `sessions`, `contacts`, `contact_verifications`, `notification_preferences`
-- `manager_applications`, `application_events`, `application_email_codes`, `platform_roles`, `user_permissions`, `verification_cases`, `verification_evidence`
-- `organizations`, `organization_versions`, `organization_documents`, `organization_version_documents`, `verification_requirement_templates`, `organization_memberships`, `member_verifications`, `member_verification_documents`, `membership_events`, `organization_payout_wallets`, `organization_events`
-- `asset_issuers`, `asset_providers`, `instruments`, `instrument_deployments`, `execution_routes`, `eligibility_rules`, `price_references`, `nav_observations`, `asset_events` (implemented, ADR-010; `instrument_deployments.permissioned` and `eligibility_rules.investor_statuses` added in Spec 11)
-- `eligibility_declarations`, `eligibility_decisions` (append-only; implemented in Spec 11, ADR-018)
-- `asset_tags`, `instrument_tags`, `manager_profiles`, `instrument_price_snapshots`, `basket_performance_days`, `basket_search_index` (derived; implemented in Spec 7, ADR-012; `instruments.sector`)
-- `baskets`, `basket_slug_aliases`, `basket_versions`, `basket_version_assets` (revisioned), `disclosure_templates`, `basket_version_disclosures` (revisioned), `basket_assignments`, `basket_reviews`, `basket_events` (implemented, ADR-011)
-- `basket_positions` (with `allocation_status`), `position_ledger_entries` (append-only), `position_reconciliations` (append-only history; cash rows have a null deployment) (implemented, Spec 8, ADR-014); `position_cash_entries` (append-only), `position_decisions` (append-only: skip, keep_custom, revert_custom, sync), `notifications`, `push_tokens` (implemented, Spec 9, ADR-015); later: `user_portfolios`, `wallet_asset_balances`, `unassigned_positions`
-- `operations` (kinds invest, sell_to_usdc, sell_former, rebalance, repair; `buy_scale`, `repair_shares`), `operation_legs`, `gas_drops`, `platform_wallets`, `sponsor_usage` (implemented, Spec 8 and 9, ADR-014, ADR-015); later: `blockchain_transactions`, `provider_requests`
-- `portfolio_activity`, `ledger_entries`, `transition_plans`, `transition_plan_legs`
-- `drift_cases`, `shared_asset_shortfalls`, `allocation_decisions`, `valuation_snapshots`
-- `audit_events`, `outbox_events`, `idempotency_records`
-
-`audit_events` is append-only and carries no foreign keys, so audit history survives any change to referenced rows.
-
-Unconfirmed (`EMAIL_PENDING`) applications older than 24 h and application email codes resolved more than 90 days ago are purged by the same job. Retention purges run inside Postgres: `app.purge_expired()` is scheduled daily by `pg_cron` and writes a `retention.purged` audit event (ADR-006).
-
-Use foreign keys, unique constraints, check constraints and indexes for invariants that can be enforced in the database. Store quantities and money using exact decimal/numeric representations or integer base units; do not use binary floating point for financial calculations.
-
-## 8. Provider and stack baseline
-
-| Concern | Selected direction |
+| Concern | Choice |
 |---|---|
-| Web | Next.js (App Router) + React + TypeScript |
-| UI | shadcn/ui + Tailwind; Motion selectively |
-| Mobile | Expo SDK 57 + React Native 0.86; `expo-secure-store` for the session token; `jest-expo` for tests |
-| Monorepo | Turborepo + pnpm. Internal packages export TypeScript source (`@repo/db`, `@repo/validator`, `@repo/logger`, `@repo/api-client`, `@repo/app-core`, `@repo/design-tokens`); no package build step |
-| Backend | Node.js + Express + TypeScript; flat `app.ts`/`server.ts`/`env.ts` with `middleware/`, `routes/`, `services/`, `providers/`; bundled with tsup |
-| Database | Supabase PostgreSQL |
-| ORM/migrations | Drizzle + Drizzle Kit, in `@repo/db` |
-| Cache/rate limits/jobs | Redis with `rate-limiter-flexible` for rate limits; BullMQ (pinned) worker for Spec 7 jobs (price snapshots, performance, search index, embeddings) and the Spec 9 `notifications` queue (`deliver`, `version-published`, `basket-notice`); `pg_cron` for retention |
-| AI search | Google Gemini via `@google/genai` (pinned): forced function calling with one read-only tool, and text embeddings (768 dimensions) stored with pgvector; optional key, keyword search without it |
-| Wallet UX | Reown AppKit. Web: AppKit with Wagmi, Solana and Bitcoin (`@reown/appkit-adapter-bitcoin`) adapters. Mobile: `@reown/appkit-react-native` 2.0.6 with the wagmi adapter (wagmi 2.19.5; `@wagmi/connectors` pinned to 6.2.0 via a root override) for EVM, and the Solana adapter with Phantom and Solflare connectors. On-device connect/sign is pending user verification (D-041). |
-| Sessions | Backend-managed sessions table (not Supabase Auth) |
-| Validation | Zod (shared `@repo/validator` package) |
-| Errors | `http-errors` with a stable `code`; one Express error handler |
-| Logging | winston via `@repo/logger` (secrets redacted), morgan request logs |
-| Environment | envalid, validated at startup |
-| Email OTP | Resend |
-| Notifications | In-app inbox (table) plus email through Resend and web push through Firebase Cloud Messaging: `firebase-admin` 14.5.0 on the API (optional `FIREBASE_SERVICE_ACCOUNT`), the `firebase` JS SDK 12.19.0 on web (`getToken` with a VAPID key, `public/firebase-messaging-sw.js` with the compat scripts of the same version, `NEXT_PUBLIC_FIREBASE_*`). Registration tokens today; Installation IDs later (ADR-015). Mobile push deferred. |
-| SMS OTP | Twilio Verify (`twilio` SDK pinned to 6.1.1 to satisfy the repo's minimum-release-age policy; no release-age exclusions) |
-| Tests | Vitest |
-| EVM authentication | SIWE |
-| Solana authentication | SIWS |
-| Blockchain RPC/events | Alchemy, behind adapters |
-| Swaps/cross-chain | LI.FI only, behind the `RouteProvider` abstraction (ADR-014); RWA tokens use the same provider; issuer routes are future plans (ADR-018) |
-| Native BTC | `providers/bitcoin.ts` (BIP-322/BIP-137 verification on `@scure/btc-signer` and `@noble/*`, PSBT output checks, Alchemy Bitcoin REST for balance, transaction and broadcast); Solana transactions through `@solana/web3.js` 1.99.0 |
-| Crypto prices | CoinMarketCap |
-| Files | Cloudflare R2 (private bucket, S3 API via `@aws-sdk/client-s3` behind `providers/r2.ts`; presigned direct upload to `incoming/`, verified copy to `documents/`, ops-only presigned download) |
+| Monorepo | Turborepo + pnpm, exact dependency pins, no `minimumReleaseAgeExclude` |
+| Web | Next.js 16 App Router, React, Tailwind v4, shadcn/ui |
+| Mobile | Expo 57, RN 0.86, `jest-expo` |
+| API | Node, Express 5, TypeScript, tsup bundle, `tsx` in dev |
+| Data | Supabase PostgreSQL, Drizzle + Drizzle Kit, pgvector, pg_cron |
+| Jobs and limits | BullMQ, Redis, rate-limiter-flexible |
+| Validation and errors | Zod (`@repo/validator`), `http-errors` with stable `code`, envalid, winston + morgan |
+| Auth | Backend sessions, SIWE (EVM), SIWS (Solana), BIP-322/137 (linked Bitcoin), Reown AppKit |
+| Chain data and routing | Alchemy behind adapters; LI.FI only behind `RouteProvider`; `@solana/web3.js` 1.99.0, `@scure/btc-signer`, `@noble/*`, viem |
+| Prices and AI | CoinMarketCap; Gemini via `@google/genai` (forced function calling, 768-dim embeddings, optional key) |
+| Messaging | Resend (email OTP and notifications), Twilio Verify (SMS OTP), Firebase Cloud Messaging web push (registration tokens today, Installation IDs later) |
+| Files | Cloudflare R2 through `@aws-sdk/client-s3` in `providers/r2.ts` |
+| Tests | Vitest and Supertest (api, web, packages), jest-expo (mobile) |
 
-Current provider capabilities, supported chains, plan limits and commercial terms must be verified against official provider documentation before implementation or release.
+Provider capabilities, supported chains, limits and terms must be checked against current official documentation before implementation or release (Spec 14 audits them).
 
-## 9. Security, reliability and operational requirements
+## 7. Security and operations
 
-- Backend authorization is mandatory; never rely on hidden UI controls.
-- Verify wallet signatures and consume nonces once.
-- Keep secrets and signing material out of frontend/mobile bundles.
-- Separate authentication, permission grants and spend authority.
-- Require user authorization for every investment, rebalance, repair or withdrawal action as applicable.
-- Use idempotency keys for user operations and event handlers.
-- Serialize or reserve shared assets before execution.
-- Track operation, step, provider request and transaction states separately.
-- Handle unknown outcomes, timeouts, partial fills, asynchronous RWA settlement and chain reorgs.
-- Use an outbox pattern for reliable publication of internal events.
-- Reconcile after execution and periodically.
-- Maintain audit history for approvals, membership changes, basket versions and financial operations.
-- Client IP integrity: the web tier proxies `/api/*` to the API through a Next.js rewrite that neither sets nor sanitizes `X-Forwarded-For`. The edge/load balancer must overwrite (not append) `X-Forwarded-For` with the real client IP, and the API's `TRUST_PROXY` must trust only the Next server hop (private CIDR, or loopback when co-located). Otherwise per-IP rate limits and session `ip_prefix` are spoofable or global.
-- Mobile wallet connectors: Reown's Phantom and Solflare connectors persist their dapp keypair and session in AsyncStorage. This is not the Bytesac session token (which lives in the OS secure store), and every signature still requires explicit approval in the wallet app. Wallet-return deep links are consumed by the wallet SDK and must not drive app navigation.
-- Discovery needs the `vector` (pgvector) extension and a running worker with non-evicting Redis; Gemini terms and defaults must be verified before launch (ADR-012).
-- Retention depends on the `pg_cron` extension: enable it on Supabase (Dashboard, Database, Extensions) and monitor `cron.job_run_details`.
-- Apply least privilege, input validation, rate limits, monitoring, backups and restore drills.
-- Eligibility signal integrity: `GEO_COUNTRY_HEADER` names a request header carrying the client's country (for example `CF-IPCountry`). It is trusted only when set, so the edge must overwrite it on every request; an unset variable means no geo signal.
-- Obtain jurisdiction-specific legal/compliance review for investment, custody, RWA distribution and fee models.
+- Backend authorization on every protected route; UI hiding is never enforcement.
+- Verify wallet signatures and consume nonces once; keep secrets and signing material out of client bundles; separate authentication, permission grants and spend authority.
+- Idempotency keys for user operations and event handlers; claim a leg (`SUBMITTING`) before sending anything.
+- Handle unknown outcomes, timeouts, partial fills and reorgs; reconcile after execution and periodically; keep audit history.
+- Client IP integrity: the Next rewrite does not sanitize `X-Forwarded-For`; the edge must overwrite it with the real client IP and `TRUST_PROXY` must trust only the Next hop, otherwise per-IP limits and session `ip_prefix` are spoofable.
+- Eligibility geo signal: `GEO_COUNTRY_HEADER` names a header with the client country; it is trusted only when set, so the edge must overwrite it on every request.
+- Mobile wallet connectors keep their dapp keypair in AsyncStorage; the Bytesac session token lives in the OS secure store; every signature needs explicit wallet approval.
+- Discovery needs pgvector and a running worker with non-evicting Redis; retention needs `pg_cron` (monitor `cron.job_run_details`).
+- Least privilege, rate limits, monitoring, backups and restore drills; legal review per jurisdiction for custody, RWA distribution and fees.
 
-## 10. Open decisions that must not be silently assumed
+## 8. Open decisions
 
-1. Real-key verification of LI.FI coverage per chain/asset, terms and limits, and the gas cap values (the provider, gas model and network fee are decided in ADR-014; custody, attribution and spend authority in ADR-013; rebalance routing, repair and notifications in ADR-015).
-2. Platform fee rates (business decision; default 0), legal review of manager and platform fees, and revenue treasury funding (fee collection is decided in ADR-016 and implemented).
-3. Whether bridging is permitted for each RWA instrument.
-4. Issuer subscription, redemption and settlement methods per issuer/instrument (release 1 offers only secondary-market tokens, D-026).
-5. Price-source hierarchy, freshness limits and fallback behavior.
-6. Rebalance threshold tuning (defaults decided: 50 bps, 5 USDC, drift 500 bps; D-077, D-081) and residual-cash policy beyond basket cash (D-078).
-7. ~~Fix semantics and customization~~ — decided: Buy back or Sync for shortfalls, Rebalance or Keep custom for drift (D-023, D-080, D-081).
-8. Supported chains and asset types for each release.
-9. The real eligibility rule values and investor-status definitions by jurisdiction, instrument and action (the engine is decided, D-025), the attestation wording, and a KYC vendor.
-
-Record each decision in `docs/decisions/DECISION-REGISTER.md` and create an ADR for material choices.
+Tracked in `docs/OPEN-ITEMS.md` §3, §4 and §8 and the register's `OPEN` statuses: real-key verification of LI.FI coverage and gas caps, platform fee rates and legal review, bridging per RWA, issuer routes, price-source hierarchy and fallback, threshold tuning, supported chains per release, real eligibility rule values and attestation wording, KYC vendor. Do not assume any of them.
