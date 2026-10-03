@@ -92,6 +92,14 @@ User request: read six LI.FI FAQ pages; list changes/improvements → **"apply a
 | 1 | Output | A report + fixes (rec.) · B report only · C report + fixes + upgrade everything | **A** | Audit doc + fixes; majors/design → OPEN-ITEMS |
 | 2 | Live calls | A read-only via throwaway script (rec.) · B docs only · C A + sandbox sends | **A** | LI.FI keyless; Alchemy/CMC only with local keys; no writes, signing or broadcasting |
 
+Merge-time decisions (after the whole-branch review):
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 3 | Minimum-output tolerance (layerswap rounds 18-decimal amounts to 1e10 wei, about 2.7 ppm on small ETH legs) | 1 max(1 ppm, 10^(decimals-8)) · 2 flat 10 ppm · 3 keep 1 ppm and record | **1 + future plan** | Implemented; deeper fix in FUTURE-PLANS (Routing provider robustness) |
+| 4 | Deny entry whose key LI.FI no longer lists | 1 drop it, warn, mark stale (fail open, visible) · 2 fail closed | **1 + future plan** | Implemented; deeper fix in FUTURE-PLANS (Routing provider robustness) |
+| 5 | When does the full verification gate run | before the fix wave · after the fix wave | **After the fix wave** | Controller runs the gate once the fixes are committed |
+
 
 ---
 
