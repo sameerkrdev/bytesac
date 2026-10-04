@@ -26,7 +26,7 @@ export function OrganizationChangeRequest({ current, proposed, pending, onDecide
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
       <h2 id={`${id}-h`} className="type-heading text-ink">Change request (version {proposed.versionNumber})</h2>
-      <div className="overflow-x-auto"><table className="min-w-[36rem] w-full text-left text-sm">
+      <div className="relative overflow-x-auto"><table className="min-w-[36rem] w-full text-left text-sm">
         <thead className="text-xs text-ink-muted"><tr><th className="py-2 pr-4 font-medium">Field</th><th className="pr-4 font-medium">Current</th><th className="font-medium">Proposed</th></tr></thead>
         <tbody>
           {rows.map((k) => {

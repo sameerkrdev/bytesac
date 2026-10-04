@@ -127,7 +127,7 @@ function Matrix({ data }: { data: ListRolesResponse }) {
         <h2 id="matrix-title" className="type-heading text-ink">Who can see and change what</h2>
         <p className="max-w-2xl text-sm text-ink-muted">Bytesac checks these on its servers for every request; hiding a button is only a convenience. Basket actions also depend on each basket's assignments.</p>
       </div>
-      <div className="overflow-x-auto rounded-card border border-line bg-surface">
+      <div className="relative overflow-x-auto rounded-card border border-line bg-surface">
         <table className="w-full min-w-[42rem] border-collapse text-sm">
           <caption className="sr-only">Permissions by role</caption>
           <thead>
