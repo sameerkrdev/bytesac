@@ -2,6 +2,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect } from "react";
+import { AuthFrame } from "@/components/auth/auth-frame";
 import { WalletVerification } from "@/components/auth/wallet-verification";
 import { WelcomeCard } from "@/components/auth/welcome-card";
 import { api } from "@/lib/api";
@@ -25,11 +26,11 @@ function SignIn() {
 
   const expired = params.get("reason") === "expired";
   return (
-    <main className="grid min-h-screen place-items-center bg-space px-4">
+    <AuthFrame title={<>Your wallet is your account.<span className="block text-ink-muted">Nothing moves without your signature.</span></>}>
       {wallet.network === "none"
         ? <WelcomeCard expired={expired} onConnect={() => void wallet.connect()} />
         : <WalletVerification purpose="sign_in" expired={expired} onVerified={onVerified} />}
-    </main>
+    </AuthFrame>
   );
 }
 

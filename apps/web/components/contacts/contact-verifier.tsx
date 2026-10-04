@@ -75,34 +75,34 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label htmlFor={ids.value} className="text-xs font-medium text-ivory">{LABEL[type]}</Label>
+          <Label htmlFor={ids.value} className="text-xs font-medium text-ink">{LABEL[type]}</Label>
           {contact && <StatusBadge tone={verified ? "success" : "warning"} label={verified ? "Verified" : "Unverified"} />}
         </div>
         <Input id={ids.value} type={type === "email" ? "email" : "tel"} autoComplete={type === "email" ? "email" : "tel"}
           placeholder={PLACEHOLDER[type]} value={value} aria-invalid={Boolean(error)} aria-describedby={error ? ids.error : undefined}
           onChange={(e) => setValue(e.target.value)} disabled={awaitingCode || pending}
-          className="min-h-11 bg-space text-ivory placeholder:text-stone" />
+          className="min-h-11 placeholder:text-ink-muted" />
       </div>
 
       {awaitingCode ? (
         <>
           <OtpInput id={ids.code} value={code} onChange={setCode} />
           <div className="flex flex-wrap gap-3">
-            <Button className="min-h-11" disabled={code.length !== 6 || pending} onClick={() => void verify()}>
+            <Button  disabled={code.length !== 6 || pending} onClick={() => void verify()}>
               {pending && <Loader2 aria-hidden className="animate-spin" />}Verify
             </Button>
-            <Button variant="secondary" className="min-h-11" disabled={left > 0 || pending} onClick={() => void resend()}>
+            <Button variant="secondary"  disabled={left > 0 || pending} onClick={() => void resend()}>
               {left > 0 ? `Resend in ${left} s` : "Resend code"}
             </Button>
-            <Button variant="ghost" className="min-h-11" onClick={() => { setContact(null); setResendAt(null); setCode(""); setError(null); }}>Change {type}</Button>
+            <Button variant="ghost"  onClick={() => { setContact(null); setResendAt(null); setCode(""); setError(null); }}>Change {type}</Button>
           </div>
         </>
       ) : !verified ? (
-        <Button className="min-h-11" disabled={value.trim().length < 3 || pending} onClick={() => void send()}>
+        <Button  disabled={value.trim().length < 3 || pending} onClick={() => void send()}>
           {pending && <Loader2 aria-hidden className="animate-spin" />}Send code
         </Button>
       ) : (
-        <Button variant="ghost" className="min-h-11" onClick={() => { setContact(null); setResendAt(null); setValue(""); setCode(""); setError(null); }}>Change</Button>
+        <Button variant="ghost"  onClick={() => { setContact(null); setResendAt(null); setValue(""); setCode(""); setError(null); }}>Change</Button>
       )}
 
       {error && (

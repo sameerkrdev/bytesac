@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { fonts, palette, radii, semantic, surfaces } from "./index";
+import { fonts, palette, radii, radius, semantic, surfaces, themes } from "./index";
 
-describe("design tokens match docs/BYTESAC_Design_System.md", () => {
+describe("theme tokens", () => {
+  it("light and dark define the same roles", () => {
+    expect(Object.keys(themes.dark).sort()).toEqual(Object.keys(themes.light).sort());
+  });
+  it("radius scale", () => {
+    expect(radius).toEqual({ shell: 28, card: 20, tile: 14, control: 12, pill: 999 });
+  });
+});
+
+describe("legacy mobile tokens are unchanged until the mobile redesign", () => {
   it("brand palette", () => {
     expect(palette).toEqual({
       space: "#0B1117", slate: "#1F2937", stone: "#6B7280", sage: "#10B981",

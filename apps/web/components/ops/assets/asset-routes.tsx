@@ -48,49 +48,49 @@ export function AssetRoutes({ a, locked, isAdmin, onChange, client = api }: Sect
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Execution routes</h2>
-      {a.routes.length === 0 ? <p className="text-sm text-stone">No routes yet.</p> : (
-        <ul className="divide-y divide-border-dark">
+      <h2 id={`${id}-h`} className="type-heading text-ink">Execution routes</h2>
+      {a.routes.length === 0 ? <p className="text-sm text-ink-muted">No routes yet.</p> : (
+        <ul className="divide-y divide-line">
           {a.routes.map((r) => {
             const d = a.deployments.find((x) => x.id === r.deploymentId);
             return (
               <li key={r.id} className="space-y-2 py-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="font-medium text-ivory">{r.venue} · {r.method.replaceAll("_", " ")}</span>
+                  <span className="font-medium text-ink">{r.venue} · {r.method.replaceAll("_", " ")}</span>
                   <StatusBadge {...ASSET_ITEM_STATUS_LABEL[r.status]} />
                 </div>
-                <p className="text-xs text-stone">
+                <p className="text-xs text-ink-muted">
                   {providerName(r.providerId)} · {d ? ASSET_CHAINS[d.chain].label : "Unknown chain"} · {r.processingModel}
                   {r.settlementInstrumentId && ` · settles in ${settlement(r.settlementInstrumentId) ?? "another asset"}`}{r.minimumAmount && ` · minimum ${r.minimumAmount}`}
                 </p>
-                {r.notes && <p className="whitespace-pre-wrap text-xs text-stone">{r.notes}</p>}
+                {r.notes && <p className="whitespace-pre-wrap text-xs text-ink-muted">{r.notes}</p>}
                 {r.status === "DRAFT" && !locked && editing !== r.id && (
-                  <Button type="button" variant="secondary" className="min-h-11" onClick={() => { setEdit({ providerId: r.providerId, deploymentId: r.deploymentId, venue: r.venue, minimumAmount: r.minimumAmount ?? "" }); setEditInvalid(null); setEditing(r.id); }}>Edit</Button>
+                  <Button type="button" variant="secondary"  onClick={() => { setEdit({ providerId: r.providerId, deploymentId: r.deploymentId, venue: r.venue, minimumAmount: r.minimumAmount ?? "" }); setEditInvalid(null); setEditing(r.id); }}>Edit</Button>
                 )}
                 {editing === r.id && !locked && (
-                  <form noValidate className="grid max-w-xl gap-3 rounded-xl border border-border-dark p-3" onSubmit={(e) => {
+                  <form noValidate className="grid max-w-xl gap-3 rounded-tile border border-line p-3" onSubmit={(e) => {
                     e.preventDefault();
                     const parsed = updateRouteRequestSchema.safeParse({ ...edit, minimumAmount: edit.minimumAmount.trim() || null });
                     if (!parsed.success) return setEditInvalid("Choose a provider and a deployment, name the venue, and enter the minimum as a plain number.");
                     setEditInvalid(null);
                     update.mutate({ rid: r.id, body: parsed.data });
                   }}>
-                    <Label htmlFor={`${id}-e-prov`} className="text-xs font-medium text-ivory">Provider</Label>
+                    <Label htmlFor={`${id}-e-prov`} className="text-xs font-medium text-ink">Provider</Label>
                     <Select id={`${id}-e-prov`} value={edit.providerId} onChange={(e) => setEdit({ ...edit, providerId: e.target.value })}>
                       {providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
-                    <Label htmlFor={`${id}-e-dep`} className="text-xs font-medium text-ivory">Deployment</Label>
+                    <Label htmlFor={`${id}-e-dep`} className="text-xs font-medium text-ink">Deployment</Label>
                     <Select id={`${id}-e-dep`} value={edit.deploymentId} onChange={(e) => setEdit({ ...edit, deploymentId: e.target.value })}>
                       {live.map((x) => <option key={x.id} value={x.id}>{ASSET_CHAINS[x.chain].label} · {x.address ?? "native"}</option>)}
                     </Select>
-                    <Label htmlFor={`${id}-e-venue`} className="text-xs font-medium text-ivory">Venue</Label>
-                    <Input id={`${id}-e-venue`} className="min-h-11 bg-space text-ivory" value={edit.venue} onChange={(e) => setEdit({ ...edit, venue: e.target.value })} />
-                    <Label htmlFor={`${id}-e-min`} className="text-xs font-medium text-ivory">Minimum amount (optional)</Label>
-                    <Input id={`${id}-e-min`} inputMode="decimal" className="min-h-11 bg-space text-ivory" value={edit.minimumAmount} onChange={(e) => setEdit({ ...edit, minimumAmount: e.target.value })} />
+                    <Label htmlFor={`${id}-e-venue`} className="text-xs font-medium text-ink">Venue</Label>
+                    <Input id={`${id}-e-venue`}  value={edit.venue} onChange={(e) => setEdit({ ...edit, venue: e.target.value })} />
+                    <Label htmlFor={`${id}-e-min`} className="text-xs font-medium text-ink">Minimum amount (optional)</Label>
+                    <Input id={`${id}-e-min`} inputMode="decimal"  value={edit.minimumAmount} onChange={(e) => setEdit({ ...edit, minimumAmount: e.target.value })} />
                     {editInvalid && <p role="alert" className="text-sm text-danger">{editInvalid}</p>}
                     <div className="flex gap-2">
-                      <Button type="submit" className="min-h-11" disabled={update.isPending}>Save route</Button>
-                      <Button type="button" variant="secondary" className="min-h-11" onClick={() => setEditing(null)}>Cancel</Button>
+                      <Button type="submit"  disabled={update.isPending}>Save route</Button>
+                      <Button type="button" variant="secondary"  onClick={() => setEditing(null)}>Cancel</Button>
                     </div>
                   </form>
                 )}
@@ -101,7 +101,7 @@ export function AssetRoutes({ a, locked, isAdmin, onChange, client = api }: Sect
         </ul>
       )}
 
-      {locked ? <p className="text-sm text-stone">Routes can&apos;t be changed while the asset is under review or retired.</p> : (
+      {locked ? <p className="text-sm text-ink-muted">Routes can&apos;t be changed while the asset is under review or retired.</p> : (
         <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => {
           e.preventDefault();
           const parsed = createRouteRequestSchema.safeParse({
@@ -112,66 +112,66 @@ export function AssetRoutes({ a, locked, isAdmin, onChange, client = api }: Sect
           setInvalid(null);
           create.mutate(parsed.data);
         }}>
-          <h3 className="text-sm font-medium text-ivory">Add a route</h3>
+          <h3 className="text-sm font-medium text-ink">Add a route</h3>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-prov`} className="text-xs font-medium text-ivory">Provider</Label>
+            <Label htmlFor={`${id}-prov`} className="text-xs font-medium text-ink">Provider</Label>
             <Select id={`${id}-prov`} value={f.providerId} onChange={set("providerId")}>
               <option value="">Select a provider</option>
               {providers.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
-            {!newProvider && <Button type="button" variant="secondary" className="min-h-11" onClick={() => setNewProvider({ name: "", kind: "dex_aggregator" })}>New provider</Button>}
+            {!newProvider && <Button type="button" variant="secondary"  onClick={() => setNewProvider({ name: "", kind: "dex_aggregator" })}>New provider</Button>}
           </div>
           {newProvider && (
-            <div className="grid gap-3 rounded-xl border border-border-dark p-3">
-              <Label htmlFor={`${id}-pn`} className="text-xs font-medium text-ivory">Provider name</Label>
-              <Input id={`${id}-pn`} className="min-h-11 bg-space text-ivory" value={newProvider.name} onChange={(e) => setNewProvider({ ...newProvider, name: e.target.value })} />
-              <Label htmlFor={`${id}-pk`} className="text-xs font-medium text-ivory">Provider kind</Label>
+            <div className="grid gap-3 rounded-tile border border-line p-3">
+              <Label htmlFor={`${id}-pn`} className="text-xs font-medium text-ink">Provider name</Label>
+              <Input id={`${id}-pn`}  value={newProvider.name} onChange={(e) => setNewProvider({ ...newProvider, name: e.target.value })} />
+              <Label htmlFor={`${id}-pk`} className="text-xs font-medium text-ink">Provider kind</Label>
               <Select id={`${id}-pk`} value={newProvider.kind} onChange={(e) => setNewProvider({ ...newProvider, kind: e.target.value })}>
                 {assetProviderKindSchema.options.map((k) => <option key={k} value={k}>{k.replaceAll("_", " ")}</option>)}
               </Select>
               <div className="flex gap-2">
-                <Button type="button" className="min-h-11" disabled={createProvider.isPending || newProvider.name.trim().length < 2}
+                <Button type="button"  disabled={createProvider.isPending || newProvider.name.trim().length < 2}
                   onClick={() => createProvider.mutate({ name: newProvider.name.trim(), kind: assetProviderKindSchema.parse(newProvider.kind) })}>Create provider</Button>
-                <Button type="button" variant="secondary" className="min-h-11" onClick={() => setNewProvider(null)}>Cancel</Button>
+                <Button type="button" variant="secondary"  onClick={() => setNewProvider(null)}>Cancel</Button>
               </div>
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor={`${id}-dep`} className="text-xs font-medium text-ivory">Deployment</Label>
+            <Label htmlFor={`${id}-dep`} className="text-xs font-medium text-ink">Deployment</Label>
             <Select id={`${id}-dep`} value={f.deploymentId} onChange={set("deploymentId")}>
               <option value="">Select a deployment</option>
               {live.map((d) => <option key={d.id} value={d.id}>{ASSET_CHAINS[d.chain].label} · {d.address ?? "native"}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-method`} className="text-xs font-medium text-ivory">Method</Label>
+            <Label htmlFor={`${id}-method`} className="text-xs font-medium text-ink">Method</Label>
             <Select id={`${id}-method`} value={f.method} onChange={set("method")}>
               {executionMethodSchema.options.map((m) => <option key={m} value={m}>{m.replaceAll("_", " ")}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-venue`} className="text-xs font-medium text-ivory">Venue</Label>
-            <Input id={`${id}-venue`} className="min-h-11 bg-space text-ivory" value={f.venue} onChange={set("venue")} />
+            <Label htmlFor={`${id}-venue`} className="text-xs font-medium text-ink">Venue</Label>
+            <Input id={`${id}-venue`}  value={f.venue} onChange={set("venue")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-settle`} className="text-xs font-medium text-ivory">Settlement asset</Label>
+            <Label htmlFor={`${id}-settle`} className="text-xs font-medium text-ink">Settlement asset</Label>
             <Select id={`${id}-settle`} value={f.settlementInstrumentId} onChange={set("settlementInstrumentId")}>
               <option value="">None</option>
               {instruments.data?.items.map((i) => <option key={i.id} value={i.id}>{i.symbol} · {i.name}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-min`} className="text-xs font-medium text-ivory">Minimum amount (optional)</Label>
-            <Input id={`${id}-min`} inputMode="decimal" className="min-h-11 bg-space text-ivory" value={f.minimumAmount} onChange={set("minimumAmount")} />
+            <Label htmlFor={`${id}-min`} className="text-xs font-medium text-ink">Minimum amount (optional)</Label>
+            <Input id={`${id}-min`} inputMode="decimal"  value={f.minimumAmount} onChange={set("minimumAmount")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-pm`} className="text-xs font-medium text-ivory">Processing model</Label>
+            <Label htmlFor={`${id}-pm`} className="text-xs font-medium text-ink">Processing model</Label>
             <Select id={`${id}-pm`} value={f.processingModel} onChange={set("processingModel")}>
               {processingModelSchema.options.map((m) => <option key={m} value={m}>{m}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-notes`} className="text-xs font-medium text-ivory">Notes (optional)</Label>
+            <Label htmlFor={`${id}-notes`} className="text-xs font-medium text-ink">Notes (optional)</Label>
             <Textarea id={`${id}-notes`} value={f.notes} maxLength={2000} onChange={set("notes")} />
           </div>
           {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}

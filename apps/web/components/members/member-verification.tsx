@@ -39,12 +39,12 @@ export function MemberVerification({ mid, client = api }: { mid: string; client?
   return (
     <section aria-labelledby="verification-h" className="space-y-6">
       <div className="space-y-2">
-        <h2 id="verification-h" className="font-display text-xl font-semibold text-ivory">Identity verification</h2>
+        <h2 id="verification-h" className="type-heading text-ink">Identity verification</h2>
         <StatusBadge {...MEMBER_VERIFICATION_STATUS_LABEL[v.status]} />
-        <p className="text-xs text-muted-foreground">Only you and the Bytesac review team can see this. The organization sees only whether you are verified.</p>
+        <p className="text-xs text-ink-muted">Only you and the Bytesac review team can see this. The organization sees only whether you are verified.</p>
       </div>
       {v.status === "changes_required" && v.latestMessageToMember && (
-        <div role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">
+        <div role="status" className="rounded-tile border border-warning/25 bg-warning-soft p-4 text-sm text-ink">
           <p className="font-medium text-warning">Changes required</p>
           <p className="mt-1 whitespace-pre-wrap">{v.latestMessageToMember}</p>
         </div>
@@ -55,16 +55,16 @@ export function MemberVerification({ mid, client = api }: { mid: string; client?
         client={{ presignOrganizationDocument: client.presignMemberDocument, confirmOrganizationDocument: client.confirmMemberDocument, unlinkOrganizationDocument: client.unlinkMemberDocument }} />
       {editable && (
         <section aria-labelledby="member-submit-h" className="space-y-3">
-          <h3 id="member-submit-h" className="font-display text-lg font-semibold text-ivory">Submit for review</h3>
+          <h3 id="member-submit-h" className="text-lg font-medium tracking-tight text-ink">Submit for review</h3>
           {items.length === 0 ? (
-            <p className="flex items-center gap-2 text-sm text-ivory"><CheckCircle2 aria-hidden className="size-4 text-success" />Everything required is complete.</p>
+            <p className="flex items-center gap-2 text-sm text-ink"><CheckCircle2 aria-hidden className="size-4 text-success" />Everything required is complete.</p>
           ) : (
             <ul aria-label="Still to do" className="space-y-1">
-              {items.map((i) => <li key={i} className="flex items-center gap-2 text-sm text-ivory"><Circle aria-hidden className="size-4 text-warning" />{i}</li>)}
+              {items.map((i) => <li key={i} className="flex items-center gap-2 text-sm text-ink"><Circle aria-hidden className="size-4 text-warning" />{i}</li>)}
             </ul>
           )}
           {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{error.title}</span> {error.message}</p>}
-          <Button className="min-h-11" disabled={items.length > 0 || submit.isPending} onClick={() => submit.mutate()}>
+          <Button  disabled={items.length > 0 || submit.isPending} onClick={() => submit.mutate()}>
             {submit.isPending && <Loader2 aria-hidden className="animate-spin" />}{v.status === "changes_required" ? "Resubmit" : "Submit for review"}
           </Button>
         </section>

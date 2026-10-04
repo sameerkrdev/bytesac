@@ -3,7 +3,7 @@
 import { ASSET_TYPE_LABEL, BASKET_CATEGORY_LABEL, REVIEW_FREQUENCY_LABEL, SECTOR_LABEL } from "@repo/app-core";
 import { encodeDiscoveryFilters } from "@repo/api-client";
 import { INSTRUMENT_SECTORS, assetTypeSchema, basketCategorySchema, discoveryFiltersSchema, type DiscoveryFilters, type DiscoverySort } from "@repo/validator";
-import { SlidersHorizontal } from "lucide-react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState, type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,21 +27,21 @@ const num = (v: string, f: (s: string) => number) => (v.trim() ? f(v) : undefine
 
 function RangeRows({ legend, rows: list, options, onChange }: { legend: string; rows: Row[]; options?: Record<string, string>; onChange(next: Row[]): void }) {
   const patch = (i: number, p: Partial<Row>) => onChange(list.map((r, k) => (k === i ? { ...r, ...p } : r)));
-  const cls = "min-h-11 w-24 bg-space text-ivory";
+  const cls = "w-24";
   return (
     <fieldset className="space-y-2">
-      <legend className="text-xs font-medium text-ivory">{legend}</legend>
+      <legend className="mb-2 text-xs font-medium text-ink-muted">{legend}</legend>
       {list.map((r, i) => (
         <div key={i} className="flex flex-wrap items-center gap-2">
           {options
             ? <Select aria-label={`${legend} ${i + 1}`} className="w-auto" value={r.key} onChange={(e) => patch(i, { key: e.target.value })}>{Object.entries(options).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
-            : <Input aria-label={`${legend} ${i + 1} symbol`} className="min-h-11 w-28 bg-space uppercase text-ivory" placeholder="SOL" value={r.key} onChange={(e) => patch(i, { key: e.target.value })} />}
+            : <Input aria-label={`${legend} ${i + 1} symbol`} className="w-24 uppercase" placeholder="SOL" value={r.key} onChange={(e) => patch(i, { key: e.target.value })} />}
           <Input aria-label={`${legend} ${i + 1} minimum %`} type="number" min={0} max={100} step="any" placeholder="Min %" className={cls} value={r.min} onChange={(e) => patch(i, { min: e.target.value })} />
           <Input aria-label={`${legend} ${i + 1} maximum %`} type="number" min={0} max={100} step="any" placeholder="Max %" className={cls} value={r.max} onChange={(e) => patch(i, { max: e.target.value })} />
-          <Button type="button" variant="ghost" className="min-h-11" onClick={() => onChange(list.filter((_, k) => k !== i))}>Remove<span className="sr-only"> {legend} {i + 1}</span></Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(list.filter((_, k) => k !== i))}>Remove<span className="sr-only"> {legend} {i + 1}</span></Button>
         </div>
       ))}
-      <Button type="button" variant="secondary" className="min-h-11" disabled={list.length >= 10} onClick={() => onChange([...list, { key: options ? Object.keys(options)[0]! : "", min: "", max: "" }])}>Add to {legend.toLowerCase()}</Button>
+      <Button type="button" variant="secondary" size="sm" disabled={list.length >= 10} onClick={() => onChange([...list, { key: options ? Object.keys(options)[0]! : "", min: "", max: "" }])}>Add to {legend.toLowerCase()}</Button>
     </fieldset>
   );
 }
@@ -50,8 +50,20 @@ const CATEGORIES = Object.fromEntries(basketCategorySchema.options.map((c) => [c
 const TYPES = Object.fromEntries(assetTypeSchema.options.map((t) => [t, ASSET_TYPE_LABEL[t]]));
 const SECTORS = Object.fromEntries(INSTRUMENT_SECTORS.map((s) => [s, SECTOR_LABEL[s]]));
 const checkbox = (label: string, checked: boolean, onChange: () => void) => (
-  <label key={label} className="flex min-h-11 items-center gap-2 text-sm text-ivory"><input type="checkbox" checked={checked} onChange={onChange} />{label}</label>
+  <label key={label} className="flex min-h-10 cursor-pointer items-center gap-3 text-sm text-ink"><input type="checkbox" className="size-4 accent-[var(--c-primary)]" checked={checked} onChange={onChange} />{label}</label>
 );
+
+/** A collapsible group of filters. */
+function Group({ title, open = false, children }: { title: string; open?: boolean; children: React.ReactNode }) {
+  return (
+    <details open={open} className="group border-t border-line py-1">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
+        {title}<ChevronDown aria-hidden className="size-4 text-ink-faint transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-4 pt-1 pb-5">{children}</div>
+    </details>
+  );
+}
 
 /** Draft filter form. Apply pushes the filters into the URL as one `f` param; the server page runs the search. */
 export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
@@ -69,8 +81,8 @@ export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
   const go = (next: DiscoveryFilters) => router.push(`/baskets?f=${encodeDiscoveryFilters(next)}`);
   const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const field = (label: string, value: string, onChange: (v: string) => void, extra: ComponentProps<typeof Input> = {}) => (
-    <Label key={label} className="block space-y-1 text-xs font-medium text-ivory">{label}
-      <Input className="min-h-11 bg-space text-ivory" value={value} onChange={(e) => onChange(e.target.value)} {...extra} />
+    <Label key={label} className="block space-y-1.5 text-xs font-medium text-ink-muted">{label}
+      <Input value={value} onChange={(e) => onChange(e.target.value)} {...extra} />
     </Label>
   );
 
@@ -95,46 +107,53 @@ export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
   };
 
   return (
-    <aside aria-label="Filters" className="space-y-4">
-      <Button type="button" variant="secondary" className="min-h-11 md:hidden" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(!open)}><SlidersHorizontal aria-hidden />Filters</Button>
-      <form id={`${id}-body`} className={`${open ? "block" : "hidden"} space-y-5 md:block`} onSubmit={(e) => { e.preventDefault(); apply(); }}>
-        <div className="space-y-1">
-          <Label htmlFor={`${id}-sort`} className="text-xs font-medium text-ivory">Sort by</Label>
+    <aside aria-label="Filters" className="space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:pr-2 [scrollbar-width:thin]">
+      <Button type="button" variant="secondary" className="lg:hidden" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(!open)}><SlidersHorizontal aria-hidden />Filters</Button>
+      <form id={`${id}-body`} className={`${open ? "block" : "hidden"} space-y-1 lg:block`} onSubmit={(e) => { e.preventDefault(); apply(); }}>
+        <div className="space-y-1.5 pb-4">
+          <Label htmlFor={`${id}-sort`} className="text-xs font-medium text-ink-muted">Sort by</Label>
           <Select id={`${id}-sort`} value={filters.sort ?? "relevance"} onChange={(e) => go({ ...filters, sort: e.target.value as DiscoverySort })}>
             {Object.entries(SORTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </Select>
         </div>
-        {field("Keywords", f.q, (q) => setF({ ...f, q }), { maxLength: 200, spellCheck: false })}
-        {field("Organization ID", f.organizationId, (organizationId) => setF({ ...f, organizationId }), { spellCheck: false })}
-        {field("Manager handle", f.managerHandle, (managerHandle) => setF({ ...f, managerHandle }), { spellCheck: false })}
-        <fieldset className="space-y-1">
-          <legend className="text-xs font-medium text-ivory">Categories</legend>
-          {Object.entries(CATEGORIES).map(([k, l]) => checkbox(l, f.categories.includes(k), () => setF({ ...f, categories: toggle(f.categories, k) })))}
-        </fieldset>
-        <RangeRows legend="Assets" rows={f.assets} onChange={(assets) => setF({ ...f, assets })} />
-        <RangeRows legend="Asset types" rows={f.assetTypes} options={TYPES} onChange={(assetTypes) => setF({ ...f, assetTypes })} />
-        <RangeRows legend="Sectors" rows={f.sectors} options={SECTORS} onChange={(sectors) => setF({ ...f, sectors })} />
-        {field("Tags (comma separated)", f.tags, (tags) => setF({ ...f, tags }), { spellCheck: false })}
-        {field("Largest single asset (max %)", f.maxSingle, (maxSingle) => setF({ ...f, maxSingle }), { type: "number", min: 0, max: 100, step: "any" })}
-        {field("Highest minimum investment (USDC)", f.maxMinimum, (maxMinimum) => setF({ ...f, maxMinimum }), { inputMode: "decimal" })}
-        <fieldset className="space-y-2">
-          <legend className="text-xs font-medium text-ivory">Fee ceilings (% of the minimum investment)</legend>
-          {FEES.map((k) => field(`${k[0]!.toUpperCase()}${k.slice(1)} fee`, f.fees[k] ?? "", (v) => setF({ ...f, fees: { ...f.fees, [k]: v } }), { type: "number", min: 0, max: 100, step: "any" }))}
-        </fieldset>
-        <fieldset className="space-y-1">
-          <legend className="text-xs font-medium text-ivory">Review frequency</legend>
-          {Object.entries(REVIEW_FREQUENCY_LABEL).map(([k, l]) => checkbox(l, f.reviews.includes(k), () => setF({ ...f, reviews: toggle(f.reviews, k) })))}
-        </fieldset>
-        {field("Basket age (at least, days)", f.age, (age) => setF({ ...f, age }), { type: "number", min: 0, step: 1 })}
-        <fieldset className="space-y-2">
-          <legend className="text-xs font-medium text-ivory">Simulated performance</legend>
+        <Group title="Basics" open>
+          {field("Keywords", f.q, (q) => setF({ ...f, q }), { maxLength: 200, spellCheck: false })}
+          <fieldset className="space-y-0.5">
+            <legend className="mb-1 text-xs font-medium text-ink-muted">Categories</legend>
+            {Object.entries(CATEGORIES).map(([k, l]) => checkbox(l, f.categories.includes(k), () => setF({ ...f, categories: toggle(f.categories, k) })))}
+          </fieldset>
+        </Group>
+        <Group title="Holdings" open>
+          <RangeRows legend="Assets" rows={f.assets} onChange={(assets) => setF({ ...f, assets })} />
+          <RangeRows legend="Asset types" rows={f.assetTypes} options={TYPES} onChange={(assetTypes) => setF({ ...f, assetTypes })} />
+          <RangeRows legend="Sectors" rows={f.sectors} options={SECTORS} onChange={(sectors) => setF({ ...f, sectors })} />
+          {field("Largest single asset (max %)", f.maxSingle, (maxSingle) => setF({ ...f, maxSingle }), { type: "number", min: 0, max: 100, step: "any" })}
+        </Group>
+        <Group title="Costs">
+          {field("Highest minimum investment (USDC)", f.maxMinimum, (maxMinimum) => setF({ ...f, maxMinimum }), { inputMode: "decimal" })}
+          <fieldset className="space-y-3">
+            <legend className="mb-1 text-xs font-medium text-ink-muted">Fee ceilings (% of the minimum investment)</legend>
+            {FEES.map((k) => field(`${k[0]!.toUpperCase()}${k.slice(1)} fee`, f.fees[k] ?? "", (v) => setF({ ...f, fees: { ...f.fees, [k]: v } }), { type: "number", min: 0, max: 100, step: "any" }))}
+          </fieldset>
+        </Group>
+        <Group title="Strategy & managers">
+          <fieldset className="space-y-0.5">
+            <legend className="mb-1 text-xs font-medium text-ink-muted">Review frequency</legend>
+            {Object.entries(REVIEW_FREQUENCY_LABEL).map(([k, l]) => checkbox(l, f.reviews.includes(k), () => setF({ ...f, reviews: toggle(f.reviews, k) })))}
+          </fieldset>
+          {field("Basket age (at least, days)", f.age, (age) => setF({ ...f, age }), { type: "number", min: 0, step: 1 })}
+          {field("Tags (comma separated)", f.tags, (tags) => setF({ ...f, tags }), { spellCheck: false })}
+          {field("Manager experience (at least, years)", f.experience, (experience) => setF({ ...f, experience }), { type: "number", min: 0, max: 60, step: 1 })}
+          {field("Organization ID", f.organizationId, (organizationId) => setF({ ...f, organizationId }), { spellCheck: false })}
+          {field("Manager handle", f.managerHandle, (managerHandle) => setF({ ...f, managerHandle }), { spellCheck: false })}
+        </Group>
+        <Group title="Simulated performance">
           {PERF.map(([k, l]) => field(l, f.perf[k] ?? "", (v) => setF({ ...f, perf: { ...f.perf, [k]: v } }), { type: "number", step: "any" }))}
-        </fieldset>
-        {field("Manager experience (at least, years)", f.experience, (experience) => setF({ ...f, experience }), { type: "number", min: 0, max: 60, step: 1 })}
+        </Group>
         {invalid && <p role="alert" className="text-sm text-danger">Check the filters: use valid numbers within range.</p>}
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" className="min-h-11">Apply filters</Button>
-          <Button type="button" variant="secondary" className="min-h-11" onClick={() => router.push("/baskets")}>Clear all</Button>
+        <div className="sticky bottom-0 flex flex-wrap gap-2 bg-canvas/90 py-4 backdrop-blur">
+          <Button type="submit">Apply filters</Button>
+          <Button type="button" variant="ghost" onClick={() => router.push("/baskets")}>Clear all</Button>
         </div>
       </form>
     </aside>

@@ -55,7 +55,7 @@ export function OrganizationsTable({ client = api }: { client?: Client }) {
       <div role="group" aria-label="Queue" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button key={t.queue} type="button" aria-pressed={queue === t.queue} onClick={() => setQueue(t.queue)}
-            className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", queue === t.queue && "bg-slate text-ivory")}>
+            className={cn("min-h-11 rounded-control border border-line px-3 text-sm text-ink-muted hover:text-ink", queue === t.queue && "bg-surface text-ink")}>
             {t.label}
           </button>
         ))}
@@ -64,30 +64,30 @@ export function OrganizationsTable({ client = api }: { client?: Client }) {
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by status">
           {[undefined, ...FILTERS].map((s) => (
             <button key={s ?? "all"} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}
-              className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", status === s && "bg-slate text-ivory")}>
+              className={cn("min-h-11 rounded-control border border-line px-3 text-sm text-ink-muted hover:text-ink", status === s && "bg-surface text-ink")}>
               {s ? ORGANIZATION_STATUS_LABEL[s].label : "All"}
             </button>
           ))}
         </div>
       )}
-      <Input type="search" aria-label="Search organizations" placeholder="Search display or legal name" value={search} onChange={(e) => setSearch(e.target.value)} className="min-h-11 max-w-md bg-space text-ivory placeholder:text-stone" />
+      <Input type="search" aria-label="Search organizations" placeholder="Search display or legal name" value={search} onChange={(e) => setSearch(e.target.value)} className="min-h-11 max-w-md placeholder:text-ink-muted" />
 
       {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
         <EmptyState title="No organizations found." />
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">
-            <thead className="text-xs text-stone">
+            <thead className="text-xs text-ink-muted">
               <tr><th className="py-2 pr-4 font-medium">Organization</th><th className="pr-4 font-medium">Type</th><th className="pr-4 font-medium">Jurisdiction</th><th className="pr-4 font-medium">Status</th><th className="font-medium">Submitted</th></tr>
             </thead>
             <tbody>
               {items.map((o) => (
-                <tr key={o.id} className="border-t border-border-dark">
-                  <td className="py-3 pr-4"><Link href={`/ops/organizations/${o.id}`} className="font-medium text-ivory underline-offset-4 hover:underline">{name(o)}</Link></td>
-                  <td className="pr-4 text-stone">{o.type === "firm" ? "Firm" : "Individual"}</td>
-                  <td className="pr-4 text-stone">{o.jurisdiction}</td>
+                <tr key={o.id} className="border-t border-line">
+                  <td className="py-3 pr-4"><Link href={`/ops/organizations/${o.id}`} className="font-medium text-ink underline-offset-4 hover:underline">{name(o)}</Link></td>
+                  <td className="pr-4 text-ink-muted">{o.type === "firm" ? "Firm" : "Individual"}</td>
+                  <td className="pr-4 text-ink-muted">{o.jurisdiction}</td>
                   <td className="pr-4">{badge(o.status)}</td>
-                  <td className="text-stone">{date(o)}</td>
+                  <td className="text-ink-muted">{date(o)}</td>
                 </tr>
               ))}
             </tbody>
@@ -95,16 +95,16 @@ export function OrganizationsTable({ client = api }: { client?: Client }) {
           <ul className="space-y-3 md:hidden">
             {items.map((o) => (
               <li key={o.id}>
-                <Link href={`/ops/organizations/${o.id}`} className="block space-y-2 rounded-xl border border-border-dark bg-slate p-4">
-                  <span className="block font-medium text-ivory">{name(o)}</span>
-                  <span className="block text-xs text-stone">{o.type === "firm" ? "Firm" : "Individual"} · {o.jurisdiction} · {date(o)}</span>
+                <Link href={`/ops/organizations/${o.id}`} className="block space-y-2 rounded-tile border border-line bg-surface p-4">
+                  <span className="block font-medium text-ink">{name(o)}</span>
+                  <span className="block text-xs text-ink-muted">{o.type === "firm" ? "Firm" : "Individual"} · {o.jurisdiction} · {date(o)}</span>
                   {badge(o.status)}
                 </Link>
               </li>
             ))}
           </ul>
           {list.hasNextPage && (
-            <Button variant="secondary" className="min-h-11" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>
+            <Button variant="secondary"  disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>
           )}
         </>
       )}

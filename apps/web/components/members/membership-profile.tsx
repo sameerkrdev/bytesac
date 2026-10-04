@@ -42,21 +42,21 @@ function ProfileForm({ m, client }: { m: MyMembership; client: Client }) {
       save.mutate(parsed.data);
     }}>
       <div>
-        <h2 className="font-display text-xl font-semibold text-ivory">Public profile</h2>
-        <p className="text-xs text-muted-foreground">Optional. If you add a name, it is shown in the team list on the organization&apos;s public profile once you are active. Your wallet and email are never shown.</p>
+        <h2 className="type-heading text-ink">Public profile</h2>
+        <p className="text-xs text-ink-muted">Optional. If you add a name, it is shown in the team list on the organization&apos;s public profile once you are active. Your wallet and email are never shown.</p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ivory">Public name</Label>
-        <Input id={`${id}-name`} value={name} maxLength={80} aria-invalid={Boolean(fieldError)} className="min-h-11 bg-space text-ivory" onChange={(e) => setName(e.target.value)} />
+        <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ink">Public name</Label>
+        <Input id={`${id}-name`} value={name} maxLength={80} aria-invalid={Boolean(fieldError)}  onChange={(e) => setName(e.target.value)} />
         {fieldError && <p className="text-xs text-danger">{fieldError}</p>}
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-title`} className="text-xs font-medium text-ivory">Title</Label>
-        <Input id={`${id}-title`} value={title} maxLength={80} className="min-h-11 bg-space text-ivory" onChange={(e) => setTitle(e.target.value)} />
+        <Label htmlFor={`${id}-title`} className="text-xs font-medium text-ink">Title</Label>
+        <Input id={`${id}-title`} value={title} maxLength={80}  onChange={(e) => setTitle(e.target.value)} />
       </div>
       {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{error.title}</span> {error.message}</p>}
       {save.isSuccess && <p role="status" className="text-xs text-success">Saved.</p>}
-      <Button type="submit" className="min-h-11" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save</Button>
+      <Button type="submit"  disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save</Button>
     </form>
   );
 }
@@ -84,29 +84,29 @@ export function MembershipPage({ mid, client = api }: { mid: string; client?: Cl
         <PageHeader id="membership-title" title="Your membership" breadcrumb={[{ label: "Organization", href: "/organization" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...MEMBERSHIP_STATUS_LABEL[m.status]} />
-          <span className="text-sm text-stone">{MEMBERSHIP_ROLE_LABEL[m.role]}{m.requestedRole && ` · upgrade to ${MEMBERSHIP_ROLE_LABEL[m.requestedRole]} pending`}</span>
+          <span className="text-sm text-ink-muted">{MEMBERSHIP_ROLE_LABEL[m.role]}{m.requestedRole && ` · upgrade to ${MEMBERSHIP_ROLE_LABEL[m.requestedRole]} pending`}</span>
         </div>
-        {m.status === "ACTIVE" && <Link href="/organization" className="inline-flex min-h-11 items-center text-sm text-mint underline">Go to the organization</Link>}
+        {m.status === "ACTIVE" && <Link href="/organization" className="inline-flex min-h-11 items-center text-sm text-ink underline underline-offset-4">Go to the organization</Link>}
       </div>
       {open && <ProfileForm key={m.id} m={m} client={client} />}
       {open && reviewed && <MemberVerification mid={mid} />}
       {(m.status === "ACTIVE" || m.status === "REMOVAL_REQUESTED") && m.role !== "OWNER" && (
         <section aria-labelledby="leave-h" className="space-y-3">
-          <h2 id="leave-h" className="font-display text-xl font-semibold text-ivory">Leave organization</h2>
-          <p className="text-xs text-muted-foreground">You lose access immediately. The organization keeps the history of your membership.</p>
-          <Button variant="destructive" className="min-h-11" onClick={() => setConfirm(true)}>Leave organization</Button>
+          <h2 id="leave-h" className="type-heading text-ink">Leave organization</h2>
+          <p className="text-xs text-ink-muted">You lose access immediately. The organization keeps the history of your membership.</p>
+          <Button variant="destructive"  onClick={() => setConfirm(true)}>Leave organization</Button>
         </section>
       )}
       <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent className="border-line bg-canvas">
           <DialogHeader>
-            <DialogTitle className="text-ivory">Leave this organization?</DialogTitle>
+            <DialogTitle className="text-ink">Leave this organization?</DialogTitle>
             <DialogDescription>You lose access immediately. To rejoin you would need a new invitation.</DialogDescription>
           </DialogHeader>
           {leaveError && <p role="alert" className="text-sm text-danger"><span className="font-medium">{leaveError.title}</span> {leaveError.message}</p>}
           <DialogFooter>
-            <Button variant="secondary" className="min-h-11" onClick={() => setConfirm(false)}>Stay</Button>
-            <Button variant="destructive" className="min-h-11" disabled={leave.isPending} onClick={() => leave.mutate()}>Leave</Button>
+            <Button variant="secondary"  onClick={() => setConfirm(false)}>Stay</Button>
+            <Button variant="destructive"  disabled={leave.isPending} onClick={() => leave.mutate()}>Leave</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

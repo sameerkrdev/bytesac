@@ -52,26 +52,26 @@ export function DeclarationForm({ onSaved }: { onSaved?: () => void }) {
   return (
     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (ready) save.mutate(); }}>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-c`} className="text-xs font-medium text-ivory">Country of residence</Label>
+        <Label htmlFor={`${id}-c`} className="text-xs font-medium text-ink">Country of residence</Label>
         <Select id={`${id}-c`} value={country} onChange={(e) => setCountry(e.target.value)}>
           <option value="">Choose a country</option>
           {list.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
         </Select>
       </div>
       <fieldset className="space-y-2">
-        <legend className="text-xs font-medium text-ivory">Investor status</legend>
+        <legend className="text-xs font-medium text-ink">Investor status</legend>
         {INVESTOR_STATUSES.map((s) => (
           <label key={s} className="flex min-h-11 items-start gap-3 text-sm">
             <input type="radio" name={`${id}-s`} value={s} checked={status === s} onChange={() => setStatus(s)} className="mt-1 accent-mint" />
-            <span><span className="text-ivory">{STATUS_LABEL[s].title}</span><span className="block text-xs text-stone">{STATUS_LABEL[s].help}</span></span>
+            <span><span className="text-ink">{STATUS_LABEL[s].title}</span><span className="block text-xs text-ink-muted">{STATUS_LABEL[s].help}</span></span>
           </label>
         ))}
       </fieldset>
       <label className="flex min-h-11 items-start gap-3 text-sm">
         <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-1 accent-mint" />
-        <span className="text-stone">{ELIGIBILITY_ATTESTATION.text}</span>
+        <span className="text-ink-muted">{ELIGIBILITY_ATTESTATION.text}</span>
       </label>
-      <Button type="submit" className="min-h-11" disabled={!ready || save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save declaration</Button>
+      <Button type="submit"  disabled={!ready || save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save declaration</Button>
       {save.isError && <ErrorBox error={save.error} />}
     </form>
   );

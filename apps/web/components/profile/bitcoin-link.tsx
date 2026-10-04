@@ -54,24 +54,24 @@ export function BitcoinLink({ me }: { me: MeResponse }) {
   const error = link.error ? toDisplayError(link.error) : null;
 
   return (
-    <section aria-labelledby="bitcoin-title" className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
+    <section aria-labelledby="bitcoin-title" className="space-y-4 rounded-card border border-line bg-surface p-6">
       <div>
-        <h2 id="bitcoin-title" className="font-display text-xl font-semibold text-ivory">Bitcoin wallet</h2>
-        <p className="text-sm text-muted-foreground">Needed to invest in baskets that hold Bitcoin. You prove you control the address by signing a message. Nothing is spent.</p>
+        <h2 id="bitcoin-title" className="type-heading text-ink">Bitcoin wallet</h2>
+        <p className="text-sm text-ink-muted">Needed to invest in baskets that hold Bitcoin. You prove you control the address by signing a message. Nothing is spent.</p>
       </div>
       {linked ? (
-        <p role="status" className="flex items-center gap-2 text-sm text-ivory"><CheckCircle2 aria-hidden className="size-4 text-success" />Linked <span className="font-mono" title={linked.address}>{shortAddress(linked.address)}</span></p>
+        <p role="status" className="flex items-center gap-2 text-sm text-ink"><CheckCircle2 aria-hidden className="size-4 text-success" />Linked <span className="font-mono" title={linked.address}>{shortAddress(linked.address)}</span></p>
       ) : account.isConnected && account.address ? (
         <div className="space-y-3">
-          <p className="text-sm text-ivory">Connected <span className="font-mono" title={account.address}>{shortAddress(account.address)}</span></p>
-          <Button className="min-h-11" disabled={link.isPending} onClick={() => link.mutate(account.address!)}>
+          <p className="text-sm text-ink">Connected <span className="font-mono" title={account.address}>{shortAddress(account.address)}</span></p>
+          <Button  disabled={link.isPending} onClick={() => link.mutate(account.address!)}>
             {link.isPending ? <Loader2 aria-hidden className="animate-spin" /> : <Bitcoin aria-hidden />}Link this Bitcoin wallet
           </Button>
         </div>
       ) : (
-        <Button variant="secondary" className="min-h-11" onClick={() => void open({ view: "Connect", namespace: "bip122" })}><Bitcoin aria-hidden />Connect a Bitcoin wallet</Button>
+        <Button variant="secondary"  onClick={() => void open({ view: "Connect", namespace: "bip122" })}><Bitcoin aria-hidden />Connect a Bitcoin wallet</Button>
       )}
-      {error && <div role="alert" className="rounded-xl border border-danger/40 p-4 text-sm text-ivory"><p className="font-medium">{error.title}</p>{error.message && <p className="text-stone">{error.message}</p>}</div>}
+      {error && <div role="alert" className="rounded-tile border border-danger/25 p-4 text-sm text-ink"><p className="font-medium">{error.title}</p>{error.message && <p className="text-ink-muted">{error.message}</p>}</div>}
     </section>
   );
 }

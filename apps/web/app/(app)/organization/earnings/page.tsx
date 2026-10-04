@@ -15,5 +15,5 @@ function Page() {
   const params = useSearchParams();
   const orgs = (me?.organizations ?? []).filter((o) => o.membershipStatus === "ACTIVE");
   const org = orgs.find((o) => o.id === params.get("org")) ?? orgs[0];
-  return org ? <Earnings orgId={org.id} /> : <p className="text-base text-ivory">Earnings are for fund manager organizations. <Link href="/organization" className="text-mint underline">Your organization</Link></p>;
+  return org ? <Earnings orgId={org.id} /> : <p className="text-base text-ink">Earnings are for fund manager organizations. <Link href="/organization" className="text-ink underline underline-offset-4">Your organization</Link></p>;
 }

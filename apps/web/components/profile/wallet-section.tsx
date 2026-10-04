@@ -18,29 +18,29 @@ export function WalletSection({ me }: { me: MeResponse }) {
   const onVerified = useCallback(() => { setOpen(false); void qc.invalidateQueries({ queryKey: ["me"] }); }, [qc]);
 
   return (
-    <section aria-labelledby="wallet-title" className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
+    <section aria-labelledby="wallet-title" className="space-y-4 rounded-card border border-line bg-surface p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 id="wallet-title" className="font-display text-xl font-semibold text-ivory">Investment wallet</h2>
-          <p className="text-sm text-muted-foreground">{me.wallet.walletProvider ?? "Wallet"} · one wallet, one address per network</p>
+          <h2 id="wallet-title" className="type-heading text-ink">Investment wallet</h2>
+          <p className="text-sm text-ink-muted">{me.wallet.walletProvider ?? "Wallet"} · one wallet, one address per network</p>
         </div>
-        {canAddChainAccount(me) && <Button variant="secondary" className="min-h-11" onClick={() => setOpen(true)}><Plus aria-hidden />Add chain account</Button>}
+        {canAddChainAccount(me) && <Button variant="secondary"  onClick={() => setOpen(true)}><Plus aria-hidden />Add chain account</Button>}
       </div>
-      <ul className="divide-y divide-border-dark">
+      <ul className="divide-y divide-line">
         {me.wallet.addresses.map((a) => (
           <li key={`${a.chain}:${a.address}`} className="flex flex-wrap items-center gap-3 py-3 text-sm">
-            <span className="w-28 rounded-lg border border-border-dark px-2 py-0.5 text-center text-xs text-ivory">{CHAINS[a.chain].label}</span>
-            <span className="font-mono text-ivory" title={a.address}>{shortAddress(a.address)}</span>
+            <span className="w-28 rounded-control border border-line px-2 py-0.5 text-center text-xs text-ink">{CHAINS[a.chain].label}</span>
+            <span className="font-mono text-ink" title={a.address}>{shortAddress(a.address)}</span>
             <StatusBadge tone={a.status === "active" ? "success" : "danger"} label={a.status === "active" ? "Active" : "Disabled"} />
-            <span className="text-xs text-stone">{METHOD_LABEL[a.verificationMethod]}</span>
+            <span className="text-xs text-ink-muted">{METHOD_LABEL[a.verificationMethod]}</span>
           </li>
         ))}
       </ul>
-      <p className="text-xs text-stone">Lost access to a wallet? Contact support.</p>
+      <p className="text-xs text-ink-muted">Lost access to a wallet? Contact support.</p>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent className="border-line bg-canvas">
           <DialogHeader>
-            <DialogTitle className="font-display text-ivory">Add chain account</DialogTitle>
+            <DialogTitle className="text-ink">Add chain account</DialogTitle>
             <DialogDescription>Connect the other network in your wallet, then sign to prove you control it.</DialogDescription>
           </DialogHeader>
           {open && <WalletVerification purpose="add_chain_account" linkedAddresses={me.wallet.addresses} onVerified={onVerified} />}

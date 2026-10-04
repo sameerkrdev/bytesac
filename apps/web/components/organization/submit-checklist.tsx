@@ -33,16 +33,16 @@ export function SubmitChecklist({ org, onChange, onIncomplete, client = api }: {
 
   return (
     <section aria-labelledby="submit-h" className="space-y-3">
-      <h3 id="submit-h" className="font-display text-lg font-semibold text-ivory">Submit for review</h3>
+      <h3 id="submit-h" className="text-lg font-medium tracking-tight text-ink">Submit for review</h3>
       {items.length === 0 ? (
-        <p className="flex items-center gap-2 text-sm text-ivory"><CheckCircle2 aria-hidden className="size-4 text-success" />Everything required is complete.</p>
+        <p className="flex items-center gap-2 text-sm text-ink"><CheckCircle2 aria-hidden className="size-4 text-success" />Everything required is complete.</p>
       ) : (
         <ul aria-label="Still to do" className="space-y-1">
-          {items.map((i) => <li key={i} className="flex items-center gap-2 text-sm text-ivory"><Circle aria-hidden className="size-4 text-warning" />{i}</li>)}
+          {items.map((i) => <li key={i} className="flex items-center gap-2 text-sm text-ink"><Circle aria-hidden className="size-4 text-warning" />{i}</li>)}
         </ul>
       )}
       {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{error.title}</span> {error.message}</p>}
-      <Button className="min-h-11" disabled={items.length > 0 || pending} onClick={() => void submit()}>{pending && <Loader2 aria-hidden className="animate-spin" />}{label}</Button>
+      <Button  disabled={items.length > 0 || pending} onClick={() => void submit()}>{pending && <Loader2 aria-hidden className="animate-spin" />}{label}</Button>
     </section>
   );
 }

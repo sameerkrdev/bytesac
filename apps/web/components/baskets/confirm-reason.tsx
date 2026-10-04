@@ -17,22 +17,22 @@ export function ConfirmReason({ label, description, reasonLabel, destructive, di
   const ready = !reasonLabel || reason.trim().length > 0;
   return (
     <>
-      <Button type="button" variant={destructive ? "destructive" : "secondary"} className="min-h-11" disabled={disabled} onClick={() => setOpen(true)}>{label}</Button>
+      <Button type="button" variant={destructive ? "destructive" : "secondary"}  disabled={disabled} onClick={() => setOpen(true)}>{label}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent className="border-line bg-canvas">
           <DialogHeader>
-            <DialogTitle className="text-ivory">{label}?</DialogTitle>
+            <DialogTitle className="text-ink">{label}?</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           {reasonLabel && (
             <div className="space-y-2">
-              <Label htmlFor={id} className="text-xs font-medium text-ivory">{reasonLabel}</Label>
+              <Label htmlFor={id} className="text-xs font-medium text-ink">{reasonLabel}</Label>
               <Textarea id={id} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
             </div>
           )}
           <DialogFooter>
-            <Button variant="secondary" className="min-h-11" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant={destructive ? "destructive" : "default"} className="min-h-11" disabled={pending || !ready} onClick={() => { setOpen(false); onConfirm(reason.trim()); setReason(""); }}>
+            <Button variant="secondary"  onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant={destructive ? "destructive" : "default"}  disabled={pending || !ready} onClick={() => { setOpen(false); onConfirm(reason.trim()); setReason(""); }}>
               {pending && <Loader2 aria-hidden className="animate-spin" />}Confirm
             </Button>
           </DialogFooter>

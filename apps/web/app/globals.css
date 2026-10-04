@@ -1,101 +1,313 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * Bytesac web design system. Values mirror @repo/design-tokens (`themes`, `radius`, `shadow`); see
+ * docs/design/DESIGN-SYSTEM.md. Components use the semantic roles below, never raw hex.
+ * Theme: <html data-theme="light|dark"> forces a theme; without it the OS preference decides.
+ */
 
-@theme {
-  --color-space: #0B1117;
-  --color-slate: #1F2937;
-  --color-stone: #6B7280;
-  --color-sage: #10B981;
-  --color-mint: #6EE7B7;
-  --color-sand: #EEDCC8;
-  --color-ivory: #FAFAF8;
-  --color-success: #22C55E;
-  --color-warning: #F59E0B;
-  --color-danger: #F87171;
-  --color-info: #60A5FA;
-  --color-border-dark: #26323D;
-
-  --font-display: var(--font-manrope), "Manrope", sans-serif;
-  --font-sans: var(--font-inter), "Inter", sans-serif;
-
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --radius-2xl: 1.5rem;
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
 }
 
-:root,
-.dark {
+:root {
+  color-scheme: light;
+  --c-canvas: #F6F8FB;
+  --c-surface: #FFFFFF;
+  --c-surface-muted: #F0F3F8;
+  --c-surface-sunken: #E9EEF5;
+  --c-line: #E2E7EF;
+  --c-line-strong: #CBD3DF;
+  --c-ink: #0F1E3A;
+  --c-ink-muted: #56627A;
+  --c-ink-faint: #68728A;
+  --c-primary: #1C2B4A;
+  --c-primary-hover: #2E4470;
+  --c-primary-ink: #FFFFFF;
+  --c-accent: #3D63D9;
+  --c-accent-soft: #E8EEFC;
+  --c-sky1: #EEF4FA;
+  --c-sky2: #DCE8F4;
+  --c-sky3: #BFD5EC;
+  --c-glass: rgba(255, 255, 255, 0.62);
+  --c-glass-line: rgba(255, 255, 255, 0.78);
+  --c-success: #1F8A4C;
+  --c-success-soft: #E3F4EA;
+  --c-warning: #A35F0F;
+  --c-warning-soft: #FBF0DD;
+  --c-danger: #C2453D;
+  --c-danger-soft: #FBE7E5;
+  --c-info: #3D63D9;
+  --c-info-soft: #E8EEFC;
+  --c-focus: #3D63D9;
+  --c-overlay: rgba(15, 30, 58, 0.32);
+  --c-data1: #1C2B4A;
+  --c-data2: #3D63D9;
+  --c-data3: #6F93D6;
+  --c-data4: #A9C2E6;
+  --c-data5: #4F6B8F;
+  --c-data6: #C9D5E3;
+
+  --shadow-soft: 0 1px 2px rgba(15, 30, 58, 0.04), 0 12px 32px -12px rgba(15, 30, 58, 0.10);
+  --shadow-float: 0 1px 2px rgba(15, 30, 58, 0.05), 0 32px 64px -24px rgba(15, 30, 58, 0.22);
+  --shadow-device: 0 48px 96px -32px rgba(28, 43, 74, 0.35);
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
   color-scheme: dark;
-  --background: 204 36% 7%;
-  --foreground: 60 20% 98%;
-  --card: 204 35% 10%;
-  --card-foreground: 60 20% 98%;
-  --popover: 204 35% 10%;
-  --popover-foreground: 60 20% 98%;
-  --primary: 158 84% 39%;
-  --primary-foreground: 204 36% 7%;
-  --secondary: 215 28% 16%;
-  --secondary-foreground: 60 20% 98%;
-  --muted: 215 28% 16%;
-  --muted-foreground: 215 14% 68%;
-  --accent: 156 72% 67%;
-  --accent-foreground: 204 36% 7%;
-  --destructive: 0 91% 71%;
-  --destructive-foreground: 204 36% 7%;
-  --border: 210 20% 20%;
-  --input: 210 20% 20%;
-  --ring: 156 72% 67%;
-  --radius: 0.75rem;
+  --c-canvas: #070D18;
+  --c-surface: #0E1726;
+  --c-surface-muted: #131E31;
+  --c-surface-sunken: #0A111E;
+  --c-line: #1E2A3F;
+  --c-line-strong: #2C3A52;
+  --c-ink: #EAF0F8;
+  --c-ink-muted: #9AA7BC;
+  --c-ink-faint: #8390A6;
+  --c-primary: #EAF0F8;
+  --c-primary-hover: #FFFFFF;
+  --c-primary-ink: #0B1424;
+  --c-accent: #8AA6FF;
+  --c-accent-soft: rgba(138, 166, 255, 0.14);
+  --c-sky1: #0B1424;
+  --c-sky2: #12203A;
+  --c-sky3: #1D3157;
+  --c-glass: rgba(20, 31, 51, 0.58);
+  --c-glass-line: rgba(255, 255, 255, 0.09);
+  --c-success: #4CC38A;
+  --c-success-soft: rgba(76, 195, 138, 0.14);
+  --c-warning: #E8A54B;
+  --c-warning-soft: rgba(232, 165, 75, 0.14);
+  --c-danger: #F07A72;
+  --c-danger-soft: rgba(240, 122, 114, 0.14);
+  --c-info: #8AA6FF;
+  --c-info-soft: rgba(138, 166, 255, 0.14);
+  --c-focus: #8AA6FF;
+  --c-overlay: rgba(2, 6, 14, 0.62);
+  --c-data1: #EAF0F8;
+  --c-data2: #8AA6FF;
+  --c-data3: #5D7FD1;
+  --c-data4: #3B5A93;
+  --c-data5: #A9B8CF;
+  --c-data6: #2A3B58;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.3), 0 32px 64px -24px rgba(0, 0, 0, 0.6);
+  --shadow-device: 0 48px 96px -32px rgba(0, 0, 0, 0.7);
+}
+
+/* Same values as [data-theme="dark"], applied when the user has not chosen and the OS prefers dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --c-canvas: #070D18;
+    --c-surface: #0E1726;
+    --c-surface-muted: #131E31;
+    --c-surface-sunken: #0A111E;
+    --c-line: #1E2A3F;
+    --c-line-strong: #2C3A52;
+    --c-ink: #EAF0F8;
+    --c-ink-muted: #9AA7BC;
+    --c-ink-faint: #8390A6;
+    --c-primary: #EAF0F8;
+    --c-primary-hover: #FFFFFF;
+    --c-primary-ink: #0B1424;
+    --c-accent: #8AA6FF;
+    --c-accent-soft: rgba(138, 166, 255, 0.14);
+    --c-sky1: #0B1424;
+    --c-sky2: #12203A;
+    --c-sky3: #1D3157;
+    --c-glass: rgba(20, 31, 51, 0.58);
+    --c-glass-line: rgba(255, 255, 255, 0.09);
+    --c-success: #4CC38A;
+    --c-success-soft: rgba(76, 195, 138, 0.14);
+    --c-warning: #E8A54B;
+    --c-warning-soft: rgba(232, 165, 75, 0.14);
+    --c-danger: #F07A72;
+    --c-danger-soft: rgba(240, 122, 114, 0.14);
+    --c-info: #8AA6FF;
+    --c-info-soft: rgba(138, 166, 255, 0.14);
+    --c-focus: #8AA6FF;
+    --c-overlay: rgba(2, 6, 14, 0.62);
+    --c-data1: #EAF0F8;
+    --c-data2: #8AA6FF;
+    --c-data3: #5D7FD1;
+    --c-data4: #3B5A93;
+    --c-data5: #A9B8CF;
+    --c-data6: #2A3B58;
+
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.3), 0 32px 64px -24px rgba(0, 0, 0, 0.6);
+    --shadow-device: 0 48px 96px -32px rgba(0, 0, 0, 0.7);
+  }
 }
 
 @theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-muted: var(--c-surface-muted);
+  --color-surface-sunken: var(--c-surface-sunken);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-ink: var(--c-ink);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-ink-faint: var(--c-ink-faint);
+  --color-primary: var(--c-primary);
+  --color-primary-hover: var(--c-primary-hover);
+  --color-primary-ink: var(--c-primary-ink);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-sky1: var(--c-sky1);
+  --color-sky2: var(--c-sky2);
+  --color-sky3: var(--c-sky3);
+  --color-glass: var(--c-glass);
+  --color-glass-line: var(--c-glass-line);
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-warning: var(--c-warning);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-soft: var(--c-danger-soft);
+  --color-info: var(--c-info);
+  --color-info-soft: var(--c-info-soft);
+  --color-focus: var(--c-focus);
+  --color-overlay: var(--c-overlay);
+  --color-data1: var(--c-data1);
+  --color-data2: var(--c-data2);
+  --color-data3: var(--c-data3);
+  --color-data4: var(--c-data4);
+  --color-data5: var(--c-data5);
+  --color-data6: var(--c-data6);
+
+  --shadow-soft: var(--shadow-soft);
+  --shadow-float: var(--shadow-float);
+  --shadow-device: var(--shadow-device);
+
+  --font-sans: var(--font-geist), "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
 }
 
-html {
-  font-family: var(--font-sans);
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+@theme {
+  --radius-shell: 28px;
+  --radius-card: 20px;
+  --radius-tile: 14px;
+  --radius-control: 12px;
+  --radius-pill: 999px;
+
+  --ease-calm: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-swap: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Type scale: light display weights, tight tracking, tabular figures (docs/design/DESIGN-SYSTEM.md §Type). */
+@utility type-hero {
+  font-size: clamp(2.75rem, 1.2rem + 5.4vw, 6rem);
+  line-height: 0.98;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+}
+@utility type-display {
+  font-size: clamp(2.25rem, 1.1rem + 3.6vw, 4.25rem);
+  line-height: 1.03;
+  font-weight: 300;
+  letter-spacing: -0.035em;
+}
+@utility type-title {
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.625rem);
+  line-height: 1.1;
+  font-weight: 300;
+  letter-spacing: -0.028em;
+}
+@utility type-heading {
+  font-size: clamp(1.25rem, 1.05rem + 0.6vw, 1.5rem);
+  line-height: 1.25;
+  font-weight: 400;
+  letter-spacing: -0.018em;
+}
+@utility type-lede {
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.25rem);
+  line-height: 1.55;
+  font-weight: 400;
+  letter-spacing: -0.006em;
+}
+@utility type-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+@utility type-figure {
+  font-weight: 300;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
-body {
-  min-height: 100vh;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+/* Tinted glass: used for floating chips, sticky bars and panels over atmosphere — sparingly. */
+@utility glass {
+  background-color: var(--c-glass);
+  border: 1px solid var(--c-glass-line);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
 }
 
-.font-display { font-family: var(--font-display); }
+/* Atmosphere: a soft sky field built from the sky roles (night mist in dark). Bookend sections only. */
+@utility atmosphere {
+  background-color: var(--c-sky1);
+  background-image:
+    radial-gradient(120% 80% at 15% 0%, var(--c-sky3) 0%, transparent 55%),
+    radial-gradient(90% 70% at 90% 10%, var(--c-sky2) 0%, transparent 60%),
+    linear-gradient(180deg, var(--c-sky2) 0%, var(--c-sky1) 55%, var(--c-canvas) 100%);
+}
 
-:focus-visible {
-  outline: 2px solid #6EE7B7;
-  outline-offset: 2px;
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background: var(--c-canvas);
+    color: var(--c-ink);
+    font-variant-numeric: tabular-nums;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    min-height: 100dvh;
+    background: var(--c-canvas);
+    color: var(--c-ink);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+  ::selection {
+    background: var(--c-accent-soft);
+    color: var(--c-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 2px;
+  }
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  hr {
+    border-color: var(--c-line);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nav = vi.hoisted(() => ({ path: "/portfolio" }));
-vi.mock("next/navigation", () => ({ usePathname: () => nav.path }));
+vi.mock("next/navigation", () => ({ usePathname: () => nav.path, useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/lib/api", () => ({ api: { logout: vi.fn() } }));
 vi.mock("@/lib/wallet/use-wallet-connector", () => ({ useWalletConnector: () => ({ disconnect: vi.fn() }) }));
 vi.mock("@/components/notifications/bell", () => ({ NotificationsBell: () => <span>bell</span> }));
@@ -24,17 +24,18 @@ const labels = (items: { label: string }[]) => items.map((i) => i.label);
 beforeEach(() => { nav.path = "/portfolio"; });
 
 describe("navFor", () => {
-  it("an investor sees Discover, Portfolio, Notifications and Profile only", () => {
+  it("an investor sees Home, Discover and Portfolio, plus Alerts and Profile on the phone tab bar", () => {
     const n = navFor(me());
-    expect(labels(n.primary)).toEqual(["Discover", "Portfolio", "Notifications", "Profile"]);
+    expect(labels(n.primary)).toEqual(["Home", "Discover", "Portfolio"]);
+    expect(labels(n.tabs)).toEqual(["Home", "Discover", "Portfolio", "Alerts", "Profile"]);
     expect(n.manager).toEqual([]);
     expect(n.ops).toEqual([]);
   });
-  it("a signed-out visitor sees Discover and Fees", () => {
-    expect(labels(navFor(null).primary)).toEqual(["Discover", "Fees"]);
+  it("a signed-out visitor sees the marketing navigation", () => {
+    expect(labels(navFor(null).primary)).toEqual(["Baskets", "How it works", "Your wallet", "For managers", "Fees"]);
   });
   it("a manager needs an active membership", () => {
-    expect(labels(navFor(me({ organizations: [org("ACTIVE")] })).manager)).toEqual(["Organization", "Baskets", "Earnings"]);
+    expect(labels(navFor(me({ organizations: [org("ACTIVE")] })).manager)).toEqual(["Overview", "Baskets", "Members", "Earnings"]);
     expect(navFor(me({ organizations: [org("UNDER_REVIEW")] })).manager).toEqual([]);
   });
   it("a reviewer sees ops without the admin-only areas, an admin sees all", () => {
@@ -60,32 +61,34 @@ describe("AppShell", () => {
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getByRole("link", { name: "Portfolio" })).toHaveAttribute("aria-current", "page");
     expect(primary.getByRole("link", { name: "Discover" })).toHaveAttribute("href", "/baskets");
-    expect(primary.queryByRole("link", { name: "Manager" })).toBeNull();
-    expect(primary.queryByRole("link", { name: "Ops" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Manager" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Ops" })).toBeNull();
     expect(screen.getByText("bell")).toBeInTheDocument();
-    expect(screen.getByText("Account")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Tabs" })).getByRole("link", { name: "Portfolio" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("content")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Manager" })).toBeNull();
   });
   it("a manager gets a Manager entry and, inside the workspace, its second row", () => {
     nav.path = "/organization/earnings";
     shell(me({ organizations: [org("ACTIVE")] }));
-    expect(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Manager" })).toHaveAttribute("href", "/organization");
+    expect(screen.getByRole("link", { name: "Manager" })).toHaveAttribute("href", "/organization");
     const row = within(screen.getByRole("navigation", { name: "Manager" }));
     expect(row.getByRole("link", { name: "Earnings" })).toHaveAttribute("aria-current", "page");
-    expect(row.getByRole("link", { name: "Organization" })).not.toHaveAttribute("aria-current");
+    expect(row.getByRole("link", { name: "Overview" })).not.toHaveAttribute("aria-current");
   });
   it("an ops user gets grouped ops areas inside /ops and none elsewhere", () => {
     nav.path = "/ops/assets";
     const { unmount } = shell(me({ platformRoles: ["ops_reviewer"] }));
-    expect(within(screen.getByRole("navigation", { name: "Ops Catalog" })).getByRole("link", { name: "Assets" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("navigation", { name: "Ops Money" })).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "Ops Access" })).toBeNull();
+    const row = within(screen.getByRole("navigation", { name: "Operations" }));
+    expect(row.getByRole("link", { name: "Assets" })).toHaveAttribute("aria-current", "page");
+    expect(row.getByRole("link", { name: "Revenue" })).toBeInTheDocument();
+    expect(row.queryByRole("link", { name: "Roles" })).toBeNull();
     unmount();
     nav.path = "/portfolio";
     shell(me({ platformRoles: ["ops_reviewer"] }));
-    expect(screen.queryByRole("navigation", { name: "Ops Catalog" })).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "Ops" })).toHaveAttribute("href", "/ops");
+    expect(screen.queryByRole("navigation", { name: "Operations" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Ops" })).toHaveAttribute("href", "/ops");
   });
   it("a detail page highlights its section", () => {
     nav.path = "/baskets/core-crypto";
@@ -95,11 +98,12 @@ describe("AppShell", () => {
 });
 
 describe("PublicShell", () => {
-  it("offers Discover, Fees and Sign in, and no account menu", () => {
+  it("offers the marketing navigation and Sign in, and no account menu", () => {
     render(<PublicShell><p>public</p></PublicShell>);
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getByRole("link", { name: "Fees" })).toHaveAttribute("href", "/fees");
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
-    expect(screen.queryByText("Account")).toBeNull();
+    expect(primary.getByRole("link", { name: "Baskets" })).toHaveAttribute("href", "/baskets");
+    expect(screen.getAllByRole("link", { name: "Sign in" })[0]).toHaveAttribute("href", "/sign-in");
+    expect(screen.queryByRole("button", { name: "Account" })).toBeNull();
   });
 });

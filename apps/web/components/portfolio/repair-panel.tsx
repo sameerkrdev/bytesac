@@ -17,6 +17,8 @@ import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/page-layout";
+import { Callout } from "@/components/ui/kit";
+import { Activity } from "lucide-react";
 import { LoadingState } from "@/components/layout/states";
 
 const exact = (raw: string, decimals: number) => formatUnits(raw, decimals, decimals);
@@ -30,18 +32,18 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
   const err = preview.error ?? discard.error;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-stone">Buy back {exact(repair.totalShortfall, decimals)} {repair.symbol} with USDC from your wallet so every basket is fully backed again. You review the cost and sign each step.</p>
+      <p className="text-sm text-ink-muted">Buy back {exact(repair.totalShortfall, decimals)} {repair.symbol} with USDC from your wallet so every basket is fully backed again. You review the cost and sign each step.</p>
       {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
         <div className="space-y-3">
           <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying />)}</ol>
           <FeeLines fees={plan.fees} />
-          <p className="text-sm text-stone">Prices are re-quoted when you sign each step.</p>
+          <p className="text-sm text-ink-muted">Prices are re-quoted when you sign each step.</p>
           <div className="flex flex-wrap gap-3">
-            <Button className="min-h-11" onClick={() => setSigning(true)}>Continue to signing</Button>
-            <Button variant="secondary" className="min-h-11" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
+            <Button  onClick={() => setSigning(true)}>Continue to signing</Button>
+            <Button variant="secondary"  disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
           </div>
         </div>
-      ) : <Button className="min-h-11" disabled={preview.isPending} onClick={() => preview.mutate()}>{preview.isPending && <Loader2 aria-hidden className="animate-spin" />}Get cost preview</Button>}
+      ) : <Button  disabled={preview.isPending} onClick={() => preview.mutate()}>{preview.isPending && <Loader2 aria-hidden className="animate-spin" />}Get cost preview</Button>}
       {isDeclarationRequired(preview.error) && <DeclarationForm onSaved={() => preview.mutate()} />}
       {err && !isDeclarationRequired(err) && <ErrorBox error={err} />}
     </div>
@@ -60,16 +62,16 @@ function Sync({ repair, decimals, onChanged }: { repair: Repair; decimals: numbe
   });
   return (
     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
-      <p className="text-sm text-stone">Use this if you moved {repair.symbol} out of your wallet on purpose. Your baskets will record less {repair.symbol}; nothing is bought or sold.</p>
+      <p className="text-sm text-ink-muted">Use this if you moved {repair.symbol} out of your wallet on purpose. Your baskets will record less {repair.symbol}; nothing is bought or sold.</p>
       {repair.positions.map((x) => (
         <div key={x.positionId} className="space-y-1">
-          <label htmlFor={`sync-${x.positionId}`} className="text-xs font-medium text-ivory">{x.basketSlug}: reduce by ({repair.symbol})</label>
-          <Input id={`sync-${x.positionId}`} inputMode="decimal" className="min-h-11 w-48 bg-space text-ivory" value={text[x.positionId] ?? ""} aria-invalid={raw[repair.positions.indexOf(x)] === null}
+          <label htmlFor={`sync-${x.positionId}`} className="text-xs font-medium text-ink">{x.basketSlug}: reduce by ({repair.symbol})</label>
+          <Input id={`sync-${x.positionId}`} inputMode="decimal" className="w-48" value={text[x.positionId] ?? ""} aria-invalid={raw[repair.positions.indexOf(x)] === null}
             onChange={(e) => setText({ ...text, [x.positionId]: e.target.value })} />
         </div>
       ))}
       <p role="status" className={cn("text-sm", sum === total ? "text-success" : "text-warning")}>Must add up to {exact(repair.totalShortfall, decimals)} {repair.symbol}</p>
-      <Button type="submit" className="min-h-11" disabled={!valid || save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save</Button>
+      <Button type="submit"  disabled={!valid || save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save</Button>
       {save.isSuccess && <p role="status" className="text-sm text-success">Saved. Your baskets now match your wallet.</p>}
       {save.isError && !(save.error instanceof ApiError && save.error.code === "SHORTFALL_CHANGED") && <ErrorBox error={save.error} />}
     </form>
@@ -85,30 +87,30 @@ export function RepairPanel({ asset }: { asset: string }) {
   if (portfolio.isPending) return <LoadingState />;
   if (portfolio.isError) return <p role="alert" className="text-sm text-danger">{toDisplayError(portfolio.error).title}</p>;
   const repair = portfolio.data.repairs.find((r) => r.asset === asset);
-  if (!repair) return <p role="status" className="text-sm text-ivory">Nothing needs repair here. <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>;
+  if (!repair) return <p role="status" className="text-sm text-ink">Nothing needs repair here. <Link href="/portfolio" className="text-ink underline underline-offset-4">Back to portfolio</Link></p>;
   const decimals = repair.asset === "cash" ? 6 : (portfolio.data.positions.flatMap((p) => p.holdings).find((h) => h.deploymentId === repair.asset)?.decimals ?? 0);
   const active = repair.asset === "cash" ? "sync" : tab;
   // Reset the forms when the server's figures change.
   const figures = repair.positions.map((x) => x.shortfall).join(",");
 
   return (
-    <section aria-labelledby="repair-title" className="max-w-3xl space-y-6">
-      <div className="space-y-1">
-        <PageHeader id="repair-title" title={`Repair ${repair.symbol}`} breadcrumb={[{ label: "Portfolio", href: "/portfolio" }]} />
-        <p className="text-sm text-stone">Your wallet holds {exact(repair.totalShortfall, decimals)} {repair.symbol} less than your baskets record. <Link href="/portfolio" className="text-mint underline">Back to portfolio</Link></p>
-      </div>
-      {changed && <p role="alert" className="rounded-xl border border-warning/40 p-3 text-sm text-ivory">Your holdings changed — review the new figures</p>}
-      <ul className="divide-y divide-border-dark text-sm">
+    <section aria-labelledby="repair-title" className="max-w-4xl space-y-8">
+      <PageHeader id="repair-title" title={`Repair ${repair.symbol}`} eyebrow="Portfolio assistance" breadcrumb={[{ label: "Portfolio", href: "/portfolio" }, { label: `Repair ${repair.symbol}` }]} />
+      <Callout tone="warning" icon={<Activity />} title="What happened">
+        Your wallet holds {exact(repair.totalShortfall, decimals)} {repair.symbol} less than your baskets record — usually because {repair.symbol} was moved or sold outside Bytesac. Nothing has been bought or sold to fix it. Choose how you want your baskets to reflect your wallet. <Link href="/portfolio" className="text-ink underline underline-offset-4">Back to portfolio</Link>
+      </Callout>
+      {changed && <p role="alert" className="rounded-tile border border-warning/25 p-3 text-sm text-ink">Your holdings changed — review the new figures</p>}
+      <ul aria-label="Affected baskets" className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface text-sm">
         {repair.positions.map((x) => (
-          <li key={x.positionId} className="flex flex-wrap justify-between gap-2 py-2">
-            <span className="text-ivory">{x.basketSlug}</span>
-            <span className="text-stone">Recorded {exact(x.ledger, decimals)} · allocated {exact((BigInt(x.ledger) - BigInt(x.shortfall)).toString(), decimals)} · short {exact(x.shortfall, decimals)}</span>
+          <li key={x.positionId} className="flex flex-wrap justify-between gap-2 px-5 py-4">
+            <span className="text-ink">{x.basketSlug}</span>
+            <span className="text-ink-muted">Recorded {exact(x.ledger, decimals)} · allocated {exact((BigInt(x.ledger) - BigInt(x.shortfall)).toString(), decimals)} · short {exact(x.shortfall, decimals)}</span>
           </li>
         ))}
       </ul>
-      <div role="group" aria-label="Repair method" className="flex gap-2">
-        {repair.asset !== "cash" && <button type="button" aria-pressed={active === "buy"} onClick={() => setTab("buy")} className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", active === "buy" && "bg-slate text-ivory")}>Buy back</button>}
-        <button type="button" aria-pressed={active === "sync"} onClick={() => setTab("sync")} className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", active === "sync" && "bg-slate text-ivory")}>Sync</button>
+      <div role="group" aria-label="Repair method" className="grid gap-3 sm:grid-cols-2">
+        {repair.asset !== "cash" && <button type="button" aria-label="Buy back" aria-describedby="repair-buy-help" aria-pressed={active === "buy"} onClick={() => setTab("buy")} className={cn("rounded-card border p-5 text-left transition-colors", active === "buy" ? "border-primary bg-surface shadow-soft" : "border-line bg-surface/60 hover:border-line-strong")}><span className="block font-medium text-ink">Buy back</span><span id="repair-buy-help" className="mt-1 block text-sm text-ink-muted">Restore the holding with USDC from your wallet. You sign each step.</span></button>}
+        <button type="button" aria-label="Sync" aria-describedby="repair-sync-help" aria-pressed={active === "sync"} onClick={() => setTab("sync")} className={cn("rounded-card border p-5 text-left transition-colors", active === "sync" ? "border-primary bg-surface shadow-soft" : "border-line bg-surface/60 hover:border-line-strong")}><span className="block font-medium text-ink">Sync</span><span id="repair-sync-help" className="mt-1 block text-sm text-ink-muted">Keep your wallet as it is; your baskets record less. Nothing is traded.</span></button>
       </div>
       {active === "buy" ? <BuyBack key={figures} repair={repair} decimals={decimals} /> : <Sync key={figures} repair={repair} decimals={decimals} onChanged={(c) => { setChanged(c); void qc.invalidateQueries({ queryKey: ["portfolio"] }); }} />}
     </section>

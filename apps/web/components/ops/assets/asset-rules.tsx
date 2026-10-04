@@ -28,26 +28,26 @@ export function AssetRules({ a, locked, onChange, client = api }: SectionProps &
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Eligibility rules</h2>
-      {a.rules.length === 0 ? <p className="text-sm text-stone">No rules yet.</p> : (
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs text-stone"><tr><th className="py-2 pr-4 font-medium">Jurisdiction</th><th className="pr-4 font-medium">Action</th><th className="pr-4 font-medium">Investor status</th><th className="pr-4 font-medium">Outcome</th><th className="pr-4 font-medium">Status</th><th className="font-medium"><span className="sr-only">Actions</span></th></tr></thead>
+      <h2 id={`${id}-h`} className="type-heading text-ink">Eligibility rules</h2>
+      {a.rules.length === 0 ? <p className="text-sm text-ink-muted">No rules yet.</p> : (
+        <div className="overflow-x-auto"><table className="min-w-[36rem] w-full text-left text-sm">
+          <thead className="text-xs text-ink-muted"><tr><th className="py-2 pr-4 font-medium">Jurisdiction</th><th className="pr-4 font-medium">Action</th><th className="pr-4 font-medium">Investor status</th><th className="pr-4 font-medium">Outcome</th><th className="pr-4 font-medium">Status</th><th className="font-medium"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {a.rules.map((r) => (
-              <tr key={r.id} className="border-t border-border-dark">
-                <td className="py-3 pr-4 text-ivory">{r.jurisdiction === "*" ? "All" : r.jurisdiction}</td>
-                <td className="pr-4 text-stone">{r.action}</td>
-                <td className="pr-4 text-stone">{r.investorStatuses.length === 0 ? "Any" : r.investorStatuses.join(", ")}</td>
-                <td className="pr-4 text-stone">{r.outcome.replaceAll("_", " ").toLowerCase()}</td>
-                <td className="pr-4 text-stone">{r.status === "RETIRED" ? "Retired" : "Active"}</td>
+              <tr key={r.id} className="border-t border-line">
+                <td className="py-3 pr-4 text-ink">{r.jurisdiction === "*" ? "All" : r.jurisdiction}</td>
+                <td className="pr-4 text-ink-muted">{r.action}</td>
+                <td className="pr-4 text-ink-muted">{r.investorStatuses.length === 0 ? "Any" : r.investorStatuses.join(", ")}</td>
+                <td className="pr-4 text-ink-muted">{r.outcome.replaceAll("_", " ").toLowerCase()}</td>
+                <td className="pr-4 text-ink-muted">{r.status === "RETIRED" ? "Retired" : "Active"}</td>
                 <td>{r.status !== "RETIRED" && <ConfirmAction label="Retire" destructive disabled={locked} pending={retire.isPending} description="Retiring this rule is permanent." onConfirm={() => retire.mutate(r.id)} />}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
-      {locked ? <p className="text-sm text-stone">Rules can&apos;t be changed while the asset is under review or retired.</p> : (
+      {locked ? <p className="text-sm text-ink-muted">Rules can&apos;t be changed while the asset is under review or retired.</p> : (
         <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => {
           e.preventDefault();
           const parsed = createRuleRequestSchema.safeParse({
@@ -58,45 +58,45 @@ export function AssetRules({ a, locked, onChange, client = api }: SectionProps &
           setInvalid(null);
           create.mutate(parsed.data);
         }}>
-          <h3 className="text-sm font-medium text-ivory">Add a rule</h3>
+          <h3 className="text-sm font-medium text-ink">Add a rule</h3>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-j`} className="text-xs font-medium text-ivory">Jurisdiction (two-letter code, or * for everywhere)</Label>
-            <Input id={`${id}-j`} maxLength={2} className="min-h-11 bg-space uppercase text-ivory" value={f.jurisdiction} onChange={set("jurisdiction")} />
+            <Label htmlFor={`${id}-j`} className="text-xs font-medium text-ink">Jurisdiction (two-letter code, or * for everywhere)</Label>
+            <Input id={`${id}-j`} maxLength={2} className="min-h-11 bg-canvas uppercase text-ink" value={f.jurisdiction} onChange={set("jurisdiction")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-a`} className="text-xs font-medium text-ivory">Action</Label>
+            <Label htmlFor={`${id}-a`} className="text-xs font-medium text-ink">Action</Label>
             <Select id={`${id}-a`} value={f.action} onChange={set("action")}>{eligibilityActionSchema.options.map((o) => <option key={o} value={o}>{o}</option>)}</Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-o`} className="text-xs font-medium text-ivory">Outcome</Label>
+            <Label htmlFor={`${id}-o`} className="text-xs font-medium text-ink">Outcome</Label>
             <Select id={`${id}-o`} value={f.outcome} onChange={set("outcome")}>{eligibilityOutcomeSchema.options.map((o) => <option key={o} value={o}>{o.replaceAll("_", " ").toLowerCase()}</option>)}</Select>
           </div>
           <fieldset className="space-y-2">
-            <legend className="text-xs font-medium text-ivory">Investor statuses (none selected means every status)</legend>
+            <legend className="text-xs font-medium text-ink">Investor statuses (none selected means every status)</legend>
             {INVESTOR_STATUSES.map((s) => (
-              <label key={s} className="flex min-h-11 items-center gap-3 text-sm text-ivory">
+              <label key={s} className="flex min-h-11 items-center gap-3 text-sm text-ink">
                 <input type="checkbox" className="accent-mint" checked={statuses.includes(s)} onChange={(e) => setStatuses(e.target.checked ? [...statuses, s] : statuses.filter((x) => x !== s))} />{s}
               </label>
             ))}
           </fieldset>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-r`} className="text-xs font-medium text-ivory">Applies to route (optional)</Label>
+            <Label htmlFor={`${id}-r`} className="text-xs font-medium text-ink">Applies to route (optional)</Label>
             <Select id={`${id}-r`} value={f.routeId} onChange={set("routeId")}>
               <option value="">Whole asset</option>
               {live.map((r) => <option key={r.id} value={r.id}>{r.venue} · {r.method.replaceAll("_", " ")}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-k`} className="text-xs font-medium text-ivory">KYC requirement (optional)</Label>
-            <Input id={`${id}-k`} className="min-h-11 bg-space text-ivory" value={f.kycRequirement} onChange={set("kycRequirement")} />
+            <Label htmlFor={`${id}-k`} className="text-xs font-medium text-ink">KYC requirement (optional)</Label>
+            <Input id={`${id}-k`}  value={f.kycRequirement} onChange={set("kycRequirement")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-st`} className="text-xs font-medium text-ivory">Source note (optional)</Label>
-            <Input id={`${id}-st`} className="min-h-11 bg-space text-ivory" value={f.sourceText} onChange={set("sourceText")} />
+            <Label htmlFor={`${id}-st`} className="text-xs font-medium text-ink">Source note (optional)</Label>
+            <Input id={`${id}-st`}  value={f.sourceText} onChange={set("sourceText")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-su`} className="text-xs font-medium text-ivory">Source URL (optional)</Label>
-            <Input id={`${id}-su`} type="url" className="min-h-11 bg-space text-ivory" value={f.sourceUrl} onChange={set("sourceUrl")} />
+            <Label htmlFor={`${id}-su`} className="text-xs font-medium text-ink">Source URL (optional)</Label>
+            <Input id={`${id}-su`} type="url"  value={f.sourceUrl} onChange={set("sourceUrl")} />
           </div>
           {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}
           <Button type="submit" className="min-h-11 w-fit" disabled={create.isPending}>{create.isPending && <Loader2 aria-hidden className="animate-spin" />}Add rule</Button>

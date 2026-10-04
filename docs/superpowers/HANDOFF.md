@@ -113,7 +113,7 @@ Deliverables: Dockerfiles, compose for local prod-like runs, `.github/workflows/
 | # | Phase | What to ask / prepare at the start |
 |---|---|---|
 | 16 | **Deployment**: Docker images (api, worker, web; mobile via EAS), GitHub Actions CI/CD (lint, check-types, test on Linux — fixes the Windows crash — build, migrations, deploy), environments, secrets, step-by-step launch guide | Hosting choice (e.g. Fly/Render/Railway/AWS/GCP for api+worker, Vercel for web, Supabase for Postgres, Upstash/managed Redis), domains, who holds secrets; KMS for platform keys (OPEN-ITEMS); EAS for mobile builds (expo `eas-*` skills); CSP enforcement, `X-Forwarded-For`, `GEO_COUNTRY_HEADER`, worker deployment, pg_cron/pgvector on Supabase (OPEN-ITEMS §6). Never deploy or push without the user's explicit go-ahead. |
-| 17 | **Redesign** the whole web and mobile UI/UX | Ask the user for reference images and videos of other sites first; use `frontend-design`, `design:*` and `expo-design-system` skills; keep `@repo/app-core` logic and API untouched; update `docs/BYTESAC_Design_System.md` in place. |
+| 17 | **Redesign** the whole web and mobile UI/UX | Ask the user for reference images and videos of other sites first; use `frontend-design`, `design:*` and `expo-design-system` skills; keep `@repo/app-core` logic and API untouched; web done first (see `docs/design/DESIGN-SYSTEM.md`, spec `2026-10-04-spec17-web-redesign-design.md`); Expo redesign next from `docs/design/MOBILE-UX-INVENTORY.md`. |
 | 18 | **Motion-graphics promo/launch video + platform presentation** | Ask for the reference motion-design video; produce the video as code-built animation (e.g. Remotion or HTML/Canvas rendered to MP4) with script and storyboard; presentation via the slides artifact type or `.pptx` (`anthropic-skills:pptx`) in the Bytesac theme. |
 | 19 | **Future plans** (`docs/domains/FUTURE-PLANS.md`), one at a time with approval — last | Let the user pick; each is a full cycle. |
 
@@ -121,6 +121,6 @@ The user's working pattern (keep it): one multiple-choice question at a time wit
 ## 8. Where things are
 
 - Product sources (never edit): `docs/source/*`. Index and reading order: `docs/README.md`.
-- Decisions: `docs/decisions/DECISION-REGISTER.md`, `ADR-001..ADR-018`. Architecture: `docs/architecture/ARCHITECTURE.md`. Behavior: `docs/domains/*.md`. Conventions: `docs/engineering/CODING-STANDARDS.md`. Design system: `docs/BYTESAC_Design_System.md`.
+- Decisions: `docs/decisions/DECISION-REGISTER.md`, `ADR-001..ADR-018`. Architecture: `docs/architecture/ARCHITECTURE.md`. Behavior: `docs/domains/*.md`. Conventions: `docs/engineering/CODING-STANDARDS.md`. Design system: `docs/design/DESIGN-SYSTEM.md`.
 - Open work: `docs/OPEN-ITEMS.md`. Integration audit: `docs/engineering/INTEGRATION-AUDIT.md`. Deferred scope: `docs/domains/FUTURE-PLANS.md`. Brainstorm Q&A: `docs/superpowers/BRAINSTORM-LOG.md`.
 - Setup and operations: `apps/api/README.md`, `apps/web/README.md`, `apps/mobile/README.md`.

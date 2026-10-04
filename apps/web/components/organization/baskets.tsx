@@ -44,51 +44,59 @@ export function Baskets({ org, client = api }: { org: OrganizationDetail; client
 
   return (
     <section id="baskets" aria-labelledby={`${id}-h`} className="space-y-4">
-      <h3 id={`${id}-h`} className="font-display text-lg font-semibold text-ivory">Baskets</h3>
-      <div role="group" aria-label="Basket status" className="flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" aria-pressed={tab.id === t.id} onClick={() => setTab(t)} className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", tab.id === t.id && "bg-slate text-ivory")}>{t.label}</button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 id={`${id}-h`} className="sr-only">Baskets</h3>
+        <div role="group" aria-label="Basket status" className="flex gap-1 overflow-x-auto rounded-pill border border-line bg-surface p-1 [scrollbar-width:none]">
+          {TABS.map((t) => {
+            const n = list.data?.baskets.filter(t.match).length ?? 0;
+            return (
+              <button key={t.id} type="button" aria-pressed={tab.id === t.id} onClick={() => setTab(t)} className={cn("inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-pill px-3.5 text-xs font-medium whitespace-nowrap text-ink-muted hover:text-ink", tab.id === t.id && "bg-primary text-primary-ink hover:text-primary-ink")}>
+                {t.label}{n > 0 && <span aria-hidden className={cn("font-mono text-[0.625rem]", tab.id === t.id ? "text-primary-ink/70" : "text-ink-faint")}>{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {canCreate && <Button size="sm" onClick={() => setOpen(true)}>Create basket</Button>}
       </div>
       {list.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(list.error).title}</p> : list.isPending ? <LoadingState /> : items.length === 0 ? (
-        <p className="text-sm text-stone">No baskets here.</p>
+        <p className="rounded-card border border-dashed border-line-strong px-5 py-8 text-sm text-ink-muted">No baskets here.</p>
       ) : (
-        <ul className="divide-y divide-border-dark">
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+          <li aria-hidden className="hidden grid-cols-[minmax(0,1.6fr)_8rem_minmax(0,1fr)_7rem_3rem] gap-4 bg-surface-muted/60 px-5 py-2.5 text-[0.6875rem] text-ink-faint md:grid"><span>Basket</span><span>Category</span><span>Status</span><span>Updated</span><span /></li>
           {items.map((b) => (
-            <li key={b.id} className="flex flex-wrap items-center gap-3 py-3">
-              <span className="text-sm font-medium text-ivory">{b.name}</span>
-              <StatusBadge {...BASKET_STATUS_LABEL[b.status]} />
-              <span className="text-xs text-stone">{b.currentVersionNumber ? `Published version ${b.currentVersionNumber}` : "Not published"} · updated {new Date(b.updatedAt).toLocaleDateString()}</span>
-              <Link href={`/organization/baskets/${b.id}`} aria-label={`Open ${b.name}`} className="ml-auto inline-flex min-h-11 items-center text-sm text-mint underline">Open</Link>
+            <li key={b.id} className="grid items-center gap-x-4 gap-y-1 px-5 py-4 md:grid-cols-[minmax(0,1.6fr)_8rem_minmax(0,1fr)_7rem_3rem]">
+              <span className="min-w-0"><span className="block truncate text-sm font-medium text-ink">{b.name}</span><span className="block text-xs text-ink-muted">{b.currentVersionNumber ? `Published version ${b.currentVersionNumber}` : "Not published"} · updated {new Date(b.updatedAt).toLocaleDateString()}</span></span>
+              <span className="text-xs text-ink-muted">{BASKET_CATEGORY_LABEL[b.category]}</span>
+              <span><StatusBadge {...BASKET_STATUS_LABEL[b.status]} /></span>
+              <span className="font-mono text-xs text-ink-faint">{new Date(b.updatedAt).toLocaleDateString()}</span>
+              <Link href={`/organization/baskets/${b.id}`} aria-label={`Open ${b.name}`} className="justify-self-start text-sm text-ink underline-offset-4 hover:underline md:justify-self-end">Open</Link>
             </li>
           ))}
         </ul>
       )}
 
-      {canCreate ? <Button variant="secondary" className="min-h-11" onClick={() => setOpen(true)}>Create basket</Button> : (
-        <p className="text-xs text-stone">{org.status !== "VERIFIED" ? "Your organization must be verified to create baskets." : "You need basket access to create baskets. Ask an owner or admin."}</p>
-      )}
+      {!canCreate && <p className="text-xs text-ink-muted">{org.status !== "VERIFIED" ? "Your organization must be verified to create baskets." : "You need basket access to create baskets. Ask an owner or admin."}</p>}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-ivory">Create basket</DialogTitle>
+            <DialogTitle className="text-ink">Create basket</DialogTitle>
             <DialogDescription>You become its lead manager. Nothing is public until Bytesac approves and you publish.</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
             <div className="space-y-1">
-              <Label htmlFor={`${id}-n`} className="text-xs font-medium text-ivory">Name</Label>
-              <Input id={`${id}-n`} value={name} minLength={3} maxLength={80} required className="min-h-11 bg-space text-ivory" onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor={`${id}-n`} className="text-xs font-medium text-ink">Name</Label>
+              <Input id={`${id}-n`} value={name} minLength={3} maxLength={80} required onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${id}-c`} className="text-xs font-medium text-ivory">Category</Label>
+              <Label htmlFor={`${id}-c`} className="text-xs font-medium text-ink">Category</Label>
               <Select id={`${id}-c`} value={category} onChange={(e) => setCategory(basketCategorySchema.parse(e.target.value))}>
                 {basketCategorySchema.options.map((c) => <option key={c} value={c}>{BASKET_CATEGORY_LABEL[c]}</option>)}
               </Select>
             </div>
             {create.isError && <p role="alert" className="text-sm text-danger"><span className="font-medium">{toDisplayError(create.error).title}</span> {toDisplayError(create.error).message}</p>}
             <DialogFooter>
-              <Button type="button" variant="secondary" className="min-h-11" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" className="min-h-11" disabled={create.isPending || name.trim().length < 3}>{create.isPending && <Loader2 aria-hidden className="animate-spin" />}Create</Button>
+              <Button type="button" variant="secondary"  onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit"  disabled={create.isPending || name.trim().length < 3}>{create.isPending && <Loader2 aria-hidden className="animate-spin" />}Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>
