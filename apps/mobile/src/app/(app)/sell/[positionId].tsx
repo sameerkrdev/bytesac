@@ -35,11 +35,11 @@ export default function SellScreen() {
   const label = position.status === "OPEN" ? "Sell to USDC" : "Sell former assets";
   return (
     <Screen>
-      <AppText variant="h2" accessibilityRole="header">{label}</AppText>
-      <AppText tone="stone">{position.basketName}. Each asset is sold back to USDC on Solana in your own wallets. You sign every step. Never more than your wallet holds is sold.</AppText>
+      <AppText variant="title" accessibilityRole="header">{label}</AppText>
+      <AppText tone="faint">{position.basketName}. Each asset is sold back to USDC on Solana in your own wallets. You sign every step. Never more than your wallet holds is sold.</AppText>
       {plan ? (
         <PlanFlow plan={plan} onDiscarded={() => setPlan(null)}
-          extra={<AppText variant="label" tone="stone">{plan.legs[0]?.kind === "network_fee" ? "Fees are paid first from the USDC already in your wallet." : "Fees are taken from your proceeds."}</AppText>}
+          extra={<AppText variant="label" tone="faint">{plan.legs[0]?.kind === "network_fee" ? "Fees are paid first from the USDC already in your wallet." : "Fees are taken from your proceeds."}</AppText>}
           note={`Outputs are estimates, protected by a minimum per step (${SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.`} />
       ) : (
         <View className="gap-4">

@@ -12,14 +12,14 @@ export function EligibilitySection() {
   const d = q.data?.declaration;
   return (
     <Card className="gap-4">
-      <AppText variant="h3" accessibilityRole="header">Eligibility</AppText>
+      <AppText variant="title" accessibilityRole="header">Eligibility</AppText>
       <AppText tone="muted">Tokenized assets are offered by country and investor status. The declaration is valid for 365 days.</AppText>
       {q.isError ? <ErrorText error={q.error} /> : q.isPending ? <LoadingState /> : d ? (
         <>
           <AppText>{countryName(d.country)} · {STATUS_LABEL[d.investorStatus].title}</AppText>
           <StatusBadge tone={d.expired ? "danger" : "success"} label={d.expired ? "Expired" : `Valid until ${new Date(d.expiresAt).toLocaleDateString()}`} />
         </>
-      ) : <AppText tone="stone">You have not declared yet.</AppText>}
+      ) : <AppText tone="faint">You have not declared yet.</AppText>}
       {!q.isPending && <DeclarationForm />}
     </Card>
   );

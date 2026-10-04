@@ -20,7 +20,7 @@ export default function ContactScreen() {
   const phone = me?.contacts.find((c) => c.type === "phone");
   return (
     <Screen>
-      <AppText variant="h1" accessibilityRole="header">Add your contact details</AppText>
+      <AppText variant="display" accessibilityRole="header">Add your contact details</AppText>
       <AppText tone="muted">We use these for important account and investment notices. Required later before investing.</AppText>
       <Card className="gap-6">
         <ContactVerifier type="email" existing={email} key={`email:${email?.id}:${email?.status}`} onChanged={refresh} />

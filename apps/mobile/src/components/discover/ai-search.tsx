@@ -20,16 +20,16 @@ export function AiSearch({ onUseFilters }: { onUseFilters(f: DiscoveryFilters): 
   const rateLimited = search.error instanceof ApiError && (search.error.status === 429 || search.error.code === "RATE_LIMITED");
   return (
     <Card className="gap-3">
-      <AppText variant="h4" accessibilityRole="header">Describe what you want</AppText>
+      <AppText variant="heading" accessibilityRole="header">Describe what you want</AppText>
       <TextField label="Search in your own words" value={query} onChangeText={setQuery} maxLength={500} multiline placeholder="Low-fee stablecoin baskets with a monthly review" />
       <Button disabled={!query.trim()} loading={search.isPending} onPress={() => search.mutate(query.trim())}>Search</Button>
-      <AppText variant="label" tone="stone">Queries are processed by Google Gemini.</AppText>
+      <AppText variant="label" tone="faint">Queries are processed by Google Gemini.</AppText>
       {rateLimited ? <AppText accessibilityRole="alert" tone="danger">Too many searches. Try again later.</AppText> : <ErrorText error={search.error} />}
       {search.data && (
         <View className="gap-3">
-          <AppText accessibilityRole="header" className="font-sans-semibold">{MODE_LABEL[search.data.mode]}</AppText>
+          <AppText accessibilityRole="header" className="font-semibold">{MODE_LABEL[search.data.mode]}</AppText>
           {search.data.filters ? <Button variant="secondary" onPress={() => { onUseFilters(search.data.filters!); search.reset(); }}>Use these filters</Button> : null}
-          {search.data.results.length === 0 ? <AppText tone="stone">No baskets match. Try different words.</AppText> : search.data.results.map((b) => <ResultCard key={b.slug} item={b} />)}
+          {search.data.results.length === 0 ? <AppText tone="faint">No baskets match. Try different words.</AppText> : search.data.results.map((b) => <ResultCard key={b.slug} item={b} />)}
         </View>
       )}
     </Card>

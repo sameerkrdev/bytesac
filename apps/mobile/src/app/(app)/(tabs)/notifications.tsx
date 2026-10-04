@@ -22,7 +22,7 @@ export default function NotificationsScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={q.isRefetching && !q.isFetchingNextPage} onRefresh={() => void q.refetch()} tintColor={palette.mint} />}>
-      <AppText variant="h1" accessibilityRole="header">Notifications</AppText>
+      <AppText variant="display" accessibilityRole="header">Notifications</AppText>
       {unread > 0 && <Button variant="secondary" loading={read.isPending} onPress={() => read.mutate({ all: true })}>Mark all read</Button>}
       {q.isPending && <LoadingState />}
       {q.isError && !q.data && <ErrorState error={q.error} onRetry={() => void q.refetch()} />}
@@ -30,14 +30,14 @@ export default function NotificationsScreen() {
       <ErrorText error={read.error} />
       {q.data && items.length === 0 && <EmptyState title="Nothing yet." />}
       {items.map((n) => (
-        <Pressable key={n.id} accessibilityRole="link" accessibilityLabel={`${n.readAt ? "" : "Unread. "}${n.title}`} className="gap-1 border-b border-border-dark pb-3"
+        <Pressable key={n.id} accessibilityRole="link" accessibilityLabel={`${n.readAt ? "" : "Unread. "}${n.title}`} className="gap-1 border-b border-line pb-3"
           onPress={() => { if (!n.readAt) read.mutate({ ids: [n.id] }); router.push(mobileRoute(n.link)); }}>
           <View className="flex-row items-center gap-2">
-            {!n.readAt && <View accessibilityElementsHidden importantForAccessibility="no" className="size-2 rounded-full bg-mint" />}
-            <AppText className="flex-1 font-sans-semibold">{n.title}</AppText>
+            {!n.readAt && <View accessibilityElementsHidden importantForAccessibility="no" className="size-2 rounded-full bg-primary" />}
+            <AppText className="flex-1 font-semibold">{n.title}</AppText>
           </View>
-          <AppText tone="stone">{n.body}</AppText>
-          <AppText variant="label" tone="stone">{formatRelative(n.createdAt)}</AppText>
+          <AppText tone="faint">{n.body}</AppText>
+          <AppText variant="label" tone="faint">{formatRelative(n.createdAt)}</AppText>
         </Pressable>
       ))}
       {q.hasNextPage && <Button variant="secondary" loading={q.isFetchingNextPage} onPress={() => void q.fetchNextPage()}>Load more</Button>}

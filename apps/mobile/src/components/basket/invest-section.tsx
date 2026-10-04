@@ -21,7 +21,7 @@ export function InvestSection({ slug }: { slug: string }) {
     return (
       <View className="gap-2">
         <Button disabled onPress={() => undefined}>Not investable yet</Button>
-        {reasons.map((r) => <AppText key={`${r.instrumentId ?? ""}${r.code}`} tone="stone">{r.message}</AppText>)}
+        {reasons.map((r) => <AppText key={`${r.instrumentId ?? ""}${r.code}`} tone="faint">{r.message}</AppText>)}
       </View>
     );
   }
@@ -36,7 +36,7 @@ export function InvestSection({ slug }: { slug: string }) {
           seen.add(r.code);
           return (
             <View key={r.code} className="gap-3">
-              <AppText tone="stone">{r.message}</AppText>
+              <AppText tone="faint">{r.message}</AppText>
               <DeclarationForm onSaved={() => void qc.invalidateQueries({ queryKey: ["investability", slug] })} />
             </View>
           );
@@ -44,7 +44,7 @@ export function InvestSection({ slug }: { slug: string }) {
         const a = INELIGIBLE_ACTION[r.code];
         return a
           ? <Button key={`${r.instrumentId ?? ""}${r.code}`} variant="secondary" onPress={() => router.push(ROUTE[a.target])}>{a.label}</Button>
-          : <AppText key={`${r.instrumentId ?? ""}${r.code}`} tone="stone">{r.message}</AppText>;
+          : <AppText key={`${r.instrumentId ?? ""}${r.code}`} tone="faint">{r.message}</AppText>;
       })}
     </View>
   );

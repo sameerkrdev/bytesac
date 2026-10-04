@@ -24,15 +24,15 @@ export function PlanFlow({ plan, note, extra, onDiscarded }: {
   return (
     <View className="gap-4">
       {plan.excluded && plan.excluded.length > 0 && (
-        <View accessibilityLabel="Left out of this sale" className="gap-1 rounded-xl border border-warning/40 p-3">
-          <AppText className="font-sans-semibold">Left out of this sale</AppText>
+        <View accessibilityLabel="Left out of this sale" className="gap-1 rounded-control border border-warning/40 p-3">
+          <AppText className="font-semibold">Left out of this sale</AppText>
           {plan.excluded.map((x) => <AppText key={x.instrumentId}>{x.notice}</AppText>)}
         </View>
       )}
       {plan.legs.map((l) => <LegRow key={l.id} leg={l} buying={legBuys(plan.kind, l)} />)}
       <FeeLines fees={plan.fees} />
       {extra}
-      <AppText tone="stone">{note}</AppText>
+      <AppText tone="faint">{note}</AppText>
       <Button onPress={() => setSigning(true)}>Continue to signing</Button>
       <Button variant="secondary" loading={discard.isPending} onPress={() => discard.mutate()}>Back</Button>
       <ErrorText error={discard.error} />

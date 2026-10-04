@@ -35,12 +35,12 @@ export default function BasketScreen() {
   return (
     <Screen refreshControl={refresh}>
       <View className="gap-2">
-        <AppText variant="h2" accessibilityRole="header">{b.version.name}</AppText>
+        <AppText variant="title" accessibilityRole="header">{b.version.name}</AppText>
         <StatusBadge tone={s.tone} label={s.label} />
-        <AppText tone="stone">Version {b.version.versionNumber} · published {new Date(b.version.publishedAt).toLocaleDateString()} · {b.organization.displayName ?? "Organization"}</AppText>
+        <AppText tone="faint">Version {b.version.versionNumber} · published {new Date(b.version.publishedAt).toLocaleDateString()} · {b.organization.displayName ?? "Organization"}</AppText>
       </View>
-      {notice ? <AppText className="rounded-xl border border-warning/40 p-3">{notice}</AppText> : null}
-      {b.hasAssetWarning ? <AppText className="rounded-xl border border-warning/40 p-3">One or more assets in this basket were paused or deprecated in the registry after publication.</AppText> : null}
+      {notice ? <AppText className="rounded-control border border-warning/40 p-3">{notice}</AppText> : null}
+      {b.hasAssetWarning ? <AppText className="rounded-control border border-warning/40 p-3">One or more assets in this basket were paused or deprecated in the registry after publication.</AppText> : null}
       <EligibilityNotices eligibility={b.eligibility} names={names} />
       <InvestSection slug={b.slug} />
       <Performance performance={b.performance} metrics={b.metrics} label={b.label} />

@@ -34,26 +34,26 @@ export function Performance({ performance, metrics, label }: Props) {
 
   return (
     <View className="gap-3">
-      <AppText variant="h3" accessibilityRole="header">Simulated model performance</AppText>
-      <AppText tone="stone">{label}</AppText>
+      <AppText variant="title" accessibilityRole="header">Simulated model performance</AppText>
+      <AppText tone="faint">{label}</AppText>
       <View className="flex-row flex-wrap gap-3">
         {TILES.map(([key, title, days]) => (
-          <View key={key} className="min-w-[45%] flex-1 rounded-xl border border-border-dark bg-slate p-3">
-            <AppText variant="label" tone="stone">{title} (net)</AppText>
-            <AppText className="font-sans-semibold">{tile(metrics.net[key], days)}</AppText>
-            {!unavailable && metrics.gross[key] !== null ? <AppText variant="label" tone="stone">Gross {formatFraction(metrics.gross[key], true)}</AppText> : null}
+          <View key={key} className="min-w-[45%] flex-1 rounded-control border border-line bg-surface p-3">
+            <AppText variant="label" tone="faint">{title} (net)</AppText>
+            <AppText className="font-semibold">{tile(metrics.net[key], days)}</AppText>
+            {!unavailable && metrics.gross[key] !== null ? <AppText variant="label" tone="faint">Gross {formatFraction(metrics.gross[key], true)}</AppText> : null}
           </View>
         ))}
-        <View className="min-w-[45%] flex-1 rounded-xl border border-border-dark bg-slate p-3">
-          <AppText variant="label" tone="stone">Volatility (annualized)</AppText>
-          <AppText className="font-sans-semibold">{tile(metrics.volatility, 30, false)}</AppText>
+        <View className="min-w-[45%] flex-1 rounded-control border border-line bg-surface p-3">
+          <AppText variant="label" tone="faint">Volatility (annualized)</AppText>
+          <AppText className="font-semibold">{tile(metrics.volatility, 30, false)}</AppText>
         </View>
-        <View className="min-w-[45%] flex-1 rounded-xl border border-border-dark bg-slate p-3">
-          <AppText variant="label" tone="stone">Max drawdown</AppText>
-          <AppText className="font-sans-semibold">{tile(metrics.maxDrawdown, 30, false)}</AppText>
+        <View className="min-w-[45%] flex-1 rounded-control border border-line bg-surface p-3">
+          <AppText variant="label" tone="faint">Max drawdown</AppText>
+          <AppText className="font-semibold">{tile(metrics.maxDrawdown, 30, false)}</AppText>
         </View>
       </View>
-      {unavailable ? <AppText>Performance unavailable</AppText> : !first || !end || pts.length < 2 ? <AppText tone="stone">The chart appears once there are two days of data.</AppText> : (
+      {unavailable ? <AppText>Performance unavailable</AppText> : !first || !end || pts.length < 2 ? <AppText tone="faint">The chart appears once there are two days of data.</AppText> : (
         <View className="gap-3">
           <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-2">
             {RANGES.map((r) => <Chip key={r.id} label={r.label} selected={range === r.id} onPress={() => setRange(r.id)} />)}
@@ -66,7 +66,7 @@ export function Performance({ performance, metrics, label }: Props) {
               <Path d={line("net")} fill="none" stroke={palette.mint} strokeWidth={2.5} />
             </Svg>
           </View>
-          <AppText variant="label" tone="stone">{first.day} to {end.day} · Net (solid, green) · Gross (dashed)</AppText>
+          <AppText variant="label" tone="faint">{first.day} to {end.day} · Net (solid, green) · Gross (dashed)</AppText>
         </View>
       )}
     </View>

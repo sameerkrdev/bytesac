@@ -67,29 +67,29 @@ export function LegFlow({ operationId }: { operationId: string }) {
       {o.legs.map((l) => <LegRow key={l.id} leg={l} buying={legBuys(o.kind, l)} />)}
 
       {failure && (
-        <View accessible accessibilityRole="alert" className="gap-1 rounded-xl border border-danger/40 p-3">
-          <AppText className="font-sans-semibold">{failure.title}</AppText>
-          {failure.message ? <AppText tone="stone">{failure.message}</AppText> : null}
+        <View accessible accessibilityRole="alert" className="gap-1 rounded-control border border-danger/40 p-3">
+          <AppText className="font-semibold">{failure.title}</AppText>
+          {failure.message ? <AppText tone="faint">{failure.message}</AppText> : null}
         </View>
       )}
       <ErrorText error={stop.error} />
-      {busy && <AppText accessibilityRole="progressbar" tone="stone">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
+      {busy && <AppText accessibilityRole="progressbar" tone="faint">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
       {fresh && (
-        <View className="gap-1 rounded-xl border border-border-dark p-3">
-          <AppText className="font-sans-semibold">Fresh quote for step {fresh.sequence}</AppText>
+        <View className="gap-1 rounded-control border border-line p-3">
+          <AppText className="font-semibold">Fresh quote for step {fresh.sequence}</AppText>
           {freshAmounts
-            ? <AppText tone="stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</AppText>
-            : <AppText tone="stone">Fee transfer of {formatUnits(fresh.amountIn, 6)} USDC (all fees together).</AppText>}
-          <AppText variant="label" tone="stone">The quote is valid for about a minute. {fresh.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</AppText>
+            ? <AppText tone="faint">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</AppText>
+            : <AppText tone="faint">Fee transfer of {formatUnits(fresh.amountIn, 6)} USDC (all fees together).</AppText>}
+          <AppText variant="label" tone="faint">The quote is valid for about a minute. {fresh.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</AppText>
         </View>
       )}
       {webOnly && active && (
-        <View className="gap-2 rounded-xl border border-border-dark p-3">
+        <View className="gap-2 rounded-control border border-line p-3">
           <AppText>This step involves Bitcoin, which is signed on the web.</AppText>
-          {handoff ? <Button onPress={() => void Linking.openURL(handoff)}>Continue on web</Button> : <AppText tone="stone">{WEB_HANDOFF_TEXT}</AppText>}
+          {handoff ? <Button onPress={() => void Linking.openURL(handoff)}>Continue on web</Button> : <AppText tone="faint">{WEB_HANDOFF_TEXT}</AppText>}
         </View>
       )}
-      {active && inFlight && !busy && <AppText tone="stone">Waiting for the network to confirm. This screen updates by itself.</AppText>}
+      {active && inFlight && !busy && <AppText tone="faint">Waiting for the network to confirm. This screen updates by itself.</AppText>}
 
       {active && !busy && (
         <View className="gap-3">

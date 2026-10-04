@@ -14,8 +14,8 @@ type Position = Portfolio["positions"][number];
 
 const Bar = ({ label, bps, color }: { label: string; bps: number | null; color: string }) => (
   <View className="flex-row items-center gap-2">
-    <AppText variant="label" tone="stone" className="w-14">{label}</AppText>
-    <View accessibilityElementsHidden importantForAccessibility="no" className="h-2 flex-1 rounded bg-border-dark"><View className={`h-2 rounded ${color}`} style={{ width: `${Math.min((bps ?? 0) / 100, 100)}%` }} /></View>
+    <AppText variant="label" tone="faint" className="w-14">{label}</AppText>
+    <View accessibilityElementsHidden importantForAccessibility="no" className="h-2 flex-1 rounded bg-line"><View className={`h-2 rounded ${color}`} style={{ width: `${Math.min((bps ?? 0) / 100, 100)}%` }} /></View>
     <AppText variant="label" className="w-14 text-right">{bps === null ? "n/a" : formatBps(bps)}</AppText>
   </View>
 );
@@ -55,38 +55,38 @@ export function PositionCard({ position: p, former = false, repairAsset, openOpe
     <Card className="gap-4">
       <View className="gap-1">
         <Pressable accessibilityRole="link" className="min-h-11 justify-center" onPress={() => router.push(`/basket/${p.basketSlug}`)}>
-          <AppText variant="h4" tone="mint" className="underline">{p.basketName}</AppText>
+          <AppText variant="heading" tone="accent" className="underline">{p.basketName}</AppText>
         </Pressable>
-        <AppText tone="stone">{former ? `Left ${new Date(p.closedAt ?? p.openedAt).toLocaleDateString()} · assets are in your wallets, outside the basket` : `Opened ${new Date(p.openedAt).toLocaleDateString()}`}</AppText>
+        <AppText tone="faint">{former ? `Left ${new Date(p.closedAt ?? p.openedAt).toLocaleDateString()} · assets are in your wallets, outside the basket` : `Opened ${new Date(p.openedAt).toLocaleDateString()}`}</AppText>
         <AppText variant="bodyLarge">{total === null ? "Value unavailable" : `$${total}`}</AppText>
       </View>
 
       {!former && (
         <View className="gap-3">
           <StatusBadge tone={h.tone === "info" ? "neutral" : h.tone} label={h.label} />
-          {skipped && p.latestVersion ? <AppText variant="label" tone="stone">You skipped version {p.latestVersion.number}</AppText> : null}
-          <AppText variant="label" tone="stone">Applied version {p.appliedVersionNumber}</AppText>
+          {skipped && p.latestVersion ? <AppText variant="label" tone="faint">You skipped version {p.latestVersion.number}</AppText> : null}
+          <AppText variant="label" tone="faint">Applied version {p.appliedVersionNumber}</AppText>
           {positionActions(p).map(action)}
         </View>
       )}
 
-      {short.length > 0 && <AppText className="rounded-xl border border-warning/40 p-3">Your wallet holds less {short.map((x) => x.symbol).join(", ")} than Bytesac recorded for this basket, so part of it may have been moved. Shortfalls are shared across your baskets in proportion. Nothing is bought or sold automatically.</AppText>}
-      {surplus.length > 0 && <AppText tone="stone" className="rounded-xl border border-border-dark p-3">Extra {surplus.map((x) => x.symbol).join(", ")} in your wallet is outside your baskets.</AppText>}
+      {short.length > 0 && <AppText className="rounded-control border border-warning/40 p-3">Your wallet holds less {short.map((x) => x.symbol).join(", ")} than Bytesac recorded for this basket, so part of it may have been moved. Shortfalls are shared across your baskets in proportion. Nothing is bought or sold automatically.</AppText>}
+      {surplus.length > 0 && <AppText tone="faint" className="rounded-control border border-line p-3">Extra {surplus.map((x) => x.symbol).join(", ")} in your wallet is outside your baskets.</AppText>}
 
       <View className="gap-3">
         {p.holdings.map((x) => (
-          <View key={x.deploymentId} className="gap-1 border-t border-border-dark pt-3">
+          <View key={x.deploymentId} className="gap-1 border-t border-line pt-3">
             <View className="flex-row flex-wrap justify-between gap-2">
-              <AppText>{x.symbol} <AppText tone="stone">on {ASSET_CHAINS[x.chain].label}</AppText></AppText>
+              <AppText>{x.symbol} <AppText tone="faint">on {ASSET_CHAINS[x.chain].label}</AppText></AppText>
               <AppText>{formatUnits(x.quantity, x.decimals)} {x.symbol}{x.valueUsd !== null ? ` · $${x.valueUsd}` : ""}</AppText>
             </View>
-            {!former && <><Bar label="Actual" bps={x.actualBps} color="bg-mint" /><Bar label="Target" bps={x.targetBps} color="bg-stone" /></>}
+            {!former && <><Bar label="Actual" bps={x.actualBps} color="bg-primary" /><Bar label="Target" bps={x.targetBps} color="bg-ink-faint" /></>}
             {x.reconciliation === "SHORT" && <StatusBadge tone="warning" label="Wallet holds less than recorded" />}
             {x.reconciliation === "SURPLUS" && <StatusBadge tone="neutral" label="Extra outside baskets" />}
           </View>
         ))}
         {BigInt(p.cashMicro) > 0n && (
-          <View className="flex-row justify-between gap-2 border-t border-border-dark pt-3"><AppText>Cash (USDC)</AppText><AppText>{formatUnits(p.cashMicro, 6)} USDC</AppText></View>
+          <View className="flex-row justify-between gap-2 border-t border-line pt-3"><AppText>Cash (USDC)</AppText><AppText>{formatUnits(p.cashMicro, 6)} USDC</AppText></View>
         )}
       </View>
 

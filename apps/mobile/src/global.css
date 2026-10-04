@@ -3,31 +3,102 @@
 @import "tailwindcss/utilities.css";
 @import "nativewind/theme";
 
+/*
+ * Bytesac mobile theme. Colour roles mirror @repo/design-tokens `themes` (checked by test/theme.test.ts); these are the
+ * light values. The dark values are applied at runtime by ThemeProvider (src/lib/theme.tsx) through NativeWind's
+ * VariableContextProvider, so every `bg-canvas`, `text-ink`… follows the chosen theme. Components use roles, never hex.
+ */
 @theme {
-  --color-space: #0B1117;
-  --color-slate: #1F2937;
-  --color-stone: #6B7280;
-  --color-sage: #10B981;
-  --color-mint: #6EE7B7;
-  --color-sand: #EEDCC8;
-  --color-ivory: #FAFAF8;
-  --color-card: #111B24;
-  --color-muted-foreground: #A1AAB5;
-  --color-success: #22C55E;
-  --color-warning: #F59E0B;
-  --color-danger: #F87171;
-  --color-info: #60A5FA;
-  --color-border-dark: #26323D;
+  --color-canvas: #F6F8FB;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #F0F3F8;
+  --color-surface-sunken: #E9EEF5;
+  --color-line: #E2E7EF;
+  --color-line-strong: #CBD3DF;
+  --color-ink: #0F1E3A;
+  --color-ink-muted: #56627A;
+  --color-ink-faint: #68728A;
+  --color-primary: #1C2B4A;
+  --color-primary-hover: #2E4470;
+  --color-primary-ink: #FFFFFF;
+  --color-accent: #3D63D9;
+  --color-accent-soft: #E8EEFC;
+  --color-sky1: #EEF4FA;
+  --color-sky2: #DCE8F4;
+  --color-sky3: #BFD5EC;
+  --color-sky-top: #78ADE2;
+  --color-sky-mid: #A9CBEC;
+  --color-sky-low: #DCEAF7;
+  --color-glass: rgba(255, 255, 255, 0.62);
+  --color-glass-line: rgba(255, 255, 255, 0.78);
+  --color-success: #1F8A4C;
+  --color-success-soft: #E3F4EA;
+  --color-warning: #A35F0F;
+  --color-warning-soft: #FBF0DD;
+  --color-danger: #C2453D;
+  --color-danger-soft: #FBE7E5;
+  --color-info: #3D63D9;
+  --color-info-soft: #E8EEFC;
+  --color-focus: #3D63D9;
+  --color-overlay: rgba(15, 30, 58, 0.32);
+  --color-data1: #1C2B4A;
+  --color-data2: #3D63D9;
+  --color-data3: #6F93D6;
+  --color-data4: #A9C2E6;
+  --color-data5: #4F6B8F;
+  --color-data6: #C9D5E3;
 
-  --font-display: "Manrope_700Bold";
-  --font-display-semibold: "Manrope_600SemiBold";
-  --font-sans: "Inter_400Regular";
-  --font-sans-medium: "Inter_500Medium";
-  --font-sans-semibold: "Inter_600SemiBold";
+  --font-light: "Geist_300Light";
+  --font-sans: "Geist_400Regular";
+  --font-medium: "Geist_500Medium";
+  --font-semibold: "Geist_600SemiBold";
+  --font-mono: "GeistMono_400Regular";
+  --font-mono-medium: "GeistMono_500Medium";
 
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --radius-2xl: 1.5rem;
+  --radius-control: 12px;
+  --radius-tile: 14px;
+  --radius-card: 20px;
+  --radius-shell: 28px;
+  --radius-pill: 999px;
+}
+
+:root {
+  --color-canvas: #F6F8FB;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #F0F3F8;
+  --color-surface-sunken: #E9EEF5;
+  --color-line: #E2E7EF;
+  --color-line-strong: #CBD3DF;
+  --color-ink: #0F1E3A;
+  --color-ink-muted: #56627A;
+  --color-ink-faint: #68728A;
+  --color-primary: #1C2B4A;
+  --color-primary-hover: #2E4470;
+  --color-primary-ink: #FFFFFF;
+  --color-accent: #3D63D9;
+  --color-accent-soft: #E8EEFC;
+  --color-sky1: #EEF4FA;
+  --color-sky2: #DCE8F4;
+  --color-sky3: #BFD5EC;
+  --color-sky-top: #78ADE2;
+  --color-sky-mid: #A9CBEC;
+  --color-sky-low: #DCEAF7;
+  --color-glass: rgba(255, 255, 255, 0.62);
+  --color-glass-line: rgba(255, 255, 255, 0.78);
+  --color-success: #1F8A4C;
+  --color-success-soft: #E3F4EA;
+  --color-warning: #A35F0F;
+  --color-warning-soft: #FBF0DD;
+  --color-danger: #C2453D;
+  --color-danger-soft: #FBE7E5;
+  --color-info: #3D63D9;
+  --color-info-soft: #E8EEFC;
+  --color-focus: #3D63D9;
+  --color-overlay: rgba(15, 30, 58, 0.32);
+  --color-data1: #1C2B4A;
+  --color-data2: #3D63D9;
+  --color-data3: #6F93D6;
+  --color-data4: #A9C2E6;
+  --color-data5: #4F6B8F;
+  --color-data6: #C9D5E3;
 }

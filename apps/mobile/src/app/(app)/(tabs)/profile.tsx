@@ -16,7 +16,7 @@ export default function ProfileScreen() {
   const { data: me, isError, refetch } = useQuery({ queryKey: ["me"], queryFn: () => api.me() });
   return (
     <Screen>
-      <AppText variant="h1" accessibilityRole="header">Profile</AppText>
+      <AppText variant="display" accessibilityRole="header">Profile</AppText>
       {isError && <Button variant="secondary" onPress={() => void refetch()}>Retry loading profile</Button>}
       {me && (
         <>

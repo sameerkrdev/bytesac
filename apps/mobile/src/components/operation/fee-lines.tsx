@@ -11,14 +11,14 @@ export function FeeLines({ fees }: { fees: OperationFeeView[] }) {
       {lines.map((l, n) => (
         <View key={n} className="flex-row justify-between gap-3">
           <AppText className="flex-1">{l.label}</AppText>
-          <AppText tone={l.waived ? "stone" : "ivory"} className="shrink">{l.amount}</AppText>
+          <AppText tone={l.waived ? "faint" : "ink"} className="shrink">{l.amount}</AppText>
         </View>
       ))}
-      <View className="flex-row justify-between gap-3 border-t border-border-dark pt-1">
-        <AppText className="font-sans-semibold">Total fees</AppText>
-        <AppText className="font-sans-semibold">{total}</AppText>
+      <View className="flex-row justify-between gap-3 border-t border-line pt-1">
+        <AppText className="font-semibold">Total fees</AppText>
+        <AppText className="font-semibold">{total}</AppText>
       </View>
-      <AppText variant="label" tone="stone">Fees are not refunded if the operation does not complete.</AppText>
+      <AppText variant="label" tone="faint">Fees are not refunded if the operation does not complete.</AppText>
     </View>
   );
 }

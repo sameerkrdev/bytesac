@@ -41,10 +41,10 @@ function sameAddress(chain: string, a: string, b: string): boolean {
 function Step({ n, done, label }: { n: number; done: boolean; label: string }) {
   return (
     <View accessible className="flex-row items-center gap-2" accessibilityLabel={`${label}${done ? ", complete" : ""}`}>
-      <View className={`h-6 w-6 items-center justify-center rounded-full border ${done ? "border-sage bg-sage" : "border-border-dark"}`}>
-        {done ? <Check size={14} color={palette.space} /> : <AppText variant="label" tone="stone">{String(n)}</AppText>}
+      <View className={`h-6 w-6 items-center justify-center rounded-full border ${done ? "border-primary bg-primary" : "border-line"}`}>
+        {done ? <Check size={14} color={palette.space} /> : <AppText variant="label" tone="faint">{String(n)}</AppText>}
       </View>
-      <AppText variant="body" tone={done ? "ivory" : "stone"}>{label}</AppText>
+      <AppText variant="body" tone={done ? "ink" : "faint"}>{label}</AppText>
     </View>
   );
 }
@@ -52,8 +52,8 @@ function Step({ n, done, label }: { n: number; done: boolean; label: string }) {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center justify-between">
-      <AppText tone="stone">{label}</AppText>
-      <AppText className="font-sans-medium">{value}</AppText>
+      <AppText tone="faint">{label}</AppText>
+      <AppText className="font-medium">{value}</AppText>
     </View>
   );
 }
@@ -111,10 +111,10 @@ export function VerifyWalletCard(p: Props) {
         <Step n={1} done={p.network !== "none"} label="Connected" />
         <Step n={2} done={p.state.step === "done"} label="Sign to verify" />
       </View>
-      <AppText variant="h3" accessibilityRole="header">Verify your wallet</AppText>
+      <AppText variant="title" accessibilityRole="header">Verify your wallet</AppText>
 
       {p.network === "unsupported" ? (
-        <View accessibilityRole="alert" className="gap-3 rounded-xl border border-warning p-4">
+        <View accessibilityRole="alert" className="gap-3 rounded-control border border-warning p-4">
           <AppText>{"Your wallet is on a network Bytesac doesn't support yet. Switch to a supported network: Ethereum, Base, BNB Chain, Arbitrum or Solana."}</AppText>
           <Button onPress={p.onSwitchNetwork}>Switch network</Button>
         </View>
@@ -124,9 +124,9 @@ export function VerifyWalletCard(p: Props) {
             <Row label="Wallet" value={p.account.walletName ?? "Wallet"} />
             <Row label="Network" value={CHAINS[p.account.chain].label} />
             <View className="flex-row items-center justify-between">
-              <AppText tone="stone">Address</AppText>
+              <AppText tone="faint">Address</AppText>
               <View className="flex-row items-center gap-1">
-                <AppText className="font-sans-medium">{shortAddress(p.account.address)}</AppText>
+                <AppText className="font-medium">{shortAddress(p.account.address)}</AppText>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Copy address"
@@ -138,13 +138,13 @@ export function VerifyWalletCard(p: Props) {
               </View>
             </View>
           </View>
-          <View className="flex-row gap-3 rounded-xl border border-border-dark bg-space p-4">
+          <View className="flex-row gap-3 rounded-control border border-line bg-canvas p-4">
             <ShieldCheck size={20} color={palette.mint} />
             <AppText className="flex-1">{"You're signing a message to prove you control this address. It does not authorize any transaction or spending."}</AppText>
           </View>
           {err && (
-            <View accessibilityRole="alert" className="gap-1 rounded-xl border border-danger p-4">
-              <AppText className="font-sans-semibold">{err.title}</AppText>
+            <View accessibilityRole="alert" className="gap-1 rounded-control border border-danger p-4">
+              <AppText className="font-semibold">{err.title}</AppText>
               <AppText tone="muted">{err.message}</AppText>
             </View>
           )}

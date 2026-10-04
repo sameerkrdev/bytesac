@@ -28,8 +28,8 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc }: { b
 
   return (
     <View className="gap-5">
-      <AppText variant="h2" accessibilityRole="header">Invest in {name}</AppText>
-      <AppText tone="stone">You sign every step in your own wallets. Bytesac never moves your funds on its own.</AppText>
+      <AppText variant="title" accessibilityRole="header">Invest in {name}</AppText>
+      <AppText tone="faint">You sign every step in your own wallets. Bytesac never moves your funds on its own.</AppText>
       {plan ? (
         <PlanFlow plan={plan} onDiscarded={() => setPlan(null)}
           note={`Outputs are estimates; each step is protected by a minimum you will receive (${slippage}% slippage). Prices are re-quoted when you sign each step.`} />

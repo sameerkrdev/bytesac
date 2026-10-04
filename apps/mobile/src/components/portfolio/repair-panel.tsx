@@ -24,7 +24,7 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
   const preview = useMutation({ mutationFn: () => api.repair({ deploymentId: repair.asset, slippageBps: SLIPPAGE_DEFAULT_BPS, idempotencyKey: key }), onSuccess: setPlan });
   return (
     <View className="gap-4">
-      <AppText tone="stone">Buy back {exact(repair.totalShortfall, decimals)} {repair.symbol} with USDC from your wallet so every basket is fully backed again. You review the cost and sign each step.</AppText>
+      <AppText tone="faint">Buy back {exact(repair.totalShortfall, decimals)} {repair.symbol} with USDC from your wallet so every basket is fully backed again. You review the cost and sign each step.</AppText>
       {plan
         ? <PlanFlow plan={plan} onDiscarded={() => setPlan(null)} note="Prices are re-quoted when you sign each step." />
         : <Button loading={preview.isPending} onPress={() => preview.mutate()}>Get cost preview</Button>}
@@ -47,14 +47,14 @@ function Sync({ repair, decimals, onChanged }: { repair: Repair; decimals: numbe
   const stale = save.error instanceof ApiError && save.error.code === "SHORTFALL_CHANGED";
   return (
     <View className="gap-4">
-      <AppText tone="stone">Use this if you moved {repair.symbol} out of your wallet on purpose. Your baskets will record less {repair.symbol}; nothing is bought or sold.</AppText>
+      <AppText tone="faint">Use this if you moved {repair.symbol} out of your wallet on purpose. Your baskets will record less {repair.symbol}; nothing is bought or sold.</AppText>
       {repair.positions.map((x, n) => (
         <TextField key={x.positionId} label={`${x.basketSlug}: reduce by (${repair.symbol})`} value={text[x.positionId] ?? ""} keyboardType="decimal-pad"
           error={raw[n] === null ? "Enter a number within the decimals of this asset." : null} onChangeText={(t) => setText({ ...text, [x.positionId]: t })} />
       ))}
-      <AppText tone={sum === total ? "mint" : "stone"}>Must add up to {exact(repair.totalShortfall, decimals)} {repair.symbol}</AppText>
+      <AppText tone={sum === total ? "accent" : "faint"}>Must add up to {exact(repair.totalShortfall, decimals)} {repair.symbol}</AppText>
       <Button disabled={!valid} loading={save.isPending} onPress={() => save.mutate()}>Save</Button>
-      {save.isSuccess && <AppText tone="mint">Saved. Your baskets now match your wallet.</AppText>}
+      {save.isSuccess && <AppText tone="accent">Saved. Your baskets now match your wallet.</AppText>}
       {!stale && <ErrorText error={save.error} />}
     </View>
   );
@@ -77,13 +77,13 @@ export function RepairPanel({ asset }: { asset: string }) {
 
   return (
     <View className="gap-5">
-      <AppText variant="h2" accessibilityRole="header">Repair {repair.symbol}</AppText>
-      <AppText tone="stone">Your wallet holds {exact(repair.totalShortfall, decimals)} {repair.symbol} less than your baskets record.</AppText>
-      {changed && <AppText accessibilityRole="alert" className="rounded-xl border border-warning/40 p-3">Your holdings changed — review the new figures</AppText>}
+      <AppText variant="title" accessibilityRole="header">Repair {repair.symbol}</AppText>
+      <AppText tone="faint">Your wallet holds {exact(repair.totalShortfall, decimals)} {repair.symbol} less than your baskets record.</AppText>
+      {changed && <AppText accessibilityRole="alert" className="rounded-control border border-warning/40 p-3">Your holdings changed — review the new figures</AppText>}
       {repair.positions.map((x) => (
-        <View key={x.positionId} className="gap-1 border-t border-border-dark pt-2">
-          <AppText className="font-sans-semibold">{x.basketSlug}</AppText>
-          <AppText variant="label" tone="stone">Recorded {exact(x.ledger, decimals)} · allocated {exact((BigInt(x.ledger) - BigInt(x.shortfall)).toString(), decimals)} · short {exact(x.shortfall, decimals)}</AppText>
+        <View key={x.positionId} className="gap-1 border-t border-line pt-2">
+          <AppText className="font-semibold">{x.basketSlug}</AppText>
+          <AppText variant="label" tone="faint">Recorded {exact(x.ledger, decimals)} · allocated {exact((BigInt(x.ledger) - BigInt(x.shortfall)).toString(), decimals)} · short {exact(x.shortfall, decimals)}</AppText>
         </View>
       ))}
       <View accessibilityRole="radiogroup" className="flex-row gap-2">

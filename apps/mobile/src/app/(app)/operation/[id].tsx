@@ -12,8 +12,8 @@ export default function OperationScreen() {
   const op = useQuery({ queryKey: ["operation", id], queryFn: () => api.getOperation(id) });
   return (
     <Screen>
-      <AppText variant="h2" accessibilityRole="header">{op.data ? OPERATION_KIND[op.data.kind] : "Operation"}</AppText>
-      <AppText tone="stone">You sign every step in your own wallets.</AppText>
+      <AppText variant="title" accessibilityRole="header">{op.data ? OPERATION_KIND[op.data.kind] : "Operation"}</AppText>
+      <AppText tone="faint">You sign every step in your own wallets.</AppText>
       <LegFlow operationId={id} />
     </Screen>
   );

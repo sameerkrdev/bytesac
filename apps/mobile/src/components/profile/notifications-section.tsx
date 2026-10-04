@@ -23,14 +23,14 @@ export function NotificationsSection() {
   const m = useMutation({ mutationFn: (p: Partial<NotificationPreferences>) => api.updatePreferences(p), onSuccess: (next) => qc.setQueryData(["prefs"], next) });
   return (
     <Card className="gap-4">
-      <AppText variant="h3" accessibilityRole="header">Notifications</AppText>
-      {isLoading && <AppText tone="stone">Loading preferences…</AppText>}
+      <AppText variant="title" accessibilityRole="header">Notifications</AppText>
+      {isLoading && <AppText tone="faint">Loading preferences…</AppText>}
       {isError && <AppText tone="danger" accessibilityRole="alert">{"Couldn't load preferences. Try again later."}</AppText>}
       {data && ITEMS.map((it) => (
         <View key={it.key} className="min-h-11 flex-row items-center justify-between gap-4">
           <View className="flex-1">
             <AppText>{it.label}</AppText>
-            <AppText variant="label" tone="stone">{it.hint}</AppText>
+            <AppText variant="label" tone="faint">{it.hint}</AppText>
           </View>
           <Switch accessibilityLabel={it.label} accessibilityHint={it.hint} value={data[it.key]} disabled={m.isPending}
             trackColor={{ true: palette.sage, false: palette.slate }} thumbColor={palette.ivory}
@@ -38,7 +38,7 @@ export function NotificationsSection() {
         </View>
       ))}
       {m.isError && <AppText tone="danger" accessibilityRole="alert">{describeError(m.error instanceof ApiError ? m.error.code : "INTERNAL").title}</AppText>}
-      <AppText variant="label" tone="stone">Security and account notices are always sent.</AppText>
+      <AppText variant="label" tone="faint">Security and account notices are always sent.</AppText>
     </Card>
   );
 }

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 export function SessionExpiredBanner() {
   return (
-    <View accessibilityRole="alert" className="rounded-xl border border-info bg-slate p-3">
+    <View accessibilityRole="alert" className="rounded-control border border-info bg-surface p-3">
       <AppText>Your session expired. Sign in with your wallet again.</AppText>
     </View>
   );

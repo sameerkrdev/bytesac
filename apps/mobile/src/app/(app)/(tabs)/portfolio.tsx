@@ -15,7 +15,7 @@ export default function PortfolioScreen() {
   const p = q.data;
   return (
     <Screen refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => void q.refetch()} tintColor={palette.mint} />}>
-      <AppText variant="h1" accessibilityRole="header">Portfolio</AppText>
+      <AppText variant="display" accessibilityRole="header">Portfolio</AppText>
       {q.isPending && <LoadingState />}
       {q.isError && !p && <ErrorState error={q.error} onRetry={() => void q.refetch()} />}
       {q.isError && p && <StaleNotice>Could not refresh. Showing what loaded earlier.</StaleNotice>}
@@ -23,11 +23,11 @@ export default function PortfolioScreen() {
         <>
           {p.openOperations.length > 0 && (
             <>
-              <AppText variant="h3" accessibilityRole="header">Open operations</AppText>
+              <AppText variant="title" accessibilityRole="header">Open operations</AppText>
               {p.openOperations.map((o) => <OperationCard key={o.id} operation={o} open />)}
             </>
           )}
-          <AppText variant="h3" accessibilityRole="header">Positions</AppText>
+          <AppText variant="title" accessibilityRole="header">Positions</AppText>
           {p.positions.length === 0
             ? <EmptyState title="You have no open positions. Find a basket to invest in."><Button variant="secondary" onPress={() => router.push("/(app)/(tabs)/discover")}>Discover baskets</Button></EmptyState>
             : p.positions.map((x) => (
@@ -37,13 +37,13 @@ export default function PortfolioScreen() {
             ))}
           {p.formerPositions.length > 0 && (
             <>
-              <AppText variant="h3" accessibilityRole="header">Former positions</AppText>
+              <AppText variant="title" accessibilityRole="header">Former positions</AppText>
               {p.formerPositions.map((x) => <PositionCard key={x.id} position={x} former />)}
             </>
           )}
           {p.history.length > 0 && (
             <>
-              <AppText variant="h3" accessibilityRole="header">History</AppText>
+              <AppText variant="title" accessibilityRole="header">History</AppText>
               {p.history.map((o) => <OperationCard key={o.id} operation={o} />)}
             </>
           )}

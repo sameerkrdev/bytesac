@@ -28,7 +28,7 @@ export default function DiscoverScreen() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={q.isRefetching && !q.isFetchingNextPage} onRefresh={() => void q.refetch()} tintColor={palette.mint} />}>
-      <AppText variant="h1" accessibilityRole="header">Discover</AppText>
+      <AppText variant="display" accessibilityRole="header">Discover</AppText>
       <AiSearch onUseFilters={apply} />
       <Button variant="secondary" onPress={() => setShowFilters(!showFilters)}>{showFilters ? "Hide filters" : "Filters"}</Button>
       {showFilters && <Filters key={formKey} filters={filters} onApply={apply} />}

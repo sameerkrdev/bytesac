@@ -1,19 +1,20 @@
-import { AlertTriangle, CheckCircle2, CircleDashed, XCircle } from "lucide-react-native";
 import { View } from "react-native";
-import { palette, semantic } from "@repo/design-tokens";
 import { AppText } from "./app-text";
+
 const TONES = {
-  success: { Icon: CheckCircle2, color: semantic.success },
-  warning: { Icon: AlertTriangle, color: semantic.warning },
-  danger: { Icon: XCircle, color: semantic.danger },
-  neutral: { Icon: CircleDashed, color: palette.stone },
-} as const;
+  success: { box: "bg-success-soft", dot: "bg-success", text: "success" as const },
+  warning: { box: "bg-warning-soft", dot: "bg-warning", text: "warning" as const },
+  danger: { box: "bg-danger-soft", dot: "bg-danger", text: "danger" as const },
+  neutral: { box: "bg-surface-muted", dot: "bg-ink-faint", text: "muted" as const },
+};
+
+/** A soft status pill with a dot, like the web's. The label carries the meaning; colour only reinforces it. */
 export function StatusBadge({ tone, label }: { tone: keyof typeof TONES; label: string }) {
-  const { Icon, color } = TONES[tone];
+  const t = TONES[tone];
   return (
-    <View className="flex-row items-center gap-1 self-start rounded-lg border border-border-dark px-2 py-0.5">
-      <Icon size={14} color={color} accessibilityElementsHidden importantForAccessibility="no" />
-      <AppText variant="label" style={{ color }}>{label}</AppText>
+    <View accessible accessibilityLabel={label} className={`flex-row items-center gap-1.5 self-start rounded-pill px-2.5 py-1 ${t.box}`}>
+      <View className={`size-1.5 rounded-full ${t.dot}`} />
+      <AppText variant="label" tone={t.text}>{label}</AppText>
     </View>
   );
 }

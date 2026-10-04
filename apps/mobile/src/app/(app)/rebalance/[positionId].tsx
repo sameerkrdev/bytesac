@@ -48,36 +48,36 @@ export default function RebalanceScreen() {
 
   return (
     <Screen>
-      <AppText variant="h2" accessibilityRole="header">{target === "latest" ? "Review update" : "Rebalance to target"}</AppText>
-      <AppText tone="stone">{p.basketName}</AppText>
+      <AppText variant="title" accessibilityRole="header">{target === "latest" ? "Review update" : "Rebalance to target"}</AppText>
+      <AppText tone="faint">{p.basketName}</AppText>
 
       {target === "latest" && latest && (
         <Card className="gap-2">
-          <AppText variant="h4">Version {p.appliedVersionNumber} to version {latest.number}</AppText>
+          <AppText variant="heading">Version {p.appliedVersionNumber} to version {latest.number}</AppText>
           {latest.rationale ? <AppText>{"Manager's reason: "}{latest.rationale}</AppText> : null}
-          {lines.length === 0 ? <AppText tone="stone">No changes.</AppText> : lines.map((l) => <AppText key={l}>{`• ${l}`}</AppText>)}
+          {lines.length === 0 ? <AppText tone="faint">No changes.</AppText> : lines.map((l) => <AppText key={l}>{`• ${l}`}</AppText>)}
         </Card>
       )}
 
       <View className="gap-2">
-        <AppText variant="h4">Current and target weights</AppText>
+        <AppText variant="heading">Current and target weights</AppText>
         {p.holdings.map((h) => (
           <View key={h.deploymentId} className="flex-row justify-between gap-2">
             <AppText>{h.symbol}</AppText>
-            <AppText tone="stone">now {h.actualBps === null ? "n/a" : formatBps(h.actualBps)} · target {h.targetBps === null ? "n/a" : formatBps(h.targetBps)}</AppText>
+            <AppText tone="faint">now {h.actualBps === null ? "n/a" : formatBps(h.actualBps)} · target {h.targetBps === null ? "n/a" : formatBps(h.targetBps)}</AppText>
           </View>
         ))}
       </View>
 
-      {aligned ? <AppText className="rounded-xl border border-border-dark p-3">Already aligned with this version — recorded.</AppText> : plan ? (
+      {aligned ? <AppText className="rounded-control border border-line p-3">Already aligned with this version — recorded.</AppText> : plan ? (
         <PlanFlow plan={plan} onDiscarded={() => setPlan(null)}
-          extra={feeLeg ? <AppText variant="label" tone="stone">{`Fees are ${fromCash ? "paid from this basket's sale proceeds" : "paid from your free USDC"}.`}</AppText> : null}
+          extra={feeLeg ? <AppText variant="label" tone="faint">{`Fees are ${fromCash ? "paid from this basket's sale proceeds" : "paid from your free USDC"}.`}</AppText> : null}
           note={`Sells run first, buys are resized to what your sales actually return. Outputs are estimates, protected by a minimum per step (${SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.`} />
       ) : (
         <View className="gap-3">
           <Button loading={create.isPending} onPress={() => create.mutate()}>Create plan</Button>
           {target === "latest" && latest && <Button variant="secondary" loading={skip.isPending} onPress={() => skip.mutate(latest.id)}>Skip this version</Button>}
-          {target === "latest" && <AppText variant="label" tone="stone">Skipping changes nothing in your wallet.</AppText>}
+          {target === "latest" && <AppText variant="label" tone="faint">Skipping changes nothing in your wallet.</AppText>}
         </View>
       )}
 
