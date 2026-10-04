@@ -1,18 +1,21 @@
-import { AlertTriangle, CheckCircle2, CircleDashed, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const TONES = {
-  success: { icon: CheckCircle2, cls: "text-success border-success/40" },
-  warning: { icon: AlertTriangle, cls: "text-warning border-warning/40" },
-  danger: { icon: XCircle, cls: "text-danger border-danger/40" },
-  neutral: { icon: CircleDashed, cls: "text-muted-foreground border-border" },
-} as const;
+export type Tone = "success" | "warning" | "danger" | "info" | "neutral";
 
-export function StatusBadge({ tone, label }: { tone: keyof typeof TONES; label: string }) {
-  const { icon: Icon, cls } = TONES[tone];
+const TONES: Record<Tone, { dot: string; pill: string }> = {
+  success: { dot: "bg-success", pill: "bg-success-soft text-success" },
+  warning: { dot: "bg-warning", pill: "bg-warning-soft text-warning" },
+  danger: { dot: "bg-danger", pill: "bg-danger-soft text-danger" },
+  info: { dot: "bg-info", pill: "bg-info-soft text-info" },
+  neutral: { dot: "bg-ink-faint", pill: "bg-surface-muted text-ink-muted" },
+};
+
+/** A pastel status pill with a dot. Tones come from the @repo/app-core label maps; the label carries the meaning, colour only supports it. */
+export function StatusBadge({ tone, label, className }: { tone: Tone; label: string; className?: string }) {
+  const t = TONES[tone];
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium", cls)}>
-      <Icon aria-hidden className="size-3.5" />
+    <span className={cn("inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-xs leading-none font-medium whitespace-nowrap", t.pill, className)}>
+      <span aria-hidden className={cn("size-1.5 rounded-full", t.dot)} />
       {label}
     </span>
   );

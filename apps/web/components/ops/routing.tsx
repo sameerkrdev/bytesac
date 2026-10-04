@@ -32,12 +32,12 @@ export function Routing({ client = api }: { client?: Client }) {
   if (!view.data) return <LoadingState />;
   const table = (kind: "bridge" | "exchange", title: string, tools: Tool[]) => (
     <section aria-label={title} className="space-y-2">
-      <h2 className="font-display text-xl font-semibold text-ivory">{title}</h2>
-      <ul className="divide-y divide-border-dark">
+      <h2 className="type-heading text-ink">{title}</h2>
+      <ul className="divide-y divide-line">
         {tools.map((t) => (
-          <li key={t.key} className="flex flex-wrap items-center gap-3 py-2 text-sm text-ivory">
-            <span className="font-medium">{t.name}</span><span className="font-mono text-xs text-stone">{t.key}</span>
-            {t.denyEntryId ? <span className="text-xs font-medium text-warning">Denied</span> : <span className="text-xs text-stone">Allowed</span>}
+          <li key={t.key} className="flex flex-wrap items-center gap-3 py-2 text-sm text-ink">
+            <span className="font-medium">{t.name}</span><span className="font-mono text-xs text-ink-muted">{t.key}</span>
+            {t.denyEntryId ? <span className="text-xs font-medium text-warning">Denied</span> : <span className="text-xs text-ink-muted">Allowed</span>}
             {isAdmin && (t.denyEntryId
               ? <Button type="button" variant="secondary" className="ml-auto min-h-11" disabled={allow.isPending} onClick={() => allow.mutate(t.denyEntryId!)}>Allow {t.name}</Button>
               : <Button type="button" variant="secondary" className="ml-auto min-h-11" onClick={() => { setPick({ kind, tool: t }); setInvalid(null); }}>Deny {t.name}</Button>)}
@@ -49,21 +49,21 @@ export function Routing({ client = api }: { client?: Client }) {
   return (
     <div className="space-y-8">
       <PageHeader title="Routing" />
-      <p className="text-sm text-stone">A denied bridge or exchange is left out of every estimate and quote within a minute. It only narrows the routes; it never moves anything.</p>
-      {!isAdmin && <p className="text-xs text-stone">Only an ops admin can deny or allow a tool.</p>}
+      <p className="text-sm text-ink-muted">A denied bridge or exchange is left out of every estimate and quote within a minute. It only narrows the routes; it never moves anything.</p>
+      {!isAdmin && <p className="text-xs text-ink-muted">Only an ops admin can deny or allow a tool.</p>}
       {pick && (
-        <form className="grid max-w-xl gap-3 rounded-xl border border-border-dark p-3" onSubmit={(e) => {
+        <form className="grid max-w-xl gap-3 rounded-tile border border-line p-3" onSubmit={(e) => {
           e.preventDefault();
           const parsed = routePolicyInputSchema.safeParse({ kind: pick.kind, toolKey: pick.tool.key, reason });
           setInvalid(parsed.success ? null : (parsed.error.issues[0]?.message ?? "Add a reason."));
           if (parsed.success) deny.mutate(parsed.data);
         }}>
-          <label className="space-y-1 text-xs font-medium text-ivory">Reason for denying {pick.tool.name}
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} className="min-h-11 bg-space text-ivory" />
+          <label className="space-y-1 text-xs font-medium text-ink">Reason for denying {pick.tool.name}
+            <Input value={reason} onChange={(e) => setReason(e.target.value)}  />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" className="min-h-11" disabled={deny.isPending}>Confirm deny</Button>
-            <Button type="button" variant="secondary" className="min-h-11" onClick={() => setPick(null)}>Cancel</Button>
+            <Button type="submit"  disabled={deny.isPending}>Confirm deny</Button>
+            <Button type="button" variant="secondary"  onClick={() => setPick(null)}>Cancel</Button>
           </div>
           {invalid && <p role="alert" className="text-xs text-danger">{invalid}</p>}
         </form>
@@ -72,9 +72,9 @@ export function Routing({ client = api }: { client?: Client }) {
       {table("bridge", "Bridges", view.data.bridges)}
       {table("exchange", "Exchanges", view.data.exchanges)}
       <section aria-label="History" className="space-y-2">
-        <h2 className="font-display text-xl font-semibold text-ivory">History</h2>
-        {view.data.entries.length === 0 ? <p className="text-sm text-stone">Nothing denied yet.</p> : (
-          <ul className="space-y-1 text-sm text-stone">
+        <h2 className="type-heading text-ink">History</h2>
+        {view.data.entries.length === 0 ? <p className="text-sm text-ink-muted">Nothing denied yet.</p> : (
+          <ul className="space-y-1 text-sm text-ink-muted">
             {view.data.entries.map((x) => <li key={x.id}>{x.kind} {x.toolKey}: denied {new Date(x.createdAt).toLocaleDateString()} · {x.reason}{x.removedAt && ` · allowed again ${new Date(x.removedAt).toLocaleDateString()}`}{x.stale && <span className="font-medium text-warning"> · Stale — LI.FI no longer lists this key; re-deny under the new key</span>}</li>)}
           </ul>
         )}

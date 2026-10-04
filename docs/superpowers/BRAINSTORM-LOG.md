@@ -110,6 +110,20 @@ Merge-time decisions (after the whole-branch review):
 | 3 | Shared logic | A move pure logic to `@repo/app-core` (rec.) · B duplicate in mobile · C React Native Web | **A** | Shared `legSigner` + helpers |
 
 
+## Spec 17 — Web redesign (2026-10-04)
+
+Brief: the user's master design directive (web first; Expo SDK 57 later; real mobile UI into web device compositions last). Roadmap item 17 taken ahead of 16 at the user's request.
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Packages to add | motion (rec.) · @playwright/test (rec.) · lenis · three/react-three-fiber | **All four** | Pinned in `apps/web`; `@types/three` added as its type companion. Anything else (drei, postprocessing) asks first |
+| 2 | Theme scope | Light only now (rec.) · Light + dark | **Light + dark** | Both themes ship; tokens carry both |
+| 3 | Ops console | Inherit new system only (rec.) · full redesign · leave untouched | **Inherit** | Ops gets new tokens, primitives and shell; no IA redesign |
+| 4 | Type direction | Editorial serif + sans (rec.) · Light all-sans | **Light all-sans** | Geist 300 display, Geist 400/500 UI, Geist Mono labels |
+
+Brief vs docs (docs win, per the brief itself): sign-in chains are Solana, Ethereum, Base, BNB Chain and Arbitrum; Bitcoin is link-only (web); Polygon is registry-only. No real portfolio performance or manager analytics exist, so none are shown. Bytesac co-signs Solana legs as fee payer and sends EVM gas drops, so custody copy never claims Bytesac never touches a transaction.
+
+
 ---
 
 ## Roadmap decisions

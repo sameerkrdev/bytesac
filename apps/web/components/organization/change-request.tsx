@@ -25,9 +25,9 @@ export function ChangeRequest({ org, onChange, client = api }: { org: Organizati
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/organizations/${org.id}`} className="inline-flex min-h-11 items-center gap-2 text-sm text-mint underline"><ExternalLink aria-hidden className="size-4" />View public profile</Link>
+        <Link href={`/organizations/${org.id}`} className="inline-flex min-h-11 items-center gap-2 text-sm text-ink underline underline-offset-4"><ExternalLink aria-hidden className="size-4" />View public profile</Link>
         {!org.openVersion && org.myPermissions.includes("org.edit") && (
-          <Button variant="secondary" className="min-h-11" disabled={pending} onClick={() => void start()}>{pending && <Loader2 aria-hidden className="animate-spin" />}Edit profile</Button>
+          <Button variant="secondary"  disabled={pending} onClick={() => void start()}>{pending && <Loader2 aria-hidden className="animate-spin" />}Edit profile</Button>
         )}
       </div>
       {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{error.title}</span> {error.message}</p>}

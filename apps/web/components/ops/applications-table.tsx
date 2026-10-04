@@ -22,8 +22,8 @@ const FILTERS = APPLICATION_STATUSES.filter((s) => s !== "EMAIL_PENDING");
 function Applicant({ a }: { a: ApplicationSummary }) {
   return (
     <>
-      <span className="block font-medium text-ivory">{a.firmName ?? a.fullName}</span>
-      {a.firmName && <span className="block text-xs text-stone">{a.fullName}</span>}
+      <span className="block font-medium text-ink">{a.firmName ?? a.fullName}</span>
+      {a.firmName && <span className="block text-xs text-ink-muted">{a.fullName}</span>}
     </>
   );
 }
@@ -54,30 +54,30 @@ export function ApplicationsTable({ client = api }: { client?: Client }) {
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by status">
         {[undefined, ...FILTERS].map((s) => (
           <button key={s ?? "all"} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}
-            className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", status === s && "bg-slate text-ivory")}>
+            className={cn("min-h-11 rounded-control border border-line px-3 text-sm text-ink-muted hover:text-ink", status === s && "bg-surface text-ink")}>
             {s ? APPLICATION_STATUS_LABEL[s].label : "All"}
           </button>
         ))}
       </div>
-      <Input type="search" aria-label="Search applications" placeholder="Search name, firm or email" value={search} onChange={(e) => setSearch(e.target.value)} className="min-h-11 max-w-md bg-space text-ivory placeholder:text-stone" />
+      <Input type="search" aria-label="Search applications" placeholder="Search name, firm or email" value={search} onChange={(e) => setSearch(e.target.value)} className="min-h-11 max-w-md placeholder:text-ink-muted" />
 
       {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : list.isPending ? <LoadingState /> : items.length === 0 ? (
         <EmptyState title="No applications found." />
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">
-            <thead className="text-xs text-stone">
+            <thead className="text-xs text-ink-muted">
               <tr><th className="py-2 pr-4 font-medium">Applicant</th><th className="pr-4 font-medium">Email</th><th className="pr-4 font-medium">Country</th><th className="pr-4 font-medium">Wallet</th><th className="pr-4 font-medium">Status</th><th className="font-medium">Submitted</th></tr>
             </thead>
             <tbody>
               {items.map((a) => (
-                <tr key={a.id} className="border-t border-border-dark">
+                <tr key={a.id} className="border-t border-line">
                   <td className="py-3 pr-4"><Link href={`/ops/applications/${a.id}`} className="underline-offset-4 hover:underline"><Applicant a={a} /></Link></td>
-                  <td className="pr-4 text-stone">{a.email}</td>
-                  <td className="pr-4 text-stone">{a.country}</td>
-                  <td className="pr-4 font-mono text-xs text-stone">{CHAINS[a.walletChain].label} {shortAddress(a.walletAddress)}</td>
+                  <td className="pr-4 text-ink-muted">{a.email}</td>
+                  <td className="pr-4 text-ink-muted">{a.country}</td>
+                  <td className="pr-4 font-mono text-xs text-ink-muted">{CHAINS[a.walletChain].label} {shortAddress(a.walletAddress)}</td>
                   <td className="pr-4">{badge(a.status)}</td>
-                  <td className="text-stone">{date(a)}</td>
+                  <td className="text-ink-muted">{date(a)}</td>
                 </tr>
               ))}
             </tbody>
@@ -85,16 +85,16 @@ export function ApplicationsTable({ client = api }: { client?: Client }) {
           <ul className="space-y-3 md:hidden">
             {items.map((a) => (
               <li key={a.id}>
-                <Link href={`/ops/applications/${a.id}`} className="block space-y-2 rounded-xl border border-border-dark bg-slate p-4">
+                <Link href={`/ops/applications/${a.id}`} className="block space-y-2 rounded-tile border border-line bg-surface p-4">
                   <Applicant a={a} />
-                  <span className="block text-xs text-stone">{a.email} · {a.country} · {date(a)}</span>
+                  <span className="block text-xs text-ink-muted">{a.email} · {a.country} · {date(a)}</span>
                   {badge(a.status)}
                 </Link>
               </li>
             ))}
           </ul>
           {list.hasNextPage && (
-            <Button variant="secondary" className="min-h-11" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>
+            <Button variant="secondary"  disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>
           )}
         </>
       )}

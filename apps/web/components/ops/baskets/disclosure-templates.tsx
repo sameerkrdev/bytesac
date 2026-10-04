@@ -29,22 +29,22 @@ function NewVersionForm({ active, pending, onSubmit }: { active: DisclosureTempl
   const [condition, setCondition] = useState(active.condition);
   const parsed = createDisclosureTemplateRequestSchema.safeParse({ key: active.key, title, body, condition });
   return (
-    <form className="max-w-xl space-y-3 rounded-xl border border-border-dark p-4" aria-label={`New version of ${active.key}`} onSubmit={(e) => { e.preventDefault(); if (parsed.success) onSubmit(parsed.data); }}>
+    <form className="max-w-xl space-y-3 rounded-tile border border-line p-4" aria-label={`New version of ${active.key}`} onSubmit={(e) => { e.preventDefault(); if (parsed.success) onSubmit(parsed.data); }}>
       <div className="space-y-1">
-        <Label htmlFor={`${id}-t`} className="text-xs font-medium text-ivory">Title</Label>
-        <Input id={`${id}-t`} value={title} maxLength={120} className="min-h-11 bg-space text-ivory" onChange={(e) => setTitle(e.target.value)} />
+        <Label htmlFor={`${id}-t`} className="text-xs font-medium text-ink">Title</Label>
+        <Input id={`${id}-t`} value={title} maxLength={120}  onChange={(e) => setTitle(e.target.value)} />
       </div>
       <div className="space-y-1">
-        <Label htmlFor={`${id}-b`} className="text-xs font-medium text-ivory">Body (plain text)</Label>
+        <Label htmlFor={`${id}-b`} className="text-xs font-medium text-ink">Body (plain text)</Label>
         <Textarea id={`${id}-b`} value={body} maxLength={5000} onChange={(e) => setBody(e.target.value)} />
       </div>
       <div className="space-y-1">
-        <Label htmlFor={`${id}-c`} className="text-xs font-medium text-ivory">Shown when</Label>
+        <Label htmlFor={`${id}-c`} className="text-xs font-medium text-ink">Shown when</Label>
         <Select id={`${id}-c`} value={condition} onChange={(e) => setCondition(disclosureConditionSchema.parse(e.target.value))}>
           {disclosureConditionSchema.options.map((c) => <option key={c} value={c}>{CONDITION[c]}</option>)}
         </Select>
       </div>
-      <Button type="submit" className="min-h-11" disabled={!parsed.success || pending}>{pending && <Loader2 aria-hidden className="animate-spin" />}Publish new version</Button>
+      <Button type="submit"  disabled={!parsed.success || pending}>{pending && <Loader2 aria-hidden className="animate-spin" />}Publish new version</Button>
     </form>
   );
 }
@@ -61,7 +61,7 @@ export function DisclosureTemplates({ client = api }: { client?: Client }) {
     onSuccess: (d) => { qc.setQueryData(key, d); setEditing(null); },
   });
 
-  if (!isAdmin) return <p role="alert" className="text-base text-ivory">Only ops admins can manage disclosure templates.</p>;
+  if (!isAdmin) return <p role="alert" className="text-base text-ink">Only ops admins can manage disclosure templates.</p>;
   if (query.isError) return <OpsError error={query.error} />;
   if (!query.data) return <LoadingState />;
 
@@ -69,7 +69,7 @@ export function DisclosureTemplates({ client = api }: { client?: Client }) {
     <div className="space-y-8">
       <div className="space-y-1">
         <PageHeader title="Disclosures" />
-        <p className="text-sm text-stone">Platform notices are added to every basket version when it is submitted. A new version applies to later submissions and is re-pinned when an approved version is published.</p>
+        <p className="text-sm text-ink-muted">Platform notices are added to every basket version when it is submitted. A new version applies to later submissions and is re-pinned when an approved version is published.</p>
       </div>
       {act.isError && <OpsError error={act.error} />}
       {query.data.groups.map((g) => {
@@ -77,12 +77,12 @@ export function DisclosureTemplates({ client = api }: { client?: Client }) {
         const base = g.templates.find((t) => t.status === "active") ?? g.templates.reduce((a, t) => (t.version > a.version ? t : a));
         return (
           <section key={g.key} aria-label={g.key} className="space-y-3">
-            <h2 className="font-display text-xl font-semibold text-ivory">{g.key}</h2>
+            <h2 className="type-heading text-ink">{g.key}</h2>
             <ul className="space-y-3">
               {g.templates.map((t) => (
-                <li key={t.id} className="space-y-1 rounded-xl border border-border-dark p-3">
-                  <p className="text-sm font-medium text-ivory">Version {t.version}: {t.title} <span className="text-xs font-normal text-stone">· {t.status === "active" ? "Active" : "Retired"} · {CONDITION[t.condition]}</span></p>
-                  <p className="whitespace-pre-wrap text-sm text-stone">{t.body}</p>
+                <li key={t.id} className="space-y-1 rounded-tile border border-line p-3">
+                  <p className="text-sm font-medium text-ink">Version {t.version}: {t.title} <span className="text-xs font-normal text-ink-muted">· {t.status === "active" ? "Active" : "Retired"} · {CONDITION[t.condition]}</span></p>
+                  <p className="whitespace-pre-wrap text-sm text-ink-muted">{t.body}</p>
                   {t.status === "active" && (
                     <ConfirmReason label={`Retire version ${t.version} of ${g.key}`} destructive pending={act.isPending}
                       description="New submissions will no longer include this notice until another version is published." onConfirm={() => act.mutate(() => client.opsRetireDisclosureTemplate(t.id))} />
@@ -92,7 +92,7 @@ export function DisclosureTemplates({ client = api }: { client?: Client }) {
             </ul>
             {editing === g.key
               ? <NewVersionForm active={base} pending={act.isPending} onSubmit={(body) => act.mutate(() => client.opsCreateDisclosureTemplate(body))} />
-              : <Button variant="secondary" className="min-h-11" aria-label={`New version of ${g.key}`} onClick={() => setEditing(g.key)}>New version</Button>}
+              : <Button variant="secondary"  aria-label={`New version of ${g.key}`} onClick={() => setEditing(g.key)}>New version</Button>}
           </section>
         );
       })}

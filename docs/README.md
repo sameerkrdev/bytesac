@@ -19,7 +19,7 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
 6. `engineering/INTEGRATION-AUDIT.md` — third-party integration audit against official documentation (Spec 14): versions, findings, fixes, deferrals.
 7. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
 8. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
-9. `BYTESAC_Design_System.md` — UI design system.
+9. `design/DESIGN-SYSTEM.md` — web design system (tokens, type, components, motion, imagery). `design/MOTION-STUDY.md` — reference-video analysis. `design/MOBILE-UX-INVENTORY.md` — blueprint for the Expo redesign.
 
 ## Document roles (one home per topic)
 

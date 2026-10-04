@@ -38,7 +38,7 @@ export function BasketsQueue({ client = api }: { client?: Client }) {
       <div role="group" aria-label="Queue" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button key={t.queue} type="button" aria-pressed={queue === t.queue} onClick={() => setQueue(t.queue)}
-            className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", queue === t.queue && "bg-slate text-ivory")}>
+            className={cn("min-h-11 rounded-control border border-line px-3 text-sm text-ink-muted hover:text-ink", queue === t.queue && "bg-surface text-ink")}>
             {t.label}
           </button>
         ))}
@@ -47,18 +47,18 @@ export function BasketsQueue({ client = api }: { client?: Client }) {
         <EmptyState title="No baskets found." />
       ) : (
         <>
-          <ul className="divide-y divide-border-dark">
+          <ul className="divide-y divide-line">
             {items.map((b) => (
               <li key={b.id} className="flex flex-wrap items-center gap-3 py-3">
-                <Link href={`/ops/baskets/${b.id}`} className="font-medium text-ivory underline-offset-4 hover:underline">{b.name}</Link>
-                <span className="text-sm text-stone">{b.organizationName ?? "Unnamed organization"}</span>
+                <Link href={`/ops/baskets/${b.id}`} className="font-medium text-ink underline-offset-4 hover:underline">{b.name}</Link>
+                <span className="text-sm text-ink-muted">{b.organizationName ?? "Unnamed organization"}</span>
                 <StatusBadge {...BASKET_STATUS_LABEL[b.status]} />
                 <StatusBadge {...BASKET_VERSION_STATUS_LABEL[b.latestVersionStatus]} label={`Version ${b.latestVersionNumber}: ${BASKET_VERSION_STATUS_LABEL[b.latestVersionStatus].label}`} />
-                <span className="text-xs text-stone">updated {new Date(b.updatedAt).toLocaleDateString()}</span>
+                <span className="text-xs text-ink-muted">updated {new Date(b.updatedAt).toLocaleDateString()}</span>
               </li>
             ))}
           </ul>
-          {list.hasNextPage && <Button variant="secondary" className="min-h-11" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>}
+          {list.hasNextPage && <Button variant="secondary"  disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>}
         </>
       )}
     </div>

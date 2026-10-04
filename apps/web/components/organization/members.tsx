@@ -61,19 +61,19 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
     if (m.status === "REMOVAL_REQUESTED" && canManageAdmins) {
       return (
         <>
-          <Button variant="destructive" className="min-h-11" onClick={() => setConfirm({ title: "Remove this admin?", description: "An admin asked to remove this member. They lose access immediately. Their history is kept.", action: "Confirm removal", run: () => client.confirmMemberRemoval(org.id, m.id) })}>Confirm removal</Button>
-          <Button variant="secondary" className="min-h-11" onClick={() => act.mutate(() => client.cancelMemberRemoval(org.id, m.id))}>Cancel request</Button>
+          <Button variant="destructive"  onClick={() => setConfirm({ title: "Remove this admin?", description: "An admin asked to remove this member. They lose access immediately. Their history is kept.", action: "Confirm removal", run: () => client.confirmMemberRemoval(org.id, m.id) })}>Confirm removal</Button>
+          <Button variant="secondary"  onClick={() => act.mutate(() => client.cancelMemberRemoval(org.id, m.id))}>Cancel request</Button>
         </>
       );
     }
     if (OPEN_INVITE.includes(m.status) && canManage && (m.role !== "ADMIN" || canManageAdmins)) {
-      return <Button variant="secondary" className="min-h-11" onClick={() => setConfirm({ title: "Cancel this invitation?", description: "The invitation can no longer be accepted.", action: "Cancel invitation", run: () => client.cancelMemberInvite(org.id, m.id) })}>Cancel invite</Button>;
+      return <Button variant="secondary"  onClick={() => setConfirm({ title: "Cancel this invitation?", description: "The invitation can no longer be accepted.", action: "Cancel invitation", run: () => client.cancelMemberInvite(org.id, m.id) })}>Cancel invite</Button>;
     }
     // Nobody touches an ADMIN, or an ADMIN promotion in flight, without members.manage_admins; removing yourself is leaving.
     const removable = canManage && !m.isSelf && m.role !== "OWNER" && (m.requestedRole !== "ADMIN" || canManageAdmins);
     if (PENDING_REVIEW.includes(m.status)) {
       return removable && (m.role !== "ADMIN" || canManageAdmins)
-        ? <Button variant="secondary" className="min-h-11" onClick={() => setConfirm({ title: "Withdraw this membership?", description: "The member's verification is closed and they lose the membership. Their history is kept.", action: "Withdraw membership", run: () => client.removeMember(org.id, m.id) })}>Withdraw</Button>
+        ? <Button variant="secondary"  onClick={() => setConfirm({ title: "Withdraw this membership?", description: "The member's verification is closed and they lose the membership. Their history is kept.", action: "Withdraw membership", run: () => client.removeMember(org.id, m.id) })}>Withdraw</Button>
         : null;
     }
     if (m.status !== "ACTIVE") return null;
@@ -89,7 +89,7 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
           </>
         )}
         {removable && (
-          <Button variant="destructive" className="min-h-11" onClick={() => setConfirm(request
+          <Button variant="destructive"  onClick={() => setConfirm(request
             ? { title: "Request removal of this admin?", description: "Only the owner can remove an admin. They will be asked to confirm.", action: "Request removal", run: () => client.removeMember(org.id, m.id) }
             : { title: "Remove this member?", description: "They lose access immediately. Their history is kept.", action: "Remove member", run: () => client.removeMember(org.id, m.id) })}>
             {request ? "Request removal" : "Remove"}
@@ -101,21 +101,21 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
-      <h3 id={`${id}-h`} className="font-display text-lg font-semibold text-ivory">Members</h3>
-      {org.myRole === "OWNER" && <p className="text-xs text-muted-foreground">To transfer ownership, contact support.</p>}
+      <h3 id={`${id}-h`} className="text-lg font-medium tracking-tight text-ink">Members</h3>
+      {org.myRole === "OWNER" && <p className="text-xs text-ink-muted">To transfer ownership, contact support.</p>}
       {list.isError && <p role="alert" className="text-sm text-danger">{toDisplayError(list.error).title}</p>}
       {list.data && (
-        <ul aria-label="Members" className="divide-y divide-border-dark">
+        <ul aria-label="Members" className="divide-y divide-line">
           {list.data.members.map((m) => (
             <li key={m.id} className="space-y-2 py-3">
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm font-medium text-ivory">{m.publicDisplayName ?? "No public name"}{m.isSelf && " (you)"}</span>
-                <span className="text-xs text-stone">{MEMBERSHIP_ROLE_LABEL[m.role]}{m.requestedRole && ` · upgrade to ${MEMBERSHIP_ROLE_LABEL[m.requestedRole]} pending`}</span>
+                <span className="text-sm font-medium text-ink">{m.publicDisplayName ?? "No public name"}{m.isSelf && " (you)"}</span>
+                <span className="text-xs text-ink-muted">{MEMBERSHIP_ROLE_LABEL[m.role]}{m.requestedRole && ` · upgrade to ${MEMBERSHIP_ROLE_LABEL[m.requestedRole]} pending`}</span>
                 <StatusBadge {...MEMBERSHIP_STATUS_LABEL[m.status]} />
                 {m.verificationStatus && <StatusBadge {...MEMBER_VERIFICATION_STATUS_LABEL[m.verificationStatus]} label={`Verification: ${MEMBER_VERIFICATION_STATUS_LABEL[m.verificationStatus].label}`} />}
               </div>
               {(m.invitedWallet || m.invitedEmail) && (
-                <p className="text-xs text-stone">
+                <p className="text-xs text-ink-muted">
                   {m.invitedWallet && <span className="font-mono">{CHAINS[m.invitedWallet.chain].label} · {shortAddress(m.invitedWallet.address)}</span>}
                   {m.invitedEmail && ` · ${m.invitedEmail}`}
                   {m.inviteExpiresAt && ` · expires ${new Date(m.inviteExpiresAt).toLocaleDateString()}`}
@@ -129,48 +129,48 @@ export function Members({ org, client = api }: { org: OrganizationDetail; client
       {actError && !confirm && actError}
 
       {canManage && org.status === "VERIFIED" && (
-        <form noValidate className="space-y-3 rounded-xl border border-border-dark p-4" aria-label="Invite a member" onSubmit={(e) => { e.preventDefault(); submitInvite(); }}>
-          <h4 className="text-sm font-medium text-ivory">Invite a member</h4>
+        <form noValidate className="space-y-3 rounded-tile border border-line p-4" aria-label="Invite a member" onSubmit={(e) => { e.preventDefault(); submitInvite(); }}>
+          <h4 className="text-sm font-medium text-ink">Invite a member</h4>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-chain`} className="text-xs font-medium text-ivory">Wallet network</Label>
+            <Label htmlFor={`${id}-chain`} className="text-xs font-medium text-ink">Wallet network</Label>
             <Select id={`${id}-chain`} value={form.walletChain} onChange={(e) => setForm((f) => ({ ...f, walletChain: e.target.value }))}>
               {signInChainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-address`} className="text-xs font-medium text-ivory">Wallet address</Label>
-            <Input id={`${id}-address`} value={form.walletAddress} autoComplete="off" spellCheck={false} aria-invalid={Boolean(fieldErrors.walletAddress)} className="min-h-11 bg-space font-mono text-ivory"
+            <Label htmlFor={`${id}-address`} className="text-xs font-medium text-ink">Wallet address</Label>
+            <Input id={`${id}-address`} value={form.walletAddress} autoComplete="off" spellCheck={false} aria-invalid={Boolean(fieldErrors.walletAddress)} className="min-h-11 bg-canvas font-mono text-ink"
               onChange={(e) => setForm((f) => ({ ...f, walletAddress: e.target.value }))} />
             {fieldErrors.walletAddress && <p className="text-xs text-danger">{fieldErrors.walletAddress}</p>}
-            <p className="text-xs text-muted-foreground">Typing an address does not link anyone. The invitee proves the wallet when they sign in.</p>
+            <p className="text-xs text-ink-muted">Typing an address does not link anyone. The invitee proves the wallet when they sign in.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-role`} className="text-xs font-medium text-ivory">Role</Label>
+            <Label htmlFor={`${id}-role`} className="text-xs font-medium text-ink">Role</Label>
             <Select id={`${id}-role`} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as MembershipRole }))}>
               {roles.map((r) => <option key={r} value={r}>{MEMBERSHIP_ROLE_LABEL[r]}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-email`} className="text-xs font-medium text-ivory">Email for the invitation</Label>
-            <Input id={`${id}-email`} type="email" value={form.email} autoComplete="off" aria-invalid={Boolean(fieldErrors.email)} className="min-h-11 bg-space text-ivory"
+            <Label htmlFor={`${id}-email`} className="text-xs font-medium text-ink">Email for the invitation</Label>
+            <Input id={`${id}-email`} type="email" value={form.email} autoComplete="off" aria-invalid={Boolean(fieldErrors.email)} 
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
             {fieldErrors.email && <p className="text-xs text-danger">{fieldErrors.email}</p>}
           </div>
           {invite.isError && <p role="alert" className="text-sm text-danger"><span className="font-medium">{toDisplayError(invite.error).title}</span> {toDisplayError(invite.error).message}</p>}
-          <Button type="submit" className="min-h-11" disabled={invite.isPending}>{invite.isPending && <Loader2 aria-hidden className="animate-spin" />}Send invitation</Button>
+          <Button type="submit"  disabled={invite.isPending}>{invite.isPending && <Loader2 aria-hidden className="animate-spin" />}Send invitation</Button>
         </form>
       )}
 
       <Dialog open={confirm !== null} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent className="border-line bg-canvas">
           <DialogHeader>
-            <DialogTitle className="text-ivory">{confirm?.title}</DialogTitle>
+            <DialogTitle className="text-ink">{confirm?.title}</DialogTitle>
             <DialogDescription>{confirm?.description}</DialogDescription>
           </DialogHeader>
           {actError}
           <DialogFooter>
-            <Button variant="secondary" className="min-h-11" onClick={() => setConfirm(null)}>Keep</Button>
-            <Button variant="destructive" className="min-h-11" disabled={act.isPending} onClick={() => confirm && act.mutate(confirm.run)}>{confirm?.action}</Button>
+            <Button variant="secondary"  onClick={() => setConfirm(null)}>Keep</Button>
+            <Button variant="destructive"  disabled={act.isPending} onClick={() => confirm && act.mutate(confirm.run)}>{confirm?.action}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

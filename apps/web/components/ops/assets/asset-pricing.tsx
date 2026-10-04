@@ -14,12 +14,12 @@ import { AssetError, type SectionProps } from "./asset-ui";
 type Client = Pick<ApiClient, "opsPutPriceReference" | "opsRecordNav">;
 
 function Price({ p }: { p: PriceView | undefined }) {
-  if (!p || p.status === "unavailable") return <p className="text-sm text-stone">Price unavailable</p>;
+  if (!p || p.status === "unavailable") return <p className="text-sm text-ink-muted">Price unavailable</p>;
   return (
-    <p className="flex flex-wrap items-center gap-2 text-sm text-ivory">
+    <p className="flex flex-wrap items-center gap-2 text-sm text-ink">
       {p.value} {p.currency}
-      {p.stale && <span className="rounded bg-warning/20 px-1.5 py-0.5 text-xs font-medium text-warning">Stale</span>}
-      {p.observedAt && <span className="text-xs text-stone">as of {new Date(p.observedAt).toLocaleString()}</span>}
+      {p.stale && <span className="rounded bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">Stale</span>}
+      {p.observedAt && <span className="text-xs text-ink-muted">as of {new Date(p.observedAt).toLocaleString()}</span>}
     </p>
   );
 }
@@ -39,9 +39,9 @@ export function AssetPricing({ a, locked, onChange, client = api }: SectionProps
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-6">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Pricing</h2>
+      <h2 id={`${id}-h`} className="type-heading text-ink">Pricing</h2>
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-ivory">Market price (CoinMarketCap)</h3>
+        <h3 className="text-sm font-medium text-ink">Market price (CoinMarketCap)</h3>
         <Price p={a.prices.find((p) => p.kind === "market")} />
         {!locked && (
           <form noValidate className="flex max-w-md flex-wrap items-end gap-3" onSubmit={(e) => {
@@ -52,10 +52,10 @@ export function AssetPricing({ a, locked, onChange, client = api }: SectionProps
             putMarket.mutate(parsed.data.externalId);
           }}>
             <div className="min-w-40 flex-1 space-y-2">
-              <Label htmlFor={`${id}-cmc`} className="text-xs font-medium text-ivory">CoinMarketCap id</Label>
-              <Input id={`${id}-cmc`} inputMode="numeric" className="min-h-11 bg-space text-ivory" value={cmcId} onChange={(e) => setCmcId(e.target.value)} />
+              <Label htmlFor={`${id}-cmc`} className="text-xs font-medium text-ink">CoinMarketCap id</Label>
+              <Input id={`${id}-cmc`} inputMode="numeric"  value={cmcId} onChange={(e) => setCmcId(e.target.value)} />
             </div>
-            <Button type="submit" variant="secondary" className="min-h-11" disabled={putMarket.isPending}>{putMarket.isPending && <Loader2 aria-hidden className="animate-spin" />}Save reference</Button>
+            <Button type="submit" variant="secondary"  disabled={putMarket.isPending}>{putMarket.isPending && <Loader2 aria-hidden className="animate-spin" />}Save reference</Button>
           </form>
         )}
         {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}
@@ -63,10 +63,10 @@ export function AssetPricing({ a, locked, onChange, client = api }: SectionProps
 
       {isRwa && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-ivory">Net asset value (entered by ops)</h3>
+          <h3 className="text-sm font-medium text-ink">Net asset value (entered by ops)</h3>
           <Price p={a.prices.find((p) => p.kind === "nav")} />
           {!navRef ? (
-            !locked && <Button type="button" variant="secondary" className="min-h-11" disabled={putNav.isPending} onClick={() => putNav.mutate()}>Add NAV reference</Button>
+            !locked && <Button type="button" variant="secondary"  disabled={putNav.isPending} onClick={() => putNav.mutate()}>Add NAV reference</Button>
           ) : !locked && (
             <form noValidate className="grid max-w-md gap-3" onSubmit={(e) => {
               e.preventDefault();
@@ -75,28 +75,28 @@ export function AssetPricing({ a, locked, onChange, client = api }: SectionProps
               setInvalid(null);
               record.mutate(parsed.data);
             }}>
-              <Label htmlFor={`${id}-nv`} className="text-xs font-medium text-ivory">NAV per token (USD)</Label>
-              <Input id={`${id}-nv`} inputMode="decimal" className="min-h-11 bg-space text-ivory" value={nav.value} onChange={(e) => setNav({ ...nav, value: e.target.value })} />
-              <Label htmlFor={`${id}-na`} className="text-xs font-medium text-ivory">As of</Label>
-              <Input id={`${id}-na`} type="date" className="min-h-11 bg-space text-ivory" value={nav.asOf} onChange={(e) => setNav({ ...nav, asOf: e.target.value })} />
-              <Label htmlFor={`${id}-ns`} className="text-xs font-medium text-ivory">Source URL</Label>
-              <Input id={`${id}-ns`} type="url" className="min-h-11 bg-space text-ivory" value={nav.sourceUrl} onChange={(e) => setNav({ ...nav, sourceUrl: e.target.value })} />
+              <Label htmlFor={`${id}-nv`} className="text-xs font-medium text-ink">NAV per token (USD)</Label>
+              <Input id={`${id}-nv`} inputMode="decimal"  value={nav.value} onChange={(e) => setNav({ ...nav, value: e.target.value })} />
+              <Label htmlFor={`${id}-na`} className="text-xs font-medium text-ink">As of</Label>
+              <Input id={`${id}-na`} type="date"  value={nav.asOf} onChange={(e) => setNav({ ...nav, asOf: e.target.value })} />
+              <Label htmlFor={`${id}-ns`} className="text-xs font-medium text-ink">Source URL</Label>
+              <Input id={`${id}-ns`} type="url"  value={nav.sourceUrl} onChange={(e) => setNav({ ...nav, sourceUrl: e.target.value })} />
               <Button type="submit" variant="secondary" className="min-h-11 w-fit" disabled={record.isPending}>{record.isPending && <Loader2 aria-hidden className="animate-spin" />}Record NAV</Button>
             </form>
           )}
           {a.navObservations.length > 0 && (
-            <table className="w-full max-w-xl text-left text-sm">
+            <div className="overflow-x-auto"><table className="min-w-[36rem] w-full max-w-xl text-left text-sm">
               <caption className="sr-only">NAV history</caption>
-              <thead className="text-xs text-stone"><tr><th className="py-2 pr-4 font-medium">As of</th><th className="pr-4 font-medium">Value</th><th className="font-medium">Source</th></tr></thead>
+              <thead className="text-xs text-ink-muted"><tr><th className="py-2 pr-4 font-medium">As of</th><th className="pr-4 font-medium">Value</th><th className="font-medium">Source</th></tr></thead>
               <tbody>
                 {a.navObservations.map((n) => (
-                  <tr key={n.id} className="border-t border-border-dark">
-                    <td className="py-2 pr-4 text-ivory">{n.asOf}</td><td className="pr-4 text-ivory">{n.value} {n.currency}</td>
-                    <td><a href={n.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-mint underline">Source</a></td>
+                  <tr key={n.id} className="border-t border-line">
+                    <td className="py-2 pr-4 text-ink">{n.asOf}</td><td className="pr-4 text-ink">{n.value} {n.currency}</td>
+                    <td><a href={n.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-ink underline underline-offset-4">Source</a></td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       )}

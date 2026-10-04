@@ -74,6 +74,13 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Discover filter parity on mobile (asset and sector ranges, fee ceilings, performance) is not ported.
 - [ ] Mobile push notifications remain future work.
 
+### Spec 17 manual checks (web redesign)
+
+- [ ] Review all new public copy (landing, `/how-it-works`, `/self-custody`, `/for-managers`, footer) with legal; placeholders are marked `[Placeholder … pending review]`.
+- [ ] Replace the redrawn SVG mark (`components/brand/logo.tsx`) with the official logo vector; `public/logo.png` is a usage sheet, not a single mark.
+- [ ] Real wallet sign-in and one small real investment on the redesigned flow (only mock-API runs so far).
+- [ ] Lighthouse / LCP on `/` with a production build (the hero sky plate and hand cut-out are priority images).
+
 ## 6. Deployment and operations
 
 - [ ] Deploy the BullMQ worker (`start:worker`) with non-evicting Redis.
@@ -170,6 +177,8 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [x] Re-adding a contact with a pending verification returns it (no 404); the web form guards double submit.
 - [ ] Two truly concurrent contact-add requests can still return the resend-cooldown error to the second.
 - [ ] Resend countdown resets on remount; logout awaits wallet disconnect; iOS keyboard double-adjust check; ops/app Switch hit area on device; `@wagmi/connectors` pinned 6.2.0 until Reown RN supports wagmi 3.
+
+- [ ] Spec 17: `three` and `@react-three/fiber` are installed (approved) but unused — use for an interactive allocation scene or remove. The basket editor (`/organization/baskets/[bid]`) only got the token pass. Mobile jest's `testMatch` finds no tests when the repo path contains `.claude` (worktrees); cold-start runs can time out the first test of a suite.
 
 ## 8. Open decisions in the register
 

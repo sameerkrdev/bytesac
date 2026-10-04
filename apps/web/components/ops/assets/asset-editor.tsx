@@ -43,12 +43,12 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
         <PageHeader title={<>{a.name} · {a.symbol}</>} breadcrumb={[{ label: "Ops", href: "/ops/applications" }, { label: "Assets", href: "/ops/assets" }]} />
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge {...INSTRUMENT_STATUS_LABEL[a.status]} />
-          <span className="text-sm text-stone">{ASSET_TYPE_LABEL[a.assetType]}</span>
+          <span className="text-sm text-ink-muted">{ASSET_TYPE_LABEL[a.assetType]}</span>
         </div>
-        {a.status === "RETIRED" && <p role="status" className="text-sm text-stone">This asset is retired and read-only.</p>}
-        {a.status === "UNDER_REVIEW" && <p role="status" className="text-sm text-stone">This asset is under review and read-only until a decision is made.</p>}
+        {a.status === "RETIRED" && <p role="status" className="text-sm text-ink-muted">This asset is retired and read-only.</p>}
+        {a.status === "UNDER_REVIEW" && <p role="status" className="text-sm text-ink-muted">This asset is under review and read-only until a decision is made.</p>}
       </div>
-      {a.warnings.map((w) => <p key={w} role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-3 text-sm text-ivory">{w}</p>)}
+      {a.warnings.map((w) => <p key={w} role="status" className="rounded-tile border border-warning/25 bg-warning-soft p-3 text-sm text-ink">{w}</p>)}
       <AssetDetailsForm {...p} />
       <AssetClassification {...p} />
       <AssetDeployments {...p} />
@@ -58,16 +58,16 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
       <AssetReviewPanel a={a} isAdmin={isAdmin} onChange={onChange} client={client} />
 
       <section aria-labelledby="events-h" className="space-y-3">
-        <h2 id="events-h" className="font-display text-xl font-semibold text-ivory">History</h2>
+        <h2 id="events-h" className="type-heading text-ink">History</h2>
         <ol className="space-y-3">
           {a.events.map((e) => (
-            <li key={e.id} className={e.internalNote ? "rounded-xl border border-warning/40 bg-warning/5 p-3" : "rounded-xl border border-border-dark p-3"}>
-              <p className="text-xs text-stone">
+            <li key={e.id} className={e.internalNote ? "rounded-tile border border-warning/25 bg-warning-soft p-3" : "rounded-tile border border-line p-3"}>
+              <p className="text-xs text-ink-muted">
                 {new Date(e.createdAt).toLocaleString()} · {e.entityType} · {e.kind.replaceAll("_", " ")}
                 {e.fromStatus && e.toStatus && e.fromStatus !== e.toStatus && ` · ${e.fromStatus} → ${e.toStatus}`}
               </p>
-              {e.message && <p className="mt-1 whitespace-pre-wrap text-sm text-ivory">{e.message}</p>}
-              {e.internalNote && <p className="mt-1 whitespace-pre-wrap text-sm text-ivory"><span className="mr-2 rounded bg-warning/20 px-1.5 py-0.5 text-xs font-medium text-warning">Internal</span>{e.internalNote}</p>}
+              {e.message && <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{e.message}</p>}
+              {e.internalNote && <p className="mt-1 whitespace-pre-wrap text-sm text-ink"><span className="mr-2 rounded bg-warning-soft px-1.5 py-0.5 text-xs font-medium text-warning">Internal</span>{e.internalNote}</p>}
             </li>
           ))}
         </ol>

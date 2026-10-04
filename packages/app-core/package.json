@@ -8,7 +8,9 @@
     "./basket-status": "./src/basket-status.ts",
     "./eligibility-copy": "./src/eligibility-copy.ts",
     "./fees": "./src/fees.ts",
-    "./format": "./src/format.ts"
+    "./format": "./src/format.ts",
+    "./membership-status": "./src/membership-status.ts",
+    "./portfolio-actions": "./src/portfolio-actions.ts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

@@ -32,7 +32,7 @@ export function RolesManager({ client = api }: { client?: Client }) {
   const grant = useMutation({ mutationFn: (b: Parameters<Client["opsGrantRole"]>[0]) => client.opsGrantRole(b), onSuccess: () => { setUserId(""); return refresh(); } });
   const revoke = useMutation({ mutationFn: (rid: string) => client.opsRevokeRole(rid), onSuccess: () => { setRevoking(null); return refresh(); } });
 
-  if (!isAdmin) return <p role="alert" className="text-base text-ivory">You don&apos;t have access to this area.</p>;
+  if (!isAdmin) return <p role="alert" className="text-base text-ink">You don&apos;t have access to this area.</p>;
   // The server's message ("At least one ops admin must remain.") is the useful text for the last-admin refusal.
   const revokeError = revoke.error instanceof ApiError && revoke.error.code === "INVALID_TRANSITION"
     ? <p role="alert" className="text-sm text-danger">{revoke.error.message}</p>
@@ -49,12 +49,12 @@ export function RolesManager({ client = api }: { client?: Client }) {
         if (parsed.success) grant.mutate(parsed.data);
       }}>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-user`} className="text-xs font-medium text-ivory">User ID</Label>
-          <Input id={`${id}-user`} value={userId} aria-invalid={invalid} autoComplete="off" spellCheck={false} onChange={(e) => setUserId(e.target.value)} className="min-h-11 bg-space font-mono text-ivory" />
+          <Label htmlFor={`${id}-user`} className="text-xs font-medium text-ink">User ID</Label>
+          <Input id={`${id}-user`} value={userId} aria-invalid={invalid} autoComplete="off" spellCheck={false} onChange={(e) => setUserId(e.target.value)} className="min-h-11 bg-canvas font-mono text-ink" />
           {invalid && <p className="text-xs text-danger">Enter a valid user ID (UUID).</p>}
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-role`} className="text-xs font-medium text-ivory">Role</Label>
+          <Label htmlFor={`${id}-role`} className="text-xs font-medium text-ink">Role</Label>
           <Select id={`${id}-role`} value={role} onChange={(e) => setRole(e.target.value)}>
             {platformRoleSchema.options.map((r) => <option key={r} value={r}>{r}</option>)}
           </Select>
@@ -66,10 +66,10 @@ export function RolesManager({ client = api }: { client?: Client }) {
       {roles.isError ? <OpsError error={roles.error} onRetry={() => void roles.refetch()} /> : !roles.data ? <LoadingState /> : (
         <ul className="space-y-3">
           {roles.data.roles.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3">
-              <span className="break-all font-mono text-xs text-stone">{r.userId}</span>
-              <span className="text-sm font-medium text-ivory">{r.role}</span>
-              <span className="text-xs text-stone">since {new Date(r.grantedAt).toLocaleDateString()}</span>
+            <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-tile border border-line bg-surface p-3">
+              <span className="break-all font-mono text-xs text-ink-muted">{r.userId}</span>
+              <span className="text-sm font-medium text-ink">{r.role}</span>
+              <span className="text-xs text-ink-muted">since {new Date(r.grantedAt).toLocaleDateString()}</span>
               <Button variant="ghost" className="ml-auto min-h-11" aria-label={`Revoke ${r.role} from ${r.userId}`} onClick={() => { revoke.reset(); setRevoking(r); }}>Revoke</Button>
             </li>
           ))}
@@ -84,7 +84,7 @@ export function RolesManager({ client = api }: { client?: Client }) {
           </DialogHeader>
           {revokeError}
           <DialogFooter>
-            <Button variant="destructive" className="min-h-11" disabled={revoke.isPending} onClick={() => revoking && revoke.mutate(revoking.id)}>Confirm revoke</Button>
+            <Button variant="destructive"  disabled={revoke.isPending} onClick={() => revoking && revoke.mutate(revoking.id)}>Confirm revoke</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

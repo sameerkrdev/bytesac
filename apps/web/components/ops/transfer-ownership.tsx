@@ -38,13 +38,13 @@ export function TransferOwnership({ org, client = api }: { org: OrganizationRevi
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-3">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Ownership</h2>
-      <p className="text-xs text-muted-foreground">Only on the owner&apos;s request through support. The current owner becomes an admin.</p>
-      <Button variant="secondary" className="min-h-11" onClick={() => setOpen(true)}>Transfer ownership</Button>
+      <h2 id={`${id}-h`} className="type-heading text-ink">Ownership</h2>
+      <p className="text-xs text-ink-muted">Only on the owner&apos;s request through support. The current owner becomes an admin.</p>
+      <Button variant="secondary"  onClick={() => setOpen(true)}>Transfer ownership</Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent className="border-line bg-canvas">
           <DialogHeader>
-            <DialogTitle className="text-ivory">Transfer ownership</DialogTitle>
+            <DialogTitle className="text-ink">Transfer ownership</DialogTitle>
             <DialogDescription>The new owner must be an active member with an approved identity verification. This is audited with your reason.</DialogDescription>
           </DialogHeader>
           <form id={`${id}-f`} noValidate className="space-y-4" onSubmit={(e) => {
@@ -55,22 +55,22 @@ export function TransferOwnership({ org, client = api }: { org: OrganizationRevi
             transfer.mutate(parsed.data);
           }}>
             <div className="space-y-2">
-              <Label htmlFor={`${id}-t`} className="text-xs font-medium text-ivory">New owner</Label>
+              <Label htmlFor={`${id}-t`} className="text-xs font-medium text-ink">New owner</Label>
               <Select id={`${id}-t`} value={target} onChange={(e) => setTarget(e.target.value)}>
                 <option value="">Select a member</option>
                 {targets.map((m) => <option key={m.id} value={m.id}>{m.publicDisplayName ?? `Member ${m.id.slice(0, 8)}`} · {MEMBERSHIP_ROLE_LABEL[m.role]}</option>)}
               </Select>
-              {targets.length === 0 && <p className="text-xs text-muted-foreground">No active member has an approved verification yet.</p>}
+              {targets.length === 0 && <p className="text-xs text-ink-muted">No active member has an approved verification yet.</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${id}-r`} className="text-xs font-medium text-ivory">Reason (10 to 1000 characters)</Label>
+              <Label htmlFor={`${id}-r`} className="text-xs font-medium text-ink">Reason (10 to 1000 characters)</Label>
               <Textarea id={`${id}-r`} value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)} />
             </div>
             {(fieldError ?? error) && <p role="alert" className="text-sm text-danger">{fieldError ?? error}</p>}
           </form>
           <DialogFooter>
-            <Button variant="secondary" className="min-h-11" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" form={`${id}-f`} variant="destructive" className="min-h-11" disabled={transfer.isPending}>{transfer.isPending && <Loader2 aria-hidden className="animate-spin" />}Confirm transfer</Button>
+            <Button variant="secondary"  onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" form={`${id}-f`} variant="destructive"  disabled={transfer.isPending}>{transfer.isPending && <Loader2 aria-hidden className="animate-spin" />}Confirm transfer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

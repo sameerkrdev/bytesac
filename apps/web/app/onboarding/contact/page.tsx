@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { AuthFrame } from "@/components/auth/auth-frame";
 import { ContactVerifier } from "@/components/contacts/contact-verifier";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { getServerMe } from "@/lib/server-me";
 
 export default async function ContactOnboardingPage() {
@@ -10,20 +11,21 @@ export default async function ContactOnboardingPage() {
   const email = me.contacts.find((c) => c.type === "email");
   const phone = me.contacts.find((c) => c.type === "phone");
   return (
-    <main className="grid min-h-screen place-items-center bg-space px-4 py-10">
-      <Card className="w-full max-w-lg rounded-2xl border-border-dark bg-slate">
-        <CardHeader className="space-y-2">
-          <CardTitle className="font-display text-2xl font-semibold text-ivory">Add your contact details</CardTitle>
-          <p className="text-sm text-muted-foreground">We use these for important account and investment notices. Required later before investing.</p>
-        </CardHeader>
-        <CardContent className="space-y-8">
-          <ContactVerifier type="email" existing={email} key={`email:${email?.id}:${email?.status}`} />
-          <ContactVerifier type="phone" existing={phone} key={`phone:${phone?.id}:${phone?.status}`} />
-          <Link href="/home" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-ivory hover:bg-space/60">
-            Skip for now
-          </Link>
-        </CardContent>
-      </Card>
-    </main>
+    <AuthFrame title={<>You&apos;re signed in.<span className="block text-ink-muted">One more step before investing.</span></>}>
+      <div className="space-y-8 rounded-shell border border-line bg-surface p-6 shadow-float sm:p-8">
+        <ol aria-label="Account setup" className="flex items-center gap-4 text-sm">
+          <li className="flex items-center gap-2 text-ink-faint"><span aria-hidden className="grid size-6 place-items-center rounded-full bg-primary text-[0.6875rem] text-primary-ink">✓</span>Wallet</li>
+          <li aria-hidden className="h-px w-8 bg-line-strong" />
+          <li className="flex items-center gap-2 text-ink"><span aria-hidden className="grid size-6 place-items-center rounded-full border border-primary font-mono text-[0.6875rem]">2</span>Contact details</li>
+        </ol>
+        <div className="space-y-3">
+          <h1 className="type-title text-ink">Add your contact details</h1>
+          <p className="text-ink-muted">We use these for important account and investment notices. Required later before investing.</p>
+        </div>
+        <ContactVerifier type="email" existing={email} key={`email:${email?.id}:${email?.status}`} />
+        <ContactVerifier type="phone" existing={phone} key={`phone:${phone?.id}:${phone?.status}`} />
+        <Link href="/home" className={buttonVariants({ variant: "ghost", className: "w-full" })}>Skip for now</Link>
+      </div>
+    </AuthFrame>
   );
 }

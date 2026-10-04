@@ -54,7 +54,7 @@ describe("PositionActions", () => {
 
   it("EXECUTION_PENDING links to the open operation", () => {
     show("EXECUTION_PENDING");
-    expect(href("View operation")).toBe("#open-operations");
+    expect(href("View operation")).toBe("/portfolio#open-operations");
   });
 
   it("ALIGNED has no action", () => {

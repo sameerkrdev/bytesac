@@ -36,9 +36,9 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-border-dark bg-space sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto border-line bg-canvas sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-display text-ivory">Invest in {name}</DialogTitle>
+          <DialogTitle className="text-ink">Invest in {name}</DialogTitle>
           <DialogDescription>You sign every step in your own wallets. Bytesac never moves your funds on its own.</DialogDescription>
         </DialogHeader>
 
@@ -46,33 +46,33 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
           <div className="space-y-4">
             <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying />)}</ol>
             <FeeLines fees={plan.fees} />
-            <p className="text-sm text-stone">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
+            <p className="text-sm text-ink-muted">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
             <div className="flex flex-wrap gap-3">
-              <Button className="min-h-11" onClick={() => setSigning(true)}>Continue to signing</Button>
-              <Button variant="secondary" className="min-h-11" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
+              <Button  onClick={() => setSigning(true)}>Continue to signing</Button>
+              <Button variant="secondary"  disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
             </div>
           </div>
         ) : (
           <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); preview.mutate(); }}>
             <div className="space-y-2">
-              <Label htmlFor={ids[0]} className="text-xs font-medium text-ivory">Amount (USDC on Solana)</Label>
-              <Input id={ids[0]} inputMode="decimal" className="min-h-11" value={amount} aria-invalid={amount !== "" && problem !== null} aria-describedby={`${ids[0]}-help`}
+              <Label htmlFor={ids[0]} className="text-xs font-medium text-ink">Amount (USDC on Solana)</Label>
+              <Input id={ids[0]} inputMode="decimal"  value={amount} aria-invalid={amount !== "" && problem !== null} aria-describedby={`${ids[0]}-help`}
                 onChange={(e) => { setAmount(e.target.value.trim()); setKey(crypto.randomUUID()); }} />
-              <p id={`${ids[0]}-help`} className="text-xs text-stone">{amount !== "" && problem ? problem : `Minimum ${minimumUsdc ?? "not set"} USDC${incrementUsdc ? `, in steps of ${incrementUsdc} USDC` : ""}. The fees are taken from this amount.`}</p>
+              <p id={`${ids[0]}-help`} className="text-xs text-ink-muted">{amount !== "" && problem ? problem : `Minimum ${minimumUsdc ?? "not set"} USDC${incrementUsdc ? `, in steps of ${incrementUsdc} USDC` : ""}. The fees are taken from this amount.`}</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={ids[1]} className="text-xs font-medium text-ivory">Slippage tolerance (%)</Label>
-              <Input id={ids[1]} inputMode="decimal" className="min-h-11" value={slippage} aria-invalid={slippageProblem !== null}
+              <Label htmlFor={ids[1]} className="text-xs font-medium text-ink">Slippage tolerance (%)</Label>
+              <Input id={ids[1]} inputMode="decimal"  value={slippage} aria-invalid={slippageProblem !== null}
                 onChange={(e) => { setSlippage(e.target.value.trim()); setKey(crypto.randomUUID()); }} />
-              <p className="text-xs text-stone">{slippageProblem ?? "The most a price may move against you per step. Default 1%, at most 3%."}</p>
+              <p className="text-xs text-ink-muted">{slippageProblem ?? "The most a price may move against you per step. Default 1%, at most 3%."}</p>
             </div>
-            <Button type="submit" className="min-h-11" disabled={problem !== null || slippageProblem !== null || preview.isPending}>
+            <Button type="submit"  disabled={problem !== null || slippageProblem !== null || preview.isPending}>
               {preview.isPending && <Loader2 aria-hidden className="animate-spin" />}Get preview
             </Button>
           </form>
         )}
         {isDeclarationRequired(preview.error) && <DeclarationForm onSaved={() => preview.mutate()} />}
-        {err && !isDeclarationRequired(err) && <div role="alert" className="rounded-xl border border-danger/40 p-3 text-sm text-ivory"><p className="font-medium">{toDisplayError(err).title}</p><p className="text-stone">{toDisplayError(err).message}</p></div>}
+        {err && !isDeclarationRequired(err) && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{toDisplayError(err).title}</p><p className="text-ink-muted">{toDisplayError(err).message}</p></div>}
       </DialogContent>
     </Dialog>
   );

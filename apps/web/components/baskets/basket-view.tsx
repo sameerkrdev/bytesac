@@ -1,8 +1,13 @@
 "use client";
 
-import { ASSET_TYPE_LABEL, BASKET_CATEGORY_LABEL, REVIEW_FREQUENCY_LABEL, formatBps } from "@repo/app-core";
+import { ASSET_TYPE_LABEL } from "@repo/app-core";
+import { BASKET_CATEGORY_LABEL, REVIEW_FREQUENCY_LABEL } from "@repo/app-core/basket-status";
+import { formatBps } from "@repo/app-core/format";
 import type { AssetType, BasketVersionView } from "@repo/validator";
+import { ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
+import { AllocationLegend, AllocationRing, colorAt } from "@/components/visual/allocation-ring";
+import { ChainBadge } from "@/components/visual/chain-badge";
 import { feeText, PLATFORM_OPERATION_LABEL, rateText } from "@/lib/fees";
 
 /** The content fields a manager preview, an ops snapshot and the public page all share. */
@@ -11,18 +16,28 @@ export type BasketContent = Pick<BasketVersionView,
   "strategyRisks" | "liquidityNotes" | "conflictsOfInterest" | "constraints" | "rebalance" | "fees" | "minimumInvestmentUsdc" | "minimumIncrementUsdc">;
 
 export interface AllocationRow {
-  key: string; name: string; symbol: string; assetType: AssetType; targetWeightBps: number; minWeightBps: number | null; maxWeightBps: number | null; rationale?: string | null; price?: ReactNode;
+  key: string; name: string; symbol: string; assetType: AssetType; targetWeightBps: number; minWeightBps: number | null; maxWeightBps: number | null; rationale?: string | null; price?: ReactNode; chains?: string[];
 }
 
-const Section = ({ title, children }: { title: string; children: ReactNode }) => (
-  <section aria-label={title} className="space-y-3">
-    <h2 className="font-display text-xl font-semibold text-ivory">{title}</h2>
+
+
+const Section = ({ id, title, eyebrow, children }: { id: string; title: string; eyebrow?: string; children: ReactNode }) => (
+  <section id={id} aria-label={title} className="scroll-mt-28 space-y-6 border-t border-line pt-10">
+    <div className="space-y-2">
+      {eyebrow && <p className="type-eyebrow text-ink-faint">{eyebrow}</p>}
+      <h2 className="type-heading text-ink">{title}</h2>
+    </div>
     {children}
   </section>
 );
-const Text = ({ label, value }: { label: string; value: string | null }) => value ? (
-  <div><dt className="text-xs text-stone">{label}</dt><dd className="whitespace-pre-wrap text-sm text-ivory">{value}</dd></div>
+const Text = ({ label, value, wide = false }: { label: string; value: string | null; wide?: boolean }) => value ? (
+  <div className={wide ? "sm:col-span-2" : undefined}>
+    <dt className="type-eyebrow text-ink-faint">{label}</dt>
+    <dd className="mt-2 text-[0.9375rem] leading-relaxed whitespace-pre-wrap text-ink">{value}</dd>
+  </div>
 ) : null;
+
+const isRwa = (t: AssetType) => t.startsWith("TOKENIZED_");
 
 /** Plain-text rendering of a basket's content. Every string is rendered as text, never as HTML. */
 export function BasketView({ content: c, allocation, disclosures, platformFee = [] }: {
@@ -34,15 +49,20 @@ export function BasketView({ content: c, allocation, disclosures, platformFee = 
     c.constraints.maxRwaBps !== undefined && `Tokenized assets up to ${formatBps(c.constraints.maxRwaBps)}`,
   ].filter(Boolean);
   const f = c.fees;
+  const slices = allocation.map((a) => ({ key: a.key, label: `${a.name} (${a.symbol})`, bps: a.targetWeightBps }));
   return (
-    <div className="space-y-8">
-      <Section title="Overview">
-        <p className="text-sm text-stone">{BASKET_CATEGORY_LABEL[c.category]}{c.tags.length > 0 && ` · ${c.tags.join(", ")}`}</p>
-        <dl className="space-y-3">
-          <Text label="Summary" value={c.shortDescription} />
-          <Text label="Description" value={c.longDescription} />
+    <div className="space-y-14">
+      <Section id="overview" title="Overview" eyebrow={`${BASKET_CATEGORY_LABEL[c.category]}${c.tags.length > 0 ? ` · ${c.tags.join(", ")}` : ""}`}>
+        {c.thesis && (
+          <figure className="space-y-3">
+            <figcaption className="type-eyebrow text-ink-faint">Thesis</figcaption>
+            <blockquote className="max-w-3xl text-[clamp(1.25rem,1.05rem+0.7vw,1.625rem)] leading-snug font-light tracking-tight whitespace-pre-wrap text-ink">{c.thesis}</blockquote>
+          </figure>
+        )}
+        <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+          <Text label="Summary" value={c.shortDescription} wide />
+          <Text label="Description" value={c.longDescription} wide />
           <Text label="Objective" value={c.objective} />
-          <Text label="Thesis" value={c.thesis} />
           <Text label="Methodology" value={c.methodology} />
           <Text label="Intended investor" value={c.intendedInvestor} />
           <Text label="Horizon" value={c.horizon} />
@@ -51,62 +71,81 @@ export function BasketView({ content: c, allocation, disclosures, platformFee = 
         </dl>
       </Section>
 
-      <Section title="Allocation">
-        {allocation.length === 0 ? <p className="text-sm text-stone">No assets yet.</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs text-stone"><tr><th className="py-2 pr-4 font-medium">Asset</th><th className="pr-4 font-medium">Type</th><th className="pr-4 font-medium">Weight</th><th className="pr-4 font-medium">Band</th><th className="font-medium">Price</th></tr></thead>
-              <tbody>
-                {allocation.map((a) => (
-                  <tr key={a.key} className="border-t border-border-dark align-top">
-                    <td className="py-3 pr-4"><span className="font-medium text-ivory">{a.name}</span> <span className="text-stone">{a.symbol}</span>{a.rationale && <span className="block whitespace-pre-wrap text-xs text-stone">{a.rationale}</span>}</td>
-                    <td className="pr-4 text-stone">{ASSET_TYPE_LABEL[a.assetType]}</td>
-                    <td className="pr-4 text-ivory">{formatBps(a.targetWeightBps)}</td>
-                    <td className="pr-4 text-stone">{a.minWeightBps === null && a.maxWeightBps === null ? "—" : `${formatBps(a.minWeightBps ?? 0)} to ${formatBps(a.maxWeightBps ?? 10_000)}`}</td>
-                    <td className="text-stone">{a.price ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <Section id="allocation" title="Allocation" eyebrow="Target weights">
+        {allocation.length === 0 ? <p className="text-sm text-ink-muted">No assets yet.</p> : (
+          <>
+            <div className="grid items-center gap-8 rounded-card border border-line bg-surface p-6 md:grid-cols-[auto_1fr] md:p-8">
+              <AllocationRing slices={slices} size={208} thickness={18} className="mx-auto" label={`Target allocation: ${allocation.map((a) => `${a.symbol} ${formatBps(a.targetWeightBps)}`).join(", ")}`}>
+                <div><p className="type-figure text-3xl text-ink">{allocation.length}</p><p className="text-xs text-ink-muted">{allocation.length === 1 ? "asset" : "assets"}</p></div>
+              </AllocationRing>
+              <AllocationLegend slices={slices} />
+            </div>
+            <p className="text-sm text-ink-muted">These are the strategy&apos;s target weights. What you hold after investing is read from your wallets and shown in your portfolio — it can differ.</p>
+            <div className="overflow-x-auto rounded-card border border-line bg-surface">
+              <table className="w-full min-w-[40rem] text-left text-sm">
+                <thead className="text-xs text-ink-faint"><tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium"><th>Asset</th><th>Type</th><th>Networks</th><th className="text-right">Target</th><th className="text-right">Band</th><th className="text-right">Price</th></tr></thead>
+                <tbody>
+                  {allocation.map((a, i) => (
+                    <tr key={a.key} className="border-t border-line align-top [&>td]:px-4 [&>td]:py-3.5">
+                      <td>
+                        <span className="flex items-start gap-2.5">
+                          <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: colorAt(i) }} />
+                          <span><span className="font-medium text-ink">{a.name}</span> <span className="text-ink-muted">{a.symbol}</span>{a.rationale && <span className="mt-1 block text-xs whitespace-pre-wrap text-ink-muted">{a.rationale}</span>}</span>
+                        </span>
+                      </td>
+                      <td className="text-ink-muted"><span className="inline-flex items-center gap-1.5">{isRwa(a.assetType) && <ShieldAlert aria-hidden className="size-3.5" />}{ASSET_TYPE_LABEL[a.assetType]}</span></td>
+                      <td>{a.chains && a.chains.length > 0 ? <span className="flex flex-wrap gap-1">{a.chains.map((ch) => <ChainBadge key={ch} chain={ch} compact />)}</span> : <span className="text-ink-faint">—</span>}</td>
+                      <td className="text-right font-mono text-ink tabular-nums">{formatBps(a.targetWeightBps)}</td>
+                      <td className="text-right font-mono text-xs text-ink-muted tabular-nums">{a.minWeightBps === null && a.maxWeightBps === null ? "—" : `${formatBps(a.minWeightBps ?? 0)} to ${formatBps(a.maxWeightBps ?? 10_000)}`}</td>
+                      <td className="text-right text-xs text-ink-muted tabular-nums">{a.price ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
+        <div>
+          <h3 className="type-eyebrow text-ink-faint">Constraints</h3>
+          {constraints.length === 0 ? <p className="mt-2 text-sm text-ink-muted">No extra constraints.</p> : <ul className="mt-3 flex flex-wrap gap-2">{constraints.map((t) => <li key={String(t)} className="rounded-pill border border-line bg-surface px-3 py-1 text-sm text-ink">{t}</li>)}</ul>}
+        </div>
       </Section>
 
-      <Section title="Constraints">
-        {constraints.length === 0 ? <p className="text-sm text-stone">No extra constraints.</p> : <ul className="list-disc pl-5 text-sm text-ivory">{constraints.map((t) => <li key={String(t)}>{t}</li>)}</ul>}
+      <Section id="rebalancing" title="Rebalancing">
+        <dl className="grid gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-3">
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Review</dt><dd className="mt-1 text-ink">{REVIEW_FREQUENCY_LABEL[c.rebalance.reviewFrequency]}</dd></div>
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Drift threshold</dt><dd className="mt-1 text-ink">{c.rebalance.driftThresholdBps !== undefined ? formatBps(c.rebalance.driftThresholdBps) : "Platform default"}</dd></div>
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Minimum trade</dt><dd className="mt-1 text-ink">{[c.rebalance.minTradeBps !== undefined && `${c.rebalance.minTradeBps} bps`, c.rebalance.minTradeUsdc !== undefined && `${c.rebalance.minTradeUsdc} USDC`].filter(Boolean).join(" · ") || "Platform default"}</dd></div>
+        </dl>
+        <p className="max-w-2xl text-sm text-ink-muted">These are the manager&apos;s review intentions, not a promise. A rebalance is only a new proposal. Nothing changes in your holdings unless you give your explicit consent.</p>
       </Section>
 
-      <Section title="Rebalancing">
-        <p className="text-sm text-ivory">{REVIEW_FREQUENCY_LABEL[c.rebalance.reviewFrequency]}{c.rebalance.driftThresholdBps !== undefined && ` · drift threshold ${formatBps(c.rebalance.driftThresholdBps)}`}{c.rebalance.minTradeBps !== undefined && ` · minimum trade ${c.rebalance.minTradeBps} bps`}{c.rebalance.minTradeUsdc !== undefined && ` · minimum trade ${c.rebalance.minTradeUsdc} USDC`}</p>
-        <p className="text-sm text-stone">These are the manager&apos;s review intentions, not a promise. A rebalance is only a new proposal. Nothing changes in your holdings unless you give your explicit consent.</p>
-      </Section>
-
-      <Section title="Fees and minimums">
-        <dl className="grid gap-3 sm:grid-cols-2">
-          <div><dt className="text-xs text-stone">Entry fee</dt><dd className="text-sm text-ivory">{feeText(f.entry)}</dd></div>
-          <div><dt className="text-xs text-stone">Management fee (per year)</dt><dd className="text-sm text-ivory">{feeText(f.management)} <span className="text-stone">· Disclosed — not collected in this release</span></dd></div>
-          <div><dt className="text-xs text-stone">Rebalance fee</dt><dd className="text-sm text-ivory">{feeText(f.rebalance)}</dd></div>
-          <div><dt className="text-xs text-stone">Subscription</dt><dd className="text-sm text-ivory">{f.subscription ? <>{`${f.subscription.amountUsdc} USDC per ${f.subscription.period === "monthly" ? "month" : "year"}`} <span className="text-stone">· Disclosed — not collected in this release</span></> : "None"}</dd></div>
-          <div><dt className="text-xs text-stone">Minimum investment</dt><dd className="text-sm text-ivory">{c.minimumInvestmentUsdc ? `${c.minimumInvestmentUsdc} USDC` : "Not set"}</dd></div>
-          {c.minimumIncrementUsdc && <div><dt className="text-xs text-stone">Minimum increment</dt><dd className="text-sm text-ivory">{c.minimumIncrementUsdc} USDC</dd></div>}
+      <Section id="fees" title="Fees and minimums">
+        <dl className="grid gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-2">
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Entry fee</dt><dd className="mt-1 text-ink">{feeText(f.entry)}</dd></div>
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Rebalance fee</dt><dd className="mt-1 text-ink">{feeText(f.rebalance)}</dd></div>
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Management fee (per year)</dt><dd className="mt-1 text-ink">{feeText(f.management)} <span className="block text-xs text-ink-faint">Disclosed — not collected in this release</span></dd></div>
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Subscription</dt><dd className="mt-1 text-ink">{f.subscription ? <>{`${f.subscription.amountUsdc} USDC per ${f.subscription.period === "monthly" ? "month" : "year"}`} <span className="block text-xs text-ink-faint">Disclosed — not collected in this release</span></> : "None"}</dd></div>
+          <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Minimum investment</dt><dd className="mt-1 text-ink">{c.minimumInvestmentUsdc ? `${c.minimumInvestmentUsdc} USDC` : "Not set"}</dd></div>
+          {c.minimumIncrementUsdc && <div className="bg-surface p-5"><dt className="text-xs text-ink-muted">Minimum increment</dt><dd className="mt-1 text-ink">{c.minimumIncrementUsdc} USDC</dd></div>}
         </dl>
         {platformFee.length > 0 && (
-          <div className="space-y-1">
-            <h3 className="text-xs text-stone">Bytesac platform fee</h3>
-            <ul className="text-sm text-ivory">{platformFee.map((p) => <li key={p.operationKind}>{PLATFORM_OPERATION_LABEL[p.operationKind] ?? p.operationKind}: {rateText(p.bps, p.minUsdc, p.maxUsdc)}</li>)}</ul>
+          <div className="space-y-2">
+            <h3 className="type-eyebrow text-ink-faint">Bytesac platform fee</h3>
+            <ul className="flex flex-wrap gap-2 text-sm text-ink">{platformFee.map((p) => <li key={p.operationKind} className="rounded-pill border border-line bg-surface px-3 py-1">{PLATFORM_OPERATION_LABEL[p.operationKind] ?? p.operationKind}: {rateText(p.bps, p.minUsdc, p.maxUsdc)}</li>)}</ul>
           </div>
         )}
-        <p className="text-xs text-stone">Entry and rebalance fees are paid up front in USDC when you invest or rebalance; nothing is charged or invested on this page.</p>
+        <p className="text-xs text-ink-muted">Entry and rebalance fees are paid up front in USDC when you invest or rebalance; nothing is charged or invested on this page.</p>
       </Section>
 
-      <Section title="Risks and disclosures">
-        <dl className="space-y-3">
-          <Text label="Strategy risks" value={c.strategyRisks} />
+      <Section id="risks" title="Risks and disclosures">
+        <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+          <Text label="Strategy risks" value={c.strategyRisks} wide />
           <Text label="Liquidity" value={c.liquidityNotes} />
           <Text label="Conflicts of interest" value={c.conflictsOfInterest} />
         </dl>
         <ul className="space-y-3">
-          {disclosures.map((d) => <li key={d.title} className="rounded-xl border border-border-dark p-3"><p className="text-sm font-medium text-ivory">{d.title}</p><p className="mt-1 whitespace-pre-wrap text-sm text-stone">{d.body}</p></li>)}
+          {disclosures.map((d) => <li key={d.title} className="rounded-tile bg-surface-muted p-5"><p className="text-sm font-medium text-ink">{d.title}</p><p className="mt-1.5 text-sm whitespace-pre-wrap text-ink-muted">{d.body}</p></li>)}
         </ul>
       </Section>
     </div>

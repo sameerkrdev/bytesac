@@ -40,7 +40,7 @@ export function MembersTable({ client = api }: { client?: Client }) {
       <div role="group" aria-label="Filter by status" className="flex flex-wrap items-center gap-2">
         {FILTERS.map((s) => (
           <button key={s ?? "queue"} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}
-            className={cn("min-h-11 rounded-lg border border-border-dark px-3 text-sm text-stone hover:text-ivory", status === s && "bg-slate text-ivory")}>
+            className={cn("min-h-11 rounded-control border border-line px-3 text-sm text-ink-muted hover:text-ink", status === s && "bg-surface text-ink")}>
             {s ? MEMBERSHIP_STATUS_LABEL[s].label : "Needs review"}
           </button>
         ))}
@@ -51,17 +51,17 @@ export function MembersTable({ client = api }: { client?: Client }) {
       ) : (
         <>
           <table className="hidden w-full text-left text-sm md:table">
-            <thead className="text-xs text-stone">
+            <thead className="text-xs text-ink-muted">
               <tr><th className="py-2 pr-4 font-medium">Organization</th><th className="pr-4 font-medium">Member</th><th className="pr-4 font-medium">Role</th><th className="pr-4 font-medium">Status</th><th className="font-medium">Submitted</th></tr>
             </thead>
             <tbody>
               {items.map((m) => (
-                <tr key={m.id} className="border-t border-border-dark">
-                  <td className="py-3 pr-4"><Link href={`/ops/members/${m.id}`} className="font-medium text-ivory underline-offset-4 hover:underline">{org(m)}</Link></td>
-                  <td className="pr-4 text-stone">{m.publicDisplayName ?? "—"}</td>
-                  <td className="pr-4 text-stone">{role(m)}</td>
+                <tr key={m.id} className="border-t border-line">
+                  <td className="py-3 pr-4"><Link href={`/ops/members/${m.id}`} className="font-medium text-ink underline-offset-4 hover:underline">{org(m)}</Link></td>
+                  <td className="pr-4 text-ink-muted">{m.publicDisplayName ?? "—"}</td>
+                  <td className="pr-4 text-ink-muted">{role(m)}</td>
                   <td className="pr-4"><StatusBadge {...MEMBERSHIP_STATUS_LABEL[m.status]} /></td>
-                  <td className="text-stone">{date(m)}</td>
+                  <td className="text-ink-muted">{date(m)}</td>
                 </tr>
               ))}
             </tbody>
@@ -69,16 +69,16 @@ export function MembersTable({ client = api }: { client?: Client }) {
           <ul className="space-y-3 md:hidden">
             {items.map((m) => (
               <li key={m.id}>
-                <Link href={`/ops/members/${m.id}`} className="block space-y-2 rounded-xl border border-border-dark bg-slate p-4">
-                  <span className="block font-medium text-ivory">{org(m)}</span>
-                  <span className="block text-xs text-stone">{m.publicDisplayName ?? "—"} · {role(m)} · {date(m)}</span>
+                <Link href={`/ops/members/${m.id}`} className="block space-y-2 rounded-tile border border-line bg-surface p-4">
+                  <span className="block font-medium text-ink">{org(m)}</span>
+                  <span className="block text-xs text-ink-muted">{m.publicDisplayName ?? "—"} · {role(m)} · {date(m)}</span>
                   <StatusBadge {...MEMBERSHIP_STATUS_LABEL[m.status]} />
                 </Link>
               </li>
             ))}
           </ul>
           {list.hasNextPage && (
-            <Button variant="secondary" className="min-h-11" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>
+            <Button variant="secondary"  disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Load more</Button>
           )}
         </>
       )}

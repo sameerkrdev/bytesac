@@ -10,17 +10,17 @@ export function Adoption({ bid, client }: { bid: string; client: Pick<ApiClient,
   const q = useQuery({ queryKey: ["basket", bid, "adoption"], queryFn: () => client.basketAdoption(bid), retry: false });
   if (q.isError) return <p role="alert" className="text-sm text-danger">{toDisplayError(q.error).title}</p>;
   if (!q.data) return <LoadingState />;
-  if (q.data.versions.length === 0) return <p className="text-sm text-stone">No versions are published yet.</p>;
+  if (q.data.versions.length === 0) return <p className="text-sm text-ink-muted">No versions are published yet.</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Adoption by version</caption>
-        <thead className="text-xs text-stone">
+        <thead className="text-xs text-ink-muted">
           <tr>{["Version", "Open positions", "Applied", "Skipped", "Not responded", "In progress"].map((h) => <th key={h} scope="col" className="py-2 pr-4 font-medium">{h}</th>)}</tr>
         </thead>
-        <tbody className="text-ivory">
+        <tbody className="text-ink">
           {q.data.versions.map((v) => (
-            <tr key={v.versionId} className="border-t border-border-dark">
+            <tr key={v.versionId} className="border-t border-line">
               <th scope="row" className="py-2 pr-4 font-medium">Version {v.versionNumber}</th>
               <td className="pr-4">{v.openPositions}</td><td className="pr-4">{v.applied}</td><td className="pr-4">{v.skipped}</td><td className="pr-4">{v.notResponded}</td><td>{v.inProgress}</td>
             </tr>

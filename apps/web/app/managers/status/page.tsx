@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { StatusView } from "@/components/managers/status-view";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "Application status · Bytesac", referrer: "no-referrer" };
+export const metadata: Metadata = { title: "Application status", referrer: "no-referrer" };
 
 export default function StatusPage() {
   return (
-    <main className="grid min-h-screen place-items-center bg-space px-4 py-10">
-      <Card className="w-full max-w-lg rounded-2xl border-border-dark bg-slate">
-        <CardHeader><CardTitle className="font-display text-2xl font-semibold text-ivory">Application status</CardTitle></CardHeader>
-        <CardContent><StatusView /></CardContent>
-      </Card>
-    </main>
+    <div className="mx-auto max-w-2xl space-y-8">
+      <div className="space-y-3">
+        <p className="type-eyebrow text-ink-faint">Manager application</p>
+        <h1 className="type-title text-ink">Application status</h1>
+      </div>
+      <div className="rounded-shell border border-line bg-surface p-6 shadow-soft sm:p-8"><StatusView /></div>
+    </div>
   );
 }

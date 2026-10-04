@@ -10,10 +10,12 @@
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "mock-api": "pnpm --filter api exec tsx watch ../web/e2e/mock-api/server.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
+    "@react-three/fiber": "9.8.1",
     "@reown/appkit": "1.8.24",
     "@reown/appkit-adapter-bitcoin": "1.8.24",
     "@reown/appkit-adapter-solana": "1.8.24",
@@ -27,16 +29,20 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "firebase": "12.19.0",
+    "lenis": "1.3.26",
     "lucide-react": "1.48.0",
+    "motion": "14.0.0",
     "next": "16.3.8",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.7.0",
+    "three": "0.186.1",
     "viem": "2.56.9",
     "wagmi": "2.19.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@tailwindcss/postcss": "4.3.3",
@@ -46,6 +52,7 @@
     "@types/node": "26.4.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "@types/three": "0.186.0",
     "@vitejs/plugin-react": "6.1.1",
     "eslint": "10.9.1",
     "jsdom": "30.1.1",

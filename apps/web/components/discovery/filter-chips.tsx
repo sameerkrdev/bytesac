@@ -31,9 +31,9 @@ export function FilterChips({ filters, onChange }: { filters: DiscoveryFilters; 
   return (
     <ul aria-label="Filters used" className="flex flex-wrap gap-2">
       {keys.map((k) => (
-        <li key={k} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-border-dark bg-slate pl-3 text-sm text-ivory">
+        <li key={k} className="inline-flex min-h-10 items-center gap-0.5 rounded-pill border border-line-strong/70 bg-surface py-0.5 pl-3.5 text-sm text-ink shadow-soft">
           <span>{(describe[k] as (v: unknown) => string)(filters[k])}</span>
-          <button type="button" aria-label={`Remove filter: ${(describe[k] as (v: unknown) => string)(filters[k])}`} className="inline-flex size-11 items-center justify-center text-stone hover:text-ivory"
+          <button type="button" aria-label={`Remove filter: ${(describe[k] as (v: unknown) => string)(filters[k])}`} className="inline-flex size-9 items-center justify-center rounded-pill text-ink-faint hover:bg-surface-muted hover:text-ink"
             onClick={() => { const { [k]: _removed, ...rest } = filters; onChange(rest); }}>
             <X aria-hidden className="size-4" />
           </button>

@@ -33,7 +33,7 @@ export function Invitation({ mid, client = api }: { mid: string; client?: Client
     return (
       <section aria-labelledby="invite-title" className="max-w-xl space-y-4">
         <PageHeader id="invite-title" title="Invitation unavailable" />
-        <p className="text-base text-ivory">This invitation has expired, was cancelled, or has already been answered. Ask the organization to invite you again.</p>
+        <p className="text-base text-ink">This invitation has expired, was cancelled, or has already been answered. Ask the organization to invite you again.</p>
       </section>
     );
   }
@@ -42,13 +42,13 @@ export function Invitation({ mid, client = api }: { mid: string; client?: Client
   return (
     <section aria-labelledby="invite-title" className="max-w-xl space-y-4">
       <PageHeader id="invite-title" title={`Join ${invite.organization.displayName ?? "an organization"}`} />
-      <p className="text-base text-ivory">You have been invited as <span className="font-medium">{MEMBERSHIP_ROLE_LABEL[invite.role]}</span>.</p>
-      {reviewed && <p role="note" className="rounded-xl border border-border-dark bg-slate p-4 text-sm text-ivory">You&apos;ll be asked to verify your identity before joining.</p>}
-      <p className="text-sm text-stone">This invitation expires on {new Date(invite.expiresAt).toLocaleDateString()}.</p>
+      <p className="text-base text-ink">You have been invited as <span className="font-medium">{MEMBERSHIP_ROLE_LABEL[invite.role]}</span>.</p>
+      {reviewed && <p role="note" className="rounded-tile border border-line bg-surface p-4 text-sm text-ink">You&apos;ll be asked to verify your identity before joining.</p>}
+      <p className="text-sm text-ink-muted">This invitation expires on {new Date(invite.expiresAt).toLocaleDateString()}.</p>
       {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{toDisplayError(error).title}</span> {toDisplayError(error).message}</p>}
       <div className="flex flex-wrap gap-3">
-        <Button className="min-h-11" disabled={accept.isPending || decline.isPending} onClick={() => accept.mutate()}>{accept.isPending && <Loader2 aria-hidden className="animate-spin" />}Accept invitation</Button>
-        <Button variant="secondary" className="min-h-11" disabled={accept.isPending || decline.isPending} onClick={() => decline.mutate()}>Decline</Button>
+        <Button  disabled={accept.isPending || decline.isPending} onClick={() => accept.mutate()}>{accept.isPending && <Loader2 aria-hidden className="animate-spin" />}Accept invitation</Button>
+        <Button variant="secondary"  disabled={accept.isPending || decline.isPending} onClick={() => decline.mutate()}>Decline</Button>
       </div>
     </section>
   );
