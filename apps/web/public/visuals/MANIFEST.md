@@ -38,6 +38,7 @@ above are kept for provenance.
 
 - Generate only after checking this list; reuse before generating.
 - Keep the family: frosted glass, ice white / pale sky / navy tints, soft top-left studio light, no logos, no text, no
-  third-party marks (no official chain or token logos either — chains are shown as typographic badges in code).
+  third-party marks in generated art. (Round 2, user decision: real crypto logos are shown in the UI from the vendored
+  CC0 `public/crypto` set or a logo uploaded to the registry — never baked into generated images.)
 - Never generate product UI or screenshots as images.
 - Add a row here for every new asset: file, contents, where it is used, model, task UUID.

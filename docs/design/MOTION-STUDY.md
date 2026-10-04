@@ -52,6 +52,30 @@ Principle: depth arrives by focus — objects sharpen as they settle. Order is c
 | 29–33 s | Closing statement, two-tone, with small image pills inline in the headline | Inline image pills scale in after the words | Imagery as punctuation inside typography |
 | 33–37 s | "Live activity" ticker row, contact footer over rocks | Row items fade in sequentially like an event feed | Activity as a calm, sequential feed |
 
+## Round 2: 15 fps re-study of the primary reference (2026-10-04)
+
+Frames were extracted at 15 fps (`ffmpeg -vf fps=15`) and tiled into contact sheets to read the scroll mechanics
+frame by frame rather than at 2 fps.
+
+- **Hero holds still; the sky moves.** Headline, device and chips are static while the cloud layer drifts sideways
+  very slowly (a few pixels per second). Depth comes from layers moving at different speeds, not from scroll.
+- **Page swap.** From about 1.6 s the next section, an opaque surface with rounded top corners and a soft upper
+  shadow, slides up from the bottom *over* the pinned hero. The hero recedes slightly (rises a little, shrinks, dims)
+  as it is covered. Every chapter change repeats this move.
+- **Mid sections scroll normally** with the usual reveals; only chapter boundaries swap.
+- **Closing bookend.** The sky fades back in behind the headline, lines resolve from blur one at a time, and the
+  hand-held phone rises into frame as the section arrives.
+
+Implemented as `SwapStack`/`SwapPanel` (`components/motion/page-swap.tsx`): each chapter pins once its *end* meets
+the viewport's end (so tall chapters are read in full first), the next slides over it, and the covered one scales to
+0.94, rises 4% and dims to 40%. The sky is a CSS gradient with mirror-tiled transparent cloud strips drifting at
+190 s, 300 s and 420 s per loop (`bx-drift`). Frame-by-frame QA: `e2e/scroll-frames.mjs` and `e2e/time-frames.mjs`.
+
+**Glass assembly (round 2).** The allocation ring and the layer stack are real-time three.js scenes that assemble one
+piece after another, outer frame first: each piece flies in from in front of the object, scales up and lands on the
+layer before it (1.1 s each, 160 ms apart, ease-out quart), then the object idles with a slow drift and a little
+pointer tilt.
+
 ## Extracted principles → Bytesac
 
 | # | Principle | Bytesac use |
@@ -85,8 +109,11 @@ Principle: depth arrives by focus — objects sharpen as they settle. Order is c
 
 ## Rules
 
-- Motion explains a state change or guides attention; nothing loops forever except a pending-transaction indicator.
+- Motion explains a state change or guides attention. The only endless loops are a pending-transaction indicator and
+  ambient atmosphere (drifting clouds, the idle glass objects): very slow, decorative, paused off screen and stopped
+  under reduced motion.
 - `prefers-reduced-motion: reduce` → no transforms, no blur, no parallax, no smooth scroll; content renders in its final state.
 - Smooth scrolling (Lenis) only on marketing routes, never in the app or in forms.
 - WebGL scenes are progressive enhancement: lazy-loaded, with a static image fallback, and skipped when WebGL is unavailable or reduced motion is set.
-- No scroll-jacking: pinned sections stay short (≤ 1.5 viewport heights) and never trap the keyboard or screen reader.
+- No scroll-jacking: the page swap uses CSS `position: sticky` only (no wheel interception); a pinned chapter is
+  covered within one viewport of scrolling and never traps the keyboard or screen reader.
