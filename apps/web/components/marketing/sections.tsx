@@ -10,6 +10,7 @@ import { LineReveal, Parallax, Reveal, Stagger } from "@/components/motion/revea
 import { buttonVariants } from "@/components/ui/button";
 import { AllocationLegend, AllocationRing } from "@/components/visual/allocation-ring";
 import { ChainBadge } from "@/components/visual/chain-badge";
+import { GlassScene } from "@/components/visual/glass-scene-lazy";
 import { ExampleBasketScreen } from "@/components/visual/phone-screens";
 import { GlassObject, HandPhone, Sky } from "@/components/visual/scenery";
 import { WeightDiff } from "@/components/visual/weight-diff";
@@ -32,7 +33,7 @@ export function Statement() {
   return (
     <section aria-label="Why Bytesac" className={cn(wrap, "py-28 md:py-44")}>
       <div className="mx-auto max-w-4xl text-center">
-        <Reveal className="mx-auto mb-10 size-20"><GlassObject name="glass-allocation-ring" className="size-full object-contain" sizes="80px" /></Reveal>
+        <GlassScene variant="ring" className="mx-auto -my-6 aspect-square w-[min(96vw,560px)]" />
         <LineReveal as="p" inView className="type-title text-ink" lineClassName="[&>em]:text-ink-faint [&>em]:not-italic" lines={[
           "Most people don’t need another trading screen.",
           <em key="b">They need a strategy they understand,</em>,
@@ -172,7 +173,6 @@ export function SelfCustody() {
   return (
     <section aria-labelledby="custody-title" className="relative isolate overflow-hidden py-28 md:py-40">
       <div>
-        <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_80%_20%,var(--c-sky3),transparent_70%),radial-gradient(60%_50%_at_10%_90%,var(--c-sky2),transparent_70%)] opacity-70" />
         <div className={cn(wrap, "grid items-center gap-16 lg:grid-cols-12")}>
           <div className="lg:col-span-6">
             <Reveal as="p" className="type-eyebrow text-ink-faint">Self-custody by design</Reveal>
@@ -181,9 +181,7 @@ export function SelfCustody() {
               Bytesac is not a place you deposit money. It helps you research a strategy and build the exact transactions to follow it — then waits for your signature.
             </Reveal>
           </div>
-          <Parallax speed={50} className="lg:col-span-5 lg:col-start-8">
-            <GlassObject name="glass-wallet" className="mx-auto w-full max-w-md drop-shadow-[0_40px_60px_rgba(0,0,0,0.45)]" />
-          </Parallax>
+          <GlassScene variant="stack" className="aspect-square w-full lg:col-span-5 lg:col-start-8" />
         </div>
         <div className={cn(wrap, "mt-20")}>
           <Stagger as="ol" item="li" itemClassName="glass h-full rounded-card p-5" className="grid gap-3 md:grid-cols-5">
