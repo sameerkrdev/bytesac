@@ -100,7 +100,7 @@ export function BasketRail({ items }: { items: DiscoverySearchItem[] }) {
         <SectionIntro id="rail-title" eyebrow="Live on Bytesac" title="Strategies you can research today." />
         <Reveal><Link href="/baskets" className={buttonVariants({ variant: "secondary" })}>All baskets<ArrowRight /></Link></Reveal>
       </div>
-      <div className="mt-14 overflow-x-auto pb-6 [scrollbar-width:thin] [scroll-padding-inline:1rem] snap-x snap-mandatory">
+      <div className="mt-14 overflow-x-auto pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [scroll-padding-inline:1rem] snap-x snap-mandatory">
         <Stagger as="ul" item="li" itemClassName="w-[min(84vw,21rem)] shrink-0 snap-start" className="flex w-max gap-4 px-4 sm:px-6 lg:px-[max(2.5rem,calc((100vw-80rem)/2+2.5rem))]">
           {items.slice(0, 6).map((b) => <BasketCard key={b.slug} b={b} />)}
         </Stagger>
