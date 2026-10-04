@@ -25,16 +25,16 @@ export function ConfirmAction({ label, description, destructive, disabled, pendi
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button type="button" variant={destructive ? "destructive" : "secondary"} className="min-h-11" disabled={disabled} onClick={() => setOpen(true)}>{label}</Button>
+      <Button type="button" variant={destructive ? "destructive" : "secondary"}  disabled={disabled} onClick={() => setOpen(true)}>{label}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border-border-dark bg-space">
+        <DialogContent className="border-line bg-canvas">
           <DialogHeader>
-            <DialogTitle className="text-ivory">{label}?</DialogTitle>
+            <DialogTitle className="text-ink">{label}?</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="secondary" className="min-h-11" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant={destructive ? "destructive" : "default"} className="min-h-11" disabled={pending} onClick={() => { setOpen(false); onConfirm(); }}>
+            <Button variant="secondary"  onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant={destructive ? "destructive" : "default"}  disabled={pending} onClick={() => { setOpen(false); onConfirm(); }}>
               {pending && <Loader2 aria-hidden className="animate-spin" />}Confirm
             </Button>
           </DialogFooter>

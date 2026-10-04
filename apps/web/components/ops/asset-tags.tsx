@@ -29,7 +29,7 @@ export function AssetTags({ client = api }: { client?: Client }) {
   const create = useMutation({ mutationFn: (b: Parameters<Client["opsCreateAssetTag"]>[0]) => client.opsCreateAssetTag(b), onSuccess: () => { setF({ key: "", label: "" }); return refresh(); } });
   const retire = useMutation({ mutationFn: (tid: string) => client.opsRetireAssetTag(tid), onSuccess: refresh });
 
-  if (!isAdmin) return <p role="alert" className="text-base text-ivory">You don&apos;t have access to this area.</p>;
+  if (!isAdmin) return <p role="alert" className="text-base text-ink">You don&apos;t have access to this area.</p>;
   return (
     <div className="space-y-8">
       <PageHeader title="Asset tags" />
@@ -40,12 +40,12 @@ export function AssetTags({ client = api }: { client?: Client }) {
         if (parsed.success) create.mutate(parsed.data);
       }}>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-key`} className="text-xs font-medium text-ivory">Key (lowercase letters, numbers, hyphens)</Label>
-          <Input id={`${id}-key`} className="min-h-11 bg-space text-ivory" value={f.key} autoComplete="off" spellCheck={false} onChange={(e) => setF({ ...f, key: e.target.value })} />
+          <Label htmlFor={`${id}-key`} className="text-xs font-medium text-ink">Key (lowercase letters, numbers, hyphens)</Label>
+          <Input id={`${id}-key`}  value={f.key} autoComplete="off" spellCheck={false} onChange={(e) => setF({ ...f, key: e.target.value })} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-label`} className="text-xs font-medium text-ivory">Label</Label>
-          <Input id={`${id}-label`} className="min-h-11 bg-space text-ivory" value={f.label} maxLength={40} onChange={(e) => setF({ ...f, label: e.target.value })} />
+          <Label htmlFor={`${id}-label`} className="text-xs font-medium text-ink">Label</Label>
+          <Input id={`${id}-label`}  value={f.label} maxLength={40} onChange={(e) => setF({ ...f, label: e.target.value })} />
         </div>
         {invalid && <p role="alert" className="text-xs text-danger">Use a 2 to 32 character key (a-z, 0-9, hyphen) and a label up to 40 characters.</p>}
         <Button type="submit" className="min-h-11 w-fit" disabled={create.isPending}>Create tag</Button>
@@ -55,10 +55,10 @@ export function AssetTags({ client = api }: { client?: Client }) {
       {tags.isError ? <OpsError error={tags.error} onRetry={() => void tags.refetch()} /> : !tags.data ? <LoadingState /> : (
         <ul className="space-y-3">
           {tags.data.tags.map((t) => (
-            <li key={t.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3">
-              <span className="font-mono text-xs text-stone">{t.key}</span>
-              <span className="text-sm font-medium text-ivory">{t.label}</span>
-              <span className="text-xs text-stone">{t.status === "active" ? "Active" : `Retired ${new Date(t.retiredAt ?? t.createdAt).toLocaleDateString()}`}</span>
+            <li key={t.id} className="flex flex-wrap items-center gap-3 rounded-tile border border-line bg-surface p-3">
+              <span className="font-mono text-xs text-ink-muted">{t.key}</span>
+              <span className="text-sm font-medium text-ink">{t.label}</span>
+              <span className="text-xs text-ink-muted">{t.status === "active" ? "Active" : `Retired ${new Date(t.retiredAt ?? t.createdAt).toLocaleDateString()}`}</span>
               {t.status === "active" && <span className="ml-auto"><ConfirmReason label={`Retire ${t.key}`} description="Retired tags can no longer be added to assets. Assets keep the tag until you remove it." pending={retire.isPending} onConfirm={() => retire.mutate(t.id)} /></span>}
             </li>
           ))}

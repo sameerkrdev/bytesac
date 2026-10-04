@@ -46,21 +46,21 @@ export function StatusView({ client = api }: { client?: Client }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <StatusBadge tone={badge.tone} label={badge.label} />
-        {s.submittedAt && <span className="text-sm text-muted-foreground">Submitted {new Date(s.submittedAt).toLocaleDateString()}</span>}
+        {s.submittedAt && <span className="text-sm text-ink-muted">Submitted {new Date(s.submittedAt).toLocaleDateString()}</span>}
       </div>
-      <p className="text-sm text-muted-foreground">Application for <span className="text-ivory">{s.fullName}</span> ({s.applicantType})</p>
+      <p className="text-sm text-ink-muted">Application for <span className="text-ink">{s.fullName}</span> ({s.applicantType})</p>
       {s.latestMessage && (
-        <div className="space-y-1 rounded-xl border border-border-dark bg-space p-4">
-          <p className="text-xs font-medium text-stone">Message from the Bytesac team</p>
-          <p className="whitespace-pre-wrap text-sm text-ivory">{s.latestMessage}</p>
+        <div className="space-y-1 rounded-tile border border-line bg-canvas p-4">
+          <p className="text-xs font-medium text-ink-muted">Message from the Bytesac team</p>
+          <p className="whitespace-pre-wrap text-sm text-ink">{s.latestMessage}</p>
         </div>
       )}
       {s.canReply && (
         <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); reply.mutate(); }}>
-          <Label htmlFor={replyId} className="text-xs font-medium text-ivory">Your reply</Label>
+          <Label htmlFor={replyId} className="text-xs font-medium text-ink">Your reply</Label>
           <Textarea id={replyId} value={message} maxLength={4000} onChange={(e) => setMessage(e.target.value)} />
           {replyError && <p role="alert" className="text-sm text-danger"><span className="font-medium">{replyError.title}</span> {replyError.message}</p>}
-          <Button type="submit" className="min-h-11" disabled={!message.trim() || reply.isPending}>
+          <Button type="submit"  disabled={!message.trim() || reply.isPending}>
             {reply.isPending && <Loader2 aria-hidden className="animate-spin" />}Send reply
           </Button>
         </form>

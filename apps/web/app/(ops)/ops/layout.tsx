@@ -11,7 +11,7 @@ export default async function OpsLayout({ children }: { children: ReactNode }) {
   const allowed = me.platformRoles.includes("ops_admin") || me.platformRoles.includes("ops_reviewer");
   return (
     <MeProvider initial={me}>
-      <AppShell>{allowed ? children : <p role="alert" className="text-base text-ivory">You don&apos;t have access to this area.</p>}</AppShell>
+      <AppShell>{allowed ? children : <p role="alert" className="text-base text-ink">You don&apos;t have access to this area.</p>}</AppShell>
     </MeProvider>
   );
 }

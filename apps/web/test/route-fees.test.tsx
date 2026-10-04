@@ -12,7 +12,7 @@ describe("route fees and price impact in previews", () => {
   });
   it("shows price impact plainly below 2% and as a warning from 2%", () => {
     const { unmount } = show({ priceImpact: 0.0199 });
-    expect(screen.getByText("Price impact 1.99%")).toHaveClass("text-stone");
+    expect(screen.getByText("Price impact 1.99%")).toHaveClass("text-ink-muted");
     unmount();
     show({ priceImpact: 0.02 });
     expect(screen.getByText(/Price impact 2.00%/)).toHaveClass("text-warning");

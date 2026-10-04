@@ -30,20 +30,20 @@ export function ManagerProfiles({ client = api }: { client?: Client }) {
     <div className="space-y-6">
       <PageHeader title="Manager profiles" />
       <div className="max-w-xs space-y-2">
-        <Label htmlFor={`${id}-status`} className="text-xs font-medium text-ivory">Status</Label>
+        <Label htmlFor={`${id}-status`} className="text-xs font-medium text-ink">Status</Label>
         <Select id={`${id}-status`} value={status ?? ""} onChange={(e) => setStatus((e.target.value || undefined) as Status)}>
           <option value="">All</option>
           {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </Select>
       </div>
-      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : !list.data ? <LoadingState /> : list.data.items.length === 0 ? <p className="text-sm text-stone">No profiles.</p> : (
+      {list.isError ? <OpsError error={list.error} onRetry={() => void list.refetch()} /> : !list.data ? <LoadingState /> : list.data.items.length === 0 ? <p className="text-sm text-ink-muted">No profiles.</p> : (
         <ul className="space-y-3">
           {list.data.items.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3">
-              <span className="text-sm font-medium text-ivory">{p.displayName}</span>
-              <span className="font-mono text-xs text-stone">@{p.handle}</span>
+            <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-tile border border-line bg-surface p-3">
+              <span className="text-sm font-medium text-ink">{p.displayName}</span>
+              <span className="font-mono text-xs text-ink-muted">@{p.handle}</span>
               <StatusBadge {...STATUS[p.status]} />
-              {p.hiddenReason && <span className="text-xs text-stone">Reason: {p.hiddenReason}</span>}
+              {p.hiddenReason && <span className="text-xs text-ink-muted">Reason: {p.hiddenReason}</span>}
               <span className="ml-auto">
                 {p.status === "published" && <ConfirmReason label={`Hide ${p.handle}`} description="The profile stops being public, its owner cannot republish it, and basket pages fall back to the opt-in team name. The owner is emailed." reasonLabel="Reason for hiding" destructive pending={hide.isPending} onConfirm={(reason) => hide.mutate({ id: p.id, reason })} />}
                 {p.status === "hidden" && <ConfirmReason label={`Unhide ${p.handle}`} description="The profile returns to draft. Its owner can publish it again." pending={unhide.isPending} onConfirm={() => unhide.mutate(p.id)} />}

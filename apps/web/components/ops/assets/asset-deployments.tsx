@@ -19,7 +19,7 @@ type Deployment = OpsAssetDetail["deployments"][number];
 
 function verificationOf(d: Deployment) {
   if (d.verification === "manual") return { icon: CircleHelp, text: "Manual — check source", cls: "text-warning" };
-  if (!d.observedAt) return { icon: CircleHelp, text: "Not verified yet", cls: "text-stone" };
+  if (!d.observedAt) return { icon: CircleHelp, text: "Not verified yet", cls: "text-ink-muted" };
   if (d.observedDecimals === null) return { icon: XCircle, text: "Not a token", cls: "text-danger" };
   if (d.observedDecimals !== d.decimals) return { icon: AlertTriangle, text: "Decimals differ from chain", cls: "text-danger" };
   return { icon: CheckCircle2, text: "Matches chain", cls: "text-success" };
@@ -31,7 +31,7 @@ function EditDeployment({ d, pending, onSave, onCancel }: { d: Deployment; pendi
   const [f, setF] = useState({ address: d.address ?? "", decimals: String(d.decimals), sourceUrl: d.sourceUrl ?? "" });
   const [invalid, setInvalid] = useState<string | null>(null);
   return (
-    <form noValidate className="grid max-w-xl gap-3 rounded-xl border border-border-dark p-3" onSubmit={(e) => {
+    <form noValidate className="grid max-w-xl gap-3 rounded-tile border border-line p-3" onSubmit={(e) => {
       e.preventDefault();
       const parsed = updateDeploymentRequestSchema.safeParse({ ...(d.address ? { address: f.address.trim() } : {}), decimals: f.decimals === "" ? Number.NaN : Number(f.decimals), sourceUrl: f.sourceUrl.trim() || null });
       if (!parsed.success) return setInvalid(parsed.error.issues[0]?.message ?? "Check the deployment details.");
@@ -40,22 +40,22 @@ function EditDeployment({ d, pending, onSave, onCancel }: { d: Deployment; pendi
     }}>
       {d.address && (
         <div className="space-y-2">
-          <Label htmlFor={`${id}-addr`} className="text-xs font-medium text-ivory">Address</Label>
-          <Input id={`${id}-addr`} className="min-h-11 bg-space font-mono text-ivory" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
+          <Label htmlFor={`${id}-addr`} className="text-xs font-medium text-ink">Address</Label>
+          <Input id={`${id}-addr`} className="min-h-11 bg-canvas font-mono text-ink" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
         </div>
       )}
       <div className="space-y-2">
-        <Label htmlFor={`${id}-dec`} className="text-xs font-medium text-ivory">Decimals</Label>
-        <Input id={`${id}-dec`} type="number" inputMode="numeric" min={0} max={36} className="min-h-11 bg-space text-ivory" value={f.decimals} onChange={(e) => setF({ ...f, decimals: e.target.value })} />
+        <Label htmlFor={`${id}-dec`} className="text-xs font-medium text-ink">Decimals</Label>
+        <Input id={`${id}-dec`} type="number" inputMode="numeric" min={0} max={36}  value={f.decimals} onChange={(e) => setF({ ...f, decimals: e.target.value })} />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-src`} className="text-xs font-medium text-ivory">Source URL</Label>
-        <Input id={`${id}-src`} type="url" className="min-h-11 bg-space text-ivory" value={f.sourceUrl} onChange={(e) => setF({ ...f, sourceUrl: e.target.value })} />
+        <Label htmlFor={`${id}-src`} className="text-xs font-medium text-ink">Source URL</Label>
+        <Input id={`${id}-src`} type="url"  value={f.sourceUrl} onChange={(e) => setF({ ...f, sourceUrl: e.target.value })} />
       </div>
       {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}
       <div className="flex gap-2">
-        <Button type="submit" className="min-h-11" disabled={pending}>Save deployment</Button>
-        <Button type="button" variant="secondary" className="min-h-11" onClick={onCancel}>Cancel</Button>
+        <Button type="submit"  disabled={pending}>Save deployment</Button>
+        <Button type="button" variant="secondary"  onClick={onCancel}>Cancel</Button>
       </div>
     </form>
   );
@@ -88,36 +88,36 @@ export function AssetDeployments({ a, locked, isAdmin, onChange, client = api }:
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Deployments</h2>
-      {a.deployments.length === 0 ? <p className="text-sm text-stone">No deployments yet.</p> : (
-        <ul className="divide-y divide-border-dark">
+      <h2 id={`${id}-h`} className="type-heading text-ink">Deployments</h2>
+      {a.deployments.length === 0 ? <p className="text-sm text-ink-muted">No deployments yet.</p> : (
+        <ul className="divide-y divide-line">
           {a.deployments.map((d) => {
             const v = verificationOf(d);
             return (
               <li key={d.id} className="space-y-2 py-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="font-medium text-ivory">{ASSET_CHAINS[d.chain].label} · {d.tokenStandard}</span>
+                  <span className="font-medium text-ink">{ASSET_CHAINS[d.chain].label} · {d.tokenStandard}</span>
                   <StatusBadge {...ASSET_ITEM_STATUS_LABEL[d.status]} />
                   <span className={`inline-flex items-center gap-1 text-xs font-medium ${v.cls}`}><v.icon aria-hidden className="size-3.5" />{v.text}</span>
                   {d.lifiVerification && <span className={`text-xs font-medium ${d.lifiVerification === "verified" ? "text-success" : "text-warning"}`}>LI.FI: {d.lifiVerification}</span>}
                 </div>
                 {d.feeOnTransfer && <p className="text-xs font-medium text-warning">Fee-on-transfer: previews warn that less can arrive.</p>}
                 {d.permissioned && <p className="text-xs font-medium text-warning">Permissioned: restricts who can hold it, so it is never offered to investors.</p>}
-                {d.address && <p className="break-all font-mono text-xs text-stone">{d.address}</p>}
-                <p className="text-xs text-stone">
+                {d.address && <p className="break-all font-mono text-xs text-ink-muted">{d.address}</p>}
+                <p className="text-xs text-ink-muted">
                   Decimals entered {d.decimals}, on chain {d.observedDecimals ?? "—"}
                   {d.observedSymbol && ` · ${d.observedSymbol}`}{d.observedName && ` · ${d.observedName}`}
-                  {d.sourceUrl && <> · <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-mint underline">Source</a></>}
+                  {d.sourceUrl && <> · <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-ink underline underline-offset-4">Source</a></>}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {d.status === "DRAFT" && d.verification === "onchain" && (
-                    <Button type="button" variant="secondary" className="min-h-11" disabled={locked || verify.isPending} onClick={() => verify.mutate(d.id)}>
+                    <Button type="button" variant="secondary"  disabled={locked || verify.isPending} onClick={() => verify.mutate(d.id)}>
                       {verify.isPending && verify.variables === d.id && <Loader2 aria-hidden className="animate-spin" />}Re-verify
                     </Button>
                   )}
-                  {d.status === "DRAFT" && !locked && <Button type="button" variant="secondary" className="min-h-11" onClick={() => setEditing(d.id)}>Edit</Button>}
-                  {isAdmin && <Button type="button" variant="secondary" className="min-h-11" disabled={feeTax.isPending} onClick={() => feeTax.mutate({ did: d.id, feeOnTransfer: !d.feeOnTransfer })}>{d.feeOnTransfer ? "Clear fee-on-transfer flag" : "Flag as fee-on-transfer"}</Button>}
-                  {isAdmin && <Button type="button" variant="secondary" className="min-h-11" disabled={permissioned.isPending} onClick={() => permissioned.mutate({ did: d.id, permissioned: !d.permissioned })}>{d.permissioned ? "Clear permissioned flag" : "Flag as permissioned"}</Button>}
+                  {d.status === "DRAFT" && !locked && <Button type="button" variant="secondary"  onClick={() => setEditing(d.id)}>Edit</Button>}
+                  {isAdmin && <Button type="button" variant="secondary"  disabled={feeTax.isPending} onClick={() => feeTax.mutate({ did: d.id, feeOnTransfer: !d.feeOnTransfer })}>{d.feeOnTransfer ? "Clear fee-on-transfer flag" : "Flag as fee-on-transfer"}</Button>}
+                  {isAdmin && <Button type="button" variant="secondary"  disabled={permissioned.isPending} onClick={() => permissioned.mutate({ did: d.id, permissioned: !d.permissioned })}>{d.permissioned ? "Clear permissioned flag" : "Flag as permissioned"}</Button>}
                   {isAdmin && <ItemActions status={d.status} disabled={locked} pending={act.isPending} onAct={(action) => act.mutate({ did: d.id, action })} />}
                 </div>
                 {editing === d.id && !locked && <EditDeployment d={d} pending={update.isPending} onSave={(body) => update.mutate({ did: d.id, body })} onCancel={() => setEditing(null)} />}
@@ -127,7 +127,7 @@ export function AssetDeployments({ a, locked, isAdmin, onChange, client = api }:
         </ul>
       )}
 
-      {locked ? <p className="text-sm text-stone">Deployments can&apos;t be changed while the asset is under review or retired.</p> : (
+      {locked ? <p className="text-sm text-ink-muted">Deployments can&apos;t be changed while the asset is under review or retired.</p> : (
         <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => {
           e.preventDefault();
           const parsed = createDeploymentRequestSchema.safeParse({
@@ -138,32 +138,32 @@ export function AssetDeployments({ a, locked, isAdmin, onChange, client = api }:
           setInvalid(null);
           create.mutate(parsed.data);
         }}>
-          <h3 className="text-sm font-medium text-ivory">Add a deployment</h3>
+          <h3 className="text-sm font-medium text-ink">Add a deployment</h3>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-chain`} className="text-xs font-medium text-ivory">Chain</Label>
+            <Label htmlFor={`${id}-chain`} className="text-xs font-medium text-ink">Chain</Label>
             <Select id={`${id}-chain`} value={chain} onChange={(e) => setChain(assetChainSchema.parse(e.target.value))}>
               {assetChainSchema.options.map((c) => <option key={c} value={c}>{ASSET_CHAINS[c].label}</option>)}
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-std`} className="text-xs font-medium text-ivory">Standard</Label>
+            <Label htmlFor={`${id}-std`} className="text-xs font-medium text-ink">Standard</Label>
             <Select id={`${id}-std`} value={tokenStandard} onChange={(e) => setStandard(tokenStandardSchema.parse(e.target.value))}>
               {tokenStandardSchema.options.map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
           </div>
           {!native && (
             <div className="space-y-2">
-              <Label htmlFor={`${id}-addr`} className="text-xs font-medium text-ivory">Address</Label>
-              <Input id={`${id}-addr`} className="min-h-11 bg-space font-mono text-ivory" value={address} onChange={(e) => setAddress(e.target.value)} />
+              <Label htmlFor={`${id}-addr`} className="text-xs font-medium text-ink">Address</Label>
+              <Input id={`${id}-addr`} className="min-h-11 bg-canvas font-mono text-ink" value={address} onChange={(e) => setAddress(e.target.value)} />
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor={`${id}-dec`} className="text-xs font-medium text-ivory">Decimals</Label>
-            <Input id={`${id}-dec`} type="number" inputMode="numeric" min={0} max={36} className="min-h-11 bg-space text-ivory" value={decimals} onChange={(e) => setDecimals(e.target.value)} />
+            <Label htmlFor={`${id}-dec`} className="text-xs font-medium text-ink">Decimals</Label>
+            <Input id={`${id}-dec`} type="number" inputMode="numeric" min={0} max={36}  value={decimals} onChange={(e) => setDecimals(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`${id}-src`} className="text-xs font-medium text-ivory">{needsSource ? "Source URL (required: this can't be checked on chain)" : "Source URL (optional)"}</Label>
-            <Input id={`${id}-src`} type="url" className="min-h-11 bg-space text-ivory" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
+            <Label htmlFor={`${id}-src`} className="text-xs font-medium text-ink">{needsSource ? "Source URL (required: this can't be checked on chain)" : "Source URL (optional)"}</Label>
+            <Input id={`${id}-src`} type="url"  value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
           </div>
           {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}
           <Button type="submit" className="min-h-11 w-fit" disabled={create.isPending}>{create.isPending && <Loader2 aria-hidden className="animate-spin" />}Add deployment</Button>

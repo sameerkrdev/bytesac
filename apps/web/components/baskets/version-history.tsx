@@ -26,7 +26,7 @@ export function DiffSummary({ diff, names }: { diff: BasketDiff; names: Record<s
     ...(diff.fees ? ["Fees changed"] : []),
     ...(diff.minimums ? ["Minimums changed"] : []),
   ];
-  return lines.length === 0 ? <p className="text-xs text-stone">No changes.</p> : <ul className="list-disc pl-5 text-xs text-ivory">{lines.map((l) => <li key={l}>{l}</li>)}</ul>;
+  return lines.length === 0 ? <p className="text-xs text-ink-muted">No changes.</p> : <ul className="list-disc pl-5 text-xs text-ink">{lines.map((l) => <li key={l}>{l}</li>)}</ul>;
 }
 
 /** Past versions of a basket, each with its changes on request. */
@@ -34,18 +34,18 @@ export function VersionHistory({ bid, versions, names, client = api }: { bid: st
   const [open, setOpen] = useState<string | null>(null);
   const diff = useQuery({ queryKey: ["basket", bid, "diff", open], queryFn: () => client.getBasketVersionDiff(bid, open as string), enabled: open !== null, retry: false });
   return (
-    <ul aria-label="Version history" className="divide-y divide-border-dark">
+    <ul aria-label="Version history" className="divide-y divide-line">
       {versions.map((v) => (
         <li key={v.id} className="space-y-2 py-3">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-ivory">Version {v.versionNumber}</span>
+            <span className="text-sm font-medium text-ink">Version {v.versionNumber}</span>
             <StatusBadge {...BASKET_VERSION_STATUS_LABEL[v.status]} />
-            <span className="text-xs text-stone">{v.publishedAt ? `Published ${new Date(v.publishedAt).toLocaleDateString()}` : `Created ${new Date(v.createdAt).toLocaleDateString()}`}</span>
+            <span className="text-xs text-ink-muted">{v.publishedAt ? `Published ${new Date(v.publishedAt).toLocaleDateString()}` : `Created ${new Date(v.createdAt).toLocaleDateString()}`}</span>
             <Button variant="secondary" className="ml-auto min-h-11" aria-expanded={open === v.id} onClick={() => setOpen(open === v.id ? null : v.id)}>
               {open === v.id ? "Hide changes" : "Show changes"}
             </Button>
           </div>
-          {v.rationale && <p className="whitespace-pre-wrap text-sm text-stone">{v.rationale}</p>}
+          {v.rationale && <p className="whitespace-pre-wrap text-sm text-ink-muted">{v.rationale}</p>}
           {open === v.id && (diff.isError ? <p role="alert" className="text-sm text-danger">{toDisplayError(diff.error).title}</p> : diff.data ? <DiffSummary diff={diff.data} names={names} /> : <LoadingState />)}
         </li>
       ))}

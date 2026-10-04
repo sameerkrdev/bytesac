@@ -25,10 +25,10 @@ interface Props {
 function Step({ done, label, n }: { done: boolean; label: string; n: number }) {
   return (
     <li className="flex items-center gap-2 text-sm">
-      <span aria-hidden className={`grid size-6 place-items-center rounded-full border ${done ? "border-sage bg-sage text-space" : "border-border-dark text-stone"}`}>
+      <span aria-hidden className={`grid size-6 place-items-center rounded-full border ${done ? "border-primary bg-primary text-primary-ink" : "border-line text-ink-muted"}`}>
         {done ? <Check className="size-3.5" /> : n}
       </span>
-      <span className={done ? "text-ivory" : "text-stone"}>{label}</span>
+      <span className={done ? "text-ink" : "text-ink-muted"}>{label}</span>
       {done && <span className="sr-only">(complete)</span>}
     </li>
   );
@@ -54,32 +54,32 @@ export function VerifyWalletCard(p: Props) {
   const alreadyLinked = Boolean(p.account && p.linkedAddresses?.some((a) => a.chain === p.account!.chain && a.address.toLowerCase() === p.account!.address.toLowerCase()));
 
   return (
-    <Card className="w-full max-w-md rounded-2xl border-border-dark bg-slate">
+    <Card className="w-full max-w-md rounded-shell border-line bg-surface shadow-float">
       <CardHeader className="space-y-4">
         <ol aria-label="Sign-in steps" className="flex items-center gap-4">
           <Step n={1} done={p.network !== "none"} label="Connected" />
           <Step n={2} done={p.state.step === "done"} label="Sign to verify" />
         </ol>
-        <CardTitle className="font-display text-2xl font-semibold text-ivory">Verify your wallet</CardTitle>
+        <CardTitle className="text-2xl font-light tracking-tight text-ink">Verify your wallet</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         {p.expired && (
-          <p role="status" className="rounded-xl border border-info/40 bg-space/60 p-3 text-sm text-ivory">Your session expired. Sign in with your wallet again.</p>
+          <p role="status" className="rounded-tile border border-info/25 bg-surface-muted p-3 text-sm text-ink">Your session expired. Sign in with your wallet again.</p>
         )}
         {p.network === "unsupported" ? (
-          <div role="alert" className="space-y-3 rounded-xl border border-warning/40 p-4 text-sm text-ivory">
+          <div role="alert" className="space-y-3 rounded-tile border border-warning/25 p-4 text-sm text-ink">
             <p>Your wallet is on a network Bytesac doesn't support yet. Switch to a supported network: Ethereum, Base, BNB Chain, Arbitrum or Solana.</p>
-            <Button className="min-h-11" onClick={p.onSwitchNetwork}>Switch network</Button>
+            <Button  onClick={p.onSwitchNetwork}>Switch network</Button>
           </div>
         ) : p.account ? (
           <>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt className="text-stone">Wallet</dt><dd className="text-ivory">{p.account.walletName ?? "Wallet"}</dd>
-              <dt className="text-stone">Network</dt><dd><span className="rounded-lg border border-border-dark px-2 py-0.5 text-xs text-ivory">{CHAINS[p.account.chain].label}</span></dd>
-              <dt className="text-stone">Address</dt>
-              <dd className="flex items-center gap-2 font-mono text-ivory">
+              <dt className="text-ink-muted">Wallet</dt><dd className="text-ink">{p.account.walletName ?? "Wallet"}</dd>
+              <dt className="text-ink-muted">Network</dt><dd><span className="rounded-control border border-line px-2 py-0.5 text-xs text-ink">{CHAINS[p.account.chain].label}</span></dd>
+              <dt className="text-ink-muted">Address</dt>
+              <dd className="flex items-center gap-2 font-mono text-ink">
                 <span title={p.account.address}>{shortAddress(p.account.address)}</span>
-                <button type="button" aria-label="Copy address" className="grid size-11 place-items-center rounded-lg text-stone hover:text-ivory"
+                <button type="button" aria-label="Copy address" className="grid size-11 place-items-center rounded-control text-ink-muted hover:text-ink"
                   onClick={async () => {
                     try { await navigator.clipboard.writeText(p.account!.address); setCopied(true); } catch { /* clipboard unavailable */ }
                   }}>
@@ -87,14 +87,14 @@ export function VerifyWalletCard(p: Props) {
                 </button>
               </dd>
             </dl>
-            <div className="flex gap-3 rounded-xl border border-border-dark bg-space/60 p-4 text-sm text-ivory">
-              <ShieldCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-mint" />
+            <div className="flex gap-3 rounded-tile border border-line bg-surface-muted p-4 text-sm text-ink">
+              <ShieldCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-accent" />
               <p>You're signing a message to prove you control this address. It does not authorize any transaction or spending.</p>
             </div>
             {err && (
-              <div role="alert" className="rounded-xl border border-danger/40 p-4 text-sm">
-                <p className="font-medium text-ivory">{err.title}</p>
-                <p className="text-muted-foreground">
+              <div role="alert" className="rounded-tile border border-danger/25 p-4 text-sm">
+                <p className="font-medium text-ink">{err.title}</p>
+                <p className="text-ink-muted">
                   {err.message}
                   {remaining > 0 ? ` Try again in ${remaining} s.` : ""}
                 </p>
@@ -114,7 +114,7 @@ export function VerifyWalletCard(p: Props) {
               </Button>
             )}
             {alreadyLinked && !err && (
-              <p className="text-sm text-muted-foreground">This account is already linked. Choose another network or account in your wallet.</p>
+              <p className="text-sm text-ink-muted">This account is already linked. Choose another network or account in your wallet.</p>
             )}
             {p.onChooseNetwork && (
               <Button variant="secondary" className="min-h-11 w-full" onClick={p.onChooseNetwork}>Choose network</Button>

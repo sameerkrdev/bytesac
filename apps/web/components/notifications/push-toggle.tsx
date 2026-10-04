@@ -59,8 +59,8 @@ export function PushToggle() {
     <div className="space-y-1">
       <div className="flex min-h-11 items-center justify-between gap-4">
         <div>
-          <Label htmlFor="push-toggle" className="text-sm text-ivory">Push notifications on this device</Label>
-          <p className="text-xs text-stone">Basket updates and wallet alerts, even when Bytesac is closed</p>
+          <Label htmlFor="push-toggle" className="text-sm text-ink">Push notifications on this device</Label>
+          <p className="text-xs text-ink-muted">Basket updates and wallet alerts, even when Bytesac is closed</p>
         </div>
         <Switch id="push-toggle" aria-label="Push notifications on this device" checked={on} disabled={busy} onCheckedChange={(v) => void toggle(v)} />
       </div>

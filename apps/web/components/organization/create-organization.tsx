@@ -32,22 +32,22 @@ export function CreateOrganization({ onCreated, client = api }: { onCreated(org:
   return (
     <form noValidate className="max-w-xl space-y-5" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <fieldset className="space-y-2">
-        <legend className="text-xs font-medium text-ivory">Organization type</legend>
+        <legend className="text-xs font-medium text-ink">Organization type</legend>
         {(["individual", "firm"] as const).map((t) => (
-          <label key={t} className="flex min-h-11 items-center gap-3 text-sm text-ivory">
+          <label key={t} className="flex min-h-11 items-center gap-3 text-sm text-ink">
             <input type="radio" name={`${id}-type`} value={t} checked={type === t} onChange={() => setType(t)} className="size-4 accent-mint" />
             {t === "individual" ? "Individual manager" : "Firm"}
           </label>
         ))}
       </fieldset>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-j`} className="text-xs font-medium text-ivory">Country of registration or residence</Label>
+        <Label htmlFor={`${id}-j`} className="text-xs font-medium text-ink">Country of registration or residence</Label>
         <Input id={`${id}-j`} value={jurisdiction} maxLength={2} placeholder="IN" autoComplete="country" aria-invalid={Boolean(fieldError)} aria-describedby={`${id}-j-note`}
-          className="min-h-11 bg-space text-ivory placeholder:text-stone" onChange={(e) => setJurisdiction(e.target.value.toUpperCase())} />
-        <p id={`${id}-j-note`} className={fieldError ? "text-xs text-danger" : "text-xs text-muted-foreground"}>{fieldError ?? "Two-letter country code, e.g. IN, US, GB."}</p>
+          className="min-h-11 placeholder:text-ink-muted" onChange={(e) => setJurisdiction(e.target.value.toUpperCase())} />
+        <p id={`${id}-j-note`} className={fieldError ? "text-xs text-danger" : "text-xs text-ink-muted"}>{fieldError ?? "Two-letter country code, e.g. IN, US, GB."}</p>
       </div>
       {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{error.title}</span> {error.message}</p>}
-      <Button type="submit" className="min-h-11" disabled={pending}>{pending && <Loader2 aria-hidden className="animate-spin" />}Create organization</Button>
+      <Button type="submit"  disabled={pending}>{pending && <Loader2 aria-hidden className="animate-spin" />}Create organization</Button>
     </form>
   );
 }

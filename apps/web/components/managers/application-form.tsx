@@ -105,9 +105,9 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
     const link = `${window.location.origin}/managers/status#${statusToken}`;
     return (
       <div className="space-y-4">
-        <p className="text-base text-ivory">Check your email for your private status link.</p>
-        <p className="text-sm text-muted-foreground">Keep it safe: anyone with the link can see your application. It is shown here once.</p>
-        <a href={link} className="block break-all rounded-lg border border-border-dark bg-space p-3 text-sm text-mint underline">{link}</a>
+        <p className="text-base text-ink">Check your email for your private status link.</p>
+        <p className="text-sm text-ink-muted">Keep it safe: anyone with the link can see your application. It is shown here once.</p>
+        <a href={link} className="block break-all rounded-control border border-line bg-canvas p-3 text-sm text-ink underline underline-offset-4">{link}</a>
       </div>
     );
   }
@@ -115,13 +115,13 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
   if (applicationId) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">We sent a 6-digit code to <span className="text-ivory">{v.email.trim().toLowerCase()}</span>. Confirm it to submit your application.</p>
+        <p className="text-sm text-ink-muted">We sent a 6-digit code to <span className="text-ink">{v.email.trim().toLowerCase()}</span>. Confirm it to submit your application.</p>
         <OtpInput id={`${id}-code`} value={code} onChange={setCode} />
         <div className="flex flex-wrap gap-3">
-          <Button className="min-h-11" disabled={code.length !== 6 || pending} onClick={() => void confirm()}>
+          <Button  disabled={code.length !== 6 || pending} onClick={() => void confirm()}>
             {pending && <Loader2 aria-hidden className="animate-spin" />}Confirm email
           </Button>
-          <Button variant="secondary" className="min-h-11" disabled={left > 0 || pending} onClick={() => void resend()}>
+          <Button variant="secondary"  disabled={left > 0 || pending} onClick={() => void resend()}>
             {left > 0 ? `Resend in ${left} s` : "Resend code"}
           </Button>
         </div>
@@ -134,9 +134,9 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
     const fid = `${id}-${name}`;
     return (
       <div key={name} className="space-y-2">
-        <Label htmlFor={fid} className="text-xs font-medium text-ivory">{label}</Label>
+        <Label htmlFor={fid} className="text-xs font-medium text-ink">{label}</Label>
         {control({ id: fid, "aria-invalid": Boolean(fieldErrors[name]), "aria-describedby": `${fid}-note` })}
-        <p id={`${fid}-note`} className={fieldErrors[name] ? "text-xs text-danger" : "text-xs text-muted-foreground"}>{fieldErrors[name] ?? hint}</p>
+        <p id={`${fid}-note`} className={fieldErrors[name] ? "text-xs text-danger" : "text-xs text-ink-muted"}>{fieldErrors[name] ?? hint}</p>
       </div>
     );
   };
@@ -149,10 +149,10 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
           <option value="firm">Firm</option>
         </Select>
       ))}
-      {v.applicantType === "firm" && field("firmName", "Firm name", undefined, (p) => <Input {...p} className="min-h-11 bg-space text-ivory" value={v.firmName} onChange={(e) => set("firmName", e.target.value)} />)}
+      {v.applicantType === "firm" && field("firmName", "Firm name", undefined, (p) => <Input {...p}  value={v.firmName} onChange={(e) => set("firmName", e.target.value)} />)}
       {TEXT.map((t) => field(t.name, t.label, t.hint, (p) => (
         <Input {...p} type={t.type} autoComplete={t.autoComplete} placeholder={t.placeholder} maxLength={t.name === "country" ? 2 : undefined}
-          className="min-h-11 bg-space text-ivory placeholder:text-stone" value={v[t.name]}
+          className="min-h-11 placeholder:text-ink-muted" value={v[t.name]}
           onChange={(e) => set(t.name, t.name === "country" ? e.target.value.toUpperCase() : e.target.value)} />
       )))}
       {LONG.map((t) => field(t.name, t.label, t.hint, (p) => <Textarea {...p} value={v[t.name]} onChange={(e) => set(t.name, e.target.value)} />))}
@@ -162,7 +162,7 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
         </Select>
       ))}
       {field("walletAddress", "Wallet address", "We'll ask you to sign in with this wallet after approval. Entering it here doesn't prove ownership.", (p) => (
-        <Input {...p} autoComplete="off" spellCheck={false} className="min-h-11 bg-space font-mono text-ivory" value={v.walletAddress} onChange={(e) => set("walletAddress", e.target.value)} />
+        <Input {...p} autoComplete="off" spellCheck={false} className="min-h-11 bg-canvas font-mono text-ink" value={v.walletAddress} onChange={(e) => set("walletAddress", e.target.value)} />
       ))}
       {errorNode}
       <Button type="submit" className="min-h-11 w-full" disabled={pending}>

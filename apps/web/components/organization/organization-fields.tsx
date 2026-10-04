@@ -63,16 +63,16 @@ export function OrganizationFields<T = OrganizationDetail>({ org, version, readO
   const section = (title: string, hint: string, visibility: "public" | "private") => (
     <section aria-labelledby={`${id}-${visibility}`} className="space-y-4">
       <div>
-        <h3 id={`${id}-${visibility}`} className="font-display text-lg font-semibold text-ivory">{title}</h3>
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <h3 id={`${id}-${visibility}`} className="text-lg font-medium tracking-tight text-ink">{title}</h3>
+        <p className="text-xs text-ink-muted">{hint}</p>
       </div>
       {shown(visibility).map((k) => {
         const fid = `${id}-${k}`;
         const common = { id: fid, value: values[k], "aria-invalid": Boolean(errors[k]), "aria-describedby": `${fid}-err`, onChange: (e: { target: { value: string } }) => setValues((p) => ({ ...p, [k]: e.target.value })) };
         return (
           <div key={k} className="space-y-2">
-            <Label htmlFor={fid} className="text-xs font-medium text-ivory">{ORGANIZATION_FIELDS[k].label}{required.has(k) ? "" : " (optional)"}</Label>
-            {INPUT_TYPE[k] ? <Input {...common} type={INPUT_TYPE[k]} className="min-h-11 bg-space text-ivory" /> : <Textarea {...common} />}
+            <Label htmlFor={fid} className="text-xs font-medium text-ink">{ORGANIZATION_FIELDS[k].label}{required.has(k) ? "" : " (optional)"}</Label>
+            {INPUT_TYPE[k] ? <Input {...common} type={INPUT_TYPE[k]}  /> : <Textarea {...common} />}
             {errors[k] && <p id={`${fid}-err`} className="text-xs text-danger">{errors[k]}</p>}
           </div>
         );
@@ -87,7 +87,7 @@ export function OrganizationFields<T = OrganizationDetail>({ org, version, readO
         {section("Private details (never shown publicly)", "Only you and the Bytesac review team can see these.", "private")}
       </fieldset>
       {error && <p role="alert" className="text-sm text-danger"><span className="font-medium">{error.title}</span> {error.message}</p>}
-      {!readOnly && <Button type="submit" className="min-h-11" disabled={pending}>{pending && <Loader2 aria-hidden className="animate-spin" />}Save draft</Button>}
+      {!readOnly && <Button type="submit"  disabled={pending}>{pending && <Loader2 aria-hidden className="animate-spin" />}Save draft</Button>}
     </form>
   );
 }

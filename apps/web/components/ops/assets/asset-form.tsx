@@ -28,20 +28,20 @@ function IssuerSelect({ value, onChange, disabled, client }: { value: string; on
   });
   return (
     <div className="space-y-2">
-      <Label htmlFor={`${id}-i`} className="text-xs font-medium text-ivory">Issuer</Label>
+      <Label htmlFor={`${id}-i`} className="text-xs font-medium text-ink">Issuer</Label>
       <Select id={`${id}-i`} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         <option value="">No issuer</option>
         {issuers.data?.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
       </Select>
       {name === null ? (
-        <Button type="button" variant="secondary" className="min-h-11" disabled={disabled} onClick={() => setName("")}>New issuer</Button>
+        <Button type="button" variant="secondary"  disabled={disabled} onClick={() => setName("")}>New issuer</Button>
       ) : (
-        <div className="space-y-2 rounded-xl border border-border-dark p-3">
-          <Label htmlFor={`${id}-n`} className="text-xs font-medium text-ivory">Issuer name</Label>
-          <Input id={`${id}-n`} className="min-h-11 bg-space text-ivory" value={name} onChange={(e) => setName(e.target.value)} />
+        <div className="space-y-2 rounded-tile border border-line p-3">
+          <Label htmlFor={`${id}-n`} className="text-xs font-medium text-ink">Issuer name</Label>
+          <Input id={`${id}-n`}  value={name} onChange={(e) => setName(e.target.value)} />
           <div className="flex gap-2">
-            <Button type="button" className="min-h-11" disabled={create.isPending || name.trim().length < 2} onClick={() => create.mutate(name.trim())}>Create issuer</Button>
-            <Button type="button" variant="secondary" className="min-h-11" onClick={() => setName(null)}>Cancel</Button>
+            <Button type="button"  disabled={create.isPending || name.trim().length < 2} onClick={() => create.mutate(name.trim())}>Create issuer</Button>
+            <Button type="button" variant="secondary"  onClick={() => setName(null)}>Cancel</Button>
           </div>
         </div>
       )}
@@ -50,7 +50,7 @@ function IssuerSelect({ value, onChange, disabled, client }: { value: string; on
   );
 }
 
-const fieldCls = "min-h-11 bg-space text-ivory";
+const fieldCls = "min-h-11";
 
 /** The create page. Submits, then opens the editor. */
 export function CreateAssetForm({ client = api }: { client?: IssuerClient & Pick<ApiClient, "opsCreateAsset"> }) {
@@ -69,22 +69,22 @@ export function CreateAssetForm({ client = api }: { client?: IssuerClient & Pick
       create.mutate(parsed.data);
     }}>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ivory">Name</Label>
+        <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ink">Name</Label>
         <Input id={`${id}-name`} className={fieldCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-sym`} className="text-xs font-medium text-ivory">Symbol</Label>
+        <Label htmlFor={`${id}-sym`} className="text-xs font-medium text-ink">Symbol</Label>
         <Input id={`${id}-sym`} className={`${fieldCls} uppercase`} value={f.symbol} onChange={(e) => setF({ ...f, symbol: e.target.value.toUpperCase() })} />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${id}-type`} className="text-xs font-medium text-ivory">Type</Label>
+        <Label htmlFor={`${id}-type`} className="text-xs font-medium text-ink">Type</Label>
         <Select id={`${id}-type`} value={f.assetType} onChange={(e) => setF({ ...f, assetType: assetTypeSchema.parse(e.target.value) })}>
           {assetTypeSchema.options.map((t) => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
         </Select>
       </div>
       <IssuerSelect value={f.issuerId} onChange={(issuerId) => setF({ ...f, issuerId })} client={client} />
       <div className="space-y-2">
-        <Label htmlFor={`${id}-desc`} className="text-xs font-medium text-ivory">Description (optional)</Label>
+        <Label htmlFor={`${id}-desc`} className="text-xs font-medium text-ink">Description (optional)</Label>
         <Textarea id={`${id}-desc`} value={f.description} maxLength={2000} onChange={(e) => setF({ ...f, description: e.target.value })} />
       </div>
       {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}
@@ -100,36 +100,36 @@ export function AssetDetailsForm({ a, locked, onChange, client = api }: { a: Ops
   const [f, setF] = useState({ name: a.name, symbol: a.symbol, issuerId: a.issuerId ?? "", description: a.description ?? "", riskNotes: a.riskNotes ?? "", links: a.links.map((l) => `${l.label} | ${l.url}`).join("\n") });
   const identityLocked = a.status !== "DRAFT" && a.status !== "CHANGES_REQUIRED";
   const save = useMutation({ mutationFn: () => client.opsUpdateAsset(a.id, { name: f.name.trim(), issuerId: f.issuerId || null, description: f.description.trim(), riskNotes: f.riskNotes.trim(), links: f.links.split("\n").filter((l) => l.trim()).map((l) => { const [label = "", ...url] = l.split("|"); return { label: label.trim(), url: url.join("|").trim() }; }), ...(identityLocked ? {} : { symbol: f.symbol.trim() }) }), onSuccess: onChange });
-  const lock = <span title="Locked after approval" className="inline-flex items-center gap-1 text-xs text-stone"><Lock aria-hidden className="size-3.5" />Locked after approval</span>;
+  const lock = <span title="Locked after approval" className="inline-flex items-center gap-1 text-xs text-ink-muted"><Lock aria-hidden className="size-3.5" />Locked after approval</span>;
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Details</h2>
+      <h2 id={`${id}-h`} className="type-heading text-ink">Details</h2>
       <form className="grid max-w-xl gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ivory">Name</Label>
+          <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ink">Name</Label>
           <Input id={`${id}-name`} className={fieldCls} value={f.name} disabled={locked} onChange={(e) => setF({ ...f, name: e.target.value })} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-sym`} className="text-xs font-medium text-ivory">Symbol</Label>
-          {identityLocked ? <p className="flex flex-wrap items-center gap-3 text-sm text-ivory">{a.symbol}{lock}</p>
+          <Label htmlFor={`${id}-sym`} className="text-xs font-medium text-ink">Symbol</Label>
+          {identityLocked ? <p className="flex flex-wrap items-center gap-3 text-sm text-ink">{a.symbol}{lock}</p>
             : <Input id={`${id}-sym`} className={`${fieldCls} uppercase`} value={f.symbol} disabled={locked} onChange={(e) => setF({ ...f, symbol: e.target.value.toUpperCase() })} />}
         </div>
         <div className="space-y-2">
-          <p className="text-xs font-medium text-ivory">Type</p>
-          <p className="flex flex-wrap items-center gap-3 text-sm text-ivory">{ASSET_TYPE_LABEL[a.assetType]}{identityLocked && lock}</p>
+          <p className="text-xs font-medium text-ink">Type</p>
+          <p className="flex flex-wrap items-center gap-3 text-sm text-ink">{ASSET_TYPE_LABEL[a.assetType]}{identityLocked && lock}</p>
         </div>
         <IssuerSelect value={f.issuerId} onChange={(issuerId) => setF({ ...f, issuerId })} disabled={locked} client={client} />
         <div className="space-y-2">
-          <Label htmlFor={`${id}-desc`} className="text-xs font-medium text-ivory">Description</Label>
+          <Label htmlFor={`${id}-desc`} className="text-xs font-medium text-ink">Description</Label>
           <Textarea id={`${id}-desc`} value={f.description} maxLength={2000} disabled={locked} onChange={(e) => setF({ ...f, description: e.target.value })} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-risk`} className="text-xs font-medium text-ivory">Risk notes</Label>
+          <Label htmlFor={`${id}-risk`} className="text-xs font-medium text-ink">Risk notes</Label>
           <Textarea id={`${id}-risk`} value={f.riskNotes} maxLength={2000} disabled={locked} onChange={(e) => setF({ ...f, riskNotes: e.target.value })} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-links`} className="text-xs font-medium text-ivory">Links (one per line: label | https://url, up to 10)</Label>
+          <Label htmlFor={`${id}-links`} className="text-xs font-medium text-ink">Links (one per line: label | https://url, up to 10)</Label>
           <Textarea id={`${id}-links`} value={f.links} disabled={locked} onChange={(e) => setF({ ...f, links: e.target.value })} />
         </div>
         {!locked && <Button type="submit" className="min-h-11 w-fit" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save details</Button>}
@@ -151,23 +151,23 @@ export function AssetClassification({ a, locked, onChange, client = api }: { a: 
 
   return (
     <section aria-labelledby={`${id}-h`} className="space-y-4">
-      <h2 id={`${id}-h`} className="font-display text-xl font-semibold text-ivory">Sector and tags</h2>
+      <h2 id={`${id}-h`} className="type-heading text-ink">Sector and tags</h2>
       <form className="grid max-w-xl gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <div className="space-y-2">
-          <Label htmlFor={`${id}-sector`} className="text-xs font-medium text-ivory">Sector</Label>
+          <Label htmlFor={`${id}-sector`} className="text-xs font-medium text-ink">Sector</Label>
           <Select id={`${id}-sector`} value={sector} disabled={locked} onChange={(e) => setSector(instrumentSectorSchema.parse(e.target.value))}>
             {INSTRUMENT_SECTORS.map((s) => <option key={s} value={s}>{SECTOR_LABEL[s]}</option>)}
           </Select>
         </div>
         <fieldset className="space-y-1" disabled={locked}>
-          <legend className="text-xs font-medium text-ivory">Tags</legend>
+          <legend className="text-xs font-medium text-ink">Tags</legend>
           {tags.isError && <AssetError error={tags.error} />}
           {options.map((t) => (
-            <label key={t.id} className="flex min-h-11 items-center gap-2 text-sm text-ivory">
-              <input type="checkbox" checked={picked.has(t.id)} onChange={() => toggle(t.id)} />{t.label}{t.status === "retired" && <span className="text-xs text-stone">(retired)</span>}
+            <label key={t.id} className="flex min-h-11 items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={picked.has(t.id)} onChange={() => toggle(t.id)} />{t.label}{t.status === "retired" && <span className="text-xs text-ink-muted">(retired)</span>}
             </label>
           ))}
-          {tags.data && options.length === 0 && <p className="text-sm text-stone">No tags yet.</p>}
+          {tags.data && options.length === 0 && <p className="text-sm text-ink-muted">No tags yet.</p>}
         </fieldset>
         {!locked && <Button type="submit" className="min-h-11 w-fit" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save sector and tags</Button>}
       </form>

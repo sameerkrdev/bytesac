@@ -27,17 +27,17 @@ export function NotificationsSection() {
   });
 
   return (
-    <section aria-labelledby="notif-title" className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
-      <h2 id="notif-title" className="font-display text-xl font-semibold text-ivory">Notifications</h2>
-      {isLoading && <p className="text-sm text-stone">Loading preferences…</p>}
+    <section aria-labelledby="notif-title" className="space-y-4 rounded-card border border-line bg-surface p-6">
+      <h2 id="notif-title" className="type-heading text-ink">Notifications</h2>
+      {isLoading && <p className="text-sm text-ink-muted">Loading preferences…</p>}
       {isError && <p role="alert" className="text-sm text-danger">Couldn't load preferences. Refresh to try again.</p>}
       {data && (
         <ul className="space-y-3">
           {ITEMS.map((it) => (
             <li key={it.key} className="flex min-h-11 items-center justify-between gap-4">
               <div>
-                <Label htmlFor={`pref-${it.key}`} className="text-sm text-ivory">{it.label}</Label>
-                <p className="text-xs text-stone">{it.hint}</p>
+                <Label htmlFor={`pref-${it.key}`} className="text-sm text-ink">{it.label}</Label>
+                <p className="text-xs text-ink-muted">{it.hint}</p>
               </div>
               <Switch id={`pref-${it.key}`} aria-label={it.label} checked={data[it.key]} disabled={m.isPending}
                 onCheckedChange={(v) => m.mutate({ [it.key]: v })} />
@@ -47,7 +47,7 @@ export function NotificationsSection() {
       )}
       <PushToggle />
       {m.isError && <p role="alert" className="text-sm text-danger">{describeError(m.error instanceof ApiError ? m.error.code : "INTERNAL").title}</p>}
-      <p className="text-xs text-stone">Security and account notices are always sent.</p>
+      <p className="text-xs text-ink-muted">Security and account notices are always sent.</p>
     </section>
   );
 }

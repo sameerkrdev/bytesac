@@ -28,8 +28,8 @@ function ScheduleForm({ override, onSubmit, pending, error }: { override: boolea
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   const field = (k: keyof typeof v, label: string, props: { type?: string; inputMode?: "decimal" | "numeric" } = {}) => (
     <div className="space-y-1">
-      <Label htmlFor={`${id}-${k}`} className="text-xs font-medium text-ivory">{label}</Label>
-      <Input id={`${id}-${k}`} value={v[k]} onChange={set(k)} className="min-h-11 bg-space text-ivory" {...props} />
+      <Label htmlFor={`${id}-${k}`} className="text-xs font-medium text-ink">{label}</Label>
+      <Input id={`${id}-${k}`} value={v[k]} onChange={set(k)}  {...props} />
     </div>
   );
   return (
@@ -45,13 +45,13 @@ function ScheduleForm({ override, onSubmit, pending, error }: { override: boolea
     }}>
       {override && (
         <div className="space-y-1">
-          <Label htmlFor={`${id}-scope`} className="text-xs font-medium text-ivory">Applies to</Label>
+          <Label htmlFor={`${id}-scope`} className="text-xs font-medium text-ink">Applies to</Label>
           <Select id={`${id}-scope`} value={v.scope} onChange={set("scope")}><option value="organization">Organization</option><option value="basket">Basket</option></Select>
         </div>
       )}
       {override && field("scopeId", "Organization or basket ID")}
       <div className="space-y-1">
-        <Label htmlFor={`${id}-op`} className="text-xs font-medium text-ivory">Operation</Label>
+        <Label htmlFor={`${id}-op`} className="text-xs font-medium text-ink">Operation</Label>
         <Select id={`${id}-op`} value={v.operationKind} onChange={set("operationKind")}>{PLATFORM_FEE_OPERATIONS.map((o) => <option key={o} value={o}>{PLATFORM_OPERATION_LABEL[o]}</option>)}</Select>
       </div>
       {field("bps", "Rate (basis points, 0 to 100)", { inputMode: "numeric" })}
@@ -86,42 +86,42 @@ export function FeeSchedules({ client = api }: { client?: Client }) {
   return (
     <div className="space-y-8">
       <PageHeader title="Platform fees" />
-      <p className="text-sm text-stone">The platform fee is charged up front in USDC together with the network fee and the manager fee. A basket override beats an organization override, which beats the default.</p>
+      <p className="text-sm text-ink-muted">The platform fee is charged up front in USDC together with the network fee and the manager fee. A basket override beats an organization override, which beats the default.</p>
 
       <section aria-label="Default schedule" className="space-y-3">
-        <h2 className="font-display text-xl font-semibold text-ivory">Default schedule</h2>
+        <h2 className="type-heading text-ink">Default schedule</h2>
         <ul className="space-y-2">
           {PLATFORM_FEE_OPERATIONS.map((o) => {
             const r = active.get(o);
             return (
-              <li key={o} className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-border-dark bg-slate p-3 text-sm text-ivory">
+              <li key={o} className="flex flex-wrap gap-x-4 gap-y-1 rounded-tile border border-line bg-surface p-3 text-sm text-ink">
                 <span className="font-medium">{PLATFORM_OPERATION_LABEL[o]}</span>
                 <span>{r ? rate(r) : "No fee"}</span>
-                {r && <span className="text-stone">changed {when(r.createdAt)} · {r.reason}</span>}
+                {r && <span className="text-ink-muted">changed {when(r.createdAt)} · {r.reason}</span>}
               </li>
             );
           })}
         </ul>
         {isAdmin ? <ScheduleForm override={false} pending={save.isPending} error={save.error} onSubmit={(b) => save.mutate(b as Parameters<Client["opsSaveFee"]>[0])} />
-          : <p className="text-xs text-stone">Only an ops admin can change fees.</p>}
+          : <p className="text-xs text-ink-muted">Only an ops admin can change fees.</p>}
       </section>
 
       <section aria-label="History" className="space-y-2">
-        <h2 className="font-display text-xl font-semibold text-ivory">History</h2>
-        {history.length === 0 ? <p className="text-sm text-stone">No earlier schedules.</p> : (
-          <ul className="space-y-1 text-sm text-stone">{history.map((r) => <li key={r.id}>{PLATFORM_OPERATION_LABEL[r.operationKind]}: {rate(r)} · {when(r.createdAt)} to {when(r.supersededAt!)} · {r.reason}</li>)}</ul>
+        <h2 className="type-heading text-ink">History</h2>
+        {history.length === 0 ? <p className="text-sm text-ink-muted">No earlier schedules.</p> : (
+          <ul className="space-y-1 text-sm text-ink-muted">{history.map((r) => <li key={r.id}>{PLATFORM_OPERATION_LABEL[r.operationKind]}: {rate(r)} · {when(r.createdAt)} to {when(r.supersededAt!)} · {r.reason}</li>)}</ul>
         )}
       </section>
 
       <section aria-label="Overrides" className="space-y-3">
-        <h2 className="font-display text-xl font-semibold text-ivory">Overrides</h2>
-        {liveOverrides.length === 0 ? <p className="text-sm text-stone">No active overrides.</p> : (
+        <h2 className="type-heading text-ink">Overrides</h2>
+        {liveOverrides.length === 0 ? <p className="text-sm text-ink-muted">No active overrides.</p> : (
           <ul className="space-y-2">
             {liveOverrides.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border-dark bg-slate p-3 text-sm text-ivory">
-                <span>{r.scope === "basket" ? "Basket" : "Organization"} <span className="break-all font-mono text-xs text-stone">{r.scopeId}</span></span>
+              <li key={r.id} className="flex flex-wrap items-center gap-3 rounded-tile border border-line bg-surface p-3 text-sm text-ink">
+                <span>{r.scope === "basket" ? "Basket" : "Organization"} <span className="break-all font-mono text-xs text-ink-muted">{r.scopeId}</span></span>
                 <span>{PLATFORM_OPERATION_LABEL[r.operationKind]}: {rate(r)}</span>
-                <span className="text-stone">{r.endsAt ? `until ${when(r.endsAt)}` : "no end date"} · {r.reason}</span>
+                <span className="text-ink-muted">{r.endsAt ? `until ${when(r.endsAt)}` : "no end date"} · {r.reason}</span>
                 {isAdmin && <Button variant="ghost" className="ml-auto min-h-11" aria-label={`End override ${r.id}`} disabled={end.isPending} onClick={() => end.mutate(r.id)}>End</Button>}
               </li>
             ))}

@@ -36,9 +36,8 @@ describe("Portfolio", () => {
     expect(link).toHaveAttribute("href", "/baskets/core-crypto");
     expect(screen.getByText("$125.00")).toBeInTheDocument();
     expect(screen.getByText("0.03 ETH")).toBeInTheDocument();
-    expect(screen.getAllByText("Actual")).toHaveLength(2);
-    expect(screen.getByText("60%")).toBeInTheDocument();
-    expect(screen.getAllByText("50%")).toHaveLength(2);
+    expect(within(screen.getByRole("region", { name: "Positions" })).getByText("60%")).toBeInTheDocument();
+    expect(screen.getAllByText("target 50%")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Leave basket (keep assets)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sell to USDC" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();

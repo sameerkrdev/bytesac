@@ -47,19 +47,19 @@ function DocumentRow<T>({ org, version, type, readOnly, required, onChange, clie
   return (
     <li className="space-y-2 py-4">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-ivory">{ORGANIZATION_DOCUMENT_TYPES[type].label}{required ? "" : " (optional)"}</span>
+        <span className="text-sm font-medium text-ink">{ORGANIZATION_DOCUMENT_TYPES[type].label}{required ? "" : " (optional)"}</span>
         {doc && <StatusBadge tone="success" label="Uploaded" />}
-        {row.state === "uploading" && <span role="status" className="inline-flex items-center gap-1 text-xs text-stone"><Loader2 aria-hidden className="size-3.5 animate-spin" />Uploading…</span>}
+        {row.state === "uploading" && <span role="status" className="inline-flex items-center gap-1 text-xs text-ink-muted"><Loader2 aria-hidden className="size-3.5 animate-spin" />Uploading…</span>}
         {row.state === "rejected" && <StatusBadge tone="danger" label="Not accepted" />}
       </div>
-      {doc && <p className="text-xs text-stone">{doc.contentType} · {(doc.sizeBytes / 1024).toFixed(0)} KB{doc.uploadedAt && ` · ${new Date(doc.uploadedAt).toLocaleDateString()}`}</p>}
+      {doc && <p className="text-xs text-ink-muted">{doc.contentType} · {(doc.sizeBytes / 1024).toFixed(0)} KB{doc.uploadedAt && ` · ${new Date(doc.uploadedAt).toLocaleDateString()}`}</p>}
       {row.state === "rejected" && <p role="alert" className="text-xs text-danger">{row.message}</p>}
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-3">
           <label htmlFor={id} className="sr-only">{doc ? `Replace ${ORGANIZATION_DOCUMENT_TYPES[type].label}` : `Choose file for ${ORGANIZATION_DOCUMENT_TYPES[type].label}`}</label>
-          <input id={id} type="file" accept={DOCUMENT_CONTENT_TYPES.join(",")} disabled={row.state === "uploading"} className="min-h-11 text-sm text-stone file:mr-3 file:min-h-11 file:rounded-lg file:border file:border-border-dark file:bg-slate file:px-3 file:text-ivory"
+          <input id={id} type="file" accept={DOCUMENT_CONTENT_TYPES.join(",")} disabled={row.state === "uploading"} className="min-h-11 text-sm text-ink-muted file:mr-3 file:min-h-11 file:rounded-control file:border file:border-line file:bg-surface file:px-3 file:text-ink"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void upload(f); }} />
-          {doc && <Button variant="ghost" className="min-h-11" onClick={() => void remove(doc.id)}>Remove from draft</Button>}
+          {doc && <Button variant="ghost"  onClick={() => void remove(doc.id)}>Remove from draft</Button>}
         </div>
       )}
     </li>
@@ -73,9 +73,9 @@ export function OrganizationDocuments<T = OrganizationDetail>({ org, version, re
   const types = [...required, ...optional.filter((t) => !required.includes(t))];
   return (
     <section aria-labelledby="documents-h" className="space-y-2">
-      <h3 id="documents-h" className="font-display text-lg font-semibold text-ivory">Documents</h3>
-      <p className="text-xs text-muted-foreground">PDF, JPEG or PNG, up to 10 MB. Documents stay private: only you and the Bytesac review team can see them.</p>
-      <ul className="divide-y divide-border-dark">
+      <h3 id="documents-h" className="text-lg font-medium tracking-tight text-ink">Documents</h3>
+      <p className="text-xs text-ink-muted">PDF, JPEG or PNG, up to 10 MB. Documents stay private: only you and the Bytesac review team can see them.</p>
+      <ul className="divide-y divide-line">
         {types.map((t) => <DocumentRow key={t} org={org} version={version} type={t} readOnly={readOnly} required={required.includes(t)} onChange={onChange} client={client} />)}
       </ul>
     </section>

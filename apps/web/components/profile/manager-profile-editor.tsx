@@ -41,8 +41,8 @@ function ProfileForm({ profile, client }: { profile: ManagerProfileView | null; 
     const props = { id: `${id}-${key}`, value: f[key], "aria-invalid": err ? true : undefined, "aria-describedby": err ? `${id}-${key}-e` : undefined, onChange: (e: { target: { value: string } }) => setF({ ...f, [key]: e.target.value }) };
     return (
       <div className="space-y-2">
-        <Label htmlFor={props.id} className="text-xs font-medium text-ivory">{label}</Label>
-        {multiline ? <Textarea {...props} /> : <Input {...props} className="min-h-11 bg-space text-ivory" />}
+        <Label htmlFor={props.id} className="text-xs font-medium text-ink">{label}</Label>
+        {multiline ? <Textarea {...props} /> : <Input {...props}  />}
         {err && <p id={`${id}-${key}-e`} role="alert" className="text-xs text-danger">{err}</p>}
       </div>
     );
@@ -65,11 +65,11 @@ function ProfileForm({ profile, client }: { profile: ManagerProfileView | null; 
   return (
     <>
       {profile?.status === "hidden" && (
-        <p role="status" className="rounded-xl border border-warning/40 bg-warning/5 p-4 text-sm text-ivory">
+        <p role="status" className="rounded-tile border border-warning/25 bg-warning-soft p-4 text-sm text-ink">
           Bytesac hid this profile. It is not public and you cannot publish it.{profile.hiddenReason && <> Reason: {profile.hiddenReason}</>}
         </p>
       )}
-      {profile && profile.status !== "hidden" && <p role="status" className="text-sm text-stone">{profile.status === "published" ? `Published at /managers/${profile.handle}` : "Draft: not public yet."}</p>}
+      {profile && profile.status !== "hidden" && <p role="status" className="text-sm text-ink-muted">{profile.status === "published" ? `Published at /managers/${profile.handle}` : "Draft: not public yet."}</p>}
       <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         {field("handle", "Handle (your public address)")}
         {field("displayName", "Display name")}
@@ -79,12 +79,12 @@ function ProfileForm({ profile, client }: { profile: ManagerProfileView | null; 
         {field("background", "Background", true)}
         {field("qualifications", "Qualifications, one per line (self-reported)", true)}
         {field("links", "Links, one per line: label | https://url", true)}
-        <p className="text-xs text-stone">Experience and qualifications are shown as self-reported. Plain text only.</p>
+        <p className="text-xs text-ink-muted">Experience and qualifications are shown as self-reported. Plain text only.</p>
         {other && <p role="alert" className="text-sm text-danger">{toDisplayError(other.error).title}</p>}
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" className="min-h-11" disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save profile</Button>
-          {profile?.status === "draft" && <Button type="button" variant="secondary" className="min-h-11" disabled={publish.isPending} onClick={() => publish.mutate()}>Publish</Button>}
-          {profile?.status === "published" && <Button type="button" variant="secondary" className="min-h-11" disabled={unpublish.isPending} onClick={() => unpublish.mutate()}>Unpublish</Button>}
+          <Button type="submit"  disabled={save.isPending}>{save.isPending && <Loader2 aria-hidden className="animate-spin" />}Save profile</Button>
+          {profile?.status === "draft" && <Button type="button" variant="secondary"  disabled={publish.isPending} onClick={() => publish.mutate()}>Publish</Button>}
+          {profile?.status === "published" && <Button type="button" variant="secondary"  disabled={unpublish.isPending} onClick={() => unpublish.mutate()}>Unpublish</Button>}
         </div>
       </form>
     </>
@@ -94,9 +94,9 @@ function ProfileForm({ profile, client }: { profile: ManagerProfileView | null; 
 export function ManagerProfileEditor({ client = api }: { client?: Client }) {
   const q = useQuery({ queryKey: ["manager-profile"], queryFn: () => client.getMyManagerProfile() });
   return (
-    <section aria-labelledby="manager-profile-title" className="space-y-4 rounded-2xl border border-border-dark bg-slate p-6">
-      <h2 id="manager-profile-title" className="font-display text-xl font-semibold text-ivory">Manager profile</h2>
-      {q.isLoading && <p className="text-sm text-stone">Loading profile…</p>}
+    <section aria-labelledby="manager-profile-title" className="space-y-4 rounded-card border border-line bg-surface p-6">
+      <h2 id="manager-profile-title" className="type-heading text-ink">Manager profile</h2>
+      {q.isLoading && <p className="text-sm text-ink-muted">Loading profile…</p>}
       {q.isError && <p role="alert" className="text-sm text-danger">Couldn&apos;t load your profile. Refresh to try again.</p>}
       {q.data && <ProfileForm key={q.data.profile?.updatedAt ?? "new"} profile={q.data.profile} client={client} />}
     </section>

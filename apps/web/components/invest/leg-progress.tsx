@@ -24,7 +24,7 @@ const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
 });
 
 /** One leg: what it does, amounts, status and explorer links. */
-export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
+export function LegRow({ leg: l, buying, showStatus = true }: { leg: Leg; buying: boolean; showStatus?: boolean }) {
   const a = legAmounts(l, buying);
   const btc = l.fromChain === "bitcoin" || l.toChain === "bitcoin";
   const fees = l.routeFees.filter((f) => f.included).reduce((s, f) => s + f.amountUsd, 0);
@@ -32,22 +32,22 @@ export function LegRow({ leg: l, buying }: { leg: Leg; buying: boolean }) {
   const refunded = l.providerSubstatus === "REFUNDED";
   const refunding = l.providerSubstatus === "NOT_PROCESSABLE_REFUND_NEEDED" || l.providerSubstatus === "REFUND_IN_PROGRESS";
   return (
-    <li className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
-      <p className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-ivory">{l.sequence}. {l.recoveryOf ? "Complete swap" : legTitle(l, buying)}</span><StatusBadge {...LEG_STATUS_LABEL[l.status]} /></p>
-      <p className="text-stone">{l.recoveryOf && "Swap what arrived: "}{a.in}{a.estimatedOut && ` → about ${a.estimatedOut}`}{a.minOut && ` (at least ${a.minOut})`}</p>
-      {l.recoveryOf && l.status === "PLANNED" && <p className="text-xs text-stone">You sign a fresh quote first; the figures above are an estimate.</p>}
-      {l.status === "PLANNED" && fees > 0 && <p className="text-xs text-stone">Route fees (LI.FI, DEX, bridge): ${fees.toFixed(2)} — included in the estimate</p>}
-      {l.status === "PLANNED" && l.priceImpact !== null && <p className={`text-xs ${l.priceImpact >= PRICE_IMPACT_WARNING ? "text-warning" : "text-stone"}`}>Price impact {(l.priceImpact * 100).toFixed(2)}%{l.priceImpact >= PRICE_IMPACT_WARNING && " — higher than usual"}</p>}
+    <li className="space-y-1 rounded-tile border border-line p-3 text-sm">
+      <p className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium text-ink">{l.sequence}. {l.recoveryOf ? "Complete swap" : legTitle(l, buying)}</span>{showStatus && <StatusBadge {...LEG_STATUS_LABEL[l.status]} />}</p>
+      <p className="text-ink-muted">{l.recoveryOf && "Swap what arrived: "}{a.in}{a.estimatedOut && ` → about ${a.estimatedOut}`}{a.minOut && ` (at least ${a.minOut})`}</p>
+      {l.recoveryOf && l.status === "PLANNED" && <p className="text-xs text-ink-muted">You sign a fresh quote first; the figures above are an estimate.</p>}
+      {l.status === "PLANNED" && fees > 0 && <p className="text-xs text-ink-muted">Route fees (LI.FI, DEX, bridge): ${fees.toFixed(2)} — included in the estimate</p>}
+      {l.status === "PLANNED" && l.priceImpact !== null && <p className={`text-xs ${l.priceImpact >= PRICE_IMPACT_WARNING ? "text-warning" : "text-ink-muted"}`}>Price impact {(l.priceImpact * 100).toFixed(2)}%{l.priceImpact >= PRICE_IMPACT_WARNING && " — higher than usual"}</p>}
       {l.feeOnTransfer && l.status === "PLANNED" && <p className="text-xs text-warning">This token charges a transfer tax; amounts are estimates.</p>}
       {refunding && <p className="text-xs text-warning">Refund in progress (the route couldn&apos;t complete).</p>}
-      {l.status === "FAILED" && refunded && <p className="text-xs text-ivory">Funds returned to your wallet.</p>}
-      {t && <p className="text-xs text-ivory">Arrived as {formatUnits(t.amount, t.decimals)} {t.symbol} on {ASSET_CHAINS[t.chain].label}. Complete the swap below, or stop here and keep it in your wallet.</p>}
-      {btc && l.status !== "SETTLED" && <p className="text-xs text-stone">Bitcoin needs 2 confirmations, about 20 minutes.</p>}
+      {l.status === "FAILED" && refunded && <p className="text-xs text-ink">Funds returned to your wallet.</p>}
+      {t && <p className="text-xs text-ink">Arrived as {formatUnits(t.amount, t.decimals)} {t.symbol} on {ASSET_CHAINS[t.chain].label}. Complete the swap below, or stop here and keep it in your wallet.</p>}
+      {btc && l.status !== "SETTLED" && <p className="text-xs text-ink-muted">Bitcoin needs 2 confirmations, about 20 minutes.</p>}
       {l.status === "UNKNOWN" && <p className="text-xs text-warning">We are checking this with the chain. Do not sign it again. You can stop here; the check continues and the result is added to your portfolio.</p>}
       {l.failureReason && !t && <p className="text-xs text-danger">{l.failureReason}</p>}
       <p className="flex flex-wrap gap-3 text-xs">
-        {l.sourceTx && <a className="inline-flex items-center gap-1 text-mint underline" href={explorerTxUrl(l.fromChain, l.sourceTx)} target="_blank" rel="noreferrer">Source transaction<ExternalLink aria-hidden className="size-3" /></a>}
-        {l.destinationTx && <a className="inline-flex items-center gap-1 text-mint underline" href={explorerTxUrl(l.toChain, l.destinationTx)} target="_blank" rel="noreferrer">Destination transaction<ExternalLink aria-hidden className="size-3" /></a>}
+        {l.sourceTx && <a className="inline-flex items-center gap-1 text-ink underline underline-offset-4" href={explorerTxUrl(l.fromChain, l.sourceTx)} target="_blank" rel="noreferrer">Source transaction<ExternalLink aria-hidden className="size-3" /></a>}
+        {l.destinationTx && <a className="inline-flex items-center gap-1 text-ink underline underline-offset-4" href={explorerTxUrl(l.toChain, l.destinationTx)} target="_blank" rel="noreferrer">Destination transaction<ExternalLink aria-hidden className="size-3" /></a>}
       </p>
     </li>
   );
@@ -77,7 +77,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
   });
   const stop = useMutation({ mutationFn: () => api.cancelOperation(operationId), onSuccess: setOp });
 
-  if (op.isPending) return <p role="status" className="text-sm text-stone"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Loading…</p>;
+  if (op.isPending) return <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Loading…</p>;
   if (!op.data) return <p role="alert" className="text-sm text-danger">{toDisplayError(op.error).title}</p>;
   const o = op.data;
   const buying = o.kind === "invest";
@@ -96,40 +96,40 @@ export function LegProgress({ operationId }: { operationId: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="flex items-center gap-2 text-sm text-ivory">Status <StatusBadge {...OPERATION_STATUS_LABEL[o.status]} /></p>
+      <p className="flex items-center gap-2 text-sm text-ink">Status <StatusBadge {...OPERATION_STATUS_LABEL[o.status]} /></p>
       <ol className="space-y-3">
         {o.legs.map((l) => <LegRow key={l.id} leg={l} buying={buying} />)}
       </ol>
 
-      {err && <div role="alert" className="rounded-xl border border-danger/40 p-3 text-sm text-ivory"><p className="font-medium">{expired ? "Quote expired" : err.title}</p><p className="text-stone">{expired ? "Get a new quote, then sign again. Nothing was submitted." : err.message}</p></div>}
-      {busy && <p role="status" className="text-sm text-stone"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />{step}…</p>}
+      {err && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{expired ? "Quote expired" : err.title}</p><p className="text-ink-muted">{expired ? "Get a new quote, then sign again. Nothing was submitted." : err.message}</p></div>}
+      {busy && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />{step}…</p>}
       {fresh && !busy && (
-        <div role="status" className="space-y-1 rounded-xl border border-border-dark p-3 text-sm">
-          <p className="font-medium text-ivory">Fresh quote for step {fresh.leg.sequence}</p>
-          {freshAmounts ? <p className="text-stone">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-stone">Fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC (all fees together).</p>}
-          <p className="text-xs text-stone">The quote is valid for about a minute. {fresh.leg.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</p>
+        <div role="status" className="space-y-1 rounded-tile border border-line p-3 text-sm">
+          <p className="font-medium text-ink">Fresh quote for step {fresh.leg.sequence}</p>
+          {freshAmounts ? <p className="text-ink-muted">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</p> : <p className="text-ink-muted">Fee transfer of {formatUnits(fresh.leg.amountIn, 6)} USDC (all fees together).</p>}
+          <p className="text-xs text-ink-muted">The quote is valid for about a minute. {fresh.leg.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</p>
         </div>
       )}
-      {ACTIVE.includes(o.status) && inFlight && !busy && <p role="status" className="text-sm text-stone">Waiting for the network to confirm. This page updates by itself.</p>}
+      {ACTIVE.includes(o.status) && inFlight && !busy && <p role="status" className="text-sm text-ink-muted">Waiting for the network to confirm. This page updates by itself.</p>}
 
       {ACTIVE.includes(o.status) && (
         <div className="flex flex-wrap gap-3">
-          {next && !busy && !fresh && <Button className="min-h-11" onClick={() => prepare.mutate(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>}
-          {fresh && !busy && <Button className="min-h-11" onClick={() => sign.mutate(fresh)}>Approve step {fresh.leg.sequence} in your wallet</Button>}
-          {!inFlight && !busy && <Button variant="secondary" className="min-h-11" disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
+          {next && !busy && !fresh && <Button  onClick={() => prepare.mutate(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>}
+          {fresh && !busy && <Button  onClick={() => sign.mutate(fresh)}>Approve step {fresh.leg.sequence} in your wallet</Button>}
+          {!inFlight && !busy && <Button variant="secondary"  disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
         </div>
       )}
 
-      {o.status === "COMPLETED" && <p role="status" className="text-sm text-ivory">All steps are settled.{o.kind === "invest" && " Your basket is in your wallet and shown in your portfolio."}</p>}
+      {o.status === "COMPLETED" && <p role="status" className="text-sm text-ink">All steps are settled.{o.kind === "invest" && " Your basket is in your wallet and shown in your portfolio."}</p>}
       {(o.status === "PARTIAL" || o.status === "FAILED") && (
-        <p role="status" className="text-sm text-ivory">
+        <p role="status" className="text-sm text-ink">
           {o.status === "PARTIAL" ? "Some steps settled and some did not run. What you received is in your wallet." : "No assets were bought or sold."}
           {unknown && " A step is still being checked with the chain; its result is added to your portfolio when it settles."}
           {feePaid && " The fees were already paid and are not refunded."}
           {remaining.length > 0 && ` Not run: ${remaining.map((l) => legTitle(l, buying)).join(", ")}.`} Start a new plan to continue. Unspent USDC stays in your wallet.
         </p>
       )}
-      {o.status === "CANCELLED" && <p role="status" className="text-sm text-ivory">Cancelled. Nothing was submitted.</p>}
+      {o.status === "CANCELLED" && <p role="status" className="text-sm text-ink">Cancelled. Nothing was submitted.</p>}
       <FeeLines fees={o.fees} />
     </div>
   );
