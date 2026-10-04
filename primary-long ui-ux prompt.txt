@@ -1,0 +1,2086 @@
+# BYTESAC — MASTER DESIGN, UI/UX & FRONTEND BUILD DIRECTIVE
+
+You are the Lead Product Designer, UX Architect, Motion Designer and
+Frontend Engineer for Bytesac.
+
+Your job is to create a premium, highly interactive, production-quality
+Bytesac experience inspired by the supplied reference websites and
+videos.
+
+This is NOT a pixel-perfect cloning task.
+
+We want to understand the visual language, UX patterns, motion,
+storytelling, composition and interaction quality of the references and
+reinterpret those ideas specifically for Bytesac.
+
+The final result must feel like a completely new product designed for
+Bytesac — not a reskinned or copied version of another platform.
+
+============================================================
+# 1. SOURCE OF TRUTH — READ THIS FIRST
+============================================================
+
+Before writing code or changing the UI, thoroughly inspect:
+
+@docs
+
+IMPORTANT:
+
+@docs/domains
+
+The `/docs/domains` directory is especially important.
+
+Use it to understand:
+
+- product domains
+- entities
+- relationships
+- ownership
+- responsibilities
+- user roles
+- organization architecture
+- basket architecture
+- portfolio architecture
+- execution concepts
+- product boundaries
+- domain terminology.
+
+Also read all relevant documentation covering:
+
+- User Authentication
+- User Detailed Features
+- Fund Manager / Organization Onboarding
+- Fund Manager Detailed Features
+- Basket Creation
+- Asset Registry
+- First Investment
+- Portfolio
+- Rebalancing
+- Drift / Fix
+- Future Plans
+- Architecture decisions.
+
+Do not invent product behavior when the documentation already defines it.
+
+If the current frontend conflicts with the documentation, the documented
+product requirements take priority.
+
+============================================================
+# 2. REFERENCE MATERIAL
+============================================================
+
+All reference screenshots, images and videos are located inside:
+
+@ui-ref
+
+You MUST inspect the reference material before making major design
+decisions.
+
+The references are visual and interaction inspiration.
+
+Extract:
+
+- visual hierarchy
+- typography scale
+- spacing
+- composition
+- section rhythm
+- device presentation
+- 3D presentation
+- glass effects
+- animation
+- scroll behavior
+- transitions
+- storytelling
+- responsive behavior
+- interaction patterns.
+
+Do NOT copy:
+
+- logos
+- branding
+- exact text
+- proprietary graphics
+- exact illustrations
+- exact screenshots
+- exact layouts
+- exact visual identity.
+
+Use:
+
+REFERENCE
+    ↓
+UNDERSTAND
+    ↓
+EXTRACT PRINCIPLE
+    ↓
+REINTERPRET
+    ↓
+BYTESAC IMPLEMENTATION
+
+============================================================
+# 3. UNDERSTAND BYTESAC BEFORE DESIGNING
+============================================================
+
+Bytesac is a strategy-driven investment platform designed to make
+investing across on-chain assets simpler, more understandable and more
+user-controlled.
+
+The product connects:
+
+Investors
++
+Investment Baskets
++
+Verified Managers
++
+Organizations
++
+Multi-chain Assets
++
+Portfolio
++
+Execution
++
+Rebalancing.
+
+The central product idea is:
+
+> INVEST IN STRATEGIES, NOT INDIVIDUAL TRADES.
+
+Instead of forcing users to manually research and construct portfolios
+asset-by-asset, Bytesac allows users to discover investment baskets,
+understand the strategy behind them, invest into them, monitor their
+portfolio and review future strategy changes.
+
+The platform currently focuses on approved:
+
+- crypto assets
+- crypto tokens
+- supported RWAs
+
+across supported networks.
+
+The Asset Registry is the source for approved assets and their supported
+deployments/routes.
+
+============================================================
+# 4. THE BYTESAC MENTAL MODEL
+============================================================
+
+The entire product should be understood through this journey:
+
+DISCOVER
+    ↓
+RESEARCH
+    ↓
+CHOOSE
+    ↓
+INVEST
+    ↓
+AUTHORIZE
+    ↓
+OWN
+    ↓
+MONITOR
+    ↓
+REVIEW UPDATES
+    ↓
+PARTICIPATE OR SKIP
+    ↓
+REBALANCE WHEN USER CHOOSES
+
+The user should never feel like they are operating a complicated
+trading terminal.
+
+The desired mental model is:
+
+> "I am investing in a strategy."
+
+NOT:
+
+> "I am manually executing ten crypto trades."
+
+============================================================
+# 5. TARGET AUDIENCE
+============================================================
+
+## PRIMARY — INVESTORS
+
+Bytesac is primarily designed for investors who want exposure to
+curated investment strategies without manually constructing and
+continuously maintaining a portfolio.
+
+Potential users include:
+
+- crypto-native investors
+- sophisticated retail investors
+- investors exploring tokenized/RWA opportunities
+- users seeking diversified strategies
+- users who understand wallets but do not want a trading terminal
+- users who want to deeply research a strategy before investing
+- users who want control over when strategy changes affect their
+  portfolio.
+
+Investor UX should feel:
+
+CALM
+SIMPLE
+INTELLIGENT
+PREMIUM
+TRANSPARENT
+TRUSTWORTHY.
+
+The user should not need to understand blockchain infrastructure to
+understand what their investment is doing.
+
+============================================================
+# 6. SECONDARY AUDIENCE — STRATEGY / FUND MANAGERS
+============================================================
+
+Managers are professionals or experienced investors who create and
+maintain investment strategies.
+
+Managers need to:
+
+- operate through an organization
+- create baskets
+- define investment objectives
+- define investment thesis
+- select approved assets
+- define target allocations
+- define risk information
+- configure rebalance behavior
+- define fees
+- submit baskets for platform review
+- publish strategies
+- create new basket versions
+- communicate strategy updates
+- monitor strategy performance
+- manage their organization/team.
+
+Important:
+
+A basket belongs to the verified organization.
+
+It is NOT:
+
+- the personal wallet of a manager
+- the personal asset of an individual manager
+- the investor's portfolio.
+
+The relationship is conceptually:
+
+USER
+ ↓
+ORGANIZATION MEMBERSHIP
+ ↓
+ORGANIZATION
+ ↓
+BASKET
+ ↓
+BASKET VERSION
+ ↓
+INVESTOR PORTFOLIO.
+
+Managers should therefore have a more analytical and professional
+workspace than investors.
+
+Manager UX should feel:
+
+POWERFUL
+ANALYTICAL
+PROFESSIONAL
+INSTITUTIONAL
+CONTROLLED.
+
+Do NOT make the manager interface look like the investor dashboard.
+
+============================================================
+# 7. ORGANIZATION MODEL
+============================================================
+
+Bytesac separates:
+
+USER
+ORGANIZATION
+BASKET
+MANAGER ASSIGNMENT
+INVESTOR PORTFOLIO.
+
+A user can belong to an organization with different roles.
+
+Possible roles include:
+
+- Owner
+- Admin
+- Manager
+- Analyst
+- Viewer.
+
+Permissions are role-based and may also be basket-specific.
+
+The organization is the durable owner of the basket.
+
+If an individual manager leaves the organization, the basket does not
+become their personal property.
+
+Manager history and assignments should remain auditable.
+
+The UI should reflect this distinction.
+
+Do NOT design the product as:
+
+Individual Manager
+    ↓
+Personal Basket.
+
+Design it as:
+
+Organization
+    ↓
+Basket
+    ↓
+Assigned Managers / Team.
+
+============================================================
+# 8. WHAT IS A BASKET?
+============================================================
+
+A Basket is a versioned investment strategy owned by a verified
+organization.
+
+A basket defines things such as:
+
+- name
+- description
+- investment objective
+- investment thesis
+- strategy
+- intended investor profile
+- assets
+- target allocations
+- constraints
+- risk information
+- rebalance methodology
+- rebalance frequency/thresholds
+- manager information
+- fees
+- minimum investment
+- disclosures.
+
+A basket is NOT simply a list of tokens.
+
+It should feel like:
+
+> A complete investment strategy that an investor can research and
+> understand.
+
+Therefore the Basket UX should be a major product experience.
+
+============================================================
+# 9. BASKET RESEARCH EXPERIENCE
+============================================================
+
+Basket discovery is not just:
+
+CARD
+NAME
+RETURN
+BUY.
+
+The user should be able to research:
+
+- What is this strategy?
+- Why does it exist?
+- What assets does it hold?
+- Why are those assets selected?
+- What are the target weights?
+- What is the investment thesis?
+- Who manages it?
+- Which organization owns it?
+- How has it performed?
+- What are the risks?
+- What are the fees?
+- What is the rebalance methodology?
+- What happened in previous versions?
+- What changed?
+- What should the investor expect?
+
+The research journey should feel closer to researching an investment
+product than browsing a crypto exchange.
+
+============================================================
+# 10. BASKET LIFECYCLE
+============================================================
+
+A basket begins as:
+
+DRAFT
+    ↓
+SUBMITTED
+    ↓
+PLATFORM REVIEW
+    ↓
+APPROVED
+    ↓
+PUBLISHED
+    ↓
+VERSIONED UPDATES
+    ↓
+PAUSED / RETIRED / ARCHIVED.
+
+A draft is NOT publicly investable.
+
+A published basket version is immutable.
+
+When a manager changes the strategy, the system creates a new version
+rather than silently changing historical strategy information.
+
+Example:
+
+Basket v1
+    ↓
+Basket v2
+    ↓
+Basket v3
+    ↓
+Current.
+
+The UI should make version history understandable and trustworthy.
+
+============================================================
+# 11. MANAGER STRATEGY VS INVESTOR PORTFOLIO
+============================================================
+
+This distinction is extremely important.
+
+There are three different concepts:
+
+### 1. Manager Strategy
+
+What the basket SHOULD target.
+
+Example:
+
+BTC 35%
+ETH 30%
+SOL 20%
+RWA 15%.
+
+### 2. User Basket Allocation
+
+How the platform logically attributes the user's investment to that
+basket.
+
+### 3. Verified Holdings
+
+What the user actually owns/controls based on the relevant chain,
+wallet or issuer/provider state.
+
+These MUST NOT be visually or conceptually conflated.
+
+The UI should never imply:
+
+"Manager says 35% BTC, therefore the user's wallet definitely has 35%
+BTC."
+
+Actual holdings must be represented separately.
+
+============================================================
+# 12. INVESTMENT FLOW
+============================================================
+
+The first investment experience should communicate:
+
+SELECT BASKET
+    ↓
+ENTER INVESTMENT AMOUNT
+    ↓
+REVIEW BASKET
+    ↓
+REVIEW ALLOCATION
+    ↓
+REVIEW FEES
+    ↓
+REVIEW EXECUTION
+    ↓
+CONFIRM
+    ↓
+WALLET AUTHORIZATION
+    ↓
+ON-CHAIN EXECUTION
+    ↓
+RECONCILIATION
+    ↓
+PORTFOLIO CREATED.
+
+Before investment, the user should understand:
+
+- investment amount
+- target allocation
+- fees
+- estimated execution costs
+- expected slippage
+- applicable RWA/asset restrictions
+- transaction requirements
+- what they are authorizing.
+
+The investment preview should feel extremely clear.
+
+The user should never wonder:
+
+"What exactly am I signing?"
+
+============================================================
+# 13. USER ASSET OWNERSHIP / NON-CUSTODIAL PHILOSOPHY
+============================================================
+
+This is one of Bytesac's most important product principles.
+
+Bytesac is designed around USER CONTROL of the underlying investment
+assets rather than the traditional model where a centralized platform
+takes custody of user assets.
+
+The intended conceptual model is:
+
+USER
+ ↓
+USER WALLET / USER-CONTROLLED ASSET
+ ↓
+USER AUTHORIZATION
+ ↓
+SUPPORTED ON-CHAIN EXECUTION.
+
+NOT:
+
+USER
+ ↓
+DEPOSIT ASSETS INTO BYTESAC
+ ↓
+BYTESAC HOLDS USER ASSETS
+ ↓
+BYTESAC CONTROLS USER ASSETS.
+
+The product should communicate:
+
+> YOUR ASSETS.
+> YOUR WALLET.
+> YOUR AUTHORIZATION.
+> YOUR DECISION.
+
+The user should understand that Bytesac is helping them discover,
+research, construct and manage an investment strategy without relying
+on a traditional centralized custody model.
+
+This should be a major differentiation from custodial investment
+platforms.
+
+However:
+
+DO NOT invent technical, legal or security guarantees that are not
+supported by the architecture.
+
+Do not claim:
+
+- "Your assets can never be stolen."
+- "Impossible to hack."
+- "100% guaranteed non-custodial."
+- "Bytesac can never interact with your assets."
+
+Instead communicate the supported product principle:
+
+- user-controlled assets
+- user-authorized execution
+- wallet ownership/control
+- transparent on-chain ownership
+- explicit transaction authorization
+- no traditional custodial deposit experience.
+
+The exact custody/account model remains chain/asset dependent and must
+follow the documented architecture.
+
+============================================================
+# 14. WHY NON-CUSTODIAL MATTERS TO THE UX
+============================================================
+
+Do NOT treat non-custodial design as a tiny footer statement.
+
+It should influence the product experience.
+
+For example, the investment flow should make clear:
+
+YOUR WALLET
+    ↓
+YOUR ASSETS
+    ↓
+BYTESAC STRATEGY
+    ↓
+YOU AUTHORIZE
+    ↓
+ON-CHAIN EXECUTION.
+
+The user should feel:
+
+"I am using Bytesac to manage my investment strategy."
+
+Not:
+
+"I deposited my money into Bytesac."
+
+This is an important difference in the emotional experience of the
+product.
+
+============================================================
+# 15. PORTFOLIO
+============================================================
+
+The Portfolio is the user's actual investment experience.
+
+It should show:
+
+- total portfolio value
+- performance
+- allocations
+- basket positions
+- asset positions
+- activity
+- wallet/chain information
+- pending transactions
+- strategy/version status
+- rebalance opportunities
+- drift/mismatch states when relevant.
+
+The portfolio should make complex multi-chain holdings feel simple.
+
+Potential mental model:
+
+PORTFOLIO
+    ↓
+BASKETS
+    ↓
+ASSETS
+    ↓
+CHAINS
+    ↓
+TRANSACTIONS.
+
+Do not make the user manually think about every chain unless necessary.
+
+============================================================
+# 16. MULTI-CHAIN EXPERIENCE
+============================================================
+
+Bytesac supports a multi-chain investment environment.
+
+The product architecture supports approved assets and deployments across
+supported networks.
+
+The UI should make multi-chain complexity feel invisible where possible.
+
+The user should primarily think:
+
+"MY INVESTMENT"
+
+rather than:
+
+"Which RPC/network/token account am I currently using?"
+
+However, when chain information matters for authorization or execution,
+show it clearly.
+
+The interface should be able to communicate:
+
+Ethereum
+Base
+Solana
+Bitcoin
+BNB Chain
+Polygon
+
+and supported assets such as:
+
+BTC
+ETH
+SOL
+USDC
+other approved crypto/tokens
+RWAs.
+
+Do not turn the product into a blockchain explorer.
+
+============================================================
+# 17. ASSET REGISTRY
+============================================================
+
+The platform uses a canonical Asset Registry.
+
+An asset is not identified only by its ticker.
+
+The system distinguishes:
+
+INSTRUMENT / ASSET
+    ↓
+CHAIN DEPLOYMENT
+    ↓
+EXECUTION ROUTE.
+
+The UI should therefore avoid misleading assumptions such as:
+
+"Every BTC is the same deployment."
+
+or:
+
+"Every RWA token can be traded like a normal crypto token."
+
+RWA experiences may involve:
+
+- issuer
+- eligibility
+- transfer restrictions
+- subscription
+- redemption
+- settlement
+- delayed issuance.
+
+The design should communicate these differences when relevant without
+overloading the user with technical infrastructure.
+
+============================================================
+# 18. REBALANCING
+============================================================
+
+Rebalancing is NOT automatic control by the manager.
+
+A manager defines the strategy.
+
+A new basket version represents a new target.
+
+The user's portfolio is NOT silently changed when the manager publishes
+the new version.
+
+The flow is:
+
+MANAGER
+creates new version
+    ↓
+PLATFORM REVIEW
+    ↓
+VERSION PUBLISHED
+    ↓
+USER NOTIFIED
+    ↓
+USER REVIEWS CHANGES
+    ↓
+USER CHOOSES:
+    PARTICIPATE
+    OR
+    SKIP
+    ↓
+IF PARTICIPATE:
+USER AUTHORIZES EXECUTION
+    ↓
+ON-CHAIN EXECUTION
+    ↓
+RECONCILIATION.
+
+This distinction is fundamental to Bytesac.
+
+============================================================
+# 19. REBALANCE UX
+============================================================
+
+The UI should make changes visually obvious.
+
+Example:
+
+CURRENT
+
+BTC      25%
+ETH      35%
+SOL      25%
+RWA      15%
+
+        ↓
+
+NEW VERSION
+
+BTC      30%   +5%
+ETH      30%   -5%
+SOL      25%
+RWA      15%.
+
+Show:
+
+- old allocation
+- new allocation
+- changed assets
+- estimated buys
+- estimated sells
+- fees
+- slippage
+- affected portfolio
+- plan expiry
+- user choice.
+
+Buttons should clearly communicate:
+
+[ REVIEW & PARTICIPATE ]
+
+[ SKIP ]
+
+Do not use language that implies the manager has already changed the
+portfolio.
+
+============================================================
+# 20. SKIPPING A REBALANCE
+============================================================
+
+If a user skips a manager update:
+
+NO TRADE OCCURS.
+
+The user's current holdings remain unchanged.
+
+The user remains associated with the previous applied basket version.
+
+If a later version is accepted, the platform should calculate from the
+CURRENT VERIFIED HOLDINGS to the selected target.
+
+Do not visually imply that the system replays every skipped version.
+
+============================================================
+# 21. DRIFT AND EXTERNAL WALLET ACTIVITY
+============================================================
+
+Users can manually buy, sell or transfer assets outside a Bytesac
+strategy flow.
+
+This can create:
+
+- weight drift
+- allocation mismatch
+- missing quantity
+- unassigned assets
+- incomplete execution
+- stale data.
+
+The UI should explain WHAT happened rather than simply showing:
+
+"ERROR."
+
+Example:
+
+> Your wallet activity changed the assets associated with this basket.
+
+Then explain:
+
+- what changed
+- when it changed
+- affected asset
+- current holding
+- target holding
+- available actions.
+
+Possible actions:
+
+RESTORE
+    or
+KEEP CUSTOM ALLOCATION
+    or
+REBALANCE
+    or
+REVIEW.
+
+Never silently buy an asset simply because a manager strategy expects
+it.
+
+============================================================
+# 22. FIX / REPAIR
+============================================================
+
+Fix is not one generic action.
+
+The UI should identify the actual problem.
+
+Possible states:
+
+- Weight Drift
+- Allocation Shortfall
+- Unapplied Version
+- Execution Incomplete
+- Data Stale
+- RWA Settlement Pending
+- Customized.
+
+The user should understand the cause before seeing the action.
+
+Example:
+
+CURRENT
+BTC 35%
+ETH 45%
+SOL 20%
+
+TARGET
+BTC 40%
+ETH 35%
+SOL 25%
+
+Then:
+
+[ Review Rebalance ]
+
+Do not make repair flows feel like error screens.
+
+They should feel like intelligent portfolio assistance.
+
+============================================================
+# 23. PRODUCT EMOTIONAL MODEL
+============================================================
+
+The emotional progression of Bytesac should be:
+
+DISCOVERY
+"I found something interesting."
+
+↓
+
+UNDERSTANDING
+"I understand the strategy."
+
+↓
+
+CONFIDENCE
+"I understand the risks and manager."
+
+↓
+
+CONTROL
+"I know exactly what I am authorizing."
+
+↓
+
+OWNERSHIP
+"My assets remain under my control."
+
+↓
+
+CLARITY
+"I understand what my portfolio is doing."
+
+↓
+
+CHOICE
+"I decide whether to follow the manager's update."
+
+This emotional model should influence the UI.
+
+============================================================
+# 24. CORE PRODUCT PROBLEMS WE ARE SOLVING
+============================================================
+
+Design should solve these problems:
+
+### Problem 1 — Discovery
+
+There are too many assets and strategies.
+
+Bytesac provides curated baskets and discovery.
+
+### Problem 2 — Research
+
+Users struggle to understand what they are buying.
+
+Bytesac provides deep basket and manager research.
+
+### Problem 3 — Complexity
+
+Multi-chain investing is technically complicated.
+
+Bytesac abstracts unnecessary blockchain complexity.
+
+### Problem 4 — Portfolio construction
+
+Users manually build portfolios and rebalance them.
+
+Bytesac provides strategy-driven baskets.
+
+### Problem 5 — Execution complexity
+
+Multiple assets may require multiple transactions/routes.
+
+Bytesac provides a guided investment/execution experience.
+
+### Problem 6 — Lack of control
+
+Traditional custodial platforms can place users' assets under platform
+control.
+
+Bytesac is designed around user-controlled assets and explicit
+authorization.
+
+### Problem 7 — Strategy changes
+
+Manager strategy changes can be confusing.
+
+Bytesac shows version differences and lets the user decide whether to
+participate.
+
+============================================================
+# 25. THE PRODUCT IN ONE SENTENCE
+============================================================
+
+If you need one sentence to understand Bytesac:
+
+> Bytesac is a user-controlled, strategy-driven investment platform where
+> investors discover and research curated baskets, invest through their
+> wallet, monitor their portfolio and choose whether to participate in
+> manager strategy updates.
+
+Use this mental model whenever making a design decision.
+
+============================================================
+# 26. REFERENCE VIDEO ANALYSIS — MANDATORY
+============================================================
+
+The supplied videos contain important information about:
+
+- animation timing
+- scrolling
+- device movement
+- transitions
+- object choreography
+- UI movement
+- section transitions
+- visual storytelling.
+
+Use FFmpeg to analyze them.
+
+Before implementing major animations:
+
+1. Identify every major scene.
+2. Extract representative frames.
+3. Inspect important transitions.
+4. Determine approximate timing.
+5. Identify:
+   - camera movement
+   - phone movement
+   - object movement
+   - scale transitions
+   - fade transitions
+   - scroll-driven effects
+   - UI transformations
+   - card movement
+   - section transitions.
+6. Document the interaction pattern.
+7. Rebuild the principle for Bytesac.
+
+Do NOT simply embed the reference videos.
+
+Example:
+
+REFERENCE:
+
+Phone slowly moves upward while UI cards fade in.
+
+BYTESAC:
+
+Real Bytesac phone moves upward while portfolio allocation elements
+appear.
+
+Do NOT reproduce proprietary graphics.
+
+Then recreate the INTERACTION PRINCIPLE.
+
+
+============================================================
+# 27. IMAGE GENERATION — RUNWARE MCP
+============================================================
+
+Use the available Runware MCP.
+
+Choose the appropriate image model based on asset complexity but preffered flux 3 
+You can switch to better model as per the assets complexity.
+
+Use different models when appropriate for:
+
+- photorealistic photography
+- 3D objects
+- transparent objects
+- cinematic environments
+- device compositions
+- hands holding devices
+- abstract backgrounds
+- product visualization.
+
+Before generating an asset:
+
+1. Inspect existing assets.
+2. Reuse if possible.
+3. Determine whether generation is actually necessary.
+4. Select an appropriate Runware model.
+5. Generate.
+6. Validate.
+7. Optimize.
+8. Store properly.
+
+Do not create five visually different versions of the same object
+without a reason.
+
+Maintain visual consistency.
+
+Do not generate important UI as images.
+
+REAL UI MUST REMAIN CODE.
+
+
+For example:
+
+GOOD:
+
+transparent-glass-orb.webp
+portfolio-prism.webp
+hand-holding-phone.webp
+network-nodes.webp
+
+BAD:
+
+entire-homepage-as-single-image.webp
+
+Real application UI MUST remain real React/Expo UI.
+
+Never use AI-generated screenshots as a replacement for actual
+functional product UI.
+
+NOTE: Store all the generated assets into organised folder and files 
+with all info about the image what it contains and where to use those assets
+
+============================================================
+# 28. PACKAGE INSTALLATION AUTHORITY
+============================================================
+
+Existing tools include:
+
+- Playwright
+- Taste
+- Impeccable
+- FFmpeg
+- Runware MCP.
+
+If you believe another package would materially improve:
+
+- animation
+- 3D
+- WebGL
+- image optimization
+- interaction
+- visual testing
+- device rendering
+- frontend quality
+
+you may recommend it.
+
+BUT DO NOT INSTALL IT WITHOUT ASKING ME.
+
+Before installing, provide:
+
+Package:
+Why:
+Benefit:
+Alternatives:
+Impact on project:
+
+Then wait for approval.
+
+============================================================
+# 29. FRONTEND STRATEGY
+============================================================
+
+There are TWO frontends:
+
+1. Web
+2. Expo SDK 57.
+
+IMPORTANT:
+
+WE ARE BUILDING WEB FIRST.
+
+The development order is:
+
+WEB
+    ↓
+EXPO 57 MOBILE
+    ↓
+REAL MOBILE UI INTO WEB DEVICE COMPOSITIONS.
+
+============================================================
+# 30. PHASE 1 — WEB FIRST
+============================================================
+
+Build the Web experience first.
+
+The Web includes:
+
+PUBLIC:
+
+- homepage
+- basket discovery
+- basket research
+- manager research
+- organization/public information
+- asset information
+- educational/supporting pages.
+
+INVESTOR:
+
+- authentication
+- wallet connection
+- home
+- discovery
+- AI basket search
+- basket detail
+- basket research
+- manager profile
+- investment
+- investment preview
+- authorization
+- success
+- portfolio
+- asset detail
+- activity
+- wallet
+- rebalance
+- settings.
+
+MANAGER:
+
+- workspace
+- organization
+- members
+- roles
+- baskets
+- basket creation
+- basket editor
+- allocation editor
+- review submission
+- versions
+- rebalance builder
+- analytics
+- settings
+- manager profile.
+
+Audit existing routes before deciding the final page structure.
+
+============================================================
+# 31. FULL DESIGN AUTHORITY
+============================================================
+
+You have FULL permission to change the existing design system.
+
+The current design system is NOT a constraint.
+
+You may:
+
+- replace it
+- redesign it
+- add tokens
+- remove tokens
+- change typography
+- change colors
+- change spacing
+- change grids
+- change shadows
+- change gradients
+- change glass
+- change radius
+- redesign components
+- replace components
+- create components
+- delete components
+- restructure navigation
+- redesign information architecture
+- add pages
+- delete pages
+- merge pages
+- split pages
+- change layouts
+- add animations
+- add interactions
+- add responsive behavior.
+
+Do not preserve poor design simply because it already exists.
+
+============================================================
+# 32. FULL PAGE AUTHORITY
+============================================================
+
+There are currently pages/features that may not have proper mobile or
+complete experiences.
+
+You have permission to:
+
+ADD missing pages.
+
+DELETE unnecessary pages.
+
+MERGE duplicate pages.
+
+SPLIT overloaded pages.
+
+CREATE missing states.
+
+CREATE missing flows.
+
+CREATE pages required by the documented product.
+
+Do not assume the current route list is complete.
+
+Compare:
+
+CURRENT FRONTEND
+vs
+@docs
+vs
+@docs/domains.
+
+============================================================
+# 33. MOBILE PAGE AUDIT DURING WEB PHASE
+============================================================
+
+Even though we are building Web first, identify every feature that will
+need mobile UX.
+
+Create a mobile UX inventory containing:
+
+Feature
+Purpose
+User
+Required mobile screen
+Interaction model
+Priority
+Dependencies.
+
+Do not build Expo yet.
+
+This inventory becomes the blueprint for Phase 2.
+
+============================================================
+# 34. EMPTY PHONE ASSETS DURING WEB PHASE
+============================================================
+
+Because the actual Expo UI does not exist yet:
+
+DO NOT create fake final mobile screenshots.
+
+Instead create premium empty/white/off-white phone assets.
+
+Example:
+
+WEB SECTION
+    ↓
+PREMIUM PHONE FRAME
+    ↓
+EMPTY WHITE SCREEN
+    ↓
+FUTURE EXPO UI.
+
+The phone assets should already have:
+
+- correct perspective
+- premium materials
+- subtle shadow
+- correct lighting
+- Bytesac visual environment.
+
+Later these empty screens will be replaced with actual Expo renders.
+
+============================================================
+# 35. PHASE 2 — EXPO SDK 57
+============================================================
+
+After the Web UI/UX is completed:
+
+Begin the Expo SDK 57 mobile application.
+
+Do NOT simply shrink the Web UI.
+
+Create dedicated mobile UX using:
+
+- bottom sheets
+- gestures
+- mobile navigation
+- sticky actions
+- full-screen detail
+- horizontal interactions
+- touch-friendly controls
+- mobile charts
+- action sheets
+- mobile-native transitions.
+
+All relevant product pages must receive a mobile experience.
+
+If a Web feature is relevant to mobile, do not leave it desktop-only.
+
+### Authentication / onboarding
+
+1. Splash
+2. Welcome
+3. Wallet connection
+4. Wallet selection
+5. Wallet verification
+6. Contact information
+7. Authentication state
+8. Account completion
+
+### Discovery
+
+9. Home
+10. Discover baskets
+11. Search
+12. AI basket search
+13. Basket filters
+14. Basket detail
+15. Basket research
+16. Manager profile
+17. Manager research
+
+### Investment
+
+18. Investment amount
+19. Allocation preview
+20. Fees
+21. Risk/disclosure review
+22. Investment confirmation
+23. Wallet authorization
+24. Transaction pending
+25. Investment success
+26. Investment failure
+
+### Portfolio
+
+27. Portfolio
+28. Asset allocation
+29. Asset detail
+30. Performance
+31. Activity
+32. Transaction detail
+33. Wallet
+34. Wallet/network management
+
+### Rebalancing
+
+35. Rebalance notification
+36. New basket version
+37. Current vs target allocation
+38. Rebalance impact
+39. Estimated execution
+40. Review
+41. Apply
+42. Skip
+43. Rebalance pending
+44. Rebalance result
+
+### Settings
+
+45. Profile
+46. Wallets
+47. Notifications
+48. Security
+49. Preferences
+50. Help/support.
+
+Not every screen must become a separate route if a better UX is
+achieved through sheets, modals, nested navigation or contextual
+states.
+
+Use design judgment.
+
+---
+
+# MANAGER MOBILE EXPERIENCE
+
+Where manager functionality is relevant on mobile, provide an
+intentional mobile experience.
+
+Potential areas:
+
+- manager overview
+- organization
+- basket list
+- basket detail
+- basket status
+- allocation
+- review feedback
+- basket version
+- rebalance proposal
+- notifications
+- analytics summary
+- organization members.
+
+Complex editing workflows can remain optimized for Web if appropriate,
+but the user must still be able to understand and manage relevant
+mobile actions.
+
+---
+
+============================================================
+# 36. PHASE 3 — REAL MOBILE UI INTO WEB
+============================================================
+
+After Expo screens are built:
+
+Render actual mobile UI.
+
+Then replace the empty phone assets in the Web experience.
+
+Pipeline:
+
+EXPO 57
+    ↓
+REAL BYTESAC MOBILE SCREEN
+    ↓
+SCREENSHOT / RENDER
+    ↓
+DEVICE COMPOSITION
+    ↓
+WEB PAGE.
+
+The Web should eventually show the REAL product UI inside its phone
+presentations.
+
+============================================================
+# 37. WEB VISUAL LANGUAGE
+============================================================
+
+Use the reference quality as inspiration.
+
+Desired:
+
+- premium
+- minimal
+- cinematic
+- editorial
+- spacious
+- sophisticated
+- institutional
+- modern
+- calm.
+
+Visual system:
+
+- off-white backgrounds
+- soft white surfaces
+- pale atmospheric blue
+- deep navy typography
+- near-black tinted glass
+- subtle gradients
+- thin borders
+- large rounded surfaces
+- restrained shadows
+- oversized typography
+- generous whitespace
+- floating UI
+- realistic devices
+- 3D objects
+- atmospheric backgrounds
+- subtle depth.
+
+Avoid:
+
+- neon overload
+- generic crypto exchange visuals
+- trading-terminal appearance
+- excessive cards
+- SaaS-template layouts
+- excessive glass
+- excessive gradients
+- generic Web3 aesthetics.
+
+============================================================
+# 38. BYTESAC 3D LANGUAGE
+============================================================
+
+Create a reusable visual family around:
+
+- glass orb
+- glass cube
+- portfolio prism
+- allocation ring
+- network nodes
+- strategy capsule
+- wallet object
+- portfolio vault
+- rebalance object
+- multi-chain network.
+
+Potential asset visualizations:
+
+BTC
+ETH
+SOL
+USDC
+RWA
+STABLECOIN
+TOKEN
+PORTFOLIO
+BASKET
+WALLET.
+
+All should feel like one coherent Bytesac visual system.
+
+============================================================
+# 39. AI BASKET SEARCH
+============================================================
+
+AI-powered natural language basket discovery should be treated as a
+first-class product experience.
+
+Example:
+
+"I want a diversified basket with BTC, ETH, SOL and tokenized
+Treasuries, no asset above 30%, monthly rebalancing and low fees."
+
+The UI should transform natural language into understandable search
+criteria.
+
+Do NOT make it look like a generic chatbot.
+
+It should feel like:
+
+INVESTMENT RESEARCH
++
+INTELLIGENCE.
+
+============================================================
+# 40. ANIMATION & INTERACTION
+============================================================
+
+Animation should communicate meaning.
+
+Use:
+
+- scroll reveal
+- device movement
+- graph drawing
+- allocation transitions
+- asset movement
+- version comparison
+- network animation
+- depth
+- hover states
+- page transitions
+- subtle parallax.
+
+Do NOT animate everything.
+
+Motion should feel:
+
+CALM
+PREMIUM
+INTENTIONAL.
+
+============================================================
+# 41. PLAYWRIGHT VISUAL QA
+============================================================
+
+After every major milestone:
+
+1. Start application.
+2. Use Playwright.
+3. Capture screenshots.
+4. Inspect actual rendering.
+5. Compare against intended design.
+6. Fix.
+7. Repeat.
+
+Test:
+
+390px
+430px
+768px
+1024px
+1280px
+1440px
+1920px.
+
+Check:
+
+- typography
+- spacing
+- hierarchy
+- overflow
+- clipping
+- responsiveness
+- image quality
+- animation
+- loading
+- accessibility
+- interaction.
+
+Do not declare pages complete merely because they compile.
+
+============================================================
+# 42. TASTE + IMPECCABLE
+============================================================
+
+Use Taste and Impeccable as visual critics.
+
+Evaluate:
+
+- Does this feel premium?
+- Is hierarchy clear?
+- Is spacing intentional?
+- Are cards overused?
+- Is the page visually distinctive?
+- Does it feel like Bytesac?
+- Does it feel like a generic AI-generated SaaS template?
+- Is motion meaningful?
+- Does the product story make sense?
+- Is user control communicated clearly?
+
+Iterate based on the results.
+
+============================================================
+# 43. DESIGN AUTHORITY VS PRODUCT AUTHORITY
+============================================================
+
+You have FULL DESIGN AUTHORITY.
+
+You do NOT have permission to change documented product semantics.
+
+For example:
+
+DO NOT change:
+
+"User decides whether to participate in rebalance"
+
+into:
+
+"Manager automatically controls the user's portfolio."
+
+DO NOT change:
+
+"Organization owns basket"
+
+into:
+
+"Manager personally owns basket."
+
+DO NOT change:
+
+"user-controlled assets"
+
+into:
+
+"Bytesac holds user assets."
+
+DO NOT invent unsupported functionality.
+
+Product requirements come from:
+
+@docs
+@docs/domains.
+
+============================================================
+# 44. DESIGN DECISION PRIORITY
+============================================================
+
+Use this hierarchy:
+
+1. Product correctness
+2. User control and transaction safety
+3. UX clarity
+4. Information architecture
+5. Bytesac brand
+6. Visual quality
+7. Interaction quality
+8. Performance
+9. Decorative detail
+10. Reference similarity.
+
+The reference must NEVER override product truth.
+
+============================================================
+# 45. FINAL EXPERIENCE
+============================================================
+
+Bytesac should feel like:
+
+> THE PREMIUM INVESTMENT OPERATING SYSTEM FOR THE ON-CHAIN WORLD.
+
+The experience should feel:
+
+- intelligent
+- premium
+- calm
+- sophisticated
+- transparent
+- user-controlled
+- technically advanced
+- trustworthy
+- approachable.
+
+It should NOT feel like:
+
+- crypto casino
+- trading terminal
+- generic exchange
+- generic fintech
+- generic SaaS
+- Web3 template
+- AI-generated landing page.
+
+============================================================
+# 46. FINAL PRODUCT STORY
+============================================================
+
+The entire experience should communicate:
+
+DISCOVER
+Find strategies.
+
+RESEARCH
+Understand the basket and manager.
+
+INVEST
+Choose an amount and review exactly what happens.
+
+AUTHORIZE
+Explicitly approve the transaction.
+
+OWN
+Maintain control of the underlying assets according to the supported
+wallet/account architecture.
+
+MONITOR
+Understand portfolio performance and holdings.
+
+REVIEW
+Understand manager strategy updates.
+
+CHOOSE
+Participate or skip.
+
+REBALANCE
+Only when the user chooses to authorize the change.
+
+============================================================
+# 47. DEVELOPMENT ORDER
+============================================================
+
+Follow this order strictly.
+
+PHASE 0
+Read @docs
+Read @docs/domains
+Understand product
+Audit existing frontend
+Audit @ui-ref
+
+↓
+
+PHASE 1
+Analyze reference videos with FFmpeg
+
+↓
+
+PHASE 2
+Define Bytesac Web visual language
+
+↓
+
+PHASE 3
+Audit all existing pages
+
+Identify:
+
+- missing
+- obsolete
+- duplicated
+- incomplete
+- desktop-only
+- mobile-required.
+
+↓
+
+PHASE 4
+Redesign Web information architecture
+
+↓
+
+PHASE 5
+Build Web design system
+
+↓
+
+PHASE 6
+Build Web product UI
+
+↓
+
+PHASE 7
+Generate premium empty/white phone assets
+using Runware MCP
+
+↓
+
+PHASE 8
+Build Web marketing experience
+
+↓
+
+PHASE 9
+Playwright QA
+
+↓
+
+PHASE 10
+Taste + Impeccable critique
+
+↓
+
+PHASE 11
+Iterate until Web is production quality
+
+↓
+
+PHASE 12
+Create complete Expo 57 mobile UX inventory
+
+↓
+
+PHASE 13
+Build Expo 57 mobile UI
+
+↓
+
+PHASE 14
+Render actual mobile screens
+
+↓
+
+PHASE 15
+Replace Web phone placeholders
+with real Expo UI.
+
+↓
+
+PHASE 16
+Final Web + Expo consistency pass.
+
+============================================================
+# 48. FINAL SUCCESS CRITERIA
+============================================================
+
+The result must NOT look like:
+
+"Existing Bytesac UI with a new color palette."
+
+It must feel like:
+
+"A completely redesigned Bytesac investment experience."
+
+The Web must feel premium even before the mobile application exists.
+
+The Expo application must later become the REAL product UI shown inside
+the Web's device compositions.
+
+The reference videos should influence animation quality.
+
+The reference screenshots should influence visual sophistication.
+
+But the final product must remain unmistakably Bytesac.
+
+A user should understand within seconds:
+
+WHAT:
+
+Investment strategies and curated baskets.
+
+WHO:
+
+Investors and professional strategy managers.
+
+WHY:
+
+Simplify investment research, execution and portfolio management.
+
+HOW:
+
+Discover
+→ Research
+→ Invest
+→ Authorize
+→ Own
+→ Monitor
+→ Rebalance.
+
+AND THE CORE DIFFERENTIATOR:
+
+> YOUR ASSETS.
+> YOUR WALLET.
+> YOUR AUTHORIZATION.
+> YOUR DECISION.
+
+Bytesac helps users discover, understand and manage investment
+strategies without being designed around traditional centralized custody
+of their assets.
+
+============================================================
+# 49. START NOW
+============================================================
+
+DO NOT immediately start coding.
+
+FIRST:
+
+Read @docs/domains and all relevant product documentation.
+
+SECOND:
+
+Audit the existing frontend and create a page/feature inventory.
+
+THIRD:
+
+Inspect every relevant image and video in @ui-ref.
+
+FOURTH:
+
+Use FFmpeg to analyze the reference videos and understand their
+animation/interaction choreography.
+
+FIFTH:
+
+Create the Bytesac Web design direction and design system.
+
+SIXTH:
+
+Plan the complete Web information architecture.
+
+THEN:
+
+Begin implementing the Web UI.
+
+Do NOT start Expo yet.
+
+Do NOT use Gemini for image generation.
+
+Do NOT generate random assets before understanding the product.
+
+Use Runware MCP for generated imagery.
+
+Use empty premium phone assets where future mobile UI will eventually
+appear.
+
+You have full permission to redesign the existing design system, delete
+or add pages, restructure navigation, create missing experiences and
+replace poor UX.
+
+The current implementation is a starting point, NOT a constraint.
+
+The product documentation is the product authority.
+
+The reference material is the visual/interaction inspiration.
+
+Build Bytesac accordingly.
