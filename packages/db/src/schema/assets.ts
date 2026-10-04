@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, numeric, date, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { app } from "./enums";
+import { storedFiles } from "./files";
 import { users } from "./identity";
 
 export const assetType = app.enum("asset_type", [
@@ -69,6 +70,8 @@ export const instruments = app.table(
     /** `{ label, url }[]`, https only, at most 10. */
     links: jsonb("links").$type<Array<{ label: string; url: string }>>().notNull().default([]),
     status: instrumentStatus("status").notNull().default("DRAFT"),
+    /** Registry logo (PNG, JPEG or WebP). Shown instead of the bundled icon pack's mark for this ticker. */
+    logoFileId: uuid("logo_file_id").references(() => storedFiles.id),
     createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
     submittedByUserId: uuid("submitted_by_user_id").references(() => users.id),
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id),

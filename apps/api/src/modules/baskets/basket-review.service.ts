@@ -254,6 +254,7 @@ export async function getBasketForOps(bid: string): Promise<OpsBasketDetail> {
     id: b.id, organizationId: b.organizationId, slug: b.slug, status: b.status, previousStatus: b.previousStatus, pauseKind: b.pauseKind, pauseReason: b.pauseReason,
     createdAt: b.createdAt.toISOString(), updatedAt: b.updatedAt.toISOString(),
     organization: { id: b.organizationId, displayName: row.orgName, status: row.orgStatus },
+    featuredRank: b.featuredRank,
     versions: versions.map((v) => ({ id: v.id, versionNumber: v.versionNumber, status: v.status, name: v.name, rationale: v.rationale, publishedAt: iso(v.publishedAt), createdAt: v.createdAt.toISOString() })),
     openVersion: open ? await versionView(db, open) : null,
     publishedVersion: publishedView,

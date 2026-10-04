@@ -46,6 +46,8 @@ Roles are Owner, Admin, Manager, Analyst and Viewer. One fixed matrix (`ROLE_PER
 9. **Public team.** A member may set a public name and title on the membership page; the public profile shows current and former members who did so, with role and dates only.
 10. **Notifications.** Emails (Resend; failures are logged, never roll back): invitation, invitation accepted, verification approved, changes required and rejected, removal, ownership transfer.
 
+**Custom roles (ADR-019, D-114).** An organization may define named roles on a built-in base role (Admin, Manager, Analyst or Viewer). A custom role keeps any subset of its base role's permissions except the owner-only ones (`org.edit`, `payout.manage`, `members.manage_admins`) and may add the read grants `analytics.read` and `earnings.read`; `org.read` is always included. Write permissions therefore always come from a base role whose verification gates them. A custom role applies only while its base equals the member's current role and it is not archived; role changes and archiving fall back to the built-in permissions. Only the Owner defines, edits and archives roles; `members.manage` assigns them, and only the Owner changes what an Admin can do. Members who lose `baskets.manage` lose their basket assignments. The workspace shows the permission matrix as "who can see and change what".
+
 ## Basket continuity
 Basket ownership is tied to the organization, not permanently to an individual member. Removing a manager does not automatically delete a basket. Manager attribution/history and investor notifications for material manager changes must be preserved.
 

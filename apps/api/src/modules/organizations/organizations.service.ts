@@ -9,7 +9,7 @@ import {
   organizationVersions, organizations, userPermissions, verificationRequirementTemplates, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
-  DOCUMENT_TYPE_KEYS, ORGANIZATION_FIELDS, ROLE_PERMISSIONS, membershipRoleSchema,
+  DOCUMENT_TYPE_KEYS, ORGANIZATION_FIELDS, membershipRoleSchema,
   type CreateOrganizationRequest, type DocumentContentType, type DocumentView, type ListMyOrganizationsResponse, type MissingRequirements,
   type OrganizationDetail, type OrganizationFieldKey, type PresignDocumentRequest, type PresignDocumentResponse,
   type PublicOrganization, type TemplateSubject, type UpdateDraftRequest, type VersionView,
@@ -19,7 +19,7 @@ import type { RequestMeta } from "@/middlewares/request-context.middleware";
 import { R2_BUCKET, r2 } from "@/providers/r2";
 import { sendOrganizationEmail, type OrganizationEmailData, type OrganizationEmailKind } from "@/providers/resend";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { notFound, requirePermission } from "@/modules/members/access.service";
+import { membershipPermissions, notFound, requirePermission } from "@/modules/members/access.service";
 import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 export interface OwnerCtx { userId: string; sessionId: string; meta: RequestMeta }
@@ -163,7 +163,7 @@ export async function getOrganizationForMember(ctx: OwnerCtx, id: string): Promi
     missing: open ? await missingRequirements(db, org, open) : null,
     latestMessageToOwner: message?.message ?? null,
     myRole: membership.role,
-    myPermissions: [...ROLE_PERMISSIONS[membership.role]],
+    myPermissions: await membershipPermissions(db, membership),
   };
 }
 

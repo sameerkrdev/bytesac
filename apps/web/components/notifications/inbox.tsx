@@ -2,6 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 import { AlertTriangle, Bell as BellIcon, GitCompareArrows, PauseCircle, PlayCircle, Scale, UserRound, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,15 @@ import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { PageHeader } from "@/components/layout/page-layout";
 import { EmptyState, ErrorState, LoadingState, StaleNotice } from "@/components/layout/states";
+
+/** Kinds that ask the investor to decide something (review, rebalance, repair). */
+const NEEDS_YOU = new Set(["rebalance_available", "drifted", "repair_required", "execution_incomplete", "instrument_not_investable"]);
+type Filter = "all" | "unread" | "action";
+const FILTERS: [Filter, string][] = [["all", "All"], ["unread", "Unread"], ["action", "Needs you"]];
+const bucket = (iso: string) => {
+  const age = Date.now() - new Date(iso).getTime();
+  return age < 86_400_000 ? "Today" : age < 7 * 86_400_000 ? "This week" : "Earlier";
+};
 
 const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [["day", 86_400_000], ["hour", 3_600_000], ["minute", 60_000]];
 const ago = (iso: string) => {
@@ -28,6 +38,9 @@ export function Inbox() {
   const read = useMutation({ mutationFn: (b: { ids: string[] } | { all: true }) => api.markNotificationsRead(b), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const unread = q.data?.pages[0]?.unreadCount ?? 0;
+  const [filter, setFilter] = useState<Filter>("all");
+  const shown = items.filter((n) => filter === "all" || (filter === "unread" ? !n.readAt : NEEDS_YOU.has(n.kind)));
+  const groups = ["Today", "This week", "Earlier"].map((g) => [g, shown.filter((n) => bucket(n.createdAt) === g)] as const).filter(([, list]) => list.length > 0);
 
   return (
     <section aria-labelledby="inbox-title" className="space-y-6">
@@ -38,8 +51,23 @@ export function Inbox() {
       {q.isError && q.data && <StaleNotice>Could not refresh. Showing what loaded earlier.</StaleNotice>}
       {read.isError && <p role="alert" className="text-sm text-danger">{toDisplayError(read.error).title}</p>}
       {q.data && items.length === 0 && <EmptyState title="Nothing yet." />}
-      {items.length > 0 && <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
-        {items.map((n) => {
+      {items.length > 0 && (
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-12">
+          <div className="min-w-0 space-y-6">
+            <div role="tablist" aria-label="Show" className="inline-flex rounded-pill border border-line bg-surface p-1">
+              {FILTERS.map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
+                  className={cn("min-h-9 rounded-pill px-4 text-sm text-ink-muted transition-colors hover:text-ink", filter === k && "bg-primary text-primary-ink hover:text-primary-ink")}>
+                  {label}{k === "unread" && unread > 0 && <span className="ml-1.5 font-mono text-xs">{unread}</span>}
+                </button>
+              ))}
+            </div>
+            {groups.length === 0 && <p className="rounded-card border border-dashed border-line-strong px-6 py-8 text-sm text-ink-muted">{filter === "unread" ? "You're all caught up." : "Nothing needs you right now."}</p>}
+            {groups.map(([g, list]) => (
+              <section key={g} aria-label={g} className="space-y-2">
+                <h2 className="type-eyebrow text-ink-faint">{g}</h2>
+                <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+              {list.map((n) => {
           const Icon = KIND_ICON[n.kind] ?? BellIcon;
           return (
             <li key={n.id}>
@@ -56,7 +84,17 @@ export function Inbox() {
             </li>
           );
         })}
-      </ul>}
+              </ul>
+              </section>
+            ))}
+          </div>
+          <aside className="h-fit space-y-3 rounded-card border border-line bg-surface-muted/50 p-6 text-sm">
+            <p className="font-medium text-ink">What a notice means</p>
+            <p className="text-ink-muted">Notices tell you about a basket: a new version, drift, a pause. They never move assets — only an operation you review and sign does.</p>
+            <Link href="/profile#notifications" className="inline-block text-ink underline underline-offset-4">Notification settings</Link>
+          </aside>
+        </div>
+      )}
       {q.hasNextPage && <Button variant="secondary"  disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>Load more</Button>}
     </section>
   );

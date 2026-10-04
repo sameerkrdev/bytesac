@@ -19,10 +19,11 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { OpsError } from "@/components/ops/ops-error";
+import { FeaturedControl } from "./featured-control";
 import { PageHeader } from "@/components/layout/page-layout";
 import { LoadingState } from "@/components/layout/states";
 
-type Client = Pick<ApiClient, "opsGetBasket" | "opsDecideBasketVersion" | "opsDecideBasketLead" | "opsPauseBasket" | "opsResumeBasket" | "opsRetireBasket" | "opsDecideBasketRetirement">;
+type Client = Pick<ApiClient, "opsGetBasket" | "opsDecideBasketVersion" | "opsDecideBasketLead" | "opsPauseBasket" | "opsResumeBasket" | "opsRetireBasket" | "opsDecideBasketRetirement"> & Partial<Pick<ApiClient, "opsSetBasketFeatured">>;
 type Decision = BasketReviewDecisionRequest["decision"];
 type Result = "pass" | "fail" | "na";
 
@@ -222,6 +223,8 @@ export function BasketReview({ bid, client = api }: { bid: string; client?: Clie
           ? <BasketDecisionForm isAdmin={isAdmin} pending={act.isPending} onSubmit={(body) => act.mutate(() => client.opsDecideBasketVersion(bid, (b.openVersion as { id: string }).id, body))} />
           : <p className="text-sm text-ink-muted">Nothing to decide: no version is in review.</p>}
       </section>
+
+      {client.opsSetBasketFeatured && <FeaturedControl bid={bid} rank={b.featuredRank} active={b.status === "ACTIVE"} client={{ opsSetBasketFeatured: client.opsSetBasketFeatured }} />}
 
       <section aria-label="Platform actions" className="space-y-3">
         <h2 className="type-heading text-ink">Platform actions</h2>

@@ -3,13 +3,13 @@ import {
   earningsSchema, platformFeeListSchema, platformFeeScheduleViewSchema, publicFeesSchema, revenueSchema,
   type Earnings, type EarningsQuery, type PlatformFeeList, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type PublicFees, type Revenue,
   bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, adoptionSchema, notificationsPageSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type Adoption, type NotificationsPage, type PushToken, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
-  aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
-  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
+  aiSearchResponseSchema, assetTagViewSchema, discoveryCollectionsResponseSchema, discoveryFiltersSchema, discoverySearchResponseSchema, setBasketFeaturedResponseSchema, suggestedBasketsResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
+  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryCollectionsResponse, type AssignCustomRoleRequest, type CreateCustomRoleRequest, type ListRolesResponse, type UpdateCustomRoleRequest, type ConfirmBasketFileRequest, type PresignBasketFileRequest, type PresignFileResponse, type PresignLogoRequest, type DiscoveryFilters, type DiscoverySearchResponse, type SetBasketFeaturedRequest, type SetBasketFeaturedResponse, type SuggestedBasketsResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
   listDisclosureTemplatesResponseSchema, opsBasketDetailSchema, opsBasketListResponseSchema, publicBasketListResponseSchema, publicBasketResponseSchema,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest, type ListDisclosureTemplatesResponse, type ListOpsBasketsQuery,
   type OpsBasketDetail, type OpsBasketListResponse, type PublicBasketListResponse, type PublicBasketResponse,
-  basketDetailSchema, basketDiffSchema, basketPreviewSchema, basketValidationSchema, listBasketsResponseSchema, listBasketVersionsResponseSchema,
+  basketDetailSchema, basketDiffSchema, presignFileResponseSchema, basketPreviewSchema, basketValidationSchema, listBasketsResponseSchema, listBasketVersionsResponseSchema,
   type BasketDetail, type BasketDiff, type BasketPreview, type BasketValidation, type CreateAssignmentRequest, type CreateBasketRequest, type EndAssignmentRequest, type ListBasketsQuery,
   type ListBasketsResponse, type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
   assetProviderViewSchema, priceViewSchema, publicAssetDetailSchema, publicAssetListResponseSchema, issuerViewSchema, opsAssetDetailSchema, opsAssetListResponseSchema,
@@ -18,7 +18,7 @@ import {
   type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
   addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
   listApplicationsResponseSchema, platformRoleViewSchema, platformRolesResponseSchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
-  listInvitationsResponseSchema, listMemberReviewResponseSchema, listMembersResponseSchema, memberReviewDetailSchema, memberVerificationViewSchema, listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, myMembershipSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
+  listInvitationsResponseSchema, listMemberReviewResponseSchema, listMembersResponseSchema, listRolesResponseSchema, memberReviewDetailSchema, memberVerificationViewSchema, listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, myMembershipSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
   type AddContactRequest, type AddContactResponse, type ApplicationStatusResponse, type ChallengeRequest, type ChallengeResponse,
   type ApplicationDetail, type GrantRoleRequest, type ListApplicationsQuery, type ListApplicationsResponse, type PlatformRoleView, type PlatformRolesResponse,
   type TransitionApplicationRequest, type ConfirmApplicationEmailRequest, type ConfirmApplicationEmailResponse, type CreateApplicationRequest, type CreateApplicationResponse,
@@ -155,6 +155,14 @@ export function createApiClient(options: ApiClientOptions) {
     getPublicOrganization: (id: string): Promise<PublicOrganization> => request("GET", `/v1/public/organizations/${encodeURIComponent(id)}`, publicOrganizationSchema),
 
     listOrganizationMembers: (id: string): Promise<ListMembersResponse> => request("GET", `/v1/organizations/${encodeURIComponent(id)}/members`, listMembersResponseSchema),
+    /** Custom roles (ADR-019): built-in matrix plus the organization's own roles. Defining roles is owner-only. */
+    listOrganizationRoles: (id: string): Promise<ListRolesResponse> => request("GET", `/v1/organizations/${encodeURIComponent(id)}/roles`, listRolesResponseSchema),
+    createOrganizationRole: (id: string, b: CreateCustomRoleRequest): Promise<ListRolesResponse> => request("POST", `/v1/organizations/${encodeURIComponent(id)}/roles`, listRolesResponseSchema, b),
+    updateOrganizationRole: (id: string, rid: string, b: UpdateCustomRoleRequest): Promise<ListRolesResponse> =>
+      request("PATCH", `/v1/organizations/${encodeURIComponent(id)}/roles/${encodeURIComponent(rid)}`, listRolesResponseSchema, b),
+    archiveOrganizationRole: (id: string, rid: string): Promise<ListRolesResponse> => request("POST", `/v1/organizations/${encodeURIComponent(id)}/roles/${encodeURIComponent(rid)}/archive`, listRolesResponseSchema),
+    assignMemberCustomRole: (id: string, mid: string, b: AssignCustomRoleRequest): Promise<ListMembersResponse> =>
+      request("PUT", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/custom-role`, listMembersResponseSchema, b),
     inviteOrganizationMember: (id: string, b: InviteMemberRequest): Promise<ListMembersResponse> =>
       request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/invitations`, listMembersResponseSchema, b),
     cancelMemberInvite: (id: string, mid: string): Promise<ListMembersResponse> =>
@@ -211,6 +219,10 @@ export function createApiClient(options: ApiClientOptions) {
     opsListAssets: (q: OpsAssetListQuery = {}): Promise<OpsAssetListResponse> => request("GET", `/v1/ops/assets?${qs(q)}`, opsAssetListResponseSchema),
     opsCreateAsset: (b: CreateInstrumentRequest): Promise<OpsAssetDetail> => request("POST", "/v1/ops/assets", opsAssetDetailSchema, b),
     opsGetAsset: (id: string): Promise<OpsAssetDetail> => request("GET", `/v1/ops/assets/${e(id)}`, opsAssetDetailSchema),
+    /** Logo upload: presign, PUT the file to `uploadUrl` with `headers`, then confirm (the server checks the bytes). */
+    opsPresignAssetLogo: (id: string, b: PresignLogoRequest): Promise<PresignFileResponse> => request("POST", `/v1/ops/assets/${e(id)}/logo`, presignFileResponseSchema, b),
+    opsConfirmAssetLogo: (id: string, fileId: string): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/logo/${e(fileId)}/confirm`, opsAssetDetailSchema),
+    opsRemoveAssetLogo: (id: string): Promise<OpsAssetDetail> => request("DELETE", `/v1/ops/assets/${e(id)}/logo`, opsAssetDetailSchema),
     opsUpdateAsset: (id: string, b: UpdateInstrumentRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}`, opsAssetDetailSchema, b),
     opsCreateDeployment: (id: string, b: CreateDeploymentRequest): Promise<OpsAssetDetail> => request("POST", `/v1/ops/assets/${e(id)}/deployments`, opsAssetDetailSchema, b),
     opsUpdateDeployment: (id: string, did: string, b: UpdateDeploymentRequest): Promise<OpsAssetDetail> => request("PATCH", `/v1/ops/assets/${e(id)}/deployments/${e(did)}`, opsAssetDetailSchema, b),
@@ -251,6 +263,10 @@ export function createApiClient(options: ApiClientOptions) {
     createBasket: (orgId: string, b: CreateBasketRequest): Promise<BasketDetail> => request("POST", `/v1/organizations/${e(orgId)}/baskets`, basketDetailSchema, b),
     listOrgBaskets: (orgId: string, q: ListBasketsQuery = {}): Promise<ListBasketsResponse> => request("GET", `/v1/organizations/${e(orgId)}/baskets?${qs(q)}`, listBasketsResponseSchema),
     getBasket: (bid: string): Promise<BasketDetail> => request("GET", `/v1/baskets/${e(bid)}`, basketDetailSchema),
+    /** Basket draft files: presign, PUT to `uploadUrl`, confirm with a title and kind; remove unlinks from the draft. */
+    presignBasketFile: (bid: string, b: PresignBasketFileRequest): Promise<PresignFileResponse> => request("POST", `/v1/baskets/${e(bid)}/draft/files`, presignFileResponseSchema, b),
+    confirmBasketFile: (bid: string, fileId: string, b: ConfirmBasketFileRequest): Promise<BasketDetail> => request("POST", `/v1/baskets/${e(bid)}/draft/files/${e(fileId)}/confirm`, basketDetailSchema, b),
+    removeBasketFile: (bid: string, linkId: string): Promise<BasketDetail> => request("DELETE", `/v1/baskets/${e(bid)}/draft/files/${e(linkId)}`, basketDetailSchema),
     saveBasketDraft: (bid: string, b: SaveBasketDraftRequest): Promise<BasketDetail> => request("PATCH", `/v1/baskets/${e(bid)}/draft`, basketDetailSchema, b),
     validateBasket: (bid: string): Promise<BasketValidation> => request("POST", `/v1/baskets/${e(bid)}/validate`, basketValidationSchema),
     previewBasket: (bid: string): Promise<BasketPreview> => request("GET", `/v1/baskets/${e(bid)}/preview`, basketPreviewSchema),
@@ -313,6 +329,11 @@ export function createApiClient(options: ApiClientOptions) {
     /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */
     discoverBaskets: ({ cursor, ...filters }: DiscoveryFilters = {}): Promise<DiscoverySearchResponse> =>
       request("GET", `/v1/public/discovery/baskets?${qs({ f: encodeDiscoveryFilters(filters), cursor })}`, discoverySearchResponseSchema),
+    /** Featured (ops-curated) and trending baskets for the home and discovery rails. */
+    getDiscoveryCollections: (): Promise<DiscoveryCollectionsResponse> => request("GET", "/v1/public/discovery/collections", discoveryCollectionsResponseSchema),
+    getSuggestedBaskets: (): Promise<SuggestedBasketsResponse> => request("GET", "/v1/me/discovery/suggested", suggestedBasketsResponseSchema),
+    opsSetBasketFeatured: (basketId: string, b: SetBasketFeaturedRequest): Promise<SetBasketFeaturedResponse> =>
+      request("PUT", `/v1/ops/baskets/${e(basketId)}/featured`, setBasketFeaturedResponseSchema, b),
     aiSearchBaskets: (query: string): Promise<AiSearchResponse> => request("POST", "/v1/public/discovery/ai-search", aiSearchResponseSchema, { query }),
     getPublicManager: (handle: string): Promise<PublicManager> => request("GET", `/v1/public/managers/${e(handle)}`, publicManagerSchema),
     getMyManagerProfile: (): Promise<OwnManagerProfileResponse> => request("GET", "/v1/me/manager-profile", ownManagerProfileResponseSchema),

@@ -11,6 +11,7 @@ import { OpsError } from "@/components/ops/ops-error";
 import { PageHeader } from "@/components/layout/page-layout";
 import { LoadingState } from "@/components/layout/states";
 import { AssetDeployments } from "./asset-deployments";
+import { AssetLogoSection, type LogoClient } from "./asset-logo";
 import { AssetClassification, AssetDetailsForm } from "./asset-form";
 import { AssetPricing } from "./asset-pricing";
 import { AssetReviewPanel } from "./asset-review-panel";
@@ -20,7 +21,7 @@ import { AssetRules } from "./asset-rules";
 type Client = Pick<ApiClient,
   | "opsGetAsset" | "opsUpdateAsset" | "opsListAssetTags" | "opsListAssetIssuers" | "opsCreateAssetIssuer" | "opsCreateDeployment" | "opsUpdateDeployment" | "opsVerifyDeployment" | "opsAssetItemAction" | "opsSetFeeOnTransfer" | "opsSetPermissioned"
   | "opsCreateRoute" | "opsUpdateRoute" | "opsListAssetProviders" | "opsCreateAssetProvider" | "opsListAssets" | "opsCreateRule" | "opsUpdateRule"
-  | "opsPutPriceReference" | "opsRecordNav" | "opsSubmitAsset" | "opsDecideAsset" | "opsAssetAction">;
+  | "opsPutPriceReference" | "opsRecordNav" | "opsSubmitAsset" | "opsDecideAsset" | "opsAssetAction"> & Partial<LogoClient>;
 
 export function AssetEditor({ id, client = api }: { id: string; client?: Client }) {
   const qc = useQueryClient();
@@ -49,6 +50,7 @@ export function AssetEditor({ id, client = api }: { id: string; client?: Client 
         {a.status === "UNDER_REVIEW" && <p role="status" className="text-sm text-ink-muted">This asset is under review and read-only until a decision is made.</p>}
       </div>
       {a.warnings.map((w) => <p key={w} role="status" className="rounded-tile border border-warning/25 bg-warning-soft p-3 text-sm text-ink">{w}</p>)}
+      {client.opsPresignAssetLogo && client.opsConfirmAssetLogo && client.opsRemoveAssetLogo && <AssetLogoSection a={a} onChange={onChange} client={client as LogoClient} />}
       <AssetDetailsForm {...p} />
       <AssetClassification {...p} />
       <AssetDeployments {...p} />

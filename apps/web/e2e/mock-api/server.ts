@@ -9,7 +9,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
-  aiSearchResponseSchema, discoveryFiltersSchema, discoverySearchResponseSchema, meResponseSchema, publicBasketResponseSchema, publicFeesSchema, publicManagerSchema, publicOrganizationSchema,
+  aiSearchResponseSchema, discoveryCollectionsResponseSchema, discoveryFiltersSchema, suggestedBasketsResponseSchema, discoverySearchResponseSchema, meResponseSchema, publicBasketResponseSchema, publicFeesSchema, publicManagerSchema, publicOrganizationSchema,
   type z,
 } from "@repo/validator";
 import { BASKETS, basketDetail, publicManager, publicOrganization, searchItem } from "./catalog";
@@ -60,6 +60,13 @@ const ROUTES: Route[] = [
     if (f.maxSingleWeightBps) items = items.filter((i) => i.topAssets.every((a) => a.bps <= f.maxSingleWeightBps!));
     return { schema: discoverySearchResponseSchema, body: { items, nextCursor: null } };
   }],
+  ["GET", /^\/v1\/public\/discovery\/collections$/, () => ({ schema: discoveryCollectionsResponseSchema, body: {
+    featured: [BASKETS[0]!, BASKETS[3]!, BASKETS[1]!].map(searchItem),
+    trending: [BASKETS[1]!, BASKETS[4]!, BASKETS[0]!, BASKETS[2]!].map(searchItem),
+  } })],
+  ["GET", /^\/v1\/me\/discovery\/suggested$/, ({ persona }) => (persona ? { schema: suggestedBasketsResponseSchema, body: {
+    basis: persona === "new" ? "newest" : "your_categories", items: (persona === "new" ? BASKETS : BASKETS.slice(2)).map(searchItem),
+  } } : unauthorized)],
   ["POST", /^\/v1\/public\/discovery\/ai-search$/, () => ({ schema: aiSearchResponseSchema, body: {
     mode: "tool",
     filters: { assets: [{ symbol: "BTC" }, { symbol: "ETH" }, { symbol: "SOL" }], assetTypes: [{ type: "TOKENIZED_TREASURY" }], maxSingleWeightBps: 3000, reviewFrequencies: ["monthly"], maxFeeBps: { management: 75 } },

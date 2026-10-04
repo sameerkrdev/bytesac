@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MEMBERSHIP_STATUSES, MEMBERSHIP_TRANSITIONS, ORGANIZATION_PERMISSIONS, REVIEWED_ROLES, ROLE_PERMISSIONS,
   changeRoleRequestSchema, inviteMemberRequestSchema, membershipProfileRequestSchema, type MembershipRole, type OrganizationPermission,
+  GRANTABLE_READ_PERMISSIONS, OWNER_ONLY_PERMISSIONS, allowedCustomPermissions, createCustomRoleRequestSchema, customRoleProblems, effectiveRolePermissions,
 } from "./index";
 
 const WALLET = { walletChain: "base", walletAddress: "0x" + "ab".repeat(20), email: "New@Example.com" } as const;
@@ -63,5 +64,36 @@ describe("membershipProfileRequestSchema", () => {
     expect(membershipProfileRequestSchema.safeParse({ publicDisplayName: "A" }).success).toBe(false);
     expect(membershipProfileRequestSchema.safeParse({ publicDisplayName: "A".repeat(81) }).success).toBe(false);
     expect(membershipProfileRequestSchema.safeParse({ publicTitle: "T".repeat(81) }).success).toBe(false);
+  });
+});
+
+describe("custom roles (ADR-019)", () => {
+  it("never allows owner-only permissions and adds only reads beyond the base role", () => {
+    for (const base of ["ADMIN", "MANAGER", "ANALYST", "VIEWER"] as const) {
+      const allowed = allowedCustomPermissions(base);
+      for (const p of OWNER_ONLY_PERMISSIONS) expect(allowed).not.toContain(p);
+      for (const p of allowed) expect([...ROLE_PERMISSIONS[base], ...GRANTABLE_READ_PERMISSIONS]).toContain(p);
+    }
+    expect(allowedCustomPermissions("VIEWER").sort()).toEqual(["analytics.read", "earnings.read", "org.read"]);
+    expect(allowedCustomPermissions("MANAGER")).toContain("baskets.manage");
+    expect(allowedCustomPermissions("ANALYST")).not.toContain("baskets.manage");
+  });
+
+  it("explains invalid sets", () => {
+    expect(customRoleProblems("ANALYST", ["org.read", "earnings.read"])).toEqual([]);
+    expect(customRoleProblems("ANALYST", ["earnings.read"])).toEqual(["Every role can see the organization (org.read)."]);
+    expect(customRoleProblems("VIEWER", ["org.read", "baskets.manage"])).toEqual(["baskets.manage needs a higher base role."]);
+    expect(customRoleProblems("ADMIN", ["org.read", "payout.manage"])).toEqual(["payout.manage stays with the owner."]);
+    expect(createCustomRoleRequestSchema.safeParse({ name: "Read all", baseRole: "VIEWER", permissions: ["org.read", "members.manage"] }).success).toBe(false);
+    expect(createCustomRoleRequestSchema.parse({ name: "Analyst+", baseRole: "ANALYST", permissions: ["org.read", "earnings.read", "earnings.read"] }).permissions).toEqual(["org.read", "earnings.read"]);
+  });
+
+  it("applies a custom role only while its base matches and it is live, and re-filters stored sets", () => {
+    const custom = { baseRole: "ANALYST" as const, permissions: ["org.read", "earnings.read"], archived: false };
+    expect(effectiveRolePermissions("ANALYST", custom)).toEqual(["org.read", "earnings.read"]);
+    expect(effectiveRolePermissions("MANAGER", custom)).toEqual([...ROLE_PERMISSIONS.MANAGER]);
+    expect(effectiveRolePermissions("ANALYST", { ...custom, archived: true })).toEqual([...ROLE_PERMISSIONS.ANALYST]);
+    expect(effectiveRolePermissions("OWNER", { ...custom, baseRole: "OWNER" })).toEqual([...ROLE_PERMISSIONS.OWNER]);
+    expect(effectiveRolePermissions("ANALYST", { ...custom, permissions: ["org.read", "payout.manage", "baskets.manage"] })).toEqual(["org.read"]);
   });
 });

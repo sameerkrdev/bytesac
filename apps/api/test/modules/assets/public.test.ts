@@ -44,7 +44,7 @@ describe("visibility", () => {
     for (const { id } of [draft, approved, paused, deprecated]) expect((await get(u.h, `/v1/assets/${id}`)).status).toBe(404);
     // ACTIVE instruments without an ACTIVE deployment are not listed but stay readable (with no deployments).
     for (const id of [noDeployment, itemsPaused.id]) expect((await get(u.h, `/v1/assets/${id}`)).body).toMatchObject({ deployments: [], routes: [] });
-    expect((await get(u.h, `/v1/assets`)).body.items[0]).toEqual({ id: live.id, name: "Solana", symbol: "SOL", assetType: "CRYPTO", chains: ["ethereum"] });
+    expect((await get(u.h, `/v1/assets`)).body.items[0]).toEqual({ id: live.id, name: "Solana", symbol: "SOL", assetType: "CRYPTO", chains: ["ethereum"], logoUrl: null });
   });
 
   it("a paused deployment disappears from the detail while another keeps the instrument listed; a paused instrument disappears entirely (Review Focus 4)", async () => {
@@ -116,7 +116,7 @@ describe("allow-list", () => {
     const res = await get(u.h, `/v1/assets/${id}`);
     expect(res.status).toBe(200);
     expect(keyPaths(res.body).sort()).toEqual([
-      ".assetType", ".deployments", ".deployments[].address", ".deployments[].chain", ".deployments[].decimals", ".deployments[].tokenStandard", ".description", ".id",
+      ".assetType", ".deployments", ".deployments[].address", ".deployments[].chain", ".deployments[].decimals", ".deployments[].tokenStandard", ".description", ".id", ".logoUrl",
       ".issuer", ".issuer.name", ".issuer.website", ".links", ".links[].label", ".links[].url", ".name", ".prices", ".prices[].currency", ".prices[].instrumentId", ".prices[].kind",
       ".prices[].observedAt", ".prices[].source", ".prices[].stale", ".prices[].status", ".prices[].value", ".riskNotes", ".routes", ".routes[].chain", ".routes[].method",
       ".routes[].minimumAmount", ".routes[].processingModel", ".routes[].providerName", ".routes[].settlementSymbol", ".symbol",
@@ -133,7 +133,7 @@ describe("allow-list", () => {
     const u = await plainUser();
     await activeCrypto(r, a);
     const item = (await get(u.h, "/v1/assets")).body.items[0];
-    expect(Object.keys(item).sort()).toEqual(["assetType", "chains", "id", "name", "symbol"]);
+    expect(Object.keys(item).sort()).toEqual(["assetType", "chains", "id", "logoUrl", "name", "symbol"]);
     expect(Object.keys((await get(u.h, "/v1/assets")).body).sort()).toEqual(["items", "nextCursor"]);
   });
 });

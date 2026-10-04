@@ -3,6 +3,7 @@ import { check, index, integer, jsonb, numeric, primaryKey, text, timestamp, uni
 import { v7 as uuidv7 } from "uuid";
 import { instruments } from "./assets";
 import { app } from "./enums";
+import { storedFiles } from "./files";
 import { users } from "./identity";
 import { organizationMemberships, organizations } from "./organizations";
 
@@ -36,11 +37,16 @@ export const baskets = app.table(
     pauseReason: text("pause_reason"),
     currentVersionId: uuid("current_version_id").references((): AnyPgColumn => basketVersions.id),
     createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
+    /** Ops curation for the "Featured" rail: 1 shows first; null means not featured. Not a recommendation of suitability. */
+    featuredRank: integer("featured_rank"),
+    featuredAt: ts("featured_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [
     index("baskets_org_idx").on(t.organizationId, t.updatedAt),
+    index("baskets_featured_idx").on(t.featuredRank).where(sql`${t.featuredRank} is not null`),
+    check("baskets_featured_rank", sql`${t.featuredRank} is null or ${t.featuredRank} between 1 and 99`),
     check("baskets_slug_format", sql`${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and length(${t.slug}) <= 90`),
   ],
 );
@@ -102,6 +108,30 @@ export const basketVersions = app.table(
     uniqueIndex("basket_versions_number").on(t.basketId, t.versionNumber),
     uniqueIndex("basket_versions_one_open").on(t.basketId).where(sql`${t.status} in ('draft', 'in_review', 'changes_required', 'approved')`),
     index("basket_versions_review_idx").on(t.status, t.updatedAt),
+  ],
+);
+
+export const basketFileKind = app.enum("basket_file_kind", ["thesis", "factsheet", "methodology", "research", "other"]);
+
+/**
+ * Files (PDF) a manager attaches to a basket version: thesis, factsheet, methodology… They belong to the version, so they
+ * are reviewed with it and frozen once it is published; a new draft starts with the published version's files. A link is
+ * never deleted: `removed_at` unlinks it from a draft.
+ */
+export const basketVersionFiles = app.table(
+  "basket_version_files",
+  {
+    id: id(),
+    versionId: uuid("version_id").notNull().references((): AnyPgColumn => basketVersions.id),
+    fileId: uuid("file_id").notNull().references(() => storedFiles.id),
+    kind: basketFileKind("kind").notNull(),
+    title: text("title").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    removedAt: ts("removed_at"),
+  },
+  (t) => [
+    uniqueIndex("basket_version_files_live").on(t.versionId, t.fileId).where(sql`${t.removedAt} is null`),
+    check("basket_version_files_title", sql`length(${t.title}) between 1 and 120`),
   ],
 );
 

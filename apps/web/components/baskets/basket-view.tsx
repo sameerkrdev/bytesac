@@ -81,7 +81,7 @@ export function BasketView({ content: c, allocation, disclosures, platformFee = 
               <AllocationLegend slices={slices} />
             </div>
             <p className="text-sm text-ink-muted">These are the strategy&apos;s target weights. What you hold after investing is read from your wallets and shown in your portfolio — it can differ.</p>
-            <div className="overflow-x-auto rounded-card border border-line bg-surface">
+            <div className="relative overflow-x-auto rounded-card border border-line bg-surface">
               <table className="w-full min-w-[40rem] text-left text-sm">
                 <thead className="text-xs text-ink-faint"><tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:font-medium"><th>Asset</th><th>Type</th><th>Networks</th><th className="text-right">Target</th><th className="text-right">Band</th><th className="text-right">Price</th></tr></thead>
                 <tbody>

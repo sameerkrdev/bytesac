@@ -61,24 +61,26 @@ Geist (300/400/500/600) for everything; Geist Mono for small labels and figures 
 
 | Area | Components |
 |---|---|
-| `ui/` | `Button` (default, secondary, outline, glass, ghost, destructive, link), `Card`, `Dialog` (centred panel on desktop, bottom sheet on phones), `Input`/`Select`/`Textarea` (shared `fieldClass`), `Label`, `Switch`, `kit` (`Eyebrow`, `Figure`, `Stat`, `Section`, `Tile`, `Callout`) |
+| `ui/` | `Button` (default, secondary, outline, glass, ghost, destructive, link), `Card`, `Dialog` (centred panel on desktop, bottom sheet on phones), `Input`/`Select`/`Textarea` (shared `fieldClass`), `Label`, `Switch`, `kit` (`Eyebrow`, `Figure`, `Stat`, `Section`, `Tile`, `Callout`), `StepForm` + `Field` + `ChoiceCard` (any form with more than a handful of inputs is split into steps: progress rail, one step at a time, per-step validation, review step, nothing sent before the last step) |
 | `layout/` | `Shell`/`AppShell` (sticky top bar, workspace row, phone tab bar), `PublicShell` + `site-chrome` (floating marketing header, footer with cropped wordmark), `PageLayout`/`PageHeader`/`PageSection`, `ProfileHero`, `states` (loading shimmer, empty, error, stale), `ThemeSwitch` |
-| `visual/` | `AllocationRing`/`AllocationLegend`/`AllocationBar`, `WeightDiff`, `ChainBadge`/`AssetMark` (typographic, no third-party logos), `Sky`, `HandPhone`, `GlassObject` |
-| `motion/` | `Reveal`, `Stagger`, `LineReveal`, `Parallax`, `SmoothScroll` (Lenis, marketing only) |
-| Domain | `BasketCard`, `PerformanceChart` (hover + data table), `BasketView`, `PortfolioSummary`, `AttentionList`, `PositionRows`, `PositionsList` (three layers: target, allocation, verified), `InvestFlow`, `RebalanceReview`, `WorkspaceHeader`/`useOrgWorkspace` |
+| `visual/` | `AllocationRing`/`AllocationLegend`/`AllocationBar`, `WeightDiff`, `ChainBadge`/`AssetMark` (registry logo first, then the vendored CC0 icon pack in `public/crypto`, then a monogram), `Sky` (gradient + drifting transparent clouds), `Phone`/`HandPhone` (screens punched out; real UI sits behind the bezel, sized in `cqw`), `ExampleBasketScreen`, `GlassObject` (stills), `GlassScene` (real-time glass ring / stack, lazy, still fallback) |
+| `motion/` | `Reveal`, `Stagger`, `LineReveal`, `Parallax`, `SwapStack`/`SwapPanel` (page swap), `SmoothScroll` (Lenis, marketing only) |
+| Domain | `BasketCard` (holdings logos, min amount, simulated 1y return, volatility meter, save toggle), `BasketRow` (list view), `BasketRail` (Featured / Trending / Suggested), `BasketFiles`/`FileList`, `DownloadApp`/`StoreButtons`, `Roles` (permission matrix + custom role editor), `WorkspaceLayout`/`OrgPage`, `OpsFrame`, `PerformanceChart` (hover + data table), `BasketView`, `PortfolioSummary`, `AttentionList`, `PositionRows`, `PositionsList` (three layers: target, allocation, verified), `InvestFlow`, `RebalanceReview`, `WorkspaceHeader`/`useOrgWorkspace` |
 
 ## Motion
 
 Tokens and choreography come from `docs/design/MOTION-STUDY.md`: ease `cubic-bezier(0.22, 1, 0.36, 1)`, durations
 160 / 320 / 700 / 1100 ms, 120 ms line stagger, 80 ms item stagger. Load order on heroes: atmosphere → words →
 object → data chips → actions. Reduced motion renders final states; smooth scrolling is marketing-only and off on
-touch devices. `three`/`@react-three/fiber` are installed and approved for a future interactive scene but unused —
-the generated glass objects carry the look without a WebGL cost.
+touch devices. Chapters of the landing page swap like pages (see the round 2 study). `three`/`@react-three/fiber` run
+two procedural glass scenes (ring, stack), code-split, paused off screen, replaced by the still image under reduced
+motion or without WebGL.
 
 ## Imagery
 
 Catalogue and generation record: `apps/web/public/visuals/MANIFEST.md`. One family — frosted glass in ice white, pale
-sky and navy — plus day and night sky plates and a hand holding a blank phone. Add assets only after checking the
+sky and navy — plus natively transparent cloud strips, a modern phone and a hand holding it. Generate with a
+transparent background rather than cutting out (cut-outs dull edges). Crypto logos: `apps/web/public/crypto` (CC0). Add assets only after checking the
 manifest, and record every new one there.
 
 ## Theme
@@ -88,9 +90,15 @@ flash; `system` follows `prefers-color-scheme`. The wallet modal (AppKit) follow
 
 ## Manager and ops surfaces
 
-Same tokens, denser: workspace header with organization identity and role, key-figures strip, section index,
-tables with mono labels. Ops inherits the system without its own IA. Hiding controls is UI convenience only — the
+Same tokens, denser. The manager workspace has a sidebar (identity, switcher, grouped sections: Overview, Baskets,
+Team, Roles & access, Wallets, Settings, Earnings); the overview is a dashboard (status cards, next steps, areas).
+Ops has the same frame with its own groups (Review, Catalog, Money, Access). Hiding controls is UI convenience only — the
 server authorizes every call.
+
+## Scrollbar
+
+A slim floating thumb (`::-webkit-scrollbar`; `scrollbar-color` in Firefox) using `--c-scroll-thumb` tokens per theme;
+the track stays invisible.
 
 ## Visual QA
 

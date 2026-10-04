@@ -13,7 +13,9 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { Field, StepForm } from "@/components/ui/step-form";
 import { AssetError } from "./asset-ui";
+import { LogoPicker, uploadAssetLogo, type LogoClient } from "./asset-logo";
 
 type IssuerClient = Pick<ApiClient, "opsListAssetIssuers" | "opsCreateAssetIssuer">;
 
@@ -52,45 +54,77 @@ function IssuerSelect({ value, onChange, disabled, client }: { value: string; on
 
 const fieldCls = "min-h-11";
 
-/** The create page. Submits, then opens the editor. */
-export function CreateAssetForm({ client = api }: { client?: IssuerClient & Pick<ApiClient, "opsCreateAsset"> }) {
+/**
+ * The create flow in four steps: identity, issuer and description, logo (optional), review. Nothing is created before
+ * the last step; the logo is uploaded right after the asset exists, then the editor opens.
+ */
+export function CreateAssetForm({ client = api }: { client?: IssuerClient & Pick<ApiClient, "opsCreateAsset"> & Partial<LogoClient> }) {
   const id = useId();
   const router = useRouter();
   const [f, setF] = useState({ name: "", symbol: "", assetType: "CRYPTO" as AssetType, issuerId: "", description: "" });
-  const [invalid, setInvalid] = useState<string | null>(null);
-  const create = useMutation({ mutationFn: (b: CreateInstrumentRequest) => client.opsCreateAsset(b), onSuccess: (d) => router.push(`/ops/assets/${d.id}`) });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: async (body: CreateInstrumentRequest) => {
+      const d = await client.opsCreateAsset(body);
+      if (logo && client.opsPresignAssetLogo && client.opsConfirmAssetLogo && client.opsRemoveAssetLogo) {
+        // The asset exists either way; a logo failure is reported on the editor rather than losing the asset.
+        try { await uploadAssetLogo(client as LogoClient, d.id, logo); } catch { setLogoError("The asset was created, but the logo didn't upload. Add it from the asset page."); }
+      }
+      return d;
+    },
+    onSuccess: (d) => router.push(`/ops/assets/${d.id}`),
+  });
+  const parsed = () => createInstrumentRequestSchema.safeParse({ ...f, issuerId: f.issuerId || null, description: f.description.trim() || undefined });
+  const checkIdentity = () => {
+    const e: Record<string, string> = {};
+    if (f.name.trim().length < 2 || f.name.trim().length > 120) e.name = "Enter a name of 2 to 120 characters.";
+    if (f.symbol.trim().length < 1 || f.symbol.trim().length > 20) e.symbol = "Enter a symbol of up to 20 characters.";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   return (
-    <form noValidate className="grid max-w-xl gap-4" onSubmit={(e) => {
-      e.preventDefault();
-      const parsed = createInstrumentRequestSchema.safeParse({ ...f, issuerId: f.issuerId || null, description: f.description.trim() || undefined });
-      if (!parsed.success) return setInvalid("Enter a name (2 to 120 characters) and a symbol (up to 20).");
-      setInvalid(null);
-      create.mutate(parsed.data);
-    }}>
-      <div className="space-y-2">
-        <Label htmlFor={`${id}-name`} className="text-xs font-medium text-ink">Name</Label>
-        <Input id={`${id}-name`} className={fieldCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`${id}-sym`} className="text-xs font-medium text-ink">Symbol</Label>
-        <Input id={`${id}-sym`} className={`${fieldCls} uppercase`} value={f.symbol} onChange={(e) => setF({ ...f, symbol: e.target.value.toUpperCase() })} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`${id}-type`} className="text-xs font-medium text-ink">Type</Label>
-        <Select id={`${id}-type`} value={f.assetType} onChange={(e) => setF({ ...f, assetType: assetTypeSchema.parse(e.target.value) })}>
-          {assetTypeSchema.options.map((t) => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
-        </Select>
-      </div>
-      <IssuerSelect value={f.issuerId} onChange={(issuerId) => setF({ ...f, issuerId })} client={client} />
-      <div className="space-y-2">
-        <Label htmlFor={`${id}-desc`} className="text-xs font-medium text-ink">Description (optional)</Label>
-        <Textarea id={`${id}-desc`} value={f.description} maxLength={2000} onChange={(e) => setF({ ...f, description: e.target.value })} />
-      </div>
-      {invalid && <p role="alert" className="text-sm text-danger">{invalid}</p>}
-      {create.isError && <AssetError error={create.error} />}
-      <Button type="submit" className="min-h-11 w-fit" disabled={create.isPending}>{create.isPending && <Loader2 aria-hidden className="animate-spin" />}Create asset</Button>
-    </form>
+    <StepForm label="New asset" className="max-w-2xl" submitLabel="Create asset" pending={create.isPending}
+      onSubmit={() => { const p = parsed(); if (p.success) create.mutate(p.data); else setErrors({ name: "Enter a name (2 to 120 characters) and a symbol (up to 20)." }); }}
+      error={<>{create.isError && <AssetError error={create.error} />}{logoError && <p role="status" className="text-sm text-warning">{logoError}</p>}</>}
+      steps={[
+        {
+          id: "identity", title: "What it is", description: "The registry entry investors and managers see. Symbol and type lock after approval.", validate: checkIdentity,
+          content: (
+            <>
+              <Field label="Name" htmlFor={`${id}-name`} error={errors.name}><Input id={`${id}-name`} className={fieldCls} value={f.name} aria-invalid={Boolean(errors.name)} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+              <Field label="Symbol" htmlFor={`${id}-sym`} error={errors.symbol}><Input id={`${id}-sym`} className={`${fieldCls} uppercase`} value={f.symbol} aria-invalid={Boolean(errors.symbol)} onChange={(e) => setF({ ...f, symbol: e.target.value.toUpperCase() })} /></Field>
+              <Field label="Type" htmlFor={`${id}-type`}>
+                <Select id={`${id}-type`} value={f.assetType} onChange={(e) => setF({ ...f, assetType: assetTypeSchema.parse(e.target.value) })}>
+                  {assetTypeSchema.options.map((t) => <option key={t} value={t}>{ASSET_TYPE_LABEL[t]}</option>)}
+                </Select>
+              </Field>
+            </>
+          ),
+        },
+        {
+          id: "issuer", title: "Issuer and description", description: "Optional. Tokenized assets usually have an issuer.",
+          content: (
+            <>
+              <IssuerSelect value={f.issuerId} onChange={(issuerId) => setF({ ...f, issuerId })} client={client} />
+              <Field label="Description (optional)" htmlFor={`${id}-desc`}><Textarea id={`${id}-desc`} value={f.description} maxLength={2000} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+            </>
+          ),
+        },
+        { id: "logo", title: "Logo", description: "Optional. Shown wherever the asset appears.", content: <LogoPicker symbol={f.symbol} file={logo} onFile={setLogo} /> },
+        {
+          id: "review", title: "Review",
+          content: (
+            <dl className="divide-y divide-line rounded-tile border border-line bg-surface text-sm">
+              {([["Name", f.name.trim()], ["Symbol", f.symbol.trim()], ["Type", ASSET_TYPE_LABEL[f.assetType]], ["Description", f.description.trim() || "—"], ["Logo", logo ? logo.name : "None"]] as const).map(([k, v]) => (
+                <div key={k} className="grid gap-1 px-4 py-3 sm:grid-cols-[9rem_minmax(0,1fr)]"><dt className="text-ink-muted">{k}</dt><dd className="break-words text-ink">{v}</dd></div>
+              ))}
+            </dl>
+          ),
+        },
+      ]} />
   );
 }
 

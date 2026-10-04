@@ -23,6 +23,8 @@ A member holding `baskets.manage` in a `VERIFIED` organization creates a basket 
 ## Disclosures
 Mandatory platform notices come from ops-managed templates chosen by asset types, are pinned to each version at submit and cannot be removed. The manager's own risk text (`strategy_risks`) is required at submit.
 
+**Files (ADR-019, D-116).** Members with basket edit authority attach PDFs (thesis, factsheet, methodology, research, other; up to 10, 20 MB each) to the open, editable version. Files are checked server-side, reviewed with the version, frozen at submit, carried into the next draft, part of the content hash when present, and shown on the public page for the published version only.
+
 ## Managers
 Per-basket assignments (`lead`, `co_manager`) carry flags `edit`, `submit`, `publish`, `lifecycle`, `assign`; OWNER and ADMIN act on every basket. When a manager leaves the organization (or loses `baskets.manage`) their assignments end and a published basket without a lead becomes `REASSIGNMENT_REQUIRED`; a new lead is `PENDING_APPROVAL` until an `ops_admin` approves (the current lead stays active until then). Assignment history is public on the basket page as current and former managers.
 

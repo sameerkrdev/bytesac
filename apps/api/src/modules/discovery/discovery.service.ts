@@ -9,14 +9,14 @@ import { LISTED_BASKET_STATUSES } from "@/modules/baskets/baskets.service";
 
 const PAGE_SIZE = 20;
 const cursorSchema = z.tuple([z.string().regex(/^-?\d+(\.\d+)?$/), z.uuid()]);
-const columns = {
+export const columns = {
   id: idx.basketId, slug: idx.slug, name: idx.name, shortDescription: idx.shortDescription, organizationName: idx.organizationName, category: idx.category, status: idx.status,
   exposures: idx.exposures, minimumInvestmentUsdc: idx.minimumInvestmentUsdc, managementFeeBps: idx.feeManagementBps, metrics: idx.metrics,
 };
-const toItem = (r: { slug: string; name: string; shortDescription: string | null; organizationName: string; category: string; status: string; exposures: (typeof idx.$inferSelect)["exposures"]; minimumInvestmentUsdc: string; managementFeeBps: number; metrics: (typeof idx.$inferSelect)["metrics"] }) => ({
+export const toItem = (r: { slug: string; name: string; shortDescription: string | null; organizationName: string; category: string; status: string; exposures: (typeof idx.$inferSelect)["exposures"]; minimumInvestmentUsdc: string; managementFeeBps: number; metrics: (typeof idx.$inferSelect)["metrics"] }) => ({
   slug: r.slug, name: r.name, shortDescription: r.shortDescription, organizationName: r.organizationName, category: r.category, status: r.status,
   topAssets: r.exposures.instruments.slice(0, 3).map((a) => ({ symbol: a.symbol, bps: a.bps })), minimumInvestmentUsdc: r.minimumInvestmentUsdc, managementFeeBps: r.managementFeeBps,
-  netReturn1y: r.metrics.available ? r.metrics.net.y1 : null, available: r.metrics.available, hasEligibilityRequirements: r.exposures.assetTypes.some((a) => a.type.startsWith("TOKENIZED_")),
+  netReturn1y: r.metrics.available ? r.metrics.net.y1 : null, volatility: r.metrics.available ? r.metrics.volatility : null, available: r.metrics.available, hasEligibilityRequirements: r.exposures.assetTypes.some((a) => a.type.startsWith("TOKENIZED_")),
 }) as DiscoverySearchItem;
 
 /** Sum of a basket's weight in one exposure entry (0 when absent), e.g. `weight("instruments", "symbol", "BTC")`. `list` and `field` are code constants, never user input. */

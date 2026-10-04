@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { chainSchema, signInChainSchema } from "./chains";
-import { documentViewSchema, draftPart, membershipRoleSchema, organizationStatusSchema, type MembershipRole, type OrganizationPermission } from "./organizations";
+import { documentViewSchema, draftPart, membershipRoleSchema, organizationPermissionSchema, organizationStatusSchema, type MembershipRole, type OrganizationPermission } from "./organizations";
 
 export const MEMBERSHIP_STATUSES = [
   "PENDING_WALLET_VERIFICATION", "INVITED", "PENDING_DOCUMENTS", "UNDER_REVIEW", "CHANGES_REQUIRED", "ACTIVE", "REJECTED", "REMOVAL_REQUESTED", "REVOKED",
@@ -32,6 +32,64 @@ export const ROLE_PERMISSIONS: Readonly<Record<MembershipRole, readonly Organiza
   ANALYST: ["org.read", "analytics.read"],
   VIEWER: ["org.read"],
 };
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Custom roles (ADR-019)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Never part of a custom role: they stay with the OWNER (custody, payout and admin control). */
+export const OWNER_ONLY_PERMISSIONS: readonly OrganizationPermission[] = ["org.edit", "payout.manage", "members.manage_admins"];
+/** Read-only permissions a custom role may add on top of any base role. */
+export const GRANTABLE_READ_PERMISSIONS: readonly OrganizationPermission[] = ["analytics.read", "earnings.read"];
+
+/** What a custom role on `base` may contain: the base role's own permissions minus owner-only ones, plus the grantable reads. */
+export function allowedCustomPermissions(base: Exclude<MembershipRole, "OWNER">): OrganizationPermission[] {
+  const own = ROLE_PERMISSIONS[base].filter((p) => !OWNER_ONLY_PERMISSIONS.includes(p));
+  return [...new Set([...own, ...GRANTABLE_READ_PERMISSIONS])];
+}
+
+/** Problems with a proposed permission set for `base` (empty when valid). `org.read` is always required. */
+export function customRoleProblems(base: Exclude<MembershipRole, "OWNER">, permissions: readonly OrganizationPermission[]): string[] {
+  const allowed = allowedCustomPermissions(base);
+  const problems: string[] = [];
+  if (!permissions.includes("org.read")) problems.push("Every role can see the organization (org.read).");
+  for (const p of permissions) if (!allowed.includes(p)) problems.push(OWNER_ONLY_PERMISSIONS.includes(p) ? `${p} stays with the owner.` : `${p} needs a higher base role.`);
+  return problems;
+}
+
+/** Permissions a membership actually holds: its custom role when it still applies (same base role, not archived), else the built-in role's. */
+export function effectiveRolePermissions(role: MembershipRole, custom: { baseRole: MembershipRole; permissions: readonly string[]; archived: boolean } | null): OrganizationPermission[] {
+  if (role === "OWNER" || !custom || custom.archived || custom.baseRole !== role) return [...ROLE_PERMISSIONS[role]];
+  const allowed = allowedCustomPermissions(role);
+  // Defence in depth: a stored set is re-filtered, so a bad row can never exceed what the rules allow.
+  return custom.permissions.filter((p): p is OrganizationPermission => (allowed as string[]).includes(p));
+}
+
+const customBaseRoleSchema = z.enum(["ADMIN", "MANAGER", "ANALYST", "VIEWER"]);
+const roleName = z.string().trim().min(2).max(40);
+const roleDescription = z.string().trim().max(200).nullable();
+const permissionSet = z.array(organizationPermissionSchema).min(1).max(20).transform((p) => [...new Set(p)]);
+
+export const createCustomRoleRequestSchema = z.strictObject({ name: roleName, description: roleDescription.optional(), baseRole: customBaseRoleSchema, permissions: permissionSet })
+  .superRefine((v, ctx) => { for (const message of customRoleProblems(v.baseRole, v.permissions)) ctx.addIssue({ code: "custom", path: ["permissions"], message }); });
+export type CreateCustomRoleRequest = z.infer<typeof createCustomRoleRequestSchema>;
+/** The base role can't change (members hold it); permissions are re-checked against it server-side. */
+export const updateCustomRoleRequestSchema = z.strictObject({ name: roleName.optional(), description: roleDescription.optional(), permissions: permissionSet.optional() });
+export type UpdateCustomRoleRequest = z.infer<typeof updateCustomRoleRequestSchema>;
+export const assignCustomRoleRequestSchema = z.strictObject({ customRoleId: z.uuid().nullable() });
+export type AssignCustomRoleRequest = z.infer<typeof assignCustomRoleRequestSchema>;
+
+export const customRoleViewSchema = z.object({
+  id: z.uuid(), name: z.string(), description: z.string().nullable(), baseRole: customBaseRoleSchema, permissions: z.array(organizationPermissionSchema),
+  /** Active members currently holding it (whether or not it applies to them right now). */
+  memberCount: z.number().int(), createdAt: z.string(), updatedAt: z.string(),
+});
+export type CustomRoleView = z.infer<typeof customRoleViewSchema>;
+export const listRolesResponseSchema = z.object({
+  builtIn: z.array(z.object({ role: membershipRoleSchema, permissions: z.array(organizationPermissionSchema) })),
+  custom: z.array(customRoleViewSchema),
+});
+export type ListRolesResponse = z.infer<typeof listRolesResponseSchema>;
 
 const INVITABLE_ROLES = ["ADMIN", "MANAGER", "ANALYST", "VIEWER"] as const;
 const invitableRoleSchema = z.enum(INVITABLE_ROLES);
@@ -77,6 +135,10 @@ export const memberViewSchema = z.object({
   invitedWallet: z.object({ chain: chainSchema, address: z.string() }).nullable(),
   invitedEmail: z.string().nullable(),
   verificationStatus: memberVerificationStatusSchema.nullable(),
+  /** The custom role linked to this membership and whether it currently applies (it doesn't after a base role change). */
+  customRole: z.object({ id: z.uuid(), name: z.string(), applies: z.boolean() }).nullable().default(null),
+  /** What this member can actually do in the organization. */
+  permissions: z.array(organizationPermissionSchema).default([]),
 });
 export type MemberView = z.infer<typeof memberViewSchema>;
 

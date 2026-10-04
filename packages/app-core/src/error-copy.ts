@@ -37,6 +37,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   BASKET_VALIDATION_FAILED: { title: "Basket not ready", message: "Fix the listed issues before submitting this basket.", recovery: "fix-input" },
   VERSION_CONFLICT: { title: "Draft changed", message: "This draft changed since you opened it. Reload to continue.", recovery: "retry" },
   HANDLE_TAKEN: { title: "Handle taken", message: "That handle is already in use. Choose another.", recovery: "fix-input" },
+  ROLE_NAME_TAKEN: { title: "Name in use", message: "Another role in this organization already has that name.", recovery: "fix-input" },
   NOT_INVESTABLE: { title: "Not investable yet", message: "This basket can't be invested in right now. See the reasons on the basket page.", recovery: "wait" },
   NOT_ELIGIBLE: { title: "Not eligible yet", message: "Finish the steps listed on the basket page before investing.", recovery: "fix-input" },
   DECLARATION_REQUIRED: { title: "Eligibility declaration needed", message: "Tell us your country and investor status to continue with tokenized assets.", recovery: "fix-input" },

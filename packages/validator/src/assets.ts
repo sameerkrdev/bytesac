@@ -206,15 +206,18 @@ export const priceViewSchema = z.object({
 });
 export type PriceView = z.infer<typeof priceViewSchema>;
 
+/** Registry logo as a short-lived signed URL; null when none was uploaded (clients may fall back to an icon pack). */
+const logoUrl = z.string().nullable().default(null);
+
 export const opsAssetSummarySchema = z.object({
-  id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, status: instrumentStatusSchema, chains: z.array(assetChainSchema), updatedAt: isoTime,
+  id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, status: instrumentStatusSchema, chains: z.array(assetChainSchema), updatedAt: isoTime, logoUrl,
 });
 export type OpsAssetSummary = z.infer<typeof opsAssetSummarySchema>;
 export const opsAssetListResponseSchema = z.object({ items: z.array(opsAssetSummarySchema), nextCursor: z.string().nullable() });
 export type OpsAssetListResponse = z.infer<typeof opsAssetListResponseSchema>;
 
 export const opsAssetDetailSchema = z.object({
-  id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, description: z.string().nullable(), issuerId: uuid.nullable(), riskNotes: z.string().nullable(), links,
+  id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, logoUrl, description: z.string().nullable(), issuerId: uuid.nullable(), riskNotes: z.string().nullable(), links,
   sector: instrumentSectorSchema, tags: z.array(z.object({ id: uuid, key: z.string(), label: z.string() })),
   status: instrumentStatusSchema, createdByUserId: uuid, submittedByUserId: uuid.nullable(), decidedByUserId: uuid.nullable(), createdAt: isoTime, updatedAt: isoTime,
   deployments: z.array(z.object({
@@ -262,14 +265,14 @@ export const assetProviderViewSchema = z.object({
 });
 export type AssetProviderView = z.infer<typeof assetProviderViewSchema>;
 
-export const publicAssetSummarySchema = z.object({ id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, chains: z.array(assetChainSchema) });
+export const publicAssetSummarySchema = z.object({ id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, chains: z.array(assetChainSchema), logoUrl });
 export type PublicAssetSummary = z.infer<typeof publicAssetSummarySchema>;
 export const publicAssetListResponseSchema = z.object({ items: z.array(publicAssetSummarySchema), nextCursor: z.string().nullable() });
 export type PublicAssetListResponse = z.infer<typeof publicAssetListResponseSchema>;
 
 /** The session-user allow-list (spec 8). Rules, review messages, observed metadata and actor ids are never part of it. */
 export const publicAssetDetailSchema = z.object({
-  id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, description: z.string().nullable(),
+  id: uuid, name: z.string(), symbol: z.string(), assetType: assetTypeSchema, logoUrl, description: z.string().nullable(),
   issuer: z.object({ name: z.string(), website: z.string().nullable() }).nullable(), riskNotes: z.string().nullable(), links,
   deployments: z.array(z.object({ chain: assetChainSchema, tokenStandard: tokenStandardSchema, address: z.string().nullable(), decimals: z.number().int() })),
   routes: z.array(z.object({

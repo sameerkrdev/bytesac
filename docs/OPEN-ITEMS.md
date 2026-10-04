@@ -178,7 +178,9 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Two truly concurrent contact-add requests can still return the resend-cooldown error to the second.
 - [ ] Resend countdown resets on remount; logout awaits wallet disconnect; iOS keyboard double-adjust check; ops/app Switch hit area on device; `@wagmi/connectors` pinned 6.2.0 until Reown RN supports wagmi 3.
 
-- [ ] Spec 17: `three` and `@react-three/fiber` are installed (approved) but unused — use for an interactive allocation scene or remove. The basket editor (`/organization/baskets/[bid]`) only got the token pass. Mobile jest's `testMatch` finds no tests when the repo path contains `.claude` (worktrees); cold-start runs can time out the first test of a suite.
+- [x] Spec 17: `three`/`@react-three/fiber` now drive the glass ring and stack scenes (round 2).
+- [ ] Spec 17: the basket editor (`/organization/baskets/[bid]`) only got the token pass plus files. Mobile jest's `testMatch` finds no tests when the repo path contains `.claude` (worktrees); cold-start runs can time out the first test of a suite.
+- [ ] Spec 17 round 2: saved baskets live in one browser (localStorage) — a synced watchlist needs an API. App store links are unset (`NEXT_PUBLIC_IOS_APP_URL` / `NEXT_PUBLIC_ANDROID_APP_URL`), so the download CTA says "Coming soon". The Tripo-generated wallet GLB (scratchpad only, 6.4 MB textured) is unused; the procedural scenes replaced it. Trending needs real investor data to show anything (≥ 5 new investors in 30 days). Custom roles are not shown on the public team page (ADR-019 open question). The public pages for organizations and managers had a light pass only. `apps/mobile` type-check needs the Expo-generated `expo-env.d.ts` in a fresh worktree. Uploaded logos and basket files are not virus-scanned (`scan_status` only exists on organization documents).
 
 ## 8. Open decisions in the register
 

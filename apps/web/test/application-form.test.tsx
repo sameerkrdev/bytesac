@@ -20,31 +20,42 @@ async function put(el: HTMLElement, text: string) {
   await userEvent.paste(text);
 }
 
-async function fill(over: { website?: string } = {}) {
-    await put(screen.getByLabelText("Full name"), "Ada Lovelace");
-  await put(screen.getByLabelText("Email address"), "ada@example.com");
+const next = () => userEvent.click(screen.getByRole("button", { name: /Continue/ }));
+
+/** Walks all four steps with valid answers (ending on the last step, before submitting). */
+async function fill() {
+  await put(screen.getByLabelText("Full name"), "Ada Lovelace");
   await put(screen.getByLabelText("Country"), "gb");
-  if (over.website) await put(screen.getByLabelText("Website (optional)"), over.website);
+  await next();
+  await put(screen.getByLabelText("Email address"), "ada@example.com");
+  await next();
   for (const l of ["Professional background", "Investment experience", "Why do you want to manage baskets on Bytesac?", "What baskets do you plan to offer?"]) await put(screen.getByLabelText(l), long);
+  await next();
   await put(screen.getByLabelText("Wallet address"), "0x1234567890abcdef1234567890abcdef12345678");
 }
 
 describe("ApplicationForm", () => {
-  it("firm without a firm name shows a field error and does not submit", async () => {
+  it("firm without a firm name stops on the first step", async () => {
     const c = client();
     render(<ApplicationForm client={c} />);
-    await userEvent.selectOptions(screen.getByLabelText("Applying as"), "firm");
-    await fill();
-    await userEvent.click(screen.getByRole("button", { name: "Submit application" }));
+    await userEvent.click(screen.getByRole("radio", { name: /A firm/ }));
+    await put(screen.getByLabelText("Full name"), "Ada Lovelace");
+    await put(screen.getByLabelText("Country"), "gb");
+    await next();
     expect(await screen.findByText("Firm name is required for firms")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "About you" })).toBeInTheDocument();
     expect(c.createApplication).not.toHaveBeenCalled();
   });
 
-  it("rejects an http website", async () => {
+  it("rejects an http website on the contact step", async () => {
     const c = client();
     render(<ApplicationForm client={c} />);
-    await fill({ website: "http://example.com" });
-    await userEvent.click(screen.getByRole("button", { name: "Submit application" }));
+    await put(screen.getByLabelText("Full name"), "Ada Lovelace");
+    await put(screen.getByLabelText("Country"), "gb");
+    await next();
+    await put(screen.getByLabelText("Email address"), "ada@example.com");
+    await put(screen.getByLabelText("Website (optional)"), "http://example.com");
+    await next();
     await waitFor(() => expect(screen.getByLabelText("Website (optional)")).toHaveAttribute("aria-invalid", "true"));
     expect(c.createApplication).not.toHaveBeenCalled();
   });

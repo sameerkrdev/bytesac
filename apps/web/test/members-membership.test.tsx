@@ -102,6 +102,7 @@ describe("MemberVerification", () => {
     updateMemberVerification.mockResolvedValue(view({ details: { legalName: "Ada Lovelace" } }));
     show();
     await userEvent.type(await screen.findByLabelText("Legal name"), "Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
     await userEvent.click(screen.getByRole("button", { name: "Save draft" }));
     expect(updateMemberVerification).toHaveBeenCalledWith(MID, { details: { legalName: "Ada Lovelace" } });
   });
@@ -114,7 +115,7 @@ describe("MemberVerification", () => {
     expect(submitMemberVerification).toHaveBeenCalledWith(MID);
     expect(await screen.findByText("In review")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /submit|resubmit/i })).toBeNull();
-    expect(screen.getByLabelText("Legal name")).toBeDisabled();
+    expect(screen.queryByRole("textbox")).toBeNull(); // read-only summary
   });
 
   it("shows the ops message on changes required and allows resubmitting", async () => {

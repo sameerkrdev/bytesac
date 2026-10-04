@@ -1,9 +1,9 @@
 import express from "express";
-import { saveBasketDraftRequestSchema, createAssignmentRequestSchema, updateAssignmentRequestSchema, endAssignmentRequestSchema, basketReasonRequestSchema, z } from "@repo/validator";
+import { confirmBasketFileRequestSchema, presignBasketFileRequestSchema, saveBasketDraftRequestSchema, createAssignmentRequestSchema, updateAssignmentRequestSchema, endAssignmentRequestSchema, basketReasonRequestSchema, z } from "@repo/validator";
 import { optionalSession, requireSession } from "@/middlewares/auth.middleware";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import { validate } from "@/middlewares/validate.middleware";
-import { addAssignment, createNextVersion, endAssignment, getBasketAdoption, getBasketForMember, getBasketInvestability, getVersionDiff, listVersions, pauseBasket, previewOpenVersion, publishVersion, requestRetirement, resumeBasket, saveDraft, submitVersion, updateAssignment, validateOpenVersion, withdrawVersion } from "./baskets.controller";
+import { confirmBasketFile, presignBasketFile, removeBasketFile, addAssignment, createNextVersion, endAssignment, getBasketAdoption, getBasketForMember, getBasketInvestability, getVersionDiff, listVersions, pauseBasket, previewOpenVersion, publishVersion, requestRetirement, resumeBasket, saveDraft, submitVersion, updateAssignment, validateOpenVersion, withdrawVersion } from "./baskets.controller";
 
 const bidParam = z.object({ bid: z.uuid() });
 
@@ -27,6 +27,13 @@ router.get("/:bid", validate({ params: bidParam }), getBasketForMember);
 router.get("/:bid/adoption", validate({ params: bidParam }), getBasketAdoption);
 
 router.patch("/:bid/draft", validate({ params: bidParam, body: saveBasketDraftRequestSchema }), saveDraft);
+
+/** Files on the open draft: presign a PUT, confirm the upload with a title and kind, or unlink. */
+router.post("/:bid/draft/files", validate({ params: bidParam, body: presignBasketFileRequestSchema }), presignBasketFile);
+
+router.post("/:bid/draft/files/:fileId/confirm", validate({ params: z.object({ bid: z.uuid(), fileId: z.uuid() }), body: confirmBasketFileRequestSchema }), confirmBasketFile);
+
+router.delete("/:bid/draft/files/:linkId", validate({ params: z.object({ bid: z.uuid(), linkId: z.uuid() }) }), removeBasketFile);
 
 router.post("/:bid/validate", validate({ params: bidParam }), validateOpenVersion);
 

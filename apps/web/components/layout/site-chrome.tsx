@@ -1,5 +1,6 @@
 "use client";
 
+import { StoreButtons } from "@/components/marketing/download-app";
 import { Dialog } from "@base-ui/react/dialog";
 import { ArrowUpRight, Menu as MenuIcon, X } from "lucide-react";
 import Link from "next/link";
@@ -87,6 +88,7 @@ export function SiteFooter() {
           <Logo size={26} />
           <p className="text-sm text-ink-muted">Strategy baskets from verified organizations. You invest from your own wallet, sign every transaction, and decide whether to follow each strategy update.</p>
           <ThemeSwitch />
+          <StoreButtons size="sm" className="pt-2" />
         </div>
         {FOOTER.map((c) => (
           <nav key={c.title} aria-label={c.title} className="space-y-3">

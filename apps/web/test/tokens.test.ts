@@ -18,7 +18,8 @@ const media = css.slice(css.indexOf("@media (prefers-color-scheme: dark)"));
 describe("globals.css matches @repo/design-tokens themes", () => {
   for (const theme of ["light", "dark"] as const) {
     it(`${theme} theme defines every role with the token value`, () => {
-      const decls = theme === "light" ? block(":root") : block('[data-theme="dark"]');
+      // Light values sit on `:root, [data-theme="light"]` (the second selector allows light islands inside dark pages).
+      const decls = theme === "light" ? block('[data-theme="light"]') : block('[data-theme="dark"]');
       for (const [role, value] of Object.entries(themes[theme]) as [ThemeRole, string][]) {
         expect(decls, role).toContain(`--c-${kebab(role)}: ${value};`);
       }

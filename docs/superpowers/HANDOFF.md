@@ -24,7 +24,7 @@ The one document to read first in a new session (human or AI). It holds the star
 
 ## 2. Current state (after Spec 15)
 
-Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migrations `0000..0016`; decision register up to D-113; ADRs up to ADR-018.
+Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migrations `0000..0019`; decision register up to D-117; ADRs up to ADR-019.
 
 | Spec | What exists | Merge | Key docs |
 |---|---|---|---|
@@ -45,6 +45,8 @@ Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migr
 | 13 Code and docs cleanup | API restructured into feature modules (route/controller/service, `@/` alias, server/worker graceful shutdown, redacted error logging), route-table and no-cycles tests, dead code and duplicates removed, docs consolidated to one home per topic | `9febc6a` | spec `2026-10-03-code-docs-cleanup-design.md` |
 | 14 Integration audit | Every provider and library checked against official docs (LI.FI and Alchemy live): no-SOL shape, deny-key filtering, `toAmountMin` tolerance max(1 ppm, 10^(decimals−8)) using registry decimals, stale deny-key flag, BullMQ fail-fast producers, reverted-approval guard, Next 16.3.8, CSP directives; deferrals in OPEN-ITEMS (Spec 14 block) | `40cd4a3` | `docs/engineering/INTEGRATION-AUDIT.md` |
 | 15 Basic UI | `@repo/app-core` shared leg signer and money-flow helpers, web app shell with role-aware nav and shared page states, mobile investor tabs (Discover, Portfolio, Notifications, Profile) with Solana/EVM signing via AppKit RN and Bitcoin web handoff | `bba1e94` | spec `2026-10-03-basic-ui-design.md` |
+| 17 Web redesign (round 1) | Light/dark design system, marketing site, research, invest flow, portfolio, manager workspace, Playwright visual QA with a mock API | PR #1 | `docs/design/*`, spec `2026-10-04-spec17-web-redesign-design.md` |
+| 17 Web redesign (round 2) | Page-swap landing, drifting transparent sky, new phone/hand devices, real-time glass scenes, Featured/Trending/Suggested rails, smallcase-style list, crypto logos, app CTA; API: featured ranks, collections, asset logos, versioned basket files, custom roles; manager workspace (sidebar, dashboard, Team, Roles & access, Wallets, Settings), ops sidebar, multi-step forms, Fees/Notifications | branch `feat/spec17-redesign-2` | ADR-019, D-114..D-117, `docs/design/MOTION-STUDY.md` (round 2) |
 
 Specs: `docs/superpowers/specs/` · plans: `docs/superpowers/plans/` · Spec 8 review artifacts: `docs/superpowers/reviews/spec8/` (later review artifacts lived in the git-ignored SDD workspace and were deleted after merge). Layout, conventions and behavior are in `ARCHITECTURE.md`, `CODING-STANDARDS.md` and `docs/domains/*`, not repeated here. Pre-launch checks, user actions and leftovers are all in `docs/OPEN-ITEMS.md`.
 
