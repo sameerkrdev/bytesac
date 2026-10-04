@@ -1,8 +1,8 @@
 import type { DiscoverySearchItem } from "@repo/validator";
 import { SearchX } from "lucide-react";
-import { BasketCard } from "@/components/baskets/basket-card";
+import { BasketRow, BasketRowHeader } from "@/components/baskets/basket-row";
 
-/** Shared by the structured results (server) and the AI results (client). Every string renders as text. */
+/** Shared by the structured results (server) and the AI results (client): one scannable list. Every string renders as text. */
 export function ResultsList({ items }: { items: DiscoverySearchItem[] }) {
   if (items.length === 0) {
     return (
@@ -13,8 +13,11 @@ export function ResultsList({ items }: { items: DiscoverySearchItem[] }) {
     );
   }
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-      {items.map((b) => <li key={b.slug}><BasketCard b={b} headingLevel="h2" showStatus /></li>)}
-    </ul>
+    <div className="rounded-card border border-line bg-surface-muted/40 p-1.5 pt-4">
+      <BasketRowHeader />
+      <ul className="divide-y divide-line">
+        {items.map((b) => <li key={b.slug}><BasketRow b={b} /></li>)}
+      </ul>
+    </div>
   );
 }

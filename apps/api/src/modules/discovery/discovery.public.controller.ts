@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { discoveryQuerySchema, discoveryFiltersSchema } from "@repo/validator";
 import createHttpError from "http-errors";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
+import * as collectionsService from "./collections.service";
 import * as discoveryService from "./discovery.service";
 import * as managerProfilesService from "./manager-profiles.service";
 
@@ -36,6 +37,15 @@ export const getPublicManager = async (req: Request, res: Response, next: NextFu
   try {
     await consume(limits.discoveryIp, req.ctx.ip);
     res.json(await managerProfilesService.getPublicManager(req.params.handle as string));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCollections = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.discoveryIp, req.ctx.ip);
+    res.json(await collectionsService.collections());
   } catch (error) {
     next(error);
   }

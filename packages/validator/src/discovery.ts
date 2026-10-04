@@ -67,12 +67,28 @@ const iso = z.iso.datetime({ offset: true });
 export const discoverySearchItemSchema = z.object({
   slug: z.string(), name: z.string(), shortDescription: z.string().nullable(), organizationName: z.string(), category: basketCategorySchema, status: basketStatusSchema,
   topAssets: z.array(z.object({ symbol: z.string(), bps: z.number() })), minimumInvestmentUsdc: z.string(), managementFeeBps: z.number(), netReturn1y: z.string().nullable(), available: z.boolean(),
+  /** Annualised volatility of the simulated model (a fraction); null until performance is available. */
+  volatility: z.string().nullable(),
   /** The basket holds tokenized assets, which need an eligibility declaration to buy. */
   hasEligibilityRequirements: z.boolean(),
 });
 export type DiscoverySearchItem = z.infer<typeof discoverySearchItemSchema>;
 export const discoverySearchResponseSchema = z.object({ items: z.array(discoverySearchItemSchema), nextCursor: z.string().nullable() });
 export type DiscoverySearchResponse = z.infer<typeof discoverySearchResponseSchema>;
+
+/**
+ * Home and discovery rails. `featured`: curated by Bytesac operations (ordered by rank). `trending`: most distinct new
+ * investors over the last 30 days, only baskets with at least 5 (the adoption masking threshold), never with counts.
+ */
+export const discoveryCollectionsResponseSchema = z.object({ featured: z.array(discoverySearchItemSchema), trending: z.array(discoverySearchItemSchema) });
+export type DiscoveryCollectionsResponse = z.infer<typeof discoveryCollectionsResponseSchema>;
+/** Signed-in suggestions: listed baskets in the categories the user already holds, excluding baskets they hold; newest first. */
+export const suggestedBasketsResponseSchema = z.object({ items: z.array(discoverySearchItemSchema), basis: z.enum(["your_categories", "newest"]) });
+export type SuggestedBasketsResponse = z.infer<typeof suggestedBasketsResponseSchema>;
+export const setBasketFeaturedRequestSchema = z.strictObject({ rank: z.number().int().min(1).max(99).nullable() });
+export type SetBasketFeaturedRequest = z.infer<typeof setBasketFeaturedRequestSchema>;
+export const setBasketFeaturedResponseSchema = z.object({ basketId: z.string(), rank: z.number().int().nullable() });
+export type SetBasketFeaturedResponse = z.infer<typeof setBasketFeaturedResponseSchema>;
 
 export const aiSearchRequestSchema = z.strictObject({ query: z.string().trim().min(1).max(500) });
 export type AiSearchRequest = z.infer<typeof aiSearchRequestSchema>;

@@ -18,17 +18,18 @@ const page = async (searchParams: { f?: string; cursor?: string } = {}) => withQ
 const pushed = () => decodeDiscoveryFilters(new URL(push.mock.calls.at(-1)![0], "http://x").searchParams.get("f") ?? undefined);
 
 describe("Discovery page", () => {
-  it("shows cards: 1 y net or New, minimum, fee, top 3 assets and the status badge", async () => {
-    serve({ items: [searchItem(), searchItem({ slug: "fresh", name: "Fresh", netReturn1y: null, available: false, status: "PAUSED" })], nextCursor: null });
+  it("lists rows: 1 y net or New, minimum, fee, volatility, holdings and a status badge only when not active", async () => {
+    serve({ items: [searchItem(), searchItem({ slug: "fresh", name: "Fresh", netReturn1y: null, volatility: null, available: false, status: "PAUSED" })], nextCursor: null });
     await page();
     expect(screen.getByRole("link", { name: "Core Crypto" })).toHaveAttribute("href", "/baskets/core-crypto");
-    expect(screen.getAllByText("SOL 40% · ETH 30% · BTC 20%")).toHaveLength(2);
+    expect(screen.getAllByText(/^Largest holdings: SOL 40%, ETH 30%, BTC 20%/)).toHaveLength(2);
+    expect(screen.getAllByText("41%")).toHaveLength(1); // volatility is null for the basket without performance
     expect(screen.getByText("+12.34%")).toBeInTheDocument();
     expect(screen.getByText("New")).toBeInTheDocument();
     expect(screen.getAllByText("100 USDC")).toHaveLength(2);
-    expect(screen.getAllByText("0.5%")).toHaveLength(2);
+    expect(screen.getAllByText("0.5% mgmt fee")).toHaveLength(2);
     expect(screen.getByText("Paused")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
   });
 
   it("sends the filters from the URL to the API and keeps them in Load more", async () => {
@@ -49,7 +50,8 @@ describe("Discovery page", () => {
     expect(decodeDiscoveryFilters(new URL(String(fetchMock.mock.calls[0]![0])).searchParams.get("f") ?? undefined)).toEqual({});
     expect(screen.getByRole("status")).toHaveTextContent("No baskets match");
     await page({ f: "%%%not-base64" });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Each unfiltered page also asks for the Featured/Trending rails.
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes("/discovery/baskets"))).toHaveLength(2);
   });
 
   it("applies the filter form to the URL (percent inputs become bps and fractions) and round-trips back into the form", async () => {

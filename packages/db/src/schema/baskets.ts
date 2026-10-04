@@ -36,11 +36,16 @@ export const baskets = app.table(
     pauseReason: text("pause_reason"),
     currentVersionId: uuid("current_version_id").references((): AnyPgColumn => basketVersions.id),
     createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
+    /** Ops curation for the "Featured" rail: 1 shows first; null means not featured. Not a recommendation of suitability. */
+    featuredRank: integer("featured_rank"),
+    featuredAt: ts("featured_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [
     index("baskets_org_idx").on(t.organizationId, t.updatedAt),
+    index("baskets_featured_idx").on(t.featuredRank).where(sql`${t.featuredRank} is not null`),
+    check("baskets_featured_rank", sql`${t.featuredRank} is null or ${t.featuredRank} between 1 and 99`),
     check("baskets_slug_format", sql`${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and length(${t.slug}) <= 90`),
   ],
 );

@@ -155,6 +155,10 @@ function diffOf(prev: [string, number][] | undefined, next: [string, number][]):
 
 const RWA = new Set(["TOKENIZED_TREASURY", "TOKENIZED_COMMODITY", "TOKENIZED_PRIVATE_CREDIT"]);
 
+/** Fixture-only annualised volatility per asset type, so baskets differ plausibly (not market data). */
+const TYPE_VOL: Record<string, number> = { CRYPTO: 0.62, STABLECOIN: 0.01, TOKENIZED_TREASURY: 0.02, TOKENIZED_COMMODITY: 0.15, TOKENIZED_PRIVATE_CREDIT: 0.04 };
+const volatilityOf = (seed: BasketSeed) => (seed.weights.reduce((s, [k, bps]) => s + (TYPE_VOL[ASSETS[k]!.type] ?? 0.5) * bps, 0) / 10_000).toFixed(6);
+
 export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketDetail {
   const pts = series(seed.days, seed.seed, seed.drift1y);
   const perStep = Math.max(1, Math.ceil(seed.days / 380));
@@ -197,7 +201,7 @@ export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketD
       available, dataDays: seed.days,
       net: { sinceLaunch: available ? ret(pts, pts.length - 1) : null, d30: available ? ret(pts, Math.ceil(30 / perStep)) : null, d90: seed.days >= 90 ? ret(pts, Math.ceil(90 / perStep)) : null, y1: seed.days >= 365 ? ret(pts, Math.ceil(365 / perStep)) : null },
       gross: { sinceLaunch: available ? frac(Number(pts.at(-1)!.gross) - 1) : null, d30: null, d90: null, y1: null },
-      volatility: available ? "0.482000" : null, maxDrawdown: available ? "-0.231000" : null,
+      volatility: available ? volatilityOf(seed) : null, maxDrawdown: available ? "-0.231000" : null,
     },
     sectors: [...sectors].map(([sector, bps]) => ({ sector, bps })),
     tags: seed.tags.map(([key, label]) => ({ key, label })),
@@ -212,7 +216,7 @@ export function searchItem(seed: BasketSeed): DiscoverySearchItem {
   return {
     slug: seed.slug, name: seed.name, shortDescription: seed.short, organizationName: ORGS[seed.org].displayName, category: seed.category, status: "ACTIVE",
     topAssets: seed.weights.map(([k, bps]) => ({ symbol: ASSETS[k]!.symbol, bps })), minimumInvestmentUsdc: seed.minimum, managementFeeBps: seed.mgmtBps,
-    netReturn1y: d.metrics.net.y1, available: true, hasEligibilityRequirements: d.eligibility.requirements,
+    netReturn1y: d.metrics.net.y1, volatility: d.metrics.volatility, available: true, hasEligibilityRequirements: d.eligibility.requirements,
   };
 }
 

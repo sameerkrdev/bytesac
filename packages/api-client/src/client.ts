@@ -3,8 +3,8 @@ import {
   earningsSchema, platformFeeListSchema, platformFeeScheduleViewSchema, publicFeesSchema, revenueSchema,
   type Earnings, type EarningsQuery, type PlatformFeeList, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type PublicFees, type Revenue,
   bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, adoptionSchema, notificationsPageSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type Adoption, type NotificationsPage, type PushToken, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
-  aiSearchResponseSchema, assetTagViewSchema, discoveryFiltersSchema, discoverySearchResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
-  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryFilters, type DiscoverySearchResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
+  aiSearchResponseSchema, assetTagViewSchema, discoveryCollectionsResponseSchema, discoveryFiltersSchema, discoverySearchResponseSchema, setBasketFeaturedResponseSchema, suggestedBasketsResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
+  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryCollectionsResponse, type DiscoveryFilters, type DiscoverySearchResponse, type SetBasketFeaturedRequest, type SetBasketFeaturedResponse, type SuggestedBasketsResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
   listDisclosureTemplatesResponseSchema, opsBasketDetailSchema, opsBasketListResponseSchema, publicBasketListResponseSchema, publicBasketResponseSchema,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest, type ListDisclosureTemplatesResponse, type ListOpsBasketsQuery,
@@ -313,6 +313,11 @@ export function createApiClient(options: ApiClientOptions) {
     /** Filters travel as one `f` param: base64url JSON (exact round-trip; the cursor stays its own param). */
     discoverBaskets: ({ cursor, ...filters }: DiscoveryFilters = {}): Promise<DiscoverySearchResponse> =>
       request("GET", `/v1/public/discovery/baskets?${qs({ f: encodeDiscoveryFilters(filters), cursor })}`, discoverySearchResponseSchema),
+    /** Featured (ops-curated) and trending baskets for the home and discovery rails. */
+    getDiscoveryCollections: (): Promise<DiscoveryCollectionsResponse> => request("GET", "/v1/public/discovery/collections", discoveryCollectionsResponseSchema),
+    getSuggestedBaskets: (): Promise<SuggestedBasketsResponse> => request("GET", "/v1/me/discovery/suggested", suggestedBasketsResponseSchema),
+    opsSetBasketFeatured: (basketId: string, b: SetBasketFeaturedRequest): Promise<SetBasketFeaturedResponse> =>
+      request("PUT", `/v1/ops/baskets/${e(basketId)}/featured`, setBasketFeaturedResponseSchema, b),
     aiSearchBaskets: (query: string): Promise<AiSearchResponse> => request("POST", "/v1/public/discovery/ai-search", aiSearchResponseSchema, { query }),
     getPublicManager: (handle: string): Promise<PublicManager> => request("GET", `/v1/public/managers/${e(handle)}`, publicManagerSchema),
     getMyManagerProfile: (): Promise<OwnManagerProfileResponse> => request("GET", "/v1/me/manager-profile", ownManagerProfileResponseSchema),
