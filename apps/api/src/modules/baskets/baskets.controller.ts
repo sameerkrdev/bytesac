@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import { db } from "@repo/db";
-import type { Investability, SaveBasketDraftRequest, CreateAssignmentRequest, UpdateAssignmentRequest, EndAssignmentRequest, BasketReasonRequest } from "@repo/validator";
+import type { ConfirmBasketFileRequest, PresignBasketFileRequest, Investability, SaveBasketDraftRequest, CreateAssignmentRequest, UpdateAssignmentRequest, EndAssignmentRequest, BasketReasonRequest } from "@repo/validator";
 import * as basketsService from "./baskets.service";
+import * as basketFilesService from "./basket-files.service";
 import * as notificationsService from "@/modules/notifications/notifications.service";
 import * as basketReviewService from "./basket-review.service";
 import * as investabilityService from "@/modules/operations/investability.service";
@@ -152,6 +153,30 @@ export const resumeBasket = async (req: Request, res: Response, next: NextFuncti
 export const requestRetirement = async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await basketReviewService.requestRetirement(ctx(req), req.params.bid as string, (req.body as BasketReasonRequest).reason));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const presignBasketFile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(201).json(await basketFilesService.presignBasketFile(ctx(req), req.params.bid as string, req.body as PresignBasketFileRequest));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmBasketFile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await basketFilesService.confirmBasketFile(ctx(req), req.params.bid as string, req.params.fileId as string, req.body as ConfirmBasketFileRequest));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeBasketFile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await basketFilesService.removeBasketFile(ctx(req), req.params.bid as string, req.params.linkId as string));
   } catch (error) {
     next(error);
   }

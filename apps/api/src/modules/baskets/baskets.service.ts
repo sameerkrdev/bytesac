@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { copyFilesForward, versionFileIds, versionFiles } from "./basket-file-views";
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, lt, max, sql } from "drizzle-orm";
 import {
@@ -75,6 +76,7 @@ export async function versionView(conn: DbOrTx, v: VersionRow): Promise<BasketVe
     submittedAt: iso(v.submittedAt), approvedAt: iso(v.approvedAt), publishedAt: iso(v.publishedAt), createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(), revision: v.revision,
     assets,
     disclosures: await currentDisclosures(conn, v),
+    files: await versionFiles(conn, v.id),
   };
 }
 
@@ -124,6 +126,9 @@ export async function contentHash(conn: DbOrTx, versionId: string): Promise<stri
     assets: assets.map((a) => [a.instrumentId, a.targetWeightBps, a.minWeightBps, a.maxWeightBps, a.rationale]).sort((x, y) => (x[0]! < y[0]! ? -1 : 1)),
     disclosureTemplateIds: pins.map((p) => p.templateId).sort(),
   };
+  // Attached files are content too; added only when present so hashes of versions without files are unchanged.
+  const fileIds = await versionFileIds(conn, versionId);
+  if (fileIds.length) Object.assign(canonical, { fileIds });
   return createHash("sha256").update(canonicalJson(canonical)).digest("hex");
 }
 
@@ -308,6 +313,7 @@ export async function createNextVersion(ctx: OwnerCtx, bid: string): Promise<Bas
     if (assets.length > 0) await tx.insert(basketVersionAssets).values(assets.map((a) => ({
       versionId: next!.id, revision: 1, instrumentId: a.instrumentId, targetWeightBps: a.targetWeightBps, minWeightBps: a.minWeightBps, maxWeightBps: a.maxWeightBps, rationale: a.rationale,
     })));
+    await copyFilesForward(tx, published!.id, next!.id);
     await tx.update(baskets).set({ updatedAt: sql`now()` }).where(eq(baskets.id, bid));
     await tx.insert(basketEvents).values({ basketId: bid, versionId: next!.id, kind: "created", toStatus: "draft", actorType: "member", actorUserId: ctx.userId, reason: "new_version", requestId: ctx.meta.requestId });
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "basket.version_created", entityType: "basket", entityId: bid, requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { versionId: next!.id } });

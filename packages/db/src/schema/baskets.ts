@@ -3,6 +3,7 @@ import { check, index, integer, jsonb, numeric, primaryKey, text, timestamp, uni
 import { v7 as uuidv7 } from "uuid";
 import { instruments } from "./assets";
 import { app } from "./enums";
+import { storedFiles } from "./files";
 import { users } from "./identity";
 import { organizationMemberships, organizations } from "./organizations";
 
@@ -107,6 +108,30 @@ export const basketVersions = app.table(
     uniqueIndex("basket_versions_number").on(t.basketId, t.versionNumber),
     uniqueIndex("basket_versions_one_open").on(t.basketId).where(sql`${t.status} in ('draft', 'in_review', 'changes_required', 'approved')`),
     index("basket_versions_review_idx").on(t.status, t.updatedAt),
+  ],
+);
+
+export const basketFileKind = app.enum("basket_file_kind", ["thesis", "factsheet", "methodology", "research", "other"]);
+
+/**
+ * Files (PDF) a manager attaches to a basket version: thesis, factsheet, methodology… They belong to the version, so they
+ * are reviewed with it and frozen once it is published; a new draft starts with the published version's files. A link is
+ * never deleted: `removed_at` unlinks it from a draft.
+ */
+export const basketVersionFiles = app.table(
+  "basket_version_files",
+  {
+    id: id(),
+    versionId: uuid("version_id").notNull().references((): AnyPgColumn => basketVersions.id),
+    fileId: uuid("file_id").notNull().references(() => storedFiles.id),
+    kind: basketFileKind("kind").notNull(),
+    title: text("title").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    removedAt: ts("removed_at"),
+  },
+  (t) => [
+    uniqueIndex("basket_version_files_live").on(t.versionId, t.fileId).where(sql`${t.removedAt} is null`),
+    check("basket_version_files_title", sql`length(${t.title}) between 1 and 120`),
   ],
 );
 

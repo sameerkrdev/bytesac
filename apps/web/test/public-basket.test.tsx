@@ -18,7 +18,7 @@ const price = { instrumentId: SOL, kind: "market", status: "ok", value: "150.25"
 const NO_WINDOWS = { sinceLaunch: null, d30: null, d90: null, y1: null };
 const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => ({
   performance: { available: false, dataDays: 0, series: [] }, metrics: { available: false, dataDays: 0, net: NO_WINDOWS, gross: NO_WINDOWS, volatility: null, maxDrawdown: null },
-  sectors: [], tags: [], label: PERFORMANCE_LABEL, platformFee: [],
+  sectors: [], tags: [], label: PERFORMANCE_LABEL, platformFee: [], files: [],
   slug: "core-crypto", status: "ACTIVE", hasAssetWarning: false, eligibility: { requirements: false }, organization: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e61", displayName: "Ada Capital" },
   version: {
     versionNumber: 2, publishedAt: T, name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "A <b>bold</b> thesis", methodology: null,
@@ -27,8 +27,8 @@ const detail = (over: Partial<PublicBasketDetail> = {}): PublicBasketDetail => (
     minimumInvestmentUsdc: "100", minimumIncrementUsdc: null,
   },
   allocation: [
-    { instrumentId: SOL, name: "Solana", symbol: "SOL", assetType: "CRYPTO", chains: ["solana"], targetWeightBps: 6000, minWeightBps: null, maxWeightBps: null, prices: [price] },
-    { instrumentId: ETH, name: "Ether", symbol: "ETH", assetType: "CRYPTO", chains: ["ethereum"], targetWeightBps: 4000, minWeightBps: null, maxWeightBps: null, prices: [] },
+    { instrumentId: SOL, name: "Solana", symbol: "SOL", assetType: "CRYPTO", chains: ["solana"], targetWeightBps: 6000, minWeightBps: null, maxWeightBps: null, prices: [price], logoUrl: null },
+    { instrumentId: ETH, name: "Ether", symbol: "ETH", assetType: "CRYPTO", chains: ["ethereum"], targetWeightBps: 4000, minWeightBps: null, maxWeightBps: null, prices: [], logoUrl: null },
   ],
   disclosures: [{ title: "No guarantee", body: "Nothing is guaranteed." }],
   versionHistory: [{ versionNumber: 2, publishedAt: T, rationale: "Rebalanced", diff: { ...emptyDiff, changed: [{ instrumentId: SOL, fromBps: 5000, toBps: 6000 }] } }, { versionNumber: 1, publishedAt: T, rationale: null, diff: emptyDiff }],

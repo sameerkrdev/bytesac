@@ -183,7 +183,7 @@ export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketD
     allocation: seed.weights.map(([k, w]) => {
       const a = ASSETS[k]!;
       return { instrumentId: a.id, name: a.name, symbol: a.symbol, assetType: a.type, chains: a.chains, targetWeightBps: w, minWeightBps: Math.max(0, w - seed.drift), maxWeightBps: Math.min(10_000, w + seed.drift),
-        prices: [{ instrumentId: a.id, kind: "market" as const, status: "ok" as const, value: a.price, currency: "USD", source: "coinmarketcap", observedAt: "2026-10-03T23:58:00.000Z", stale: false }] };
+        prices: [{ instrumentId: a.id, kind: "market" as const, status: "ok" as const, value: a.price, currency: "USD", source: "coinmarketcap", observedAt: "2026-10-03T23:58:00.000Z", stale: false }], logoUrl: null };
     }),
     platformFee: [{ operationKind: "invest", bps: 0, minUsdc: null, maxUsdc: null }, { operationKind: "rebalance_apply", bps: 0, minUsdc: null, maxUsdc: null }],
     disclosures: [
@@ -206,6 +206,7 @@ export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketD
     sectors: [...sectors].map(([sector, bps]) => ({ sector, bps })),
     tags: seed.tags.map(([key, label]) => ({ key, label })),
     label: PERFORMANCE_LABEL,
+    files: [],
   };
 }
 

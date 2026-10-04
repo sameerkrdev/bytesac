@@ -2,8 +2,10 @@
 
 exports[`mounts exactly the same endpoints and middleware 1`] = `
 [
+  "DELETE /v1/baskets/:bid/draft/files/:linkId handlers=2",
   "DELETE /v1/me/sessions/:id handlers=2",
   "DELETE /v1/memberships/:mid/verification/documents/:docId handlers=2",
+  "DELETE /v1/ops/assets/:id/logo handlers=3",
   "DELETE /v1/ops/roles/:id handlers=3",
   "DELETE /v1/organizations/:id/draft/documents/:docId handlers=2",
   "GET /health/ handlers=1",
@@ -84,6 +86,8 @@ exports[`mounts exactly the same endpoints and middleware 1`] = `
   "POST /v1/auth/verify handlers=3",
   "POST /v1/baskets/:bid/assignments handlers=2",
   "POST /v1/baskets/:bid/assignments/:aid/end handlers=2",
+  "POST /v1/baskets/:bid/draft/files handlers=2",
+  "POST /v1/baskets/:bid/draft/files/:fileId/confirm handlers=2",
   "POST /v1/baskets/:bid/pause handlers=2",
   "POST /v1/baskets/:bid/publish handlers=2",
   "POST /v1/baskets/:bid/resume handlers=2",
@@ -137,6 +141,8 @@ exports[`mounts exactly the same endpoints and middleware 1`] = `
   "POST /v1/ops/assets/:id/deployments/:itemId/resume handlers=3",
   "POST /v1/ops/assets/:id/deployments/:itemId/retire handlers=3",
   "POST /v1/ops/assets/:id/deprecate handlers=3",
+  "POST /v1/ops/assets/:id/logo handlers=3",
+  "POST /v1/ops/assets/:id/logo/:fileId/confirm handlers=3",
   "POST /v1/ops/assets/:id/nav handlers=3",
   "POST /v1/ops/assets/:id/pause handlers=3",
   "POST /v1/ops/assets/:id/resume handlers=3",

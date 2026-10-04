@@ -13,7 +13,7 @@ import { CreateAssetForm } from "@/components/ops/assets/asset-form";
 import { AssetsTable } from "@/components/ops/assets/assets-table";
 import { ASSET_ID, T, asset, lookups } from "./asset-fixtures";
 
-const row = (over: Partial<OpsAssetSummary> = {}): OpsAssetSummary => ({ id: ASSET_ID, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", status: "ACTIVE", chains: ["solana", "ethereum"], updatedAt: T, ...over });
+const row = (over: Partial<OpsAssetSummary> = {}): OpsAssetSummary => ({ id: ASSET_ID, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", status: "ACTIVE", chains: ["solana", "ethereum"], updatedAt: T, logoUrl: null, ...over });
 const table = (opsListAssets: ReturnType<typeof vi.fn>) => render(<QueryClientProvider client={new QueryClient()}><AssetsTable client={{ opsListAssets } as never} /></QueryClientProvider>);
 
 beforeEach(() => { search = ""; replace.mockReset(); push.mockReset(); });

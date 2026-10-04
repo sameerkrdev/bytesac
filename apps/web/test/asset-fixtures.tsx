@@ -17,7 +17,7 @@ export const deployment = (over: Partial<OpsAssetDetail["deployments"][number]> 
 });
 
 export const asset = (over: Partial<OpsAssetDetail> = {}): OpsAssetDetail => ({
-  id: ASSET_ID, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", description: null, issuerId: null, riskNotes: null, links: [], sector: "other", tags: [], status: "DRAFT",
+  id: ASSET_ID, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", logoUrl: null, description: null, issuerId: null, riskNotes: null, links: [], sector: "other", tags: [], status: "DRAFT",
   createdByUserId: SUBMITTER, submittedByUserId: null, decidedByUserId: null, createdAt: T, updatedAt: T,
   deployments: [deployment()], routes: [], rules: [], priceReferences: [], navObservations: [], events: [], missing: [], warnings: [], prices: [], ...over,
 });

@@ -48,7 +48,7 @@ export const basketAsset = (over: Partial<BasketAssetView> = {}): BasketAssetVie
 });
 
 export const basketVersion = (over: Partial<BasketVersionView> = {}): BasketVersionView => ({
-  id: VID, versionNumber: 1, status: "draft", name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "Thesis", methodology: "Method",
+  id: VID, versionNumber: 1, status: "draft", files: [], name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "Thesis", methodology: "Method",
   intendedInvestor: null, horizon: null, keyAssumptions: null, knownLimitations: null, strategyRisks: "Prices move", liquidityNotes: null, conflictsOfInterest: null, constraints: {}, rebalance: { reviewFrequency: "none" },
   fees: { entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 50 }, rebalance: { type: "percent", bps: 0 }, subscription: null }, minimumInvestmentUsdc: "100", minimumIncrementUsdc: null,
   rationale: null, contentHash: null, submittedAt: null, approvedAt: null, publishedAt: null, createdAt: T, updatedAt: T, revision: 0,

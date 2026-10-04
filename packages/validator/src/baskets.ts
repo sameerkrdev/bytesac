@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { basketFileViewSchema } from "./files";
 import { assetTypeSchema, instrumentStatusSchema } from "./assets";
 import { RWA_PROBLEMS } from "./eligibility";
 import { publicBasketResearchSchema } from "./performance";
@@ -298,6 +299,8 @@ export const basketVersionViewSchema = z.object({
   rationale: z.string().nullable(), contentHash: z.string().nullable(), submittedAt: iso.nullable(), approvedAt: iso.nullable(), publishedAt: iso.nullable(),
   createdAt: iso, updatedAt: iso, revision: z.number().int(),
   assets: z.array(basketAssetViewSchema),
+  /** Files attached to this version (thesis, factsheet…); frozen with it once published. */
+  files: z.array(basketFileViewSchema).default([]),
   disclosures: z.array(z.object({ templateId: z.string(), key: z.string(), title: z.string(), body: z.string() })),
 });
 export type BasketVersionView = z.infer<typeof basketVersionViewSchema>;
@@ -442,7 +445,10 @@ export const publicBasketDetailSchema = publicBasketResearchSchema.extend({
   allocation: z.array(z.object({
     instrumentId: z.string(), name: z.string(), symbol: z.string(), assetType: assetTypeSchema, chains: z.array(z.string()), targetWeightBps: z.number(),
     minWeightBps: z.number().nullable(), maxWeightBps: z.number().nullable(), prices: z.array(publicPriceSchema),
+    logoUrl: z.string().nullable().default(null),
   })),
+  /** Files of the published version (signed download links). */
+  files: z.array(basketFileViewSchema).default([]),
   /** The platform fee that applies to this basket per operation (an organization or basket override included; no reason text). */
   platformFee: z.array(z.object({ operationKind: z.string(), bps: z.number().int(), minUsdc: z.string().nullable(), maxUsdc: z.string().nullable() })),
   disclosures: z.array(z.object({ title: z.string(), body: z.string() })),

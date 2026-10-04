@@ -1,8 +1,8 @@
 import express from "express";
-import { createInstrumentRequestSchema, updateInstrumentRequestSchema, createDeploymentRequestSchema, updateDeploymentRequestSchema, feeOnTransferRequestSchema, permissionedRequestSchema, createRouteRequestSchema, updateRouteRequestSchema, createRuleRequestSchema, updateRuleRequestSchema, z, priceKindSchema, putPriceReferenceRequestSchema, navEntryRequestSchema, issuerRequestSchema, updateIssuerRequestSchema, assetProviderRequestSchema, updateAssetProviderRequestSchema, assetDecisionRequestSchema, createAssetTagRequestSchema } from "@repo/validator";
+import { createInstrumentRequestSchema, updateInstrumentRequestSchema, createDeploymentRequestSchema, updateDeploymentRequestSchema, feeOnTransferRequestSchema, permissionedRequestSchema, createRouteRequestSchema, updateRouteRequestSchema, createRuleRequestSchema, updateRuleRequestSchema, z, priceKindSchema, putPriceReferenceRequestSchema, navEntryRequestSchema, issuerRequestSchema, updateIssuerRequestSchema, assetProviderRequestSchema, updateAssetProviderRequestSchema, assetDecisionRequestSchema, createAssetTagRequestSchema, presignLogoRequestSchema } from "@repo/validator";
 import { validate } from "@/middlewares/validate.middleware";
 import { requireRole } from "@/middlewares/auth.middleware";
-import { createAssetProvider, createAssetTag, createDeployment, createInstrument, createIssuer, createRoute, createRule, decideInstrument, getAssetForOps, getAssetPrices, listAssetProviders, listAssetTags, listAssetsForOps, listIssuers, putPriceReference, recordNav, retireAssetTag, setFeeOnTransfer, setPermissioned, submitInstrument, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment, transitionAssetItem, transitionInstrument } from "./assets.ops.controller";
+import { confirmInstrumentLogo, presignInstrumentLogo, removeInstrumentLogo, createAssetProvider, createAssetTag, createDeployment, createInstrument, createIssuer, createRoute, createRule, decideInstrument, getAssetForOps, getAssetPrices, listAssetProviders, listAssetTags, listAssetsForOps, listIssuers, putPriceReference, recordNav, retireAssetTag, setFeeOnTransfer, setPermissioned, submitInstrument, updateAssetProvider, updateDeployment, updateInstrument, updateIssuer, updateRoute, updateRule, verifyDeployment, transitionAssetItem, transitionInstrument } from "./assets.ops.controller";
 
 const idParam = z.object({ id: z.uuid() });
 
@@ -23,6 +23,13 @@ router.post("/assets", reviewer, validate({ body: createInstrumentRequestSchema 
 router.get("/assets/:id", reviewer, validate({ params: idParam }), getAssetForOps);
 
 router.patch("/assets/:id", reviewer, validate({ params: idParam, body: updateInstrumentRequestSchema }), updateInstrument);
+
+/** Logo: presign a PUT, then confirm the uploaded file (checked server-side); DELETE clears it. */
+router.post("/assets/:id/logo", reviewer, validate({ params: idParam, body: presignLogoRequestSchema }), presignInstrumentLogo);
+
+router.post("/assets/:id/logo/:fileId/confirm", reviewer, validate({ params: z.object({ id: z.uuid(), fileId: z.uuid() }) }), confirmInstrumentLogo);
+
+router.delete("/assets/:id/logo", reviewer, validate({ params: idParam }), removeInstrumentLogo);
 
 router.post("/assets/:id/deployments", reviewer, validate({ params: idParam, body: createDeploymentRequestSchema }), createDeployment);
 
