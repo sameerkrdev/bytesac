@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { ChoiceCard, StepForm } from "@/components/ui/step-form";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { toDisplayError, type DisplayError } from "@/lib/errors";
@@ -64,12 +65,23 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
     } finally { setPending(false); }
   }
 
+  const parse = () => createApplicationRequestSchema.safeParse({
+    ...v,
+    firmName: v.applicantType === "firm" ? v.firmName || undefined : undefined,
+    phone: v.phone || undefined, website: v.website || undefined, qualifications: v.qualifications || undefined,
+  });
+  /** Validates only `names` (one step) against the full schema; returns whether they pass. */
+  const checkStep = (names: Name[]) => {
+    const parsed = parse();
+    const errs: Partial<Record<Name, string>> = { ...fieldErrors };
+    for (const n of names) delete errs[n];
+    if (!parsed.success) for (const i of parsed.error.issues) { const n = i.path[0] as Name; if (names.includes(n)) errs[n] ??= i.message; }
+    setFieldErrors(errs);
+    return names.every((n) => !errs[n]);
+  };
+
   const submit = () => {
-    const parsed = createApplicationRequestSchema.safeParse({
-      ...v,
-      firmName: v.applicantType === "firm" ? v.firmName || undefined : undefined,
-      phone: v.phone || undefined, website: v.website || undefined, qualifications: v.qualifications || undefined,
-    });
+    const parsed = parse();
     if (!parsed.success) {
       const errs: Partial<Record<Name, string>> = {};
       for (const i of parsed.error.issues) errs[i.path[0] as Name] ??= i.message;
@@ -141,33 +153,58 @@ export function ApplicationForm({ client = api }: { client?: Client }) {
     );
   };
 
+  const input = (t: (typeof TEXT)[number]) => field(t.name, t.label, t.hint, (p) => (
+    <Input {...p} type={t.type} autoComplete={t.autoComplete} placeholder={t.placeholder} maxLength={t.name === "country" ? 2 : undefined}
+      className="min-h-11 placeholder:text-ink-muted" value={v[t.name]}
+      onChange={(e) => set(t.name, t.name === "country" ? e.target.value.toUpperCase() : e.target.value)} />
+  ));
+  const pick = (names: Name[]) => TEXT.filter((t) => names.includes(t.name)).map(input);
+  const you: Name[] = ["applicantType", "firmName", "fullName", "country"];
+  const contact: Name[] = ["email", "phone", "website"];
+  const experience: Name[] = LONG.map((l) => l.name);
+  const wallet: Name[] = ["walletChain", "walletAddress"];
+
   return (
-    <form noValidate className="space-y-5" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-      {field("applicantType", "Applying as", undefined, (p) => (
-        <Select {...p} value={v.applicantType} onChange={(e) => set("applicantType", e.target.value)}>
-          <option value="individual">Individual</option>
-          <option value="firm">Firm</option>
-        </Select>
-      ))}
-      {v.applicantType === "firm" && field("firmName", "Firm name", undefined, (p) => <Input {...p}  value={v.firmName} onChange={(e) => set("firmName", e.target.value)} />)}
-      {TEXT.map((t) => field(t.name, t.label, t.hint, (p) => (
-        <Input {...p} type={t.type} autoComplete={t.autoComplete} placeholder={t.placeholder} maxLength={t.name === "country" ? 2 : undefined}
-          className="min-h-11 placeholder:text-ink-muted" value={v[t.name]}
-          onChange={(e) => set(t.name, t.name === "country" ? e.target.value.toUpperCase() : e.target.value)} />
-      )))}
-      {LONG.map((t) => field(t.name, t.label, t.hint, (p) => <Textarea {...p} value={v[t.name]} onChange={(e) => set(t.name, e.target.value)} />))}
-      {field("walletChain", "Wallet network", undefined, (p) => (
-        <Select {...p} value={v.walletChain} onChange={(e) => set("walletChain", e.target.value)}>
-          {signInChainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
-        </Select>
-      ))}
-      {field("walletAddress", "Wallet address", "We'll ask you to sign in with this wallet after approval. Entering it here doesn't prove ownership.", (p) => (
-        <Input {...p} autoComplete="off" spellCheck={false} className="min-h-11 bg-canvas font-mono text-ink" value={v.walletAddress} onChange={(e) => set("walletAddress", e.target.value)} />
-      ))}
-      {errorNode}
-      <Button type="submit" className="min-h-11 w-full" disabled={pending}>
-        {pending && <Loader2 aria-hidden className="animate-spin" />}Submit application
-      </Button>
-    </form>
+    <StepForm label="Fund manager application" submitLabel="Submit application" pending={pending} onSubmit={() => void submit()} error={errorNode}
+      steps={[
+        {
+          id: "you", title: "About you", description: "Who is applying.", validate: () => checkStep(you),
+          content: (
+            <>
+              <div role="radiogroup" aria-label="Applying as" className="grid gap-2 sm:grid-cols-2">
+                <ChoiceCard name={`${id}-type`} value="individual" checked={v.applicantType === "individual"} onChange={(x) => set("applicantType", x)} title="An individual" description="You manage strategies yourself." />
+                <ChoiceCard name={`${id}-type`} value="firm" checked={v.applicantType === "firm"} onChange={(x) => set("applicantType", x)} title="A firm" description="A company that manages strategies." />
+              </div>
+              {v.applicantType === "firm" && field("firmName", "Firm name", undefined, (p) => <Input {...p} value={v.firmName} onChange={(e) => set("firmName", e.target.value)} />)}
+              {pick(["fullName", "country"])}
+            </>
+          ),
+        },
+        { id: "contact", title: "How to reach you", description: "We confirm your email with a code before the application is submitted.", validate: () => checkStep(contact), content: <>{pick(contact)}</> },
+        {
+          id: "experience", title: "Your experience", description: "A few sentences each. The review team reads every application.", validate: () => checkStep(experience),
+          content: <>{LONG.map((t) => field(t.name, t.label, t.hint, (p) => <Textarea {...p} rows={4} value={v[t.name]} onChange={(e) => set(t.name, e.target.value)} />))}</>,
+        },
+        {
+          id: "wallet", title: "Wallet and review", description: "The wallet you'll sign in with after approval.", validate: () => checkStep(wallet),
+          content: (
+            <>
+              {field("walletChain", "Wallet network", undefined, (p) => (
+                <Select {...p} value={v.walletChain} onChange={(e) => set("walletChain", e.target.value)}>
+                  {signInChainSchema.options.map((c) => <option key={c} value={c}>{CHAINS[c].label}</option>)}
+                </Select>
+              ))}
+              {field("walletAddress", "Wallet address", "Entering it here doesn't prove ownership; you'll sign in with it after approval.", (p) => (
+                <Input {...p} autoComplete="off" spellCheck={false} className="min-h-11 bg-canvas font-mono text-ink" value={v.walletAddress} onChange={(e) => set("walletAddress", e.target.value)} />
+              ))}
+              <dl className="divide-y divide-line rounded-tile border border-line bg-canvas text-sm">
+                {([["Applying as", v.applicantType === "firm" ? `Firm · ${v.firmName || "—"}` : "Individual"], ["Name", v.fullName || "—"], ["Email", v.email || "—"], ["Country", v.country || "—"]] as const).map(([k, x]) => (
+                  <div key={k} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2 px-4 py-2.5"><dt className="text-ink-muted">{k}</dt><dd className="truncate text-ink">{x}</dd></div>
+                ))}
+              </dl>
+            </>
+          ),
+        },
+      ]} />
   );
 }

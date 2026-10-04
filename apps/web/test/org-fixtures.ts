@@ -69,7 +69,7 @@ export const emptyDiff: BasketDiff = { added: [], removed: [], changed: [], band
 
 export const opsBasketDetail = (over: Partial<OpsBasketDetail> = {}): OpsBasketDetail => ({
   ...basketDetail({ status: "ACTIVE", openVersion: basketVersion({ status: "in_review" }) }),
-  organization: { id: ORG_ID, displayName: "Ada Capital", status: "VERIFIED" }, versions: [], reviews: [], diff: null, ...over,
+  organization: { id: ORG_ID, displayName: "Ada Capital", status: "VERIFIED" }, versions: [], reviews: [], diff: null, featuredRank: null, ...over,
 });
 
 /** Every call the basket workspace makes, as mocks; pass overrides for the ones a test cares about. */
@@ -85,5 +85,6 @@ export const basketClient = (over: Record<string, Mock> = {}) => ({
   listOrganizationMembers: vi.fn().mockResolvedValue({ members: [] }),
   addBasketAssignment: vi.fn(), updateBasketAssignment: vi.fn(), endBasketAssignment: vi.fn(),
   basketAdoption: vi.fn().mockResolvedValue({ versions: [] }),
+  presignBasketFile: vi.fn(), confirmBasketFile: vi.fn(), removeBasketFile: vi.fn(),
   ...over,
 });

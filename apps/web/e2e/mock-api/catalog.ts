@@ -206,7 +206,10 @@ export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketD
     sectors: [...sectors].map(([sector, bps]) => ({ sector, bps })),
     tags: seed.tags.map(([key, label]) => ({ key, label })),
     label: PERFORMANCE_LABEL,
-    files: [],
+    files: seed.slug === "core-crypto-index" ? [
+      { id: "0192f1c2-7a4b-7c3d-8e9f-00000000f001", kind: "thesis" as const, title: "Investment thesis, Q3 2026", fileName: "core-crypto-thesis-q3.pdf", contentType: "application/pdf", sizeBytes: 1_284_000, url: "https://example.com/files/core-crypto-thesis-q3.pdf", addedAt: "2026-09-20T09:00:00.000Z" },
+      { id: "0192f1c2-7a4b-7c3d-8e9f-00000000f002", kind: "methodology" as const, title: "Index methodology", fileName: "methodology-v3.pdf", contentType: "application/pdf", sizeBytes: 412_000, url: "https://example.com/files/methodology-v3.pdf", addedAt: "2026-09-20T09:00:00.000Z" },
+    ] : [],
   };
 }
 

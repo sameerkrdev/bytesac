@@ -398,6 +398,8 @@ export const opsBasketDetailSchema = basketDetailSchema.omit({ myPermissions: tr
   /** Every review with the internal note, for ops only. */
   reviews: z.array(basketReviewViewSchema.extend({ reviewerUserId: z.string(), internalNote: z.string().nullable(), reviewedHash: z.string() })),
   diff: basketDiffSchema.nullable(),
+  /** Place in the public Featured rail (ADR-019); null when not featured. */
+  featuredRank: z.number().int().nullable().default(null),
 });
 export type OpsBasketDetail = z.infer<typeof opsBasketDetailSchema>;
 
