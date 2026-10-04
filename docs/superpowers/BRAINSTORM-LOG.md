@@ -134,6 +134,15 @@ User feedback list: 15-fps reference study (section "page swap" from the bottom,
 
 Brief vs docs (docs win, per the brief itself): sign-in chains are Solana, Ethereum, Base, BNB Chain and Arbitrum; Bitcoin is link-only (web); Polygon is registry-only. No real portfolio performance or manager analytics exist, so none are shown. Bytesac co-signs Solana legs as fee payer and sends EVM gas drops, so custody copy never claims Bytesac never touches a transaction.
 
+### Round 3: mobile (2026-10-05, PR #2 merged)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | How mobile work starts | Merge #2 then branch (rec.) · branch from #2 · same branch | **Merge #2, then branch** | PR #2 was merged; branch `feat/mobile-redesign` from `main` (plus the landing-rail scrollbar fix pushed after the merge) |
+| 2 | Scope | Full investor redesign (rec.) · plus manager read-only · restyle only | **Full investor redesign** | Design system (light + dark, Geist, sky/glass) on every screen plus new P0/P1 screens: Home tab, position detail, activity, splash + welcome, appearance, rails, crypto logos; manager stays a web hand-off |
+| 3 | New packages | Geist fonts · expo-blur · expo-linear-gradient · expo-haptics | **All four** | Installed with \`npx expo install\` (SDK 57 versions) |
+| 4 | Verification | Expo web + jest (rec.) · Android emulator · jest only | **Expo web + jest** | Expo web target against the mock API, Playwright at phone sizes, jest; user checks on a device at the end |
+
 
 ---
 
