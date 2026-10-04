@@ -2,7 +2,7 @@
 import { ORGANIZATION_PERMISSIONS, type Earnings, type ListBasketsResponse, type ListMembersResponse, type OrganizationDetail } from "@repo/validator";
 import { BASKETS, ORGS } from "./catalog";
 import type { Route } from "./server";
-import { earningsSchema, listBasketsResponseSchema, listMembersResponseSchema, organizationDetailSchema } from "@repo/validator";
+import { ROLE_PERMISSIONS, earningsSchema, listBasketsResponseSchema, listMembersResponseSchema, listRolesResponseSchema, organizationDetailSchema, type ListRolesResponse } from "@repo/validator";
 
 const T = (d: string) => `${d}T09:00:00.000Z`;
 const uuid = (n: number) => `0192f1c2-7a4b-7c3d-8e9f-${n.toString(16).padStart(12, "0")}`;
@@ -34,7 +34,17 @@ const member = (n: number, role: "OWNER" | "ADMIN" | "MANAGER" | "ANALYST" | "VI
   id: uuid(0xb00 + n), role, requestedRole: null, status, publicDisplayName: name, publicTitle: title, isSelf: self, activatedAt: status === "ACTIVE" ? T("2025-12-02") : null,
   inviteExpiresAt: status === "INVITED" ? T("2026-10-14") : null, invitedWallet: status === "INVITED" ? { chain: "ethereum" as const, address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" } : null, invitedEmail: null,
   verificationStatus: role === "ADMIN" || role === "MANAGER" ? "approved" as const : null,
+  customRole: role === "ANALYST" ? { id: uuid(0xc01), name: "Finance reader", applies: true } : null,
+  permissions: role === "ANALYST" ? ["org.read", "analytics.read", "earnings.read"] : [...ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS]],
 });
+
+const ROLES: ListRolesResponse = {
+  builtIn: (["OWNER", "ADMIN", "MANAGER", "ANALYST", "VIEWER"] as const).map((role) => ({ role, permissions: [...ROLE_PERMISSIONS[role]] })),
+  custom: [
+    { id: uuid(0xc01), name: "Finance reader", description: "Analysts who also review fee income.", baseRole: "ANALYST", permissions: ["org.read", "analytics.read", "earnings.read"], memberCount: 1, createdAt: T("2026-09-20"), updatedAt: T("2026-09-20") },
+    { id: uuid(0xc02), name: "Basket editor", description: "Managers without adoption analytics.", baseRole: "MANAGER", permissions: ["org.read", "baskets.manage"], memberCount: 0, createdAt: T("2026-09-22"), updatedAt: T("2026-09-22") },
+  ],
+};
 
 const MEMBERS = {
   members: [
@@ -59,5 +69,6 @@ export const managerRoutes: Route[] = [
   ["GET", /^\/v1\/organizations\/([^/]+)$/, ({ persona }, [id]) => (persona === "manager" && id === org.id ? { schema: organizationDetailSchema, body: ORG_DETAIL } : deny)],
   ["GET", /^\/v1\/organizations\/([^/]+)\/baskets$/, ({ persona }) => (persona === "manager" ? { schema: listBasketsResponseSchema, body: BASKET_LIST } : deny)],
   ["GET", /^\/v1\/organizations\/([^/]+)\/members$/, ({ persona }) => (persona === "manager" ? { schema: listMembersResponseSchema, body: MEMBERS } : deny)],
+  ["GET", /^\/v1\/organizations\/([^/]+)\/roles$/, ({ persona }) => (persona === "manager" ? { schema: listRolesResponseSchema, body: ROLES } : deny)],
   ["GET", /^\/v1\/organizations\/([^/]+)\/earnings$/, ({ persona }) => (persona === "manager" ? { schema: earningsSchema, body: EARNINGS } : deny)],
 ];

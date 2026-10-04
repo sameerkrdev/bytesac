@@ -33,7 +33,7 @@ export const asRole = (role: MembershipRole, over: Partial<OrganizationDetail> =
 let n = 0;
 export const memberView = (over: Partial<MemberView> = {}): MemberView => ({
   id: `0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4f${String(++n).padStart(2, "0")}`, role: "VIEWER", requestedRole: null, status: "ACTIVE", publicDisplayName: null, publicTitle: null, isSelf: false,
-  activatedAt: T, inviteExpiresAt: null, invitedWallet: null, invitedEmail: null, verificationStatus: null, ...over,
+  activatedAt: T, inviteExpiresAt: null, invitedWallet: null, invitedEmail: null, verificationStatus: null, customRole: null, permissions: ["org.read"], ...over,
 });
 
 // Baskets (Spec 6)

@@ -19,11 +19,14 @@ export const PUBLIC_NAV: NavItem[] = [
   { href: "/fees", label: "Fees" },
 ];
 
-/** The manager workspace sections, shown as a second row inside /organization. */
+/** The manager workspace sections as a scrolling row (phones and tablets; the sidebar replaces it on desktop). */
 export const MANAGER_NAV: NavItem[] = [
   { href: "/organization", label: "Overview" },
   { href: "/organization/baskets", label: "Baskets" },
-  { href: "/organization/members", label: "Members" },
+  { href: "/organization/members", label: "Team" },
+  { href: "/organization/roles", label: "Roles & access" },
+  { href: "/organization/wallets", label: "Wallets" },
+  { href: "/organization/settings", label: "Settings" },
   { href: "/organization/earnings", label: "Earnings" },
 ];
 

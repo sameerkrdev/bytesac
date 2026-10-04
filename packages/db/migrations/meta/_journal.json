@@ -134,6 +134,13 @@
       "when": 1791139102093,
       "tag": "0018_stored_files",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791139926890,
+      "tag": "0019_custom_roles",
+      "breakpoints": true
     }
   ]
 }

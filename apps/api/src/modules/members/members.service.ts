@@ -1,8 +1,8 @@
 import createHttpError from "http-errors";
 import { and, eq, gt, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
 import { logger } from "@repo/logger";
-import { contacts, db, isUniqueViolation, memberVerifications, membershipEvents, organizationMemberships, organizations, type DbOrTx, type Tx } from "@repo/db";
-import { MEMBERSHIP_TRANSITIONS, REVIEWED_ROLES, ROLE_PERMISSIONS, familyOf, type Chain, type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MembershipStatus, type MyMembership, type VerificationMethod } from "@repo/validator";
+import { contacts, db, isUniqueViolation, memberVerifications, membershipEvents, organizationMemberships, organizationRoles, organizations, type DbOrTx, type Tx } from "@repo/db";
+import { MEMBERSHIP_TRANSITIONS, REVIEWED_ROLES, ROLE_PERMISSIONS, effectiveRolePermissions, familyOf, type Chain, type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MembershipStatus, type MyMembership, type VerificationMethod } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import { sendMembershipEmail, type MembershipEmailKind } from "@/providers/resend";
 import { endIneligibleAssignments, notifyReassignmentRequired } from "@/modules/baskets/baskets.service";
@@ -136,22 +136,28 @@ export async function getMyMembership(userId: string, mid: string, requestId: st
 }
 
 export async function listMembers(ctx: OwnerCtx, orgId: string): Promise<ListMembersResponse> {
-  const { membership } = await requirePermission(db, ctx.userId, orgId, "org.read");
-  const canManage = ROLE_PERMISSIONS[membership.role].includes("members.manage");
+  const { permissions: mine } = await requirePermission(db, ctx.userId, orgId, "org.read");
+  const canManage = mine.includes("members.manage");
   await db.transaction((tx) => expireInvites(tx, eq(organizationMemberships.organizationId, orgId), ctx.meta.requestId));
   const rows = await db.select({
     m: organizationMemberships,
+    custom: { id: organizationRoles.id, name: organizationRoles.name, baseRole: organizationRoles.baseRole, permissions: organizationRoles.permissions, archivedAt: organizationRoles.archivedAt },
     verificationStatus: sql<ListMembersResponse["members"][number]["verificationStatus"]>`(select v.status from app.member_verifications v where v.membership_id = "app"."organization_memberships"."id" order by v.created_at desc, v.id desc limit 1)`, // drizzle leaves a column of a single-table select unqualified
-  }).from(organizationMemberships)
+  }).from(organizationMemberships).leftJoin(organizationRoles, eq(organizationRoles.id, organizationMemberships.customRoleId))
     .where(and(eq(organizationMemberships.organizationId, orgId), notInArray(organizationMemberships.status, TERMINAL)))
     .orderBy(organizationMemberships.joinedAt, organizationMemberships.id);
   return {
-    members: rows.map(({ m, verificationStatus }) => ({
+    members: rows.map(({ m, custom, verificationStatus }) => {
+      const stored = custom ? { baseRole: custom.baseRole, permissions: custom.permissions, archived: custom.archivedAt !== null } : null;
+      const applies = !!stored && !stored.archived && stored.baseRole === m.role && m.role !== "OWNER";
+      return {
       id: m.id, role: m.role, requestedRole: m.requestedRole, status: m.status, publicDisplayName: m.publicDisplayName, publicTitle: m.publicTitle,
       isSelf: m.userId === ctx.userId, activatedAt: iso(m.activatedAt), inviteExpiresAt: iso(m.inviteExpiresAt),
       invitedWallet: canManage && m.invitedWalletChain && m.invitedWalletAddress ? { chain: m.invitedWalletChain, address: m.invitedWalletAddress } : null,
       invitedEmail: canManage ? m.invitedEmail : null, verificationStatus: canManage ? verificationStatus : null,
-    })),
+      customRole: custom ? { id: custom.id, name: custom.name, applies } : null,
+      permissions: effectiveRolePermissions(m.role, stored),
+    }; }),
   };
 }
 
@@ -210,7 +216,7 @@ export async function changeRole(ctx: OwnerCtx, orgId: string, mid: string, body
     const upgrade = isReviewed(body.role) && !isReviewed(m.role)
       && !(await hasApprovedVerification(tx, m.id));
     await tx.update(organizationMemberships).set(
-      upgrade ? { requestedRole: body.role, updatedAt: sql`now()` } : { role: body.role, requestedRole: null, updatedAt: sql`now()` },
+      upgrade ? { requestedRole: body.role, updatedAt: sql`now()` } : { role: body.role, requestedRole: null, customRoleId: null, updatedAt: sql`now()` },
     ).where(eq(organizationMemberships.id, m.id));
     if (upgrade) await openMemberVerification(tx, m.id);
     else await closeOpenVerification(tx, m.id);

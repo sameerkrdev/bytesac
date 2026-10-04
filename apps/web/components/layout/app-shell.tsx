@@ -169,7 +169,7 @@ export function Shell({ me, children }: { me: MeResponse; children: ReactNode })
   return (
     <div className="min-h-dvh bg-canvas">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-pill focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-ink">Skip to content</a>
-      <header className={cn("sticky top-0 z-40 border-b transition-[background-color,border-color] duration-300", scrolled || workspaceRow ? "glass border-x-0 border-t-0 border-b-line" : "border-transparent")}>
+      <header className={cn("sticky top-0 z-40 border-b transition-[background-color,border-color] duration-300", scrolled || (workspaceRow && area !== "manager") ? "glass border-x-0 border-t-0 border-b-line" : "border-transparent", area === "manager" && "max-lg:glass max-lg:border-x-0 max-lg:border-t-0 max-lg:border-b-line")}>
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-10">
           <Link href="/home" className="flex min-h-11 items-center" aria-label="Bytesac home">
             <Logo size={26} className="hidden sm:inline-flex" />
@@ -187,7 +187,7 @@ export function Shell({ me, children }: { me: MeResponse; children: ReactNode })
             <AccountMenu me={me} workspaces={workspaces} />
           </div>
         </div>
-        {workspaceRow && <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">{workspaceRow}</div>}
+        {workspaceRow && <div className={cn("mx-auto max-w-7xl px-4 sm:px-6 lg:px-10", area === "manager" && "lg:hidden")}>{workspaceRow}</div>}
       </header>
       <main id="main" className="mx-auto max-w-7xl px-4 pt-6 pb-32 sm:px-6 md:pt-10 md:pb-20 lg:px-10">{children}</main>
       {area !== "ops" && <TabBar items={nav.tabs} path={path} />}

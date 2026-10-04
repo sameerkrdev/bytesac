@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { Breadcrumb, type Crumb } from "@/components/layout/page-layout";
-import { Monogram } from "@/components/layout/profile-hero";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
 import { Label } from "@/components/ui/label";
@@ -42,25 +41,26 @@ export function useOrgWorkspace(path = "/organization") {
   return { me, mine, row, active, query, org: query.data, setOrg, switcher, invalidate: () => qc.invalidateQueries({ queryKey: ["organization", row?.id] }) };
 }
 
-/** Workspace page header: organization identity, status and the caller's role — denser than investor pages by design. */
-export function WorkspaceHeader({ title, id, org, name, crumbs, actions, switcher, badge }: {
-  title: ReactNode; id: string; org?: OrganizationDetail; name?: string | null; crumbs?: Crumb[]; actions?: ReactNode; switcher?: ReactNode; badge?: ReactNode;
+/**
+ * Workspace page header: the organization name as an eyebrow, the page title, a one-line description and actions. The
+ * sidebar carries the identity on desktop; the switcher shows here only below it.
+ */
+export function WorkspaceHeader({ title, id, org, name, crumbs, actions, switcher, badge, description }: {
+  title: ReactNode; id: string; org?: OrganizationDetail; name?: string | null; crumbs?: Crumb[]; actions?: ReactNode; switcher?: ReactNode; badge?: ReactNode; description?: ReactNode;
 }) {
   const display = name ?? (org ? String((org.currentVersion ?? org.openVersion)?.publicProfile.displayName ?? "Your organization") : null);
   return (
-    <header className="space-y-6 border-b border-line pb-8">
+    <header className="space-y-5 border-b border-line pb-8">
       {crumbs && <Breadcrumb items={crumbs} />}
       <div className="flex flex-wrap items-end justify-between gap-6">
-        <div className="flex min-w-0 items-center gap-4">
-          {display && <Monogram name={display} />}
-          <div className="min-w-0 space-y-1.5">
-            <p className="type-eyebrow text-ink-faint">{display ?? "Manager workspace"}{org && ` · ${MEMBERSHIP_ROLE_LABEL[org.myRole]}`}</p>
-            <h1 id={id} className="type-title text-ink">{title}</h1>
-          </div>
+        <div className="min-w-0 space-y-2">
+          <p className="type-eyebrow text-ink-faint">{display ?? "Manager workspace"}{org && ` · ${MEMBERSHIP_ROLE_LABEL[org.myRole]}`}</p>
+          <h1 id={id} className="type-title text-ink">{title}</h1>
+          {description && <p className="max-w-2xl text-sm text-ink-muted">{description}</p>}
         </div>
-        <div className="flex flex-wrap items-center gap-2">{badge ?? (org && <StatusBadge {...ORGANIZATION_STATUS_LABEL[org.status]} />)}{actions}</div>
+        <div className="flex flex-wrap items-center gap-2">{badge ?? (org && <span className="lg:hidden"><StatusBadge {...ORGANIZATION_STATUS_LABEL[org.status]} /></span>)}{actions}</div>
       </div>
-      {switcher}
+      {switcher && <div className="lg:hidden">{switcher}</div>}
     </header>
   );
 }

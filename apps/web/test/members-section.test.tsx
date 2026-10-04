@@ -9,10 +9,16 @@ import { asRole, memberView } from "./org-fixtures";
 
 const client = (members: ListMembersResponse["members"], over: Record<string, unknown> = {}) => ({
   listOrganizationMembers: vi.fn().mockResolvedValue({ members }),
-  inviteOrganizationMember: vi.fn(), cancelMemberInvite: vi.fn(), changeMemberRole: vi.fn(), removeMember: vi.fn(), confirmMemberRemoval: vi.fn(), cancelMemberRemoval: vi.fn(), ...over,
+  inviteOrganizationMember: vi.fn(), cancelMemberInvite: vi.fn(), changeMemberRole: vi.fn(), removeMember: vi.fn(), confirmMemberRemoval: vi.fn(), cancelMemberRemoval: vi.fn(),
+  listOrganizationRoles: vi.fn().mockResolvedValue({ builtIn: [], custom: [] }), assignMemberCustomRole: vi.fn(), ...over,
 });
 const show = (role: Parameters<typeof asRole>[0], c: ReturnType<typeof client>) =>
   render(<QueryClientProvider client={new QueryClient()}><Members org={asRole(role, { status: "VERIFIED" })} client={c} /></QueryClientProvider>);
+
+/** Opens the invite dialog and returns it. */
+const openInvite = async () => { await userEvent.click(await screen.findByRole("button", { name: "Invite a member" })); return screen.findByRole("form", { name: "Invite a member" }); };
+const roleChoices = (form: HTMLElement) => within(within(form).getByRole("radiogroup", { name: "Role" })).getAllByRole("radio").map((r) => (r as HTMLInputElement).value);
+const next = () => userEvent.click(screen.getByRole("button", { name: /Continue/ }));
 
 const people = () => [
   memberView({ role: "OWNER", isSelf: true, publicDisplayName: "Olga" }),
@@ -26,27 +32,29 @@ describe("Members section gating", () => {
     expect(await screen.findByText("Olga (you)")).toBeInTheDocument();
     expect(screen.getByText("No public name")).toBeInTheDocument();
     expect(screen.getByText("Verification: Verified")).toBeInTheDocument();
-    expect(screen.queryByRole("form", { name: "Invite a member" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Invite a member" })).toBeNull();
     expect(screen.queryByRole("button", { name: /remove|cancel invite/i })).toBeNull();
   });
 
   it("ADMIN cannot invite ADMIN, change or remove an admin directly, or touch the owner", async () => {
     show("ADMIN", client(people()));
     await screen.findByText("Olga (you)");
-    const roles = within(screen.getByRole("form", { name: "Invite a member" })).getByLabelText("Role");
-    expect([...roles.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Manager", "Analyst", "Viewer"]);
     const adam = screen.getByText("Adam").closest("li") as HTMLElement;
     expect(within(adam).queryByLabelText(/Role for/)).toBeNull();
     expect(within(adam).getByRole("button", { name: "Request removal" })).toBeInTheDocument();
     expect(within(screen.getByText("Olga (you)").closest("li") as HTMLElement).queryByRole("button")).toBeNull();
+    await userEvent.type(within(await openInvite()).getByLabelText("Wallet address"), "0xabc");
+    await next();
+    expect(roleChoices(screen.getByRole("form", { name: "Invite a member" }))).toEqual(["MANAGER", "ANALYST", "VIEWER"]);
   });
 
   it("OWNER can invite ADMIN and sees the transfer note", async () => {
     show("OWNER", client(people()));
     await screen.findByText("Olga (you)");
     expect(screen.getByText("To transfer ownership, contact support.")).toBeInTheDocument();
-    const roles = within(screen.getByRole("form", { name: "Invite a member" })).getByLabelText("Role");
-    expect([...roles.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Admin", "Manager", "Analyst", "Viewer"]);
+    await userEvent.type(within(await openInvite()).getByLabelText("Wallet address"), "0xabc");
+    await next();
+    expect(roleChoices(screen.getByRole("form", { name: "Invite a member" }))).toEqual(["ADMIN", "MANAGER", "ANALYST", "VIEWER"]);
   });
 
   it("the invited wallet and email show only when the API sends them", async () => {
@@ -56,39 +64,49 @@ describe("Members section gating", () => {
   });
 });
 
-describe("Invite form", () => {
-  it("validates before calling the API", async () => {
+describe("Invite (stepped)", () => {
+  it("validates each step before calling the API", async () => {
     const c = client([]);
     show("OWNER", c);
-    await screen.findByRole("form", { name: "Invite a member" });
+    await openInvite();
+    await next();
+    expect(screen.getByLabelText("Wallet address")).toHaveAttribute("aria-invalid", "true");
+    await userEvent.type(screen.getByLabelText("Wallet address"), "0xabc");
+    await next();
+    await next();
     await userEvent.type(screen.getByLabelText("Email for the invitation"), "not-an-email");
     await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
     expect(c.inviteOrganizationMember).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Email for the invitation")).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByLabelText("Wallet address")).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("sends the parsed invitation, refreshes the list and clears the form", async () => {
+  it("sends the parsed invitation and refreshes the list", async () => {
     const invited = memberView({ role: "ANALYST", status: "PENDING_WALLET_VERIFICATION" });
     const c = client([], { inviteOrganizationMember: vi.fn().mockResolvedValue({ members: [invited] }) });
     show("OWNER", c);
-    await userEvent.type(await screen.findByLabelText("Wallet address"), "0xabc");
-    await userEvent.selectOptions(screen.getByLabelText("Role"), "ANALYST");
+    await openInvite();
+    await userEvent.type(screen.getByLabelText("Wallet address"), "0xabc");
+    await next();
+    await userEvent.click(screen.getByRole("radio", { name: /Analyst/ }));
+    await next();
     await userEvent.type(screen.getByLabelText("Email for the invitation"), "New@Example.com");
     await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
     expect(c.inviteOrganizationMember).toHaveBeenCalledWith(expect.any(String), { walletChain: "ethereum", walletAddress: "0xabc", role: "ANALYST", email: "new@example.com" });
     expect(await screen.findByText("Waiting for wallet")).toBeInTheDocument();
-    expect(screen.getByLabelText("Wallet address")).toHaveValue("");
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Invite a member" })).toBeNull());
   });
 
-  it("shows INVITE_EXISTS inline", async () => {
+  it("shows INVITE_EXISTS inline and keeps the dialog", async () => {
     const c = client([], { inviteOrganizationMember: vi.fn().mockRejectedValue(new ApiError("INVITE_EXISTS", 409, "dup")) });
     show("OWNER", c);
-    await userEvent.type(await screen.findByLabelText("Wallet address"), "0xabc");
+    await openInvite();
+    await userEvent.type(screen.getByLabelText("Wallet address"), "0xabc");
+    await next();
+    await next();
     await userEvent.type(screen.getByLabelText("Email for the invitation"), "a@example.com");
     await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Already invited");
-    expect(screen.getByLabelText("Wallet address")).toHaveValue("0xabc");
+    expect(screen.getByRole("form", { name: "Invite a member" })).toBeInTheDocument();
   });
 });
 
@@ -156,10 +174,10 @@ describe("Destructive actions", () => {
     expect(await screen.findByRole("button", { name: "Withdraw" })).toBeInTheDocument();
   });
 
-  it("the invite form waits for a verified organization", async () => {
+  it("inviting waits for a verified organization", async () => {
     render(<QueryClientProvider client={new QueryClient()}><Members org={asRole("OWNER", { status: "SUBMITTED" })} client={client(people())} /></QueryClientProvider>);
     await screen.findByText("Olga (you)");
-    expect(screen.queryByRole("form", { name: "Invite a member" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Invite a member" })).toBeNull();
   });
 
   it("changing a role applies the chosen role", async () => {
@@ -168,5 +186,27 @@ describe("Destructive actions", () => {
     show("OWNER", c);
     await userEvent.selectOptions(await screen.findByLabelText("Role for this member"), "ANALYST");
     expect(c.changeMemberRole).toHaveBeenCalledWith(expect.any(String), viewer.id, { role: "ANALYST" });
+  });
+});
+
+describe("Custom roles on the team", () => {
+  it("offers only custom roles for the member's base role and assigns one", async () => {
+    const viewer = memberView({ role: "VIEWER", publicDisplayName: "Vic" });
+    const stamp = "2026-10-01T00:00:00.000Z";
+    const roles = { builtIn: [], custom: [
+      { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4a01", name: "Viewer + adoption", description: null, baseRole: "VIEWER", permissions: ["org.read", "analytics.read"], memberCount: 0, createdAt: stamp, updatedAt: stamp },
+      { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4a02", name: "Finance reader", description: null, baseRole: "ANALYST", permissions: ["org.read", "earnings.read"], memberCount: 0, createdAt: stamp, updatedAt: stamp },
+    ] };
+    const c = client([viewer], {
+      listOrganizationRoles: vi.fn().mockResolvedValue(roles),
+      assignMemberCustomRole: vi.fn().mockResolvedValue({ members: [{ ...viewer, customRole: { id: roles.custom[0]!.id, name: "Viewer + adoption", applies: true }, permissions: ["org.read", "analytics.read"] }] }),
+    });
+    show("OWNER", c);
+    const select = await screen.findByLabelText("Custom role for Vic");
+    expect([...select.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Standard Viewer", "Viewer + adoption"]);
+    await userEvent.selectOptions(select, roles.custom[0]!.id);
+    expect(c.assignMemberCustomRole).toHaveBeenCalledWith(expect.any(String), viewer.id, { customRoleId: roles.custom[0]!.id });
+    expect(await screen.findByText("Viewer · Viewer + adoption")).toBeInTheDocument();
+    expect(screen.getByText("Can: see the organization, see adoption")).toBeInTheDocument();
   });
 });

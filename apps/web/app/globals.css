@@ -296,6 +296,12 @@
 }
 
 /* One cloud strip = the image followed by its mirror, repeated twice; sliding by -50% loops without a seam. */
+/* A form step entering: a short rise and fade. */
+@keyframes bx-step-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
 @keyframes bx-drift {
   from { transform: translate3d(0, 0, 0); }
   to { transform: translate3d(var(--drift-to, -50%), 0, 0); }

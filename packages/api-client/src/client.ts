@@ -4,7 +4,7 @@ import {
   type Earnings, type EarningsQuery, type PlatformFeeList, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type PublicFees, type Revenue,
   bitcoinChallengeResponseSchema, rebalanceResponseSchema, syncResultSchema, adoptionSchema, notificationsPageSchema, investabilitySchema, legQuoteResponseSchema, operationSchema, portfolioSchema, type Investability, type InvestRequest, type LegQuoteResponse, type LegSubmit, type OperationView, type Portfolio, type SellRequest, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult, type Adoption, type NotificationsPage, type PushToken, type BitcoinChallengeRequest, type BitcoinChallengeResponse, type BitcoinVerify,
   aiSearchResponseSchema, assetTagViewSchema, discoveryCollectionsResponseSchema, discoveryFiltersSchema, discoverySearchResponseSchema, setBasketFeaturedResponseSchema, suggestedBasketsResponseSchema, listAssetTagsResponseSchema, listOpsManagerProfilesResponseSchema, managerProfileViewSchema, ownManagerProfileResponseSchema, publicManagerSchema,
-  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryCollectionsResponse, type ConfirmBasketFileRequest, type PresignBasketFileRequest, type PresignFileResponse, type PresignLogoRequest, type DiscoveryFilters, type DiscoverySearchResponse, type SetBasketFeaturedRequest, type SetBasketFeaturedResponse, type SuggestedBasketsResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
+  type AiSearchResponse, type AssetTagView, type CreateAssetTagRequest, type DiscoveryCollectionsResponse, type AssignCustomRoleRequest, type CreateCustomRoleRequest, type ListRolesResponse, type UpdateCustomRoleRequest, type ConfirmBasketFileRequest, type PresignBasketFileRequest, type PresignFileResponse, type PresignLogoRequest, type DiscoveryFilters, type DiscoverySearchResponse, type SetBasketFeaturedRequest, type SetBasketFeaturedResponse, type SuggestedBasketsResponse, type HideManagerProfileRequest, type ListAssetTagsResponse,
   type ListOpsManagerProfilesQuery, type ListOpsManagerProfilesResponse, type ManagerProfileRequest, type ManagerProfileView, type OwnManagerProfileResponse, type PublicManager,
   listDisclosureTemplatesResponseSchema, opsBasketDetailSchema, opsBasketListResponseSchema, publicBasketListResponseSchema, publicBasketResponseSchema,
   type BasketApprovalRequest, type BasketReasonRequest, type BasketReviewDecisionRequest, type CreateDisclosureTemplateRequest, type ListDisclosureTemplatesResponse, type ListOpsBasketsQuery,
@@ -18,7 +18,7 @@ import {
   type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
   addContactResponseSchema, apiErrorBodySchema, applicationDetailSchema, applicationStatusResponseSchema, confirmApplicationEmailResponseSchema, createApplicationResponseSchema,
   listApplicationsResponseSchema, platformRoleViewSchema, platformRolesResponseSchema, challengeResponseSchema, CLIENT_HEADER, CSRF_HEADER, CSRF_HEADER_VALUE, MOBILE_CLIENT, contactViewSchema,
-  listInvitationsResponseSchema, listMemberReviewResponseSchema, listMembersResponseSchema, memberReviewDetailSchema, memberVerificationViewSchema, listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, myMembershipSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
+  listInvitationsResponseSchema, listMemberReviewResponseSchema, listMembersResponseSchema, listRolesResponseSchema, memberReviewDetailSchema, memberVerificationViewSchema, listMyOrganizationsResponseSchema, listOrganizationsResponseSchema, myMembershipSchema, meResponseSchema, organizationReviewDetailSchema, publicOrganizationSchema, notificationPreferencesSchema, organizationDetailSchema, presignDocumentResponseSchema, sessionsResponseSchema, verifyResponseSchema,
   type AddContactRequest, type AddContactResponse, type ApplicationStatusResponse, type ChallengeRequest, type ChallengeResponse,
   type ApplicationDetail, type GrantRoleRequest, type ListApplicationsQuery, type ListApplicationsResponse, type PlatformRoleView, type PlatformRolesResponse,
   type TransitionApplicationRequest, type ConfirmApplicationEmailRequest, type ConfirmApplicationEmailResponse, type CreateApplicationRequest, type CreateApplicationResponse,
@@ -155,6 +155,14 @@ export function createApiClient(options: ApiClientOptions) {
     getPublicOrganization: (id: string): Promise<PublicOrganization> => request("GET", `/v1/public/organizations/${encodeURIComponent(id)}`, publicOrganizationSchema),
 
     listOrganizationMembers: (id: string): Promise<ListMembersResponse> => request("GET", `/v1/organizations/${encodeURIComponent(id)}/members`, listMembersResponseSchema),
+    /** Custom roles (ADR-019): built-in matrix plus the organization's own roles. Defining roles is owner-only. */
+    listOrganizationRoles: (id: string): Promise<ListRolesResponse> => request("GET", `/v1/organizations/${encodeURIComponent(id)}/roles`, listRolesResponseSchema),
+    createOrganizationRole: (id: string, b: CreateCustomRoleRequest): Promise<ListRolesResponse> => request("POST", `/v1/organizations/${encodeURIComponent(id)}/roles`, listRolesResponseSchema, b),
+    updateOrganizationRole: (id: string, rid: string, b: UpdateCustomRoleRequest): Promise<ListRolesResponse> =>
+      request("PATCH", `/v1/organizations/${encodeURIComponent(id)}/roles/${encodeURIComponent(rid)}`, listRolesResponseSchema, b),
+    archiveOrganizationRole: (id: string, rid: string): Promise<ListRolesResponse> => request("POST", `/v1/organizations/${encodeURIComponent(id)}/roles/${encodeURIComponent(rid)}/archive`, listRolesResponseSchema),
+    assignMemberCustomRole: (id: string, mid: string, b: AssignCustomRoleRequest): Promise<ListMembersResponse> =>
+      request("PUT", `/v1/organizations/${encodeURIComponent(id)}/members/${encodeURIComponent(mid)}/custom-role`, listMembersResponseSchema, b),
     inviteOrganizationMember: (id: string, b: InviteMemberRequest): Promise<ListMembersResponse> =>
       request("POST", `/v1/organizations/${encodeURIComponent(id)}/members/invitations`, listMembersResponseSchema, b),
     cancelMemberInvite: (id: string, mid: string): Promise<ListMembersResponse> =>
