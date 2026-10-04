@@ -10,6 +10,7 @@ import { LineReveal, Parallax, Reveal, Stagger } from "@/components/motion/revea
 import { buttonVariants } from "@/components/ui/button";
 import { AllocationLegend, AllocationRing } from "@/components/visual/allocation-ring";
 import { ChainBadge } from "@/components/visual/chain-badge";
+import { ExampleBasketScreen } from "@/components/visual/phone-screens";
 import { GlassObject, HandPhone, Sky } from "@/components/visual/scenery";
 import { WeightDiff } from "@/components/visual/weight-diff";
 import { cn } from "@/lib/utils";
@@ -169,8 +170,8 @@ const CUSTODY_FLOW = [
 /** The custody principle, on an inverted surface. Wording follows ADR-013: no absolute security claims. */
 export function SelfCustody() {
   return (
-    <section aria-labelledby="custody-title" className="px-3 sm:px-5">
-      <div data-theme="dark" className="relative isolate mx-auto max-w-[96rem] overflow-hidden rounded-shell bg-canvas py-28 text-ink md:py-40">
+    <section aria-labelledby="custody-title" className="relative isolate overflow-hidden py-28 md:py-40">
+      <div>
         <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_80%_20%,var(--c-sky3),transparent_70%),radial-gradient(60%_50%_at_10%_90%,var(--c-sky2),transparent_70%)] opacity-70" />
         <div className={cn(wrap, "grid items-center gap-16 lg:grid-cols-12")}>
           <div className="lg:col-span-6">
@@ -304,12 +305,21 @@ export function ForManagers() {
   );
 }
 
-/** Closing bookend mirroring the hero. */
+/**
+ * Closing bookend mirroring the hero, as in the reference: while it slides up over the page the sky fades in behind
+ * the headline, the lines resolve from blur one by one, and the hand-held phone rises into frame.
+ */
 export function ClosingCta() {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end end"] });
+  const skyOpacity = useTransform(scrollYProgress, [0, 0.55], [0, 1]);
+  const phoneY = useTransform(scrollYProgress, [0.2, 1], ["45%", "0%"]);
   return (
-    <section aria-labelledby="closing-title" className="relative isolate overflow-hidden pt-28 md:pt-40">
-      <Sky className="-z-10" fade={false} />
-      <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-40 bg-gradient-to-b from-canvas to-transparent" />
+    <section ref={ref} aria-labelledby="closing-title" className="relative isolate overflow-hidden pt-28 md:pt-40">
+      <motion.div className="absolute inset-0 -z-10" style={reduce ? undefined : { opacity: skyOpacity }}>
+        <Sky fade={false} bank="high" />
+      </motion.div>
       <div className={cn(wrap, "text-center")}>
         <LineReveal id="closing-title" as="h2" inView className="type-display text-ink" lines={["Your strategy.", <span key="b" className="text-ink-muted">Your wallet. Your call.</span>]} />
         <Reveal delay={0.2} className="mt-10 flex flex-wrap justify-center gap-2">
@@ -317,9 +327,10 @@ export function ClosingCta() {
           <Link href="/sign-in" className={buttonVariants({ variant: "glass", size: "lg" })}>Sign in with your wallet</Link>
         </Reveal>
       </div>
-      <Parallax speed={40} className="mx-auto mt-16 w-[min(70vw,380px)]">
-        <HandPhone />
-      </Parallax>
+      <motion.div className="mx-auto mt-16 w-[min(86vw,500px)] translate-x-[-8%]" style={reduce ? undefined : { y: phoneY }}>
+        <HandPhone screen={<ExampleBasketScreen />} />
+      </motion.div>
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-b from-transparent to-canvas" />
     </section>
   );
 }

@@ -3,6 +3,7 @@ import type { DiscoverySearchItem } from "@repo/validator";
 import { PublicShell } from "@/components/layout/app-shell";
 import { Hero } from "@/components/marketing/hero";
 import { BasketRail, ClosingCta, ForManagers, Journey, MultiChain, Research, SelfCustody, Statement, StrategyUpdates } from "@/components/marketing/sections";
+import { SwapPanel, SwapStack } from "@/components/motion/page-swap";
 import { SmoothScroll } from "@/components/motion/smooth-scroll";
 
 export const dynamic = "force-dynamic";
@@ -22,16 +23,22 @@ export default async function Landing() {
   return (
     <PublicShell bare>
       <SmoothScroll />
-      <Hero />
-      <Statement />
-      <Journey />
-      <BasketRail items={baskets} />
-      <Research />
-      <SelfCustody />
-      <StrategyUpdates />
-      <MultiChain />
-      <ForManagers />
-      <ClosingCta />
+      <SwapStack>
+        <SwapPanel first><Hero /></SwapPanel>
+        <SwapPanel>
+          <Statement />
+          <Journey />
+          <BasketRail items={baskets} />
+          <Research />
+        </SwapPanel>
+        <SwapPanel tone="dark"><SelfCustody /></SwapPanel>
+        <SwapPanel>
+          <StrategyUpdates />
+          <MultiChain />
+          <ForManagers />
+        </SwapPanel>
+        <SwapPanel last><ClosingCta /></SwapPanel>
+      </SwapStack>
     </PublicShell>
   );
 }

@@ -20,6 +20,36 @@
         "mock-api"
       ],
       "port": 4000
+    },
+    {
+      "name": "web-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "exec",
+        "next",
+        "dev",
+        "--port",
+        "3100"
+      ],
+      "env": {
+        "API_ORIGIN": "http://localhost:4100"
+      },
+      "port": 3100
+    },
+    {
+      "name": "mock-api-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "mock-api"
+      ],
+      "env": {
+        "MOCK_API_PORT": "4100"
+      },
+      "port": 4100
     }
   ]
 }

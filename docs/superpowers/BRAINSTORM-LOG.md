@@ -121,6 +121,17 @@ Brief: the user's master design directive (web first; Expo SDK 57 later; real mo
 | 3 | Ops console | Inherit new system only (rec.) · full redesign · leave untouched | **Inherit** | Ops gets new tokens, primitives and shell; no IA redesign |
 | 4 | Type direction | Editorial serif + sans (rec.) · Light all-sans | **Light all-sans** | Geist 300 display, Geist 400/500 UI, Geist Mono labels |
 
+### Round 2 (2026-10-04, after PR #1 merged)
+
+User feedback list: 15-fps reference study (section "page swap" from the bottom, slowly drifting clouds); realistic iPhone and hand assets; real 3D models with an assembling glass-stack animation; generate transparent assets instead of cut-outs; primary reference first; better secondary pages and multi-step forms; custom scroll thumb; trending / suggested / featured baskets on home; new basket list; full ops and manager redesign with detailed role management; crypto logos; basket files; asset logos; a download-app CTA.
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Basket files and asset logos | Versioned basket files (rec.) · basket-level files · UI only | **Versioned basket files** | Files attach to a basket version (immutable once published, reviewed with it); asset logo is an instrument field set by ops |
+| 2 | Role management depth | Manage the existing model (rec.) · custom roles | **Custom roles** | Organizations define roles with per-permission toggles; needs an ADR, migration, API, server enforcement and tests |
+| 3 | Crypto logos | Uploaded + `cryptocurrency-icons` pack (rec.) · uploaded only · CoinMarketCap URLs | **Uploaded + icon pack** | Uploaded registry logo wins; bundled CC0 SVGs as fallback |
+| 4 | Delivery | Branch + PR then merge (rec.) · merge myself | **Branch + PR** | Branch `feat/spec17-redesign-2`; merge after confirmation |
+
 Brief vs docs (docs win, per the brief itself): sign-in chains are Solana, Ethereum, Base, BNB Chain and Arbitrum; Bitcoin is link-only (web); Polygon is registry-only. No real portfolio performance or manager analytics exist, so none are shown. Bytesac co-signs Solana legs as fee payer and sends EVM gas drops, so custody copy never claims Bytesac never touches a transaction.
 
 
