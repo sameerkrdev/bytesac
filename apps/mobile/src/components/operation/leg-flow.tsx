@@ -1,6 +1,7 @@
 import { describeError, formatUnits, LEG_ACTIVE, LEG_IN_FLIGHT, LEG_STEP_LABEL, legAmounts, legRoute, legTitle, nextLeg, OPERATION_STATUS_LABEL } from "@repo/app-core";
 import type { OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CircleCheck, Globe, TriangleAlert } from "lucide-react-native";
 import { Linking, View } from "react-native";
 import { ErrorState, ErrorText, LoadingState } from "@/components/states/states";
 import { AppText } from "@/components/ui/app-text";
@@ -10,8 +11,9 @@ import { api } from "@/lib/api";
 import { WEB_HANDOFF_TEXT, webUrl } from "@/lib/web-url";
 import { legBuys } from "@/lib/leg-direction";
 import { useLegRunner } from "@/lib/use-leg-runner";
+import { useTheme } from "@/lib/theme";
 import { FeeLines } from "./fee-lines";
-import { LegRow } from "./leg-row";
+import { LegTrack } from "./leg-row";
 
 /** Wallet and gas-drop failures carry their own sentence; API codes use the shared copy. */
 function failureCopy(code: string, message: string): { title: string; message?: string } {
@@ -28,6 +30,7 @@ function failureCopy(code: string, message: string): { title: string; message?: 
  */
 export function LegFlow({ operationId }: { operationId: string }) {
   const qc = useQueryClient();
+  const { colors } = useTheme();
   const runner = useLegRunner(operationId);
   const op = useQuery({
     queryKey: ["operation", operationId], queryFn: () => api.getOperation(operationId),
@@ -61,61 +64,85 @@ export function LegFlow({ operationId }: { operationId: string }) {
   const handoff = webOnly ? (state.kind === "handoffWeb" && state.url) || portfolioUrl : null;
   const failure = state.kind === "failed" ? failureCopy(state.code, state.message) : null;
 
+  const steps = o.legs.length;
+  const settled = o.legs.filter((l) => l.status === "SETTLED").length;
+
   return (
-    <View className="gap-4">
-      <View className="flex-row items-center gap-2"><AppText>Status</AppText><StatusBadge tone={s.tone} label={s.label} /></View>
-      {o.legs.map((l) => <LegRow key={l.id} leg={l} buying={legBuys(o.kind, l)} />)}
+    <View className="gap-5">
+      <View className="gap-3 rounded-card border border-line bg-surface p-5">
+        <View className="flex-row items-center justify-between gap-2">
+          <AppText>Status</AppText>
+          <StatusBadge tone={s.tone} label={s.label} />
+        </View>
+        <View className="h-1.5 overflow-hidden rounded-pill bg-surface-muted">
+          <View className="h-full rounded-pill bg-success" style={{ width: `${steps ? (settled / steps) * 100 : 0}%` }} />
+        </View>
+        <AppText variant="micro" tone="faint">{`${settled} of ${steps} ${steps === 1 ? "step" : "steps"} settled`}</AppText>
+      </View>
 
       {failure && (
-        <View accessible accessibilityRole="alert" className="gap-1 rounded-control border border-danger/40 p-3">
-          <AppText className="font-semibold">{failure.title}</AppText>
-          {failure.message ? <AppText tone="faint">{failure.message}</AppText> : null}
+        <View accessible accessibilityRole="alert" className="flex-row gap-3 rounded-card border border-danger/30 bg-danger-soft p-4">
+          <TriangleAlert size={16} color={colors.danger} style={{ marginTop: 3 }} />
+          <View className="flex-1 gap-1">
+            <AppText className="font-medium">{failure.title}</AppText>
+            {failure.message ? <AppText variant="label" tone="muted">{failure.message}</AppText> : null}
+          </View>
         </View>
       )}
       <ErrorText error={stop.error} />
-      {busy && <AppText accessibilityRole="progressbar" tone="faint">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
+      {busy && <AppText accessibilityRole="progressbar" tone="muted">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
       {fresh && (
-        <View className="gap-1 rounded-control border border-line p-3">
-          <AppText className="font-semibold">Fresh quote for step {fresh.sequence}</AppText>
+        <View className="gap-2 rounded-card border border-accent/30 bg-accent-soft p-5">
+          <AppText variant="eyebrow" tone="accent">Fresh quote for step {fresh.sequence}</AppText>
           {freshAmounts
-            ? <AppText tone="faint">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</AppText>
-            : <AppText tone="faint">Fee transfer of {formatUnits(fresh.amountIn, 6)} USDC (all fees together).</AppText>}
-          <AppText variant="label" tone="faint">The quote is valid for about a minute. {fresh.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</AppText>
+            ? <AppText variant="heading">{freshAmounts.in} → about {freshAmounts.estimatedOut} (at least {freshAmounts.minOut})</AppText>
+            : <AppText variant="heading">Fee transfer of {formatUnits(fresh.amountIn, 6)} USDC (all fees together).</AppText>}
+          <AppText variant="label" tone="muted">The quote is valid for about a minute. {fresh.recoveryOf ? "You sign this quote: the amounts above are what you get, at least." : "If the price moves against you the server refuses it and nothing is sent."}</AppText>
         </View>
       )}
       {webOnly && active && (
-        <View className="gap-2 rounded-control border border-line p-3">
-          <AppText>This step involves Bitcoin, which is signed on the web.</AppText>
-          {handoff ? <Button onPress={() => void Linking.openURL(handoff)}>Continue on web</Button> : <AppText tone="faint">{WEB_HANDOFF_TEXT}</AppText>}
+        <View className="gap-3 rounded-card border border-line bg-surface p-5">
+          <View className="flex-row items-center gap-2"><Globe size={16} color={colors.inkMuted} /><AppText className="flex-1">This step involves Bitcoin, which is signed on the web.</AppText></View>
+          {handoff ? <Button onPress={() => void Linking.openURL(handoff)}>Continue on web</Button> : <AppText tone="muted">{WEB_HANDOFF_TEXT}</AppText>}
         </View>
       )}
-      {active && inFlight && !busy && <AppText tone="faint">Waiting for the network to confirm. This screen updates by itself.</AppText>}
+      {active && inFlight && !busy && <AppText tone="muted">Waiting for the network to confirm. This screen updates by itself.</AppText>}
 
       {active && !busy && (
-        <View className="gap-3">
+        <View className="gap-2">
           {fresh ? (
             <>
-              <Button onPress={runner.approve}>{`Approve step ${fresh.sequence} in your wallet`}</Button>
-              <Button variant="secondary" onPress={runner.decline}>Not now</Button>
+              <Button size="lg" onPress={runner.approve}>{`Approve step ${fresh.sequence} in your wallet`}</Button>
+              <Button variant="ghost" onPress={runner.decline}>Not now</Button>
             </>
           ) : next && !webOnly ? (
-            <Button onPress={() => void runner.run(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>
+            <Button size="lg" onPress={() => void runner.run(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>
           ) : null}
           {!inFlight && !fresh && <Button variant="secondary" loading={stop.isPending} onPress={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
         </View>
       )}
 
-      {o.status === "COMPLETED" && <AppText>All steps are settled.{o.kind === "invest" ? " Your basket is in your wallet and shown in your portfolio." : ""}</AppText>}
-      {(o.status === "PARTIAL" || o.status === "FAILED") && (
-        <AppText>
-          {o.status === "PARTIAL" ? "Some steps settled and some did not run. What you received is in your wallet." : "No assets were bought or sold."}
-          {unknown ? " A step is still being checked with the chain; its result is added to your portfolio when it settles." : ""}
-          {feePaid ? " The fees were already paid and are not refunded." : ""}
-          {remaining.length > 0 ? ` Not run: ${remaining.map((l) => legTitle(l, legBuys(o.kind, l))).join(", ")}.` : ""} Start a new plan to continue. Unspent USDC stays in your wallet.
-        </AppText>
+      <LegTrack legs={o.legs} buying={(l) => legBuys(o.kind, l)} />
+
+      {o.status === "COMPLETED" && (
+        <View className="flex-row gap-3 rounded-card border border-success/30 bg-success-soft p-4">
+          <CircleCheck size={16} color={colors.success} style={{ marginTop: 3 }} />
+          <AppText className="flex-1">All steps are settled.{o.kind === "invest" ? " Your basket is in your wallet and shown in your portfolio." : ""}</AppText>
+        </View>
       )}
-      {o.status === "CANCELLED" && <AppText>Cancelled. Nothing was submitted.</AppText>}
+      {(o.status === "PARTIAL" || o.status === "FAILED") && (
+        <View className="rounded-card border border-warning/30 bg-warning-soft p-4">
+          <AppText>
+            {o.status === "PARTIAL" ? "Some steps settled and some did not run. What you received is in your wallet." : "No assets were bought or sold."}
+            {unknown ? " A step is still being checked with the chain; its result is added to your portfolio when it settles." : ""}
+            {feePaid ? " The fees were already paid and are not refunded." : ""}
+            {remaining.length > 0 ? ` Not run: ${remaining.map((l) => legTitle(l, legBuys(o.kind, l))).join(", ")}.` : ""} Start a new plan to continue. Unspent USDC stays in your wallet.
+          </AppText>
+        </View>
+      )}
+      {o.status === "CANCELLED" && <AppText tone="muted">Cancelled. Nothing was submitted.</AppText>}
       <FeeLines fees={o.fees} />
     </View>
   );
 }
+

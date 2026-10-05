@@ -26,11 +26,11 @@ export default function AppLayout() {
       <Stack.Screen name="basket/[slug]" options={{ title: "", headerTransparent: true, headerStyle: { backgroundColor: "transparent" } }} />
       <Stack.Screen name="position/[id]" options={{ title: "" }} />
       <Stack.Screen name="activity" options={{ title: "" }} />
-      <Stack.Screen name="invest/[slug]" options={{ title: "Invest" }} />
-      <Stack.Screen name="operation/[id]" options={{ title: "Operation" }} />
-      <Stack.Screen name="rebalance/[positionId]" options={{ title: "Review update" }} />
-      <Stack.Screen name="repair/[asset]" options={{ title: "Repair" }} />
-      <Stack.Screen name="sell/[positionId]" options={{ title: "Sell" }} />
+      <Stack.Screen name="invest/[slug]" options={{ title: "" }} />
+      <Stack.Screen name="operation/[id]" options={{ title: "" }} />
+      <Stack.Screen name="rebalance/[positionId]" options={{ title: "" }} />
+      <Stack.Screen name="repair/[asset]" options={{ title: "" }} />
+      <Stack.Screen name="sell/[positionId]" options={{ title: "" }} />
     </Stack>
   );
 }

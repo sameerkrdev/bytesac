@@ -2,7 +2,6 @@ import { useLocalSearchParams } from "expo-router";
 import { LegFlow } from "@/components/operation/leg-flow";
 import { OPERATION_KIND } from "@/components/portfolio/operation-card";
 import { useQuery } from "@tanstack/react-query";
-import { AppText } from "@/components/ui/app-text";
 import { Screen } from "@/components/ui/screen";
 import { api } from "@/lib/api";
 
@@ -10,10 +9,10 @@ import { api } from "@/lib/api";
 export default function OperationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const op = useQuery({ queryKey: ["operation", id], queryFn: () => api.getOperation(id) });
+  const started = op.data ? new Date(op.data.createdAt).toLocaleString() : null;
   return (
-    <Screen>
-      <AppText variant="title" accessibilityRole="header">{op.data ? OPERATION_KIND[op.data.kind] : "Operation"}</AppText>
-      <AppText tone="faint">You sign every step in your own wallets.</AppText>
+    <Screen edges={["left", "right"]} eyebrow={started ?? "Operation"} title={op.data ? OPERATION_KIND[op.data.kind] : "Operation"}
+      description="You sign every step in your own wallets.">
       <LegFlow operationId={id} />
     </Screen>
   );

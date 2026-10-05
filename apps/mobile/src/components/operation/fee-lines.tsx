@@ -7,18 +7,19 @@ import { AppText } from "@/components/ui/app-text";
 export function FeeLines({ fees }: { fees: OperationFeeView[] }) {
   const { lines, total } = feeLines(fees);
   return (
-    <View accessibilityLabel="Fees" className="gap-1">
+    <View accessibilityLabel="Fees" className="gap-3 rounded-card border border-line bg-surface p-5">
+      <AppText variant="eyebrow" tone="faint">Fees</AppText>
       {lines.map((l, n) => (
         <View key={n} className="flex-row justify-between gap-3">
-          <AppText className="flex-1">{l.label}</AppText>
-          <AppText tone={l.waived ? "faint" : "ink"} className="shrink">{l.amount}</AppText>
+          <AppText tone="muted" className="flex-1">{l.label}</AppText>
+          <AppText tone={l.waived ? "faint" : "ink"} className="max-w-[60%] text-right">{l.amount}</AppText>
         </View>
       ))}
-      <View className="flex-row justify-between gap-3 border-t border-line pt-1">
-        <AppText className="font-semibold">Total fees</AppText>
-        <AppText className="font-semibold">{total}</AppText>
+      <View className="flex-row justify-between gap-3 border-t border-line pt-3">
+        <AppText className="font-medium">Total fees</AppText>
+        <AppText className="font-medium">{total}</AppText>
       </View>
-      <AppText variant="label" tone="faint">Fees are not refunded if the operation does not complete.</AppText>
+      <AppText variant="micro" tone="faint">Fees are not refunded if the operation does not complete.</AppText>
     </View>
   );
 }
