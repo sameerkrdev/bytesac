@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { Activity, Archive, Ban, Bell, ChevronRight, CircleDashed, type LucideIcon, Pause, Play, RefreshCw, UserRound, Wrench } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, RefreshControl, View } from "react-native";
+import { PushBanner } from "@/components/profile/push-row";
 import { EmptyState, ErrorState, ErrorText, LoadingState, StaleNotice } from "@/components/states/states";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,7 @@ export default function NotificationsScreen() {
         <Chip label="Needs action" selected={filter === "action"} onPress={() => setFilter("action")} />
         {unread > 0 && <Button variant="ghost" size="sm" className="ml-auto" loading={read.isPending} onPress={() => read.mutate({ all: true })}>Mark all read</Button>}
       </View>
+      <PushBanner />
       {q.isPending && <LoadingState />}
       {q.isError && !q.data && <ErrorState error={q.error} onRetry={() => void q.refetch()} />}
       {q.isError && q.data && <StaleNotice>Could not refresh. Showing what loaded earlier.</StaleNotice>}

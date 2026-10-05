@@ -120,6 +120,18 @@ class FakeFcm {
   };
 }
 
+/** The Expo push service: records mobile pushes and reports the tokens listed in `dead` as DeviceNotRegistered. */
+class FakeExpoPush {
+  sent: Array<{ tokens: string[]; title: string; body: string; data: { link: string; notificationId: string } }> = [];
+  dead = new Set<string>();
+  fail = false;
+  sendExpoPush = async (tokens: string[], m: { title: string; body: string; data: { link: string; notificationId: string } }): Promise<string[]> => {
+    if (this.fail) throw new Error("expo down");
+    this.sent.push({ tokens, ...m });
+    return tokens.filter((t) => this.dead.has(t));
+  };
+}
+
 /** A 768-d unit vector along axis `i`: cosine distance 0 to itself, 1 to any other axis. */
 export const unitVector = (i: number): number[] => Array.from({ length: 768 }, (_, k) => (k === i ? 1 : 0));
 
@@ -202,7 +214,7 @@ class FakeQueue {
   enqueue = async (name: string, data: Record<string, unknown>): Promise<void> => { this.jobs.push({ name, data }); };
 }
 
-export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), fcm: new FakeFcm(), sms: new FakeSms(), r2: new FakeR2() };
+export const fakes = { queue: new FakeQueue(), gemini: new FakeGemini(), evm: new FakeEvmRpc(), solana: new FakeSolanaRpc(), cmc: new FakeCoinMarketCap(), email: new FakeEmail(), fcm: new FakeFcm(), expo: new FakeExpoPush(), sms: new FakeSms(), r2: new FakeR2() };
 
 export function resetFakes(): void {
   Object.assign(fakes.evm, { behavior: "invalid", delayMs: 0, onCall: null, calls: [], tokenBehavior: "ok", token: { decimals: 18, symbol: "TKN", name: "Token" }, tokenCalls: [], balances: new Map(), transactions: new Map(), receipts: new Map(), nativeReceived: new Map(), sentNative: [], sendFails: false, sendRefused: false });
@@ -212,6 +224,7 @@ export function resetFakes(): void {
   Object.assign(fakes.cmc, { quotes: new Map(), calls: [], fail: false });
   Object.assign(fakes.email, { sent: [], application: [], organization: [], membership: [], basket: [], profile: [], notification: [], failNotification: false, fail: false });
   Object.assign(fakes.fcm, { sent: [], dead: new Set<string>(), fail: false });
+  Object.assign(fakes.expo, { sent: [], dead: new Set<string>(), fail: false });
   fakes.r2.objects.clear();
   fakes.r2.signed = [];
   Object.assign(fakes.sms, { started: [], approveCode: "123456", fail: false, checkFail: false });

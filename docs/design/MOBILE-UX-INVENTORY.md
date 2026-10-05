@@ -64,7 +64,7 @@ bottom sheets, sticky bottom actions, swipe between sections, haptics on confirm
 
 | # | Feature | Purpose | User | Mobile screen / pattern | Interaction | Pri | Depends on | Status |
 |---|---|---|---|---|---|---|---|---|
-| 35 | Rebalance notification | Push + inbox item | Investor | Notification → deep link | — | P1 | Push (future, FCM web only today) | partial |
+| 35 | Rebalance notification | Push + inbox item | Investor | Notification → deep link | — | P1 | Push (future, FCM web only today) | redesigned (Expo push, opt-in per device, tap opens the screen; ADR-020) |
 | 36 | New basket version | vN → vM, manager's reason | Investor | Rebalance screen header | — | P0 | Portfolio `latestVersion` | redesigned |
 | 37 | Current vs target allocation | Weight diff + your weights vs target | Investor | Section | Swipe between "Change" and "Your weights" | P0 | — | redesigned (now-vs-target tracks) |
 | 38–39 | Rebalance impact / estimated execution | Sells, fee source, buys | Investor | Plan section | Expand legs | P0 | Rebalance plan API | redesigned |

@@ -6,6 +6,7 @@ import { Switch, View } from "react-native";
 import { AppText } from "@/components/ui/app-text";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { PushRow } from "./push-row";
 import { useTheme } from "@/lib/theme";
 
 const ITEMS: { key: keyof NotificationPreferences; label: string; hint: string }[] = [
@@ -25,6 +26,7 @@ export function NotificationsSection() {
   return (
     <Card className="gap-4">
       <AppText variant="heading" accessibilityRole="header">Notifications</AppText>
+      <PushRow />
       {isLoading && <AppText tone="faint">Loading preferences…</AppText>}
       {isError && <AppText tone="danger" accessibilityRole="alert">{"Couldn't load preferences. Try again later."}</AppText>}
       {data && ITEMS.map((it) => (

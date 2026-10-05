@@ -3,6 +3,7 @@ import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
 import { api } from "./api";
+import { revokeStoredPushToken } from "./push";
 import { tokenStore } from "./token-store";
 
 type Status = "loading" | "signedOut" | "signedIn";
@@ -56,6 +57,8 @@ export function AuthProvider({ children, disconnectWallet }: { children: ReactNo
       if (signingOut.current) return;
       signingOut.current = true;
       try {
+        // Stop pushes to this phone while the session can still authorize the revoke (best effort, bounded).
+        await withTimeout(revokeStoredPushToken, DISCONNECT_TIMEOUT_MS);
         if (opts.remote) {
           await api.logout().catch(() => undefined);
         }

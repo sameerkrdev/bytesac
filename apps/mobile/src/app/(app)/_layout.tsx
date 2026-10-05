@@ -3,6 +3,7 @@ import { Redirect, Stack } from "expo-router";
 import { BrandedSplash } from "@/components/brand/splash";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { usePush } from "@/lib/use-push";
 import { useTheme } from "@/lib/theme";
 
 export default function AppLayout() {
@@ -10,6 +11,8 @@ export default function AppLayout() {
   const { colors } = useTheme();
   // Validates the stored token on cold start; a SESSION_EXPIRED/USER_NOT_ACTIVE error triggers the expiry sign-out.
   useQuery({ queryKey: ["me"], queryFn: () => api.me(), enabled: status === "signedIn" });
+  // Re-registers an enabled device and routes push taps (does nothing on web).
+  usePush();
   if (status === "loading") return <BrandedSplash />;
   if (status === "signedOut") return <Redirect href="/(auth)/sign-in" />;
   return (

@@ -152,6 +152,15 @@ Rulings made while building (no question asked; product truths unchanged):
 - Ruling: the welcome pager shows on every signed-out start (no stored "seen" flag) — simplest, no new storage — cost: add a flag later.
 
 
+### Round 4: mobile push (2026-10-05)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Delivery | Expo push service (rec.) · native FCM with react-native-firebase · Android-only FCM | **Expo push service** | ADR-020, D-118; `providers/expo-push.ts` |
+| 2 | Packages | expo-notifications + expo-device (rec.) · none | **Install** | `npx expo install` (SDK 57); the unrelated viem lock line was reverted again |
+| 3 | Token storage | platform + provider columns (rec.) · separate table | **Columns** | migration `0020_mobile_push.sql` (additive, defaults web / fcm) |
+| 4 | Content | inbox title and body (rec.) · generic text | **Inbox text** | same copy as email and web push; `data.link` mapped by the app |
+
 ---
 
 ## Roadmap decisions

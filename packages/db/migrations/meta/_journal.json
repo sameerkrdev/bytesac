@@ -141,6 +141,13 @@
       "when": 1791139926890,
       "tag": "0019_custom_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791181463378,
+      "tag": "0020_mobile_push",
+      "breakpoints": true
     }
   ]
 }

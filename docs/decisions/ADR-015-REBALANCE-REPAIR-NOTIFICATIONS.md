@@ -62,7 +62,7 @@ A rebalance and a drift fix need investability only for assets they buy. A held 
 - **Per-basket repair** (one plan per affected basket): simpler to explain, but two plans for one shared asset can buy the shortfall twice and pay the network fee twice. Rejected for one plan per short deployment; one plan across all short assets (one fee) is a future plan.
 - **Alchemy address-activity webhooks** for instant drift and shortfall detection: more immediate, but they need a public endpoint, signature checks and replay handling; polling (nightly and on portfolio read) is enough for release 1. Deferred.
 - **Auto-fixing a shortfall or drift**: rejected; nothing moves without a signature (ADR-013).
-- **Mobile push** and mobile rebalance screens: deferred with the mobile investing screens.
+- **Mobile push** and mobile rebalance screens: deferred with the mobile investing screens. Mobile push is now decided in ADR-020 (Expo push service, D-118).
 
 ## Consequences
 

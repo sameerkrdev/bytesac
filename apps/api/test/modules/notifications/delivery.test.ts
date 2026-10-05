@@ -10,6 +10,7 @@ async function notification(userId: string, kind = "drifted") {
   return row!.id;
 }
 const token = (userId: string, value: string, revoked = false) => adminSql`INSERT INTO app.push_tokens (id, user_id, token, revoked_at) VALUES (gen_random_uuid(), ${userId}, ${value}, ${revoked ? adminSql`now()` : null})`;
+const mobileToken = (userId: string, value: string, platform = "ios") => adminSql`INSERT INTO app.push_tokens (id, user_id, token, platform, provider) VALUES (gen_random_uuid(), ${userId}, ${value}, ${platform}, 'expo')`;
 const revokedTokens = async () => (await adminSql<{ token: string }[]>`SELECT token FROM app.push_tokens WHERE revoked_at IS NOT NULL ORDER BY token`).map((t) => t.token);
 
 beforeEach(async () => { await resetDb(); mockChains(); });
@@ -69,6 +70,39 @@ describe("deliverNotification", () => {
     fakes.fcm.fail = true;
     await expect(deliverNotification(await notification(user.userId))).resolves.toBeUndefined();
     expect(await revokedTokens()).toEqual([]);
+  });
+
+  it("sends web tokens through FCM and app tokens through Expo with the web path and the notification id", async () => {
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    await token(user.userId, "tok-web");
+    await mobileToken(user.userId, "ExponentPushToken[ios-1]");
+    await mobileToken(user.userId, "ExponentPushToken[and-1]", "android");
+    const id = await notification(user.userId);
+    await deliverNotification(id);
+    expect(fakes.fcm.sent).toEqual([expect.objectContaining({ tokens: ["tok-web"] })]);
+    expect(fakes.expo.sent).toHaveLength(1);
+    expect(fakes.expo.sent[0]!.tokens.sort()).toEqual(["ExponentPushToken[and-1]", "ExponentPushToken[ios-1]"]);
+    expect(fakes.expo.sent[0]).toMatchObject({ title: "Blue has drifted", data: { link: "/portfolio", notificationId: id } });
+  });
+
+  it("revokes an app token Expo reports as not registered; an Expo failure is only logged", async () => {
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    await mobileToken(user.userId, "ExponentPushToken[gone]");
+    await mobileToken(user.userId, "ExponentPushToken[live]");
+    fakes.expo.dead.add("ExponentPushToken[gone]");
+    await deliverNotification(await notification(user.userId));
+    expect(await revokedTokens()).toEqual(["ExponentPushToken[gone]"]);
+    fakes.expo.fail = true;
+    await expect(deliverNotification(await notification(user.userId))).resolves.toBeUndefined();
+    expect(fakes.fcm.sent).toHaveLength(0);
+  });
+
+  it("app pushes are gated by the same preferences", async () => {
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    await mobileToken(user.userId, "ExponentPushToken[ios-1]");
+    await adminSql`UPDATE app.notification_preferences SET portfolio_updates = false WHERE user_id = ${user.userId}`;
+    await deliverNotification(await notification(user.userId, "drifted"));
+    expect(fakes.expo.sent).toHaveLength(0);
   });
 
   it("a row that is not visible yet throws so the queue retries", async () => {

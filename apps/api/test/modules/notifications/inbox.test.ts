@@ -83,4 +83,16 @@ describe("inbox", () => {
     expect((await adminSql`SELECT revoked_at FROM app.push_tokens WHERE token = 'tok-1'`)[0]).toEqual({ revoked_at: null });
     expect((await post(user.h, "", { token: "" })).status).toBe(400);
   });
+
+  it("the app registers an Expo token with its platform; mismatched provider and platform are refused", async () => {
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    const post = (body: object) => request(app).post("/v1/me/push-tokens").set(user.h).send(body);
+    expect((await post({ token: "ExponentPushToken[abc-123]", platform: "android", provider: "expo" })).status).toBe(204);
+    expect((await adminSql`SELECT platform, provider FROM app.push_tokens WHERE token = 'ExponentPushToken[abc-123]'`)[0]).toEqual({ platform: "android", provider: "expo" });
+    expect((await post({ token: "tok-web" })).status).toBe(204);
+    expect((await adminSql`SELECT platform, provider FROM app.push_tokens WHERE token = 'tok-web'`)[0]).toEqual({ platform: "web", provider: "fcm" });
+    expect((await post({ token: "not-an-expo-token", platform: "ios", provider: "expo" })).status).toBe(400);
+    expect((await post({ token: "ExponentPushToken[x]", platform: "web", provider: "expo" })).status).toBe(400);
+    expect((await post({ token: "fcm-token", platform: "ios", provider: "fcm" })).status).toBe(400);
+  });
 });

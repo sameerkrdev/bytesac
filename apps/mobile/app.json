@@ -53,7 +53,15 @@
         }
       ],
       "expo-secure-store",
-      "./plugins/wallet-queries.js"
+      "./plugins/wallet-queries.js",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#0F1E3A",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
