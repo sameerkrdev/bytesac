@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, Stack } from "expo-router";
+import { BrandedSplash } from "@/components/brand/splash";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme";
@@ -9,7 +10,7 @@ export default function AppLayout() {
   const { colors } = useTheme();
   // Validates the stored token on cold start; a SESSION_EXPIRED/USER_NOT_ACTIVE error triggers the expiry sign-out.
   useQuery({ queryKey: ["me"], queryFn: () => api.me(), enabled: status === "signedIn" });
-  if (status === "loading") return null;
+  if (status === "loading") return <BrandedSplash />;
   if (status === "signedOut") return <Redirect href="/(auth)/sign-in" />;
   return (
     <Stack

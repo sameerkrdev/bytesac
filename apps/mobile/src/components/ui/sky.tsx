@@ -5,10 +5,10 @@ import { StyleSheet, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import { useTheme } from "@/lib/theme";
 
-/* eslint-disable @typescript-eslint/no-require-imports -- bundled art */
+ 
 const BANK = require("../../../assets/visuals/clouds-bank-1600.webp");
 const WISPS = require("../../../assets/visuals/clouds-wisps-1600.webp");
-/* eslint-enable @typescript-eslint/no-require-imports */
+ 
 
 /** Cloud art is 1600×533; tiles keep that ratio so "cover" never crops a cloud into a hard edge. */
 const ART_RATIO = 1600 / 533;
@@ -47,8 +47,9 @@ export function Sky({ height = 420, fade = true }: { height?: number; fade?: boo
       <LinearGradient colors={[colors.skyTop, colors.skyMid, colors.skyLow, colors.canvas]} locations={[0, 0.45, 0.78, 1]} style={StyleSheet.absoluteFill} />
       <Strip source={WISPS} height={height * 0.3} top={height * 0.08} seconds={300} opacity={0.7 * cloud} />
       <Strip source={BANK} height={height * 0.42} bottom={height * 0.06} seconds={220} opacity={0.8 * cloud} reverse />
-      <Strip source={BANK} height={height * 0.36} bottom={-height * 0.04} seconds={150} opacity={cloud} />
-      {fade && <LinearGradient colors={["transparent", colors.canvas]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: height * 0.3 }} />}
+      <Strip source={BANK} height={height * 0.36} bottom={height * 0.02} seconds={150} opacity={cloud} />
+      {/* Fade to the canvas colour at zero alpha ("transparent" is black at zero alpha and greys the band on web). */}
+      {fade && <LinearGradient colors={[`${colors.canvas}00`, colors.canvas]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: height * 0.45 }} />}
     </View>
   );
 }

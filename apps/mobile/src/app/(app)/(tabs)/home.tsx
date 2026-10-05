@@ -16,7 +16,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { api } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 
-/* eslint-disable-next-line @typescript-eslint/no-require-imports -- bundled art */
+ 
 const PRISM = require("../../../../assets/visuals/glass-portfolio-prism-560.webp");
 
 function greeting() {

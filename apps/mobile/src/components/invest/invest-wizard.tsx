@@ -48,7 +48,7 @@ function SplitPreview({ assets, amount }: { assets: WizardAsset[]; amount: numbe
     <View accessibilityLabel="Target split of your amount" className="gap-3 rounded-card border border-line bg-surface p-5">
       <View className="gap-1">
         <AppText variant="eyebrow" tone="faint">Target split</AppText>
-        <AppText variant="label" tone="muted">How the basket's target weights divide this amount, before fees. The preview shows the exact routes and minimums.</AppText>
+        <AppText variant="label" tone="muted">{"How the basket's target weights divide this amount, before fees. The preview shows the exact routes and minimums."}</AppText>
       </View>
       <View className="h-2 flex-row overflow-hidden rounded-pill">
         {assets.map((a, i) => <View key={a.instrumentId} style={{ flex: a.bps, backgroundColor: color(i) }} />)}

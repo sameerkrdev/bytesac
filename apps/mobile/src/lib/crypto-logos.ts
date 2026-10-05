@@ -1,5 +1,5 @@
 /** Bundled colour logos (cryptocurrency-icons v0.18.1, CC0) for common tickers; generated from assets/crypto. */
-/* eslint-disable @typescript-eslint/no-require-imports -- Metro needs static requires for assets */
+ 
 const LOGOS: Record<string, number> = {
   aave: require("../../assets/crypto/aave.svg"),
   ada: require("../../assets/crypto/ada.svg"),

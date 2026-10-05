@@ -20,13 +20,14 @@ export function AllocationRing({ slices, size = 160, thickness = 14, gapDeg = 2.
   const total = slices.reduce((s, x) => s + x.bps, 0) || 1;
   const r = (size - thickness) / 2;
   const c = size / 2;
-  let start = -90;
   const p = (a: number) => [c + r * Math.cos((a * Math.PI) / 180), c + r * Math.sin((a * Math.PI) / 180)] as const;
+  // Each slice starts where the previous ones end (from 12 o'clock); computed without mutating during render.
+  const starts = slices.map((_, i) => -90 + (slices.slice(0, i).reduce((s, x) => s + x.bps, 0) / total) * 360);
   const arcs = slices.map((s, i) => {
     const sweep = (s.bps / total) * 360;
+    const start = starts[i]!;
     const a0 = start + gapDeg / 2;
     const a1 = start + Math.max(sweep - gapDeg / 2, gapDeg / 2 + 0.01);
-    start += sweep;
     const [x0, y0] = p(a0);
     const [x1, y1] = p(a1);
     return { key: s.key, d: `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`, stroke: color(i) };
