@@ -14,14 +14,13 @@ const item = (slug: string, name: string) => ({
 });
 
 describe("Discover (mobile)", () => {
-  beforeEach(() => { jest.clearAllMocks(); resetApi(mockApi); mockApi.discoverBaskets.mockResolvedValue({ items: [item("alpha", "Alpha Basket")], nextCursor: null }); });
+  beforeEach(() => { jest.clearAllMocks(); resetApi(mockApi); mockApi.discoverBaskets.mockResolvedValue({ items: [item("alpha", "Alpha Basket")], nextCursor: null }); mockApi.getDiscoveryCollections.mockResolvedValue({ featured: [], trending: [] }); });
 
   it("lists baskets from the server and opens the detail", async () => {
     await renderWithClient(<DiscoverScreen />);
     expect(await screen.findByText("Alpha Basket")).toBeOnTheScreen();
-    expect(screen.getByText("SOL 60% · ETH 40%")).toBeOnTheScreen();
     expect(screen.getByText("Eligibility requirements")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("link", { name: "Alpha Basket, Alpha Capital" }));
+    await fireEvent.press(screen.getByRole("link", { name: /^Alpha Basket, by Alpha Capital..*Largest holdings SOL 60%, ETH 40%/ }));
     expect(router.push).toHaveBeenCalledWith("/basket/alpha");
   });
 
@@ -65,5 +64,19 @@ describe("Discover (mobile)", () => {
     expect(screen.getByText("Beta Basket")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Use these filters" }));
     await waitFor(() => expect(mockApi.discoverBaskets).toHaveBeenLastCalledWith(expect.objectContaining({ q: "low fee" })));
+  });
+
+  it("shows Featured and Trending rails until a filter is set", async () => {
+    mockApi.getDiscoveryCollections.mockResolvedValue({ featured: [item("feat", "Feat Basket")], trending: [item("hot", "Hot Basket")] });
+    await renderWithClient(<DiscoverScreen />);
+    expect(await screen.findByText("Feat Basket")).toBeOnTheScreen();
+    expect(screen.getByText("Hot Basket")).toBeOnTheScreen();
+    expect(screen.getByText("All baskets")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Stablecoin" }));
+    await waitFor(() => expect(mockApi.discoverBaskets).toHaveBeenLastCalledWith(expect.objectContaining({ categories: ["stablecoin"] })));
+    expect(screen.queryByText("Feat Basket")).toBeNull();
+    expect(screen.getByText("Results")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(mockApi.discoverBaskets).toHaveBeenLastCalledWith({ cursor: undefined }));
   });
 });
