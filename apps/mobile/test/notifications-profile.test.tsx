@@ -5,6 +5,8 @@ import NotificationsScreen from "@/app/(app)/(tabs)/notifications";
 import ProfileScreen from "@/app/(app)/(tabs)/profile";
 import { api } from "@/lib/api";
 import { mobileRoute } from "@/lib/notification-route";
+import { AppearanceSection } from "@/components/profile/appearance-section";
+import { ThemeProvider } from "@/lib/theme";
 import { apiMock, renderWithClient, resetApi } from "./helpers";
 import { id } from "./fixtures";
 
@@ -35,6 +37,21 @@ describe("Notifications (mobile)", () => {
     await fireEvent.press(screen.getByLabelText("Update 2"));
     expect(router.push).toHaveBeenCalledWith("/basket/alpha");
     expect(mockApi.markNotificationsRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("filters to unread and to what needs action, grouped by day", async () => {
+    const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    mockApi.notifications.mockResolvedValue({ items: [note(1), note(2, { readAt: old, kind: "basket_paused", createdAt: old })], unreadCount: 1, nextCursor: null });
+    await renderWithClient(<NotificationsScreen />);
+    expect(await screen.findByText("Today")).toBeOnTheScreen();
+    expect(screen.getByText("Earlier")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Unread" }));
+    expect(screen.queryByLabelText("Update 2")).toBeNull();
+    expect(screen.getByLabelText("Unread. Update 1")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Needs action" }));
+    expect(screen.queryByLabelText("Update 2")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByLabelText("Update 2")).toBeOnTheScreen();
   });
 
   it("Mark all read marks the whole inbox", async () => {
@@ -154,5 +171,16 @@ describe("Profile (mobile)", () => {
     await renderWithClient(<ProfileScreen />);
     expect(await screen.findByText("Expired")).toBeOnTheScreen();
     expect(screen.getByText("India · Accredited investor")).toBeOnTheScreen();
+  });
+});
+
+describe("Appearance (mobile)", () => {
+  it("switches between system, light and dark and remembers the choice on the device", async () => {
+    const AsyncStorage = require("@react-native-async-storage/async-storage");
+    await renderWithClient(<ThemeProvider><AppearanceSection /></ThemeProvider>);
+    expect(screen.getByRole("radio", { name: "System" })).toBeChecked();
+    await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
+    expect(screen.getByRole("radio", { name: "Dark" })).toBeChecked();
+    await waitFor(() => expect(AsyncStorage.setItem).toHaveBeenCalledWith("bx_theme", "dark"));
   });
 });

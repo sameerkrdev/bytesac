@@ -1,6 +1,6 @@
 "use client";
 
-import { HEADLINE_LABEL } from "@repo/app-core";
+import { HEADLINE_HELP, HEADLINE_LABEL, portfolioAllocation, positionValue, usd } from "@repo/app-core";
 import type { Headline, Portfolio } from "@repo/validator";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Clock, GitCompareArrows, Pencil, Scale } from "lucide-react";
 import Link from "next/link";
@@ -13,24 +13,7 @@ import { cn } from "@/lib/utils";
 
 type Position = Portfolio["positions"][number];
 
-/** USD value of a position from its priced holdings plus basket cash; null when any holding has no price. */
-export function positionValue(p: Position): number | null {
-  if (p.holdings.some((h) => h.valueUsd === null)) return null;
-  return p.holdings.reduce((s, h) => s + Number(h.valueUsd), 0) + Number(p.cashMicro) / 1e6;
-}
-
-export const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-/** Plain-language cause for each headline, shown before any action (brief §21–22: explain, don't alarm). */
-export const HEADLINE_HELP: Record<Headline, string> = {
-  EXECUTION_PENDING: "An operation for this basket is still running. Finish or follow it before starting anything else.",
-  REPAIR_REQUIRED: "Your wallet holds less of an asset than Bytesac recorded for your baskets — usually because it was moved or sold outside Bytesac.",
-  EXECUTION_INCOMPLETE: "Your last plan stopped part-way. Some steps settled; the rest are waiting for you.",
-  REBALANCE_AVAILABLE: "The manager published a new version. Nothing has changed in your wallet — review it, then participate or skip.",
-  DRIFTED: "Prices moved your weights outside the basket’s bands. You can rebalance to the target or keep your allocation.",
-  CUSTOMIZED: "You chose to keep a custom allocation. Bytesac won’t suggest rebalancing until you revert.",
-  ALIGNED: "Your holdings match the strategy’s target within its bands.",
-};
+export { HEADLINE_HELP, positionValue, usd };
 
 const ICON: Record<Headline, typeof Clock> = {
   EXECUTION_PENDING: Clock, REPAIR_REQUIRED: AlertTriangle, EXECUTION_INCOMPLETE: AlertTriangle, REBALANCE_AVAILABLE: GitCompareArrows, DRIFTED: Scale, CUSTOMIZED: Pencil, ALIGNED: CheckCircle2,
@@ -43,20 +26,7 @@ export function HeadlineBadge({ headline }: { headline: Headline }) {
 /** Total value, allocation by asset across every open position, and the networks involved. */
 export function PortfolioSummary({ portfolio, compact = false }: { portfolio: Portfolio; compact?: boolean }) {
   const open = portfolio.positions;
-  const values = open.map(positionValue);
-  const total = values.every((v) => v !== null) ? values.reduce<number>((s, v) => s + (v ?? 0), 0) : null;
-  const bySymbol = new Map<string, number>();
-  const chains = new Set<string>();
-  for (const p of open) for (const h of p.holdings) {
-    chains.add(h.chain);
-    if (h.valueUsd !== null) bySymbol.set(h.symbol, (bySymbol.get(h.symbol) ?? 0) + Number(h.valueUsd));
-  }
-  const sum = [...bySymbol.values()].reduce((s, v) => s + v, 0) || 1;
-  const slices = [...bySymbol].sort((a, b) => b[1] - a[1]).map(([symbol, v]) => ({ key: symbol, label: symbol, bps: Math.round((v / sum) * 10_000) }));
-  const top = slices.slice(0, 5);
-  const rest = slices.slice(5).reduce((s, x) => s + x.bps, 0);
-  const legend = rest > 0 ? [...top, { key: "other", label: "Other", bps: rest }] : top;
-  const attention = open.filter((p) => p.headline !== "ALIGNED").length;
+  const { total, slices, legend, chains, attention } = portfolioAllocation(portfolio);
 
   return (
     <section aria-label="Portfolio summary" className={cn("grid gap-8 rounded-shell border border-line bg-surface p-6 sm:p-8", !compact && "lg:grid-cols-[minmax(0,1fr)_auto_18rem] lg:items-center")}>
@@ -74,7 +44,7 @@ export function PortfolioSummary({ portfolio, compact = false }: { portfolio: Po
       </div>
       {!compact && slices.length > 0 && (
         <AllocationRing slices={legend} size={176} thickness={14} className="mx-auto" label={`Portfolio by asset: ${legend.map((s) => `${s.label} ${(s.bps / 100).toFixed(0)}%`).join(", ")}`}>
-          <div><p className="type-figure text-2xl text-ink">{bySymbol.size}</p><p className="text-[0.6875rem] text-ink-muted">assets</p></div>
+          <div><p className="type-figure text-2xl text-ink">{slices.length}</p><p className="text-[0.6875rem] text-ink-muted">assets</p></div>
         </AllocationRing>
       )}
       {!compact && slices.length > 0 && (

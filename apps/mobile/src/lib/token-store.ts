@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const KEY = "bytesac.session";
 let cache: string | null | undefined;
@@ -10,8 +11,23 @@ export function __resetTokenCache(): void {
   generation++;
 }
 
+/**
+ * QA only: the Expo web build used for screenshots sets EXPO_PUBLIC_MOCK_SESSION=1 and passes `?as=investor|manager|new`;
+ * the token becomes `mock-<persona>`, which only the local mock API accepts. Never set in real builds.
+ */
+const mockSession = (): string | null => {
+  if (process.env.EXPO_PUBLIC_MOCK_SESSION !== "1" || Platform.OS !== "web" || typeof window === "undefined") return null;
+  // Kept for the tab session so redirects (which drop the query) keep the persona.
+  const fromUrl = new URLSearchParams(window.location.search).get("as");
+  if (fromUrl) window.sessionStorage.setItem("bx_mock_as", fromUrl);
+  const as = fromUrl ?? window.sessionStorage.getItem("bx_mock_as");
+  return as && /^(investor|manager|ops|new)$/.test(as) ? `mock-${as}` : null;
+};
+
 export const tokenStore = {
   async get(): Promise<string | null> {
+    const mock = mockSession();
+    if (mock) return mock;
     if (cache !== undefined) return cache;
     const started = generation;
     let loaded: string | null;

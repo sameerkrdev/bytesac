@@ -43,6 +43,20 @@ describe("Invest wizard (mobile)", () => {
     expect(mockApi.investPlan).not.toHaveBeenCalled();
   });
 
+  it("quick amounts and slippage presets feed the plan request", async () => {
+    await wizard();
+    await fireEvent.press(screen.getByRole("button", { name: "100 USDC" }));
+    await fireEvent.press(screen.getByRole("button", { name: "0.5%" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Get preview" }));
+    await waitFor(() => expect(mockApi.investPlan).toHaveBeenCalledWith(expect.objectContaining({ amountUsdc: "100", slippageBps: 50 })));
+  });
+
+  it("shows the target split of a valid amount", async () => {
+    await renderWithClient(<InvestWizard basketId={id(2)} name="Alpha Basket" minimumUsdc="50" incrementUsdc="10" assets={[{ instrumentId: id(41), symbol: "SOL", name: "Solana", bps: 6000, logoUrl: null }, { instrumentId: id(42), symbol: "ETH", name: "Ether", bps: 4000, logoUrl: null }]} />);
+    expect(screen.getByText("≈ 30.00 USDC")).toBeOnTheScreen();
+    expect(screen.getByText("≈ 20.00 USDC")).toBeOnTheScreen();
+  });
+
   it("previews fees, route fees, minimum out and price impact from the server before any wallet prompt", async () => {
     await wizard();
     await fireEvent.press(screen.getByRole("button", { name: "Get preview" }));

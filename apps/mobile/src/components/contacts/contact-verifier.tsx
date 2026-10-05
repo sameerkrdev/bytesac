@@ -90,7 +90,7 @@ export function ContactVerifier({ type, existing, onVerified, onChanged, client 
       ) : (
         <Button disabled={value.trim().length < 3} loading={pending} onPress={() => void send()}>Send code</Button>
       )}
-      {!contact && <AppText variant="label" tone="stone">Required later before investing.</AppText>}
+      {!contact && <AppText variant="label" tone="faint">Required later before investing.</AppText>}
     </View>
   );
 }

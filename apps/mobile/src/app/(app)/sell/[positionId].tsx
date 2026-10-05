@@ -1,14 +1,15 @@
+import { positionValue, usd } from "@repo/app-core";
 import { SLIPPAGE_DEFAULT_BPS, type OperationView } from "@repo/validator";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { DeclarationForm } from "@/components/eligibility/declaration-form";
 import { PlanFlow } from "@/components/operation/plan-flow";
 import { ErrorState, ErrorText, LoadingState } from "@/components/states/states";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
+import { AssetStack } from "@/components/ui/asset-mark";
 import { Screen } from "@/components/ui/screen";
 import { TextField } from "@/components/ui/text-field";
 import { api } from "@/lib/api";
@@ -30,22 +31,44 @@ export default function SellScreen() {
   const preview = useMutation({ mutationFn: () => api.sellPlan({ positionId, percent: n, slippageBps: SLIPPAGE_DEFAULT_BPS, idempotencyKey: key }), onSuccess: setPlan });
   const change = (v: string) => { setPercent(v.trim()); setKey(newKey()); };
 
-  if (portfolio.isPending) return <Screen><LoadingState /></Screen>;
-  if (!position) return <Screen><ErrorState error={portfolio.error ?? new Error("not found")} onRetry={() => void portfolio.refetch()} /></Screen>;
+  if (portfolio.isPending) return <Screen edges={["left", "right"]}><LoadingState /></Screen>;
+  if (!position) return <Screen edges={["left", "right"]}><ErrorState error={portfolio.error ?? new Error("not found")} onRetry={() => void portfolio.refetch()} /></Screen>;
   const label = position.status === "OPEN" ? "Sell to USDC" : "Sell former assets";
+  const value = positionValue(position);
   return (
-    <Screen>
-      <AppText variant="h2" accessibilityRole="header">{label}</AppText>
-      <AppText tone="stone">{position.basketName}. Each asset is sold back to USDC on Solana in your own wallets. You sign every step. Never more than your wallet holds is sold.</AppText>
+    <Screen edges={["left", "right"]} eyebrow={position.basketName} title={label}
+      description="Each asset is sold back to USDC on Solana in your own wallets. You sign every step. Never more than your wallet holds is sold.">
       {plan ? (
         <PlanFlow plan={plan} onDiscarded={() => setPlan(null)}
-          extra={<AppText variant="label" tone="stone">{plan.legs[0]?.kind === "network_fee" ? "Fees are paid first from the USDC already in your wallet." : "Fees are taken from your proceeds."}</AppText>}
+          extra={<AppText variant="label" tone="faint">{plan.legs[0]?.kind === "network_fee" ? "Fees are paid first from the USDC already in your wallet." : "Fees are taken from your proceeds."}</AppText>}
           note={`Outputs are estimates, protected by a minimum per step (${SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.`} />
       ) : (
-        <View className="gap-4">
-          <View className="flex-row flex-wrap gap-2">{PRESETS.map((v) => <Chip key={v} label={`${v}%`} selected={percent === String(v)} onPress={() => change(String(v))} />)}</View>
-          <TextField label="Percent to sell" value={percent} keyboardType="number-pad" error={valid ? null : "Enter a whole number from 1 to 100."} onChangeText={change} />
-          <Button disabled={!valid} loading={preview.isPending} onPress={() => preview.mutate()}>Get preview</Button>
+        <View className="gap-6">
+          <View className="gap-4 rounded-card border border-line bg-surface p-5">
+            <View className="flex-row items-center justify-between gap-3">
+              <AssetStack symbols={position.holdings.map((h) => h.symbol)} size={30} max={4} />
+              {value !== null && valid ? (
+                <View className="items-end gap-0.5">
+                  <AppText variant="micro" tone="faint">About, at current prices</AppText>
+                  <AppText variant="heading">{usd((value * n) / 100)}</AppText>
+                </View>
+              ) : null}
+            </View>
+            <View accessibilityRole="radiogroup" className="flex-row gap-2">
+              {PRESETS.map((v) => {
+                const on = percent === String(v);
+                return (
+                  <Pressable key={v} accessibilityRole="button" accessibilityLabel={`${v}%`} accessibilityState={{ selected: on }} onPress={() => change(String(v))}
+                    className={`min-h-14 flex-1 items-center justify-center rounded-tile border ${on ? "border-primary bg-primary" : "border-line bg-surface-muted"}`}>
+                    <AppText variant="heading" tone={on ? "primaryInk" : "ink"}>{`${v}%`}</AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <TextField label="Percent to sell" value={percent} keyboardType="number-pad" error={valid ? null : "Enter a whole number from 1 to 100."} onChangeText={change} />
+          </View>
+          <Button size="lg" disabled={!valid} loading={preview.isPending} onPress={() => preview.mutate()}>Get preview</Button>
+          <AppText variant="micro" tone="faint" className="text-center">The preview lists every sale, the minimum you receive and the fees. Nothing is sold until you sign.</AppText>
         </View>
       )}
       {isDeclarationRequired(preview.error) && <DeclarationForm onSaved={() => preview.mutate()} />}
@@ -53,3 +76,4 @@ export default function SellScreen() {
     </Screen>
   );
 }
+
