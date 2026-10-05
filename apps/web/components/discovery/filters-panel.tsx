@@ -107,7 +107,7 @@ export function FiltersPanel({ filters }: { filters: DiscoveryFilters }) {
   };
 
   return (
-    <aside aria-label="Filters" className="space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:pr-2 [scrollbar-width:thin]">
+    <aside aria-label="Filters" className="space-y-4 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:pr-2 scroll-quiet">
       <Button type="button" variant="secondary" className="lg:hidden" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(!open)}><SlidersHorizontal aria-hidden />Filters</Button>
       <form id={`${id}-body`} className={`${open ? "block" : "hidden"} space-y-1 lg:block`} onSubmit={(e) => { e.preventDefault(); apply(); }}>
         <div className="space-y-1.5 pb-4">
