@@ -51,7 +51,7 @@ export const publicBasket = (over: Record<string, unknown> = {}) => ({
   disclosures: [{ title: "Not advice", body: "This is not investment advice." }],
   versionHistory: [{ versionNumber: 2, publishedAt: "2026-09-20T00:00:00.000Z", rationale: "Added SOL", diff: { added: [{ instrumentId: ID(41), weightBps: 5000 }], removed: [], changed: [], bandChanged: [], constraints: false, rebalance: false, fees: false, minimums: false } }],
   managers: [{ displayName: "Jane Doe", handle: null, role: "lead", from: "2026-09-01T00:00:00.000Z", to: null }],
-  sectors: [], tags: [], label: PERFORMANCE_LABEL,
+  sectors: [], tags: [], files: [], label: PERFORMANCE_LABEL,
   performance: { available: true, dataDays: 2, series: [{ day: "2026-09-19", net: "100", gross: "100" }, { day: "2026-09-20", net: "101.5", gross: "102" }] },
   metrics: { available: true, dataDays: 2, net: { sinceLaunch: "0.015", d30: null, d90: null, y1: null }, gross: { sinceLaunch: "0.02", d30: null, d90: null, y1: null }, volatility: null, maxDrawdown: null },
   ...over,

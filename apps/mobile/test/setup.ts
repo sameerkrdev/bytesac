@@ -20,3 +20,13 @@ jest.mock(
 jest.mock("expo-clipboard", () => ({ setStringAsync: jest.fn() }));
 jest.mock("@react-native-async-storage/async-storage", () => require("@react-native-async-storage/async-storage/jest/async-storage-mock"));
 jest.mock("expo-haptics", () => ({ impactAsync: jest.fn(async () => undefined), selectionAsync: jest.fn(async () => undefined), notificationAsync: jest.fn(async () => undefined), ImpactFeedbackStyle: { Light: "light", Medium: "medium" }, NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" } }));
+// Reanimated 4 needs the worklets native module (absent in jest), so a tiny stand-in covers what the sky's cloud drift uses.
+jest.mock("react-native-reanimated", () => {
+  const { View } = require("react-native");
+  const id = (v: unknown) => v;
+  return {
+    __esModule: true, default: { View }, Easing: { linear: id, inOut: () => id, ease: id },
+    useSharedValue: (v: unknown) => ({ value: v }), useAnimatedStyle: (f: () => unknown) => f(), useReducedMotion: () => true,
+    withRepeat: id, withTiming: id, cancelAnimation: () => undefined,
+  };
+});

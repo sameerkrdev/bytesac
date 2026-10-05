@@ -23,7 +23,7 @@ export default function AppLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="basket/[slug]" options={{ title: "", headerTransparent: true }} />
+      <Stack.Screen name="basket/[slug]" options={{ title: "", headerTransparent: true, headerStyle: { backgroundColor: "transparent" } }} />
       <Stack.Screen name="position/[id]" options={{ title: "" }} />
       <Stack.Screen name="activity" options={{ title: "" }} />
       <Stack.Screen name="invest/[slug]" options={{ title: "Invest" }} />

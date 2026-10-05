@@ -39,9 +39,11 @@ export function Screen({ children, scroll = true, refreshControl, eyebrow, title
 /** A sticky bottom action area (invest, sign, review) above the home indicator. */
 export function StickyFooter({ children }: { children: ReactNode }) {
   return (
-    <SafeAreaView edges={["bottom"]} className="border-t border-line bg-canvas px-5 pt-3 pb-2">
-      <View className="gap-2">{children}</View>
-    </SafeAreaView>
+    <View className="border-t border-line bg-canvas">
+      <SafeAreaView edges={["bottom"]}>
+        <View className="gap-2 px-5 pt-3 pb-2">{children}</View>
+      </SafeAreaView>
+    </View>
   );
 }
 
