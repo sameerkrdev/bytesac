@@ -186,6 +186,8 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 
 - [ ] Mobile push (ADR-020): run `eas init` and upload the FCM v1 and APNs keys to EAS before a build can receive push; push receipts are not polled (only `DeviceNotRegistered` at send time revokes a token); no app-icon badge; Expo is a new processor of notification titles and bodies (list it in the privacy notice); verify on device: permission prompt, each kind, tap from a cold start.
 
+- [ ] Logo (2026-10-06): the wordmark outlines have no kerning applied (Geist kerning pairs are not read); review the tight pairs (By, ty) at large sizes. Register the mark with the app stores and update any third-party profiles (WalletConnect metadata now points to the square `logo.png`).
+
 ## 8. Open decisions in the register
 
 - [ ] D-025 eligibility rule values and D-026 issuer routes: the engine and secondary-market tokens are decided (ADR-018); legal policy values and issuer subscription/redemption remain open.

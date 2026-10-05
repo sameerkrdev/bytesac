@@ -2,7 +2,7 @@ import { Image } from "expo-image";
 import { Wallet } from "lucide-react-native";
 import { useState } from "react";
 import { type NativeScrollEvent, type NativeSyntheticEvent, ScrollView, useWindowDimensions, View } from "react-native";
-import { Logo } from "@/components/brand/logo";
+import { FullLogo } from "@/components/brand/logo";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Sky } from "@/components/ui/sky";
@@ -39,8 +39,8 @@ export function WelcomeCard({ expired, onConnect }: { expired: boolean; onConnec
       <Sky height={height * 0.46} />
       {/* Above the absolutely positioned sky (on web it would otherwise paint over in-flow content). */}
       <View className="flex-1" style={{ zIndex: 1 }}>
-      <View className="flex-row items-center gap-2 px-5 pt-14">
-        <View className="rounded-control bg-white p-1"><Logo size={24} /></View>
+      <View className="gap-3 px-5 pt-14">
+        <FullLogo size={26} />
         <AppText variant="heading" accessibilityRole="header">Welcome to Bytesac</AppText>
       </View>
       <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onScroll} onScroll={onScroll} scrollEventThrottle={64} className="flex-1"

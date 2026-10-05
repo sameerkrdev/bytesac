@@ -150,3 +150,5 @@ export const radii = { sm: 8, md: 12, lg: 16, xl: 20, "2xl": 24, pill: 999 } as 
 
 /** @deprecated web: use `fontFamily`. Mobile only. */
 export const fonts = { display: "Manrope", body: "Inter" } as const;
+
+export { brandAspect, brandMark, brandWordmark } from "./brand";
