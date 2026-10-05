@@ -14,7 +14,8 @@ Related: root [`README.md`](../../README.md) (local setup), [`apps/api/README.md
 |---|---|
 | Product specs 1–15 | Implemented on `main` |
 | Production / staging deploy | Not done |
-| Docker images for API, worker, web | Not in the repo (local Compose only starts Postgres + Redis) |
+| Docker images for API, worker, web | `apps/api/Dockerfile` (API, worker, `migrate` tools target), `apps/web/Dockerfile` (Next.js standalone). Built and smoke-tested locally on 2026-10-06; not yet run on a host. See §8.1 |
+| Single-VM pilot stack | `deploy/docker-compose.yml` + `deploy/Caddyfile` (Caddy HTTPS, web, API, worker, Redis); runbook [`DEPLOY-SINGLE-VM.md`](DEPLOY-SINGLE-VM.md) |
 | GitHub Actions CI/CD | Not in the repo |
 | Hosting vendors | **Not chosen.** Postgres is specified as Supabase (ADR-005 / ADR-006). Object storage is Cloudflare R2. Mobile builds are EAS. API, worker, web, and Redis are still open. |
 
@@ -201,7 +202,19 @@ node dist/server.js        # from apps/api, with env loaded by the host
 node dist/worker.js
 ```
 
-Use the host’s secret store / env injection. Do not copy `.env` files into images.
+Use the host’s secret store / env injection. Do not copy `.env` files into images (`.dockerignore` excludes them).
+
+### 8.1 Docker images
+
+Both Dockerfiles build from the **repository root** and use `turbo prune` (bundled turbo docs: `guides/tools/docker.mdx`) so an image only depends on its own workspace graph.
+
+| Image | Command | Contents |
+|---|---|---|
+| API and worker | `docker build -f apps/api/Dockerfile -t bytesac-api .` | Node 24 (Debian slim), `dist/` from tsup, production `node_modules` installed with pnpm's hoisted linker (the bundle keeps npm dependencies external, so they must be resolvable from `dist/`). Runs as `node` under `tini`; `HEALTHCHECK` calls `/health`. Default command `node dist/server.js`; the worker is the same image with `node dist/worker.js` (disable the healthcheck for it). |
+| Tools | `docker build -f apps/api/Dockerfile --target migrate -t bytesac-migrate .` | Full workspace with dev dependencies: default command `pnpm db:migrate` (needs `MIGRATOR_DATABASE_URL`); also runs the ops CLI (`pnpm ops:*` from `apps/api`). Never serve traffic from it. |
+| Web | `docker build -f apps/web/Dockerfile -t bytesac-web --build-arg API_ORIGIN=... --build-arg NEXT_PUBLIC_APP_URL=... --build-arg NEXT_PUBLIC_REOWN_PROJECT_ID=... .` | Next.js `output: "standalone"` (enabled only when `NEXT_OUTPUT=standalone`, which the Dockerfile sets), static assets and `public/`. `API_ORIGIN` is set at build time (rewrite) **and** at run time (server components fetch the API per request). Runs as `node` under `tini` on port 3000. |
+
+Verified locally (2026-10-06, linux/amd64): all three images build; the API answers `/health` with database and Redis OK and serves a database-backed endpoint; the worker starts; both stop with exit 0 on SIGTERM; the tools image applies all migrations to an empty PostgreSQL 17; the web image serves its pages and the `/api/*` rewrite on a shared Docker network. Sizes: API about 770 MB, web about 430 MB, tools about 1.4 GB.
 
 ### Worker jobs
 
@@ -416,10 +429,8 @@ Copy of the operational subset; the full list is [`OPEN-ITEMS.md`](../OPEN-ITEMS
 
 ## 17. What this file does not cover yet
 
-Spec 16 is expected to add, after an explicit hosting decision:
+Spec 16 is expected to add, after an explicit hosting decision (the Dockerfiles and the single-VM compose stack now exist, §8.1):
 
-- Multi-stage Dockerfiles for API, worker, and optionally web (non-root, healthchecks).
-- Compose for a production-like local stack (not only Postgres + Redis).
 - GitHub Actions on Linux: lint, `check-types`, test with service containers, build, migrate, image publish.
 - Environment names (dev / staging / production), domains, and CD gates (`main` → staging, tags → production, manual approval).
 - `docs/engineering/LAUNCH-GUIDE.md` (account-by-account click-path).

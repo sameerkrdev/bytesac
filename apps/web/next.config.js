@@ -1,4 +1,6 @@
 /* global process */
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:4000";
 
@@ -17,6 +19,9 @@ const csp = [
 ].join("; ");
 
 const nextConfig = {
+  // Docker images build with NEXT_OUTPUT=standalone (apps/web/Dockerfile): a self-contained server traced from the
+  // monorepo root. Unset keeps the default output for `next start` and Vercel.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone", outputFileTracingRoot: fileURLToPath(new URL("../..", import.meta.url)) } : {}),
   // @coinbase/cdp-sdk (transitive of Reown) lazily imports optional @x402/* peers we never use.
   serverExternalPackages: ["@coinbase/cdp-sdk"],
   async rewrites() {
