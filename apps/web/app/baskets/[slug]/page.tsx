@@ -7,6 +7,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound, permanentRedirect } from "next/navigation";
 import { BasketView } from "@/components/baskets/basket-view";
+import { FileList } from "@/components/baskets/basket-files";
 import { BASKET_SECTIONS } from "@/components/baskets/sections";
 import { PerformanceChart } from "@/components/baskets/performance-chart";
 import { DiffSummary } from "@/components/baskets/version-history";
@@ -36,8 +37,8 @@ function headline(m: PublicBasketDetail["metrics"]): { label: string; value: str
   return { label: "Performance", value: "New", negative: false };
 }
 
-function Index() {
-  const items = [{ id: "performance", label: "Performance" }, ...BASKET_SECTIONS, { id: "history", label: "Version history" }, { id: "team", label: "Managers" }];
+function Index({ files }: { files: boolean }) {
+  const items = [{ id: "performance", label: "Performance" }, ...BASKET_SECTIONS, ...(files ? [{ id: "documents", label: "Documents" }] : []), { id: "history", label: "Version history" }, { id: "team", label: "Managers" }];
   return (
     <nav aria-label="On this page" className="hidden lg:block">
       <p className="type-eyebrow text-ink-faint">On this page</p>
@@ -131,6 +132,17 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
             </section>
           )}
 
+          {b.files.length > 0 && (
+            <section id="documents" aria-labelledby="documents-title" className="scroll-mt-28 space-y-6 border-t border-line pt-10">
+              <div className="space-y-2">
+                <p className="type-eyebrow text-ink-faint">From the managers · version {b.version.versionNumber}</p>
+                <h2 id="documents-title" className="type-heading text-ink">Documents</h2>
+                <p className="max-w-2xl text-sm text-ink-muted">Files published with this version and reviewed with it. They are the organization&apos;s own material, not advice from Bytesac.</p>
+              </div>
+              <FileList files={b.files} />
+            </section>
+          )}
+
           <section id="history" aria-label="Version history" className="scroll-mt-28 space-y-6 border-t border-line pt-10">
             <div className="space-y-2">
               <p className="type-eyebrow text-ink-faint">Published versions never change</p>
@@ -188,7 +200,7 @@ export default async function PublicBasketPage({ params }: { params: Promise<{ s
                 <li className="flex gap-2.5"><PenLine aria-hidden className="size-4 shrink-0 text-ink-faint" />You review the full plan and sign each step.</li>
               </ul>
             </div>
-            <Index />
+            <Index files={b.files.length > 0} />
           </div>
         </aside>
       </div>

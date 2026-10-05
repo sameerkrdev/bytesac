@@ -20,6 +20,56 @@
         "mock-api"
       ],
       "port": 4000
+    },
+    {
+      "name": "web-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "exec",
+        "next",
+        "dev",
+        "--port",
+        "3100"
+      ],
+      "env": {
+        "API_ORIGIN": "http://localhost:4100"
+      },
+      "port": 3100
+    },
+    {
+      "name": "mock-api-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "mock-api"
+      ],
+      "env": {
+        "MOCK_API_PORT": "4100"
+      },
+      "port": 4100
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "mobile",
+        "exec",
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8091"
+      ],
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:4100",
+        "EXPO_PUBLIC_MOCK_SESSION": "1",
+        "BROWSER": "none"
+      },
+      "port": 8091
     }
   ]
 }

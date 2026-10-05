@@ -53,7 +53,7 @@ One line per decision. Detail lives in the linked ADR; decisions without an ADR 
 | D-045 | Requirement templates | Required fields and documents per organization type come from a seeded template table (most specific type and jurisdiction wins), with no editor UI. | APPROVED | ADR-008 |
 | D-046 | Profile versioning | Organization content is versioned as a whole; approval switches the public version and the public profile never shows pending content. | APPROVED | ADR-008 |
 | D-047 | Document safety | PDF/JPEG/PNG up to 10 MB with declared type and size re-checked on confirm, stored `not_scanned`, ops-only attachment downloads, soft-unlinked. | APPROVED | ADR-008 |
-| D-048 | Permission matrix | One fixed `ROLE_PERMISSIONS` matrix in `@repo/validator`, enforced server-side on every organization route. | APPROVED | ADR-009 |
+| D-048 | Permission matrix | One fixed `ROLE_PERMISSIONS` matrix in `@repo/validator` for the built-in roles, enforced server-side on every organization route; custom roles narrow or extend it within D-114. | APPROVED | ADR-009, ADR-019 |
 | D-049 | Member verification | `ADMIN` and `MANAGER` become `ACTIVE` only after ops approve their own verification; `ANALYST` and `VIEWER` need wallet proof and acceptance only. | APPROVED | ADR-009 |
 | D-050 | Ownership transfer | Ops-only, to an active member with an approved verification; the old owner becomes `ADMIN`; exactly one active `OWNER` is enforced by an index. | APPROVED | ADR-009 |
 | D-051 | Public team | Opt-in public name and title with role and dates on a verified organization's profile; wallets, emails and ids are never shown. | APPROVED | ADR-009 |
@@ -119,6 +119,11 @@ One line per decision. Detail lives in the linked ADR; decisions without an ADR 
 | D-111 | Non-investable held assets | A rebalance needs investability only for assets it buys, and ops get a daily alert when an instrument becomes non-investable. | APPROVED | ADR-015, ADR-018 |
 | D-112 | Revenue bucketing | Revenue reconciliation buckets by chain settlement time. | APPROVED | ADR-016 |
 | D-113 | Draft revision lock | Basket drafts carry an integer `revision` and a stale `expectedRevision` is 409 `VERSION_CONFLICT`. | APPROVED | ADR-011 |
+| D-114 | Custom roles | Organizations may define roles on a built-in base role: write permissions only from the base, read grants (analytics, earnings) addable, owner-only permissions never; applied only while the base matches; owner defines, members.manage assigns. | IMPLEMENTED | ADR-019 |
+| D-115 | Uploaded files | Logos and basket files use presign, server-side byte checks and signed reads; logos (PNG/JPEG/WebP) are set by ops, registry logo first then a vendored CC0 icon pack. | IMPLEMENTED | ADR-019 |
+| D-116 | Basket files | PDF files attach to the open basket version, freeze at submit, carry to the next draft, count in the content hash and show on the public page for the published version. | IMPLEMENTED | ADR-019 |
+| D-117 | Discovery rails | Featured is ops-ranked (active baskets); Trending is distinct new investors in 30 days, at least 5, counts never shown; Suggested uses the user's held categories. | IMPLEMENTED | ADR-019 |
+| D-118 | Mobile push | Mobile push goes through the Expo push service with the inbox title and body, opt-in per device; `push_tokens` gains platform and provider (supersedes "mobile push is deferred" in D-083). | IMPLEMENTED | ADR-020 |
 
 ## How to update
 When a decision is explicitly locked, set its status and put the detail in an ADR for consequential architecture decisions; keep the register line to one sentence.

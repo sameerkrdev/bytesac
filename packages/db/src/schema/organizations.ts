@@ -55,6 +55,11 @@ export const organizationMemberships = app.table(
     removalRequestedByUserId: uuid("removal_requested_by_user_id").references(() => users.id),
     publicDisplayName: text("public_display_name"),
     publicTitle: text("public_title"),
+    /**
+     * An organization-defined role (ADR-019). It applies only while its base role equals `role` and it is not archived;
+     * otherwise the built-in permissions of `role` apply. OWNER never has one.
+     */
+    customRoleId: uuid("custom_role_id").references((): AnyPgColumn => organizationRoles.id),
     /** First time the membership became ACTIVE. */
     activatedAt: ts("activated_at"),
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id),
@@ -69,6 +74,32 @@ export const organizationMemberships = app.table(
     index("organization_memberships_user_idx").on(t.userId),
     index("organization_memberships_wallet_idx").on(t.invitedWalletFamily, t.invitedWalletAddress),
     check("organization_memberships_user_or_pending", sql`${t.userId} is not null or ${t.status} in ('PENDING_WALLET_VERIFICATION', 'REVOKED')`),
+  ],
+);
+
+/**
+ * Custom roles (ADR-019): a named permission set on top of a built-in base role. Write permissions come only from the
+ * base role (so verification still gates them); read-only grants may be added; owner-only permissions are never part of
+ * one. Archived roles stop applying; rows are never deleted.
+ */
+export const organizationRoles = app.table(
+  "organization_roles",
+  {
+    id: id(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    baseRole: membershipRole("base_role").notNull(),
+    permissions: text("permissions").array().notNull(),
+    createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+    archivedAt: ts("archived_at"),
+  },
+  (t) => [
+    uniqueIndex("organization_roles_live_name").on(t.organizationId, sql`lower(${t.name})`).where(sql`${t.archivedAt} is null`),
+    check("organization_roles_not_owner", sql`${t.baseRole} <> 'OWNER'`),
+    check("organization_roles_name", sql`length(${t.name}) between 2 and 40`),
   ],
 );
 

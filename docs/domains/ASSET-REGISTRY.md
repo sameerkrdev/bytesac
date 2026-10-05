@@ -18,6 +18,8 @@ Keep price references and eligibility policies associated with the appropriate i
 - Platform review controls approval and route activation.
 - Managers select approved registry instruments, not arbitrary addresses.
 
+**Logos (ADR-019, D-115).** Ops reviewers may upload a logo (PNG, JPEG or WebP, up to 512 KB, never SVG) for an instrument in any status; it is presentation only and audited. Clients show the uploaded logo first, then the vendored CC0 icon for the ticker, then a monogram.
+
 ## Eligibility and routing
 Evaluate eligibility in context: user, instrument, provider, route, jurisdiction and action. A direct subscription, secondary-market purchase, transfer, redemption and cross-chain movement may have different requirements. Re-check before execution.
 

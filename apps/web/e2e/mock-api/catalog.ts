@@ -155,6 +155,10 @@ function diffOf(prev: [string, number][] | undefined, next: [string, number][]):
 
 const RWA = new Set(["TOKENIZED_TREASURY", "TOKENIZED_COMMODITY", "TOKENIZED_PRIVATE_CREDIT"]);
 
+/** Fixture-only annualised volatility per asset type, so baskets differ plausibly (not market data). */
+const TYPE_VOL: Record<string, number> = { CRYPTO: 0.62, STABLECOIN: 0.01, TOKENIZED_TREASURY: 0.02, TOKENIZED_COMMODITY: 0.15, TOKENIZED_PRIVATE_CREDIT: 0.04 };
+const volatilityOf = (seed: BasketSeed) => (seed.weights.reduce((s, [k, bps]) => s + (TYPE_VOL[ASSETS[k]!.type] ?? 0.5) * bps, 0) / 10_000).toFixed(6);
+
 export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketDetail {
   const pts = series(seed.days, seed.seed, seed.drift1y);
   const perStep = Math.max(1, Math.ceil(seed.days / 380));
@@ -179,7 +183,7 @@ export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketD
     allocation: seed.weights.map(([k, w]) => {
       const a = ASSETS[k]!;
       return { instrumentId: a.id, name: a.name, symbol: a.symbol, assetType: a.type, chains: a.chains, targetWeightBps: w, minWeightBps: Math.max(0, w - seed.drift), maxWeightBps: Math.min(10_000, w + seed.drift),
-        prices: [{ instrumentId: a.id, kind: "market" as const, status: "ok" as const, value: a.price, currency: "USD", source: "coinmarketcap", observedAt: "2026-10-03T23:58:00.000Z", stale: false }] };
+        prices: [{ instrumentId: a.id, kind: "market" as const, status: "ok" as const, value: a.price, currency: "USD", source: "coinmarketcap", observedAt: "2026-10-03T23:58:00.000Z", stale: false }], logoUrl: null };
     }),
     platformFee: [{ operationKind: "invest", bps: 0, minUsdc: null, maxUsdc: null }, { operationKind: "rebalance_apply", bps: 0, minUsdc: null, maxUsdc: null }],
     disclosures: [
@@ -197,11 +201,15 @@ export function basketDetail(seed: BasketSeed, signedIn: boolean): PublicBasketD
       available, dataDays: seed.days,
       net: { sinceLaunch: available ? ret(pts, pts.length - 1) : null, d30: available ? ret(pts, Math.ceil(30 / perStep)) : null, d90: seed.days >= 90 ? ret(pts, Math.ceil(90 / perStep)) : null, y1: seed.days >= 365 ? ret(pts, Math.ceil(365 / perStep)) : null },
       gross: { sinceLaunch: available ? frac(Number(pts.at(-1)!.gross) - 1) : null, d30: null, d90: null, y1: null },
-      volatility: available ? "0.482000" : null, maxDrawdown: available ? "-0.231000" : null,
+      volatility: available ? volatilityOf(seed) : null, maxDrawdown: available ? "-0.231000" : null,
     },
     sectors: [...sectors].map(([sector, bps]) => ({ sector, bps })),
     tags: seed.tags.map(([key, label]) => ({ key, label })),
     label: PERFORMANCE_LABEL,
+    files: seed.slug === "core-crypto-index" ? [
+      { id: "0192f1c2-7a4b-7c3d-8e9f-00000000f001", kind: "thesis" as const, title: "Investment thesis, Q3 2026", fileName: "core-crypto-thesis-q3.pdf", contentType: "application/pdf", sizeBytes: 1_284_000, url: "https://example.com/files/core-crypto-thesis-q3.pdf", addedAt: "2026-09-20T09:00:00.000Z" },
+      { id: "0192f1c2-7a4b-7c3d-8e9f-00000000f002", kind: "methodology" as const, title: "Index methodology", fileName: "methodology-v3.pdf", contentType: "application/pdf", sizeBytes: 412_000, url: "https://example.com/files/methodology-v3.pdf", addedAt: "2026-09-20T09:00:00.000Z" },
+    ] : [],
   };
 }
 
@@ -212,7 +220,7 @@ export function searchItem(seed: BasketSeed): DiscoverySearchItem {
   return {
     slug: seed.slug, name: seed.name, shortDescription: seed.short, organizationName: ORGS[seed.org].displayName, category: seed.category, status: "ACTIVE",
     topAssets: seed.weights.map(([k, bps]) => ({ symbol: ASSETS[k]!.symbol, bps })), minimumInvestmentUsdc: seed.minimum, managementFeeBps: seed.mgmtBps,
-    netReturn1y: d.metrics.net.y1, available: true, hasEligibilityRequirements: d.eligibility.requirements,
+    netReturn1y: d.metrics.net.y1, volatility: d.metrics.volatility, available: true, hasEligibilityRequirements: d.eligibility.requirements,
   };
 }
 

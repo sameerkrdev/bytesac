@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import type { ManagerProfileRequest } from "@repo/validator";
+import * as collectionsService from "./collections.service";
 import * as managerProfilesService from "./manager-profiles.service";
 
 export const getOwnProfile = async (req: Request, res: Response, next: NextFunction) => {
@@ -29,6 +30,14 @@ export const publishProfile = async (req: Request, res: Response, next: NextFunc
 export const unpublishProfile = async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await managerProfilesService.setOwnProfilePublished({ userId: req.auth!.userId, sessionId: req.auth!.sessionId, requestId: req.ctx.requestId }, false));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSuggested = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await collectionsService.suggested(req.auth!.userId));
   } catch (error) {
     next(error);
   }

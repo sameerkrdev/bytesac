@@ -1,26 +1,36 @@
-import { ActivityIndicator, Pressable, View } from "react-native";
+import * as Haptics from "expo-haptics";
 import type { ReactNode } from "react";
-import { palette } from "@repo/design-tokens";
-import { AppText } from "./app-text";
+import { ActivityIndicator, Pressable, View } from "react-native";
+import { useTheme } from "@/lib/theme";
+import { AppText, type TextTone } from "./app-text";
 
-const STYLES = {
-  primary: { box: "bg-sage", text: "space" as const },
-  secondary: { box: "bg-slate border border-border-dark", text: "ivory" as const },
-  ghost: { box: "bg-transparent", text: "ivory" as const },
-  destructive: { box: "bg-danger", text: "space" as const },
+const STYLES: Record<string, { box: string; text: TextTone }> = {
+  primary: { box: "bg-primary", text: "primaryInk" },
+  secondary: { box: "bg-surface border border-line-strong", text: "ink" },
+  glass: { box: "bg-glass border border-glass-line", text: "ink" },
+  ghost: { box: "bg-transparent", text: "ink" },
+  destructive: { box: "bg-danger", text: "primaryInk" },
 };
 
-export function Button({ children, onPress, variant = "primary", loading = false, disabled = false, icon, accessibilityLabel, className = "" }: {
-  children: string; onPress(): void; variant?: keyof typeof STYLES; loading?: boolean; disabled?: boolean; icon?: ReactNode; accessibilityLabel?: string; className?: string;
+/**
+ * A pill button (44 pt minimum). Primary actions give a light haptic tap. `children` is the accessible name unless
+ * `accessibilityLabel` is given.
+ */
+export function Button({ children, onPress, variant = "primary", size = "md", loading = false, disabled = false, icon, iconAfter, accessibilityLabel, className = "" }: {
+  children: string; onPress(): void; variant?: keyof typeof STYLES; size?: "sm" | "md" | "lg"; loading?: boolean; disabled?: boolean; icon?: ReactNode; iconAfter?: ReactNode; accessibilityLabel?: string; className?: string;
 }) {
-  const s = STYLES[variant];
+  const { colors } = useTheme();
+  const s = STYLES[variant]!;
   const off = disabled || loading;
+  const h = size === "lg" ? "min-h-14 px-6" : size === "sm" ? "min-h-11 px-4" : "min-h-12 px-5";
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? children} accessibilityState={{ disabled: off, busy: loading }}
-      disabled={off} onPress={onPress}
-      className={`min-h-11 flex-row items-center justify-center gap-2 rounded-xl px-4 ${s.box} ${off ? "opacity-60" : ""} ${className}`}>
-      {loading ? <ActivityIndicator color={s.text === "space" ? palette.space : palette.ivory} /> : icon ? <View>{icon}</View> : null}
+      disabled={off}
+      onPress={() => { if (variant === "primary" || variant === "destructive") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined); onPress(); }}
+      className={`flex-row items-center justify-center gap-2 rounded-pill ${h} ${s.box} ${off ? "opacity-50" : "active:opacity-80"} ${className}`}>
+      {loading ? <ActivityIndicator color={s.text === "primaryInk" ? colors.primaryInk : colors.ink} /> : icon ? <View>{icon}</View> : null}
       <AppText variant="buttonLabel" tone={s.text}>{children}</AppText>
+      {iconAfter && !loading ? <View>{iconAfter}</View> : null}
     </Pressable>
   );
 }

@@ -6,8 +6,8 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "bytesac",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0B1117",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F6F8FB",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.bytesac.app",
@@ -34,7 +34,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -43,13 +43,25 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0B1117",
+          "backgroundColor": "#EEF4FA",
           "image": "./assets/images/logo.png",
-          "imageWidth": 96
+          "imageWidth": 96,
+          "dark": {
+            "backgroundColor": "#070D18",
+            "image": "./assets/images/logo.png"
+          }
         }
       ],
       "expo-secure-store",
-      "./plugins/wallet-queries.js"
+      "./plugins/wallet-queries.js",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#0F1E3A",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

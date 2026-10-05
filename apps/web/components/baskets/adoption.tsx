@@ -12,7 +12,7 @@ export function Adoption({ bid, client }: { bid: string; client: Pick<ApiClient,
   if (!q.data) return <LoadingState />;
   if (q.data.versions.length === 0) return <p className="text-sm text-ink-muted">No versions are published yet.</p>;
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">Adoption by version</caption>
         <thead className="text-xs text-ink-muted">

@@ -85,7 +85,7 @@ export function AssetPricing({ a, locked, onChange, client = api }: SectionProps
             </form>
           )}
           {a.navObservations.length > 0 && (
-            <div className="overflow-x-auto"><table className="min-w-[36rem] w-full max-w-xl text-left text-sm">
+            <div className="relative overflow-x-auto"><table className="min-w-[36rem] w-full max-w-xl text-left text-sm">
               <caption className="sr-only">NAV history</caption>
               <thead className="text-xs text-ink-muted"><tr><th className="py-2 pr-4 font-medium">As of</th><th className="pr-4 font-medium">Value</th><th className="font-medium">Source</th></tr></thead>
               <tbody>

@@ -15,11 +15,11 @@ export function OperationCard({ operation: o, open = false }: { operation: Opera
     <Pressable accessibilityRole="link" accessibilityLabel={`${OPERATION_KIND[o.kind]}, ${s.label}`} onPress={() => router.push(`/operation/${o.id}`)}>
       <Card className="gap-2 p-4">
         <View className="flex-row items-center justify-between gap-2">
-          <AppText className="flex-1 font-sans-semibold">{OPERATION_KIND[o.kind]}</AppText>
+          <AppText className="flex-1 font-semibold">{OPERATION_KIND[o.kind]}</AppText>
           <StatusBadge tone={s.tone} label={s.label} />
         </View>
-        <AppText variant="label" tone="stone">{new Date(o.createdAt).toLocaleString()}{o.amountUsdc ? ` · ${formatUnits(o.amountUsdc, 6)} USDC` : ""}{o.sellPercent ? ` · ${o.sellPercent}%` : ""} · {o.legs.length} steps</AppText>
-        {open ? <AppText variant="label" tone="mint">Continue</AppText> : null}
+        <AppText variant="label" tone="faint">{new Date(o.createdAt).toLocaleString()}{o.amountUsdc ? ` · ${formatUnits(o.amountUsdc, 6)} USDC` : ""}{o.sellPercent ? ` · ${o.sellPercent}%` : ""} · {o.legs.length} steps</AppText>
+        {open ? <AppText variant="label" tone="accent">Continue</AppText> : null}
       </Card>
     </Pressable>
   );

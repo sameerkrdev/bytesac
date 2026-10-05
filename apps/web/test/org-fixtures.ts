@@ -33,7 +33,7 @@ export const asRole = (role: MembershipRole, over: Partial<OrganizationDetail> =
 let n = 0;
 export const memberView = (over: Partial<MemberView> = {}): MemberView => ({
   id: `0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4f${String(++n).padStart(2, "0")}`, role: "VIEWER", requestedRole: null, status: "ACTIVE", publicDisplayName: null, publicTitle: null, isSelf: false,
-  activatedAt: T, inviteExpiresAt: null, invitedWallet: null, invitedEmail: null, verificationStatus: null, ...over,
+  activatedAt: T, inviteExpiresAt: null, invitedWallet: null, invitedEmail: null, verificationStatus: null, customRole: null, permissions: ["org.read"], ...over,
 });
 
 // Baskets (Spec 6)
@@ -48,7 +48,7 @@ export const basketAsset = (over: Partial<BasketAssetView> = {}): BasketAssetVie
 });
 
 export const basketVersion = (over: Partial<BasketVersionView> = {}): BasketVersionView => ({
-  id: VID, versionNumber: 1, status: "draft", name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "Thesis", methodology: "Method",
+  id: VID, versionNumber: 1, status: "draft", files: [], name: "Core Crypto", shortDescription: "Two assets", longDescription: null, category: "multi_asset", tags: [], objective: null, thesis: "Thesis", methodology: "Method",
   intendedInvestor: null, horizon: null, keyAssumptions: null, knownLimitations: null, strategyRisks: "Prices move", liquidityNotes: null, conflictsOfInterest: null, constraints: {}, rebalance: { reviewFrequency: "none" },
   fees: { entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 50 }, rebalance: { type: "percent", bps: 0 }, subscription: null }, minimumInvestmentUsdc: "100", minimumIncrementUsdc: null,
   rationale: null, contentHash: null, submittedAt: null, approvedAt: null, publishedAt: null, createdAt: T, updatedAt: T, revision: 0,
@@ -69,7 +69,7 @@ export const emptyDiff: BasketDiff = { added: [], removed: [], changed: [], band
 
 export const opsBasketDetail = (over: Partial<OpsBasketDetail> = {}): OpsBasketDetail => ({
   ...basketDetail({ status: "ACTIVE", openVersion: basketVersion({ status: "in_review" }) }),
-  organization: { id: ORG_ID, displayName: "Ada Capital", status: "VERIFIED" }, versions: [], reviews: [], diff: null, ...over,
+  organization: { id: ORG_ID, displayName: "Ada Capital", status: "VERIFIED" }, versions: [], reviews: [], diff: null, featuredRank: null, ...over,
 });
 
 /** Every call the basket workspace makes, as mocks; pass overrides for the ones a test cares about. */
@@ -85,5 +85,6 @@ export const basketClient = (over: Record<string, Mock> = {}) => ({
   listOrganizationMembers: vi.fn().mockResolvedValue({ members: [] }),
   addBasketAssignment: vi.fn(), updateBasketAssignment: vi.fn(), endBasketAssignment: vi.fn(),
   basketAdoption: vi.fn().mockResolvedValue({ versions: [] }),
+  presignBasketFile: vi.fn(), confirmBasketFile: vi.fn(), removeBasketFile: vi.fn(),
   ...over,
 });

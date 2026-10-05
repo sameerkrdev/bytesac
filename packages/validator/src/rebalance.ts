@@ -154,8 +154,24 @@ export const notificationsPageSchema = z.object({ items: z.array(notificationSch
 export type NotificationsPage = z.infer<typeof notificationsPageSchema>;
 export const listNotificationsQuerySchema = z.strictObject({ cursor: z.string().max(200).optional(), limit: z.coerce.number().int().min(1).max(50).default(20) });
 export const markReadSchema = z.union([z.strictObject({ ids: z.array(z.uuid()).min(1).max(100) }), z.strictObject({ all: z.literal(true) })]);
-export const pushTokenSchema = z.strictObject({ token: z.string().min(1).max(4096), userAgent: z.string().max(300).optional() });
-export type PushToken = z.infer<typeof pushTokenSchema>;
+/** An Expo push token as the Expo push service issues it. */
+export const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]{1,200}\]$/;
+/**
+ * A push registration. Web sends an FCM token (platform and provider default to web / fcm, so the web client is unchanged);
+ * the mobile app sends an Expo push token with its platform.
+ */
+export const pushTokenSchema = z.strictObject({
+  token: z.string().min(1).max(4096),
+  userAgent: z.string().max(300).optional(),
+  platform: z.enum(["web", "ios", "android"]).default("web"),
+  provider: z.enum(["fcm", "expo"]).default("fcm"),
+}).superRefine((v, ctx) => {
+  if (v.provider === "expo" && (v.platform === "web" || !EXPO_PUSH_TOKEN.test(v.token))) ctx.addIssue({ code: "custom", path: ["token"], message: "An Expo push token from the iOS or Android app is required." });
+  if (v.provider === "fcm" && v.platform !== "web") ctx.addIssue({ code: "custom", path: ["provider"], message: "The mobile app registers Expo push tokens." });
+});
+/** What a client sends (platform and provider may be omitted by the web). */
+export type PushToken = z.input<typeof pushTokenSchema>;
+export const revokePushTokenSchema = z.strictObject({ token: z.string().min(1).max(4096) });
 
 const count = z.union([z.number().int(), z.literal("<5")]);
 export const adoptionSchema = z.object({

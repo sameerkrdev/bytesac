@@ -1,4 +1,6 @@
 import createHttpError from "http-errors";
+import { versionFiles } from "./basket-file-views";
+import { logoUrls } from "@/modules/files/files.service";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { assetTags, basketAssignments, basketPerformanceDays, basketSlugAliases, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instrumentTags, instruments, managerProfiles, organizationMemberships, organizations, platformFeeSchedules } from "@repo/db";
 import { basketConstraintsSchema, basketFeesSchema, microToUsdc, PERFORMANCE_LABEL, PLATFORM_FEE_OPERATIONS, performanceMetrics, resolvePlatformSchedule, type PublicBasketListResponse, type PublicBasketResponse, type PublicFees } from "@repo/validator";
@@ -63,12 +65,12 @@ export async function getPublicBasket(slug: string, viewer: { userId: string; ip
   if (!b.currentVersionId) throw notFound();
   const [v] = await db.select().from(basketVersions).where(eq(basketVersions.id, b.currentVersionId));
   const assets = await db.select({
-    instrumentId: instruments.id, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, instrumentStatus: instruments.status, sector: instruments.sector,
+    instrumentId: instruments.id, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, instrumentStatus: instruments.status, sector: instruments.sector, logoFileId: instruments.logoFileId,
     targetWeightBps: basketVersionAssets.targetWeightBps, minWeightBps: basketVersionAssets.minWeightBps, maxWeightBps: basketVersionAssets.maxWeightBps,
     chains: sql<string[]>`coalesce((select array_agg(distinct d.chain::text order by d.chain::text) from app.instrument_deployments d where d.instrument_id = ${instruments.id} and d.status = 'ACTIVE'), '{}')`,
   }).from(basketVersionAssets).innerJoin(instruments, eq(instruments.id, basketVersionAssets.instrumentId))
     .where(and(eq(basketVersionAssets.versionId, v!.id), eq(basketVersionAssets.revision, v!.assetsRevision))).orderBy(desc(basketVersionAssets.targetWeightBps), asc(instruments.id));
-  const prices = await getPrices(assets.map((a) => a.instrumentId));
+  const [prices, logos, files] = await Promise.all([getPrices(assets.map((a) => a.instrumentId)), logoUrls(assets.map((a) => a.logoFileId)), versionFiles(db, v!.id)]);
   // Spec 11 section 8: a signed-in viewer sees their own outcome for each tokenized asset (acquire, on the asset's first ACTIVE deployment); anyone sees that requirements exist.
   const rwa = assets.filter((a) => isRwa(a.assetType));
   const deployed = viewer && rwa.length ? await db.selectDistinctOn([instrumentDeployments.instrumentId], { instrumentId: instrumentDeployments.instrumentId, id: instrumentDeployments.id }).from(instrumentDeployments)
@@ -102,7 +104,8 @@ export async function getPublicBasket(slug: string, viewer: { userId: string; ip
       knownLimitations: v!.knownLimitations, strategyRisks: v!.strategyRisks, liquidityNotes: v!.liquidityNotes, conflictsOfInterest: v!.conflictsOfInterest,
       constraints: basketConstraintsSchema.parse(v!.constraints), rebalance: v!.rebalance, fees: basketFeesSchema.parse(v!.fees), minimumInvestmentUsdc: v!.minimumInvestmentUsdc, minimumIncrementUsdc: v!.minimumIncrementUsdc,
     },
-    allocation: assets.map(({ instrumentStatus: _status, sector: _sector, ...a }) => ({ ...a, prices: prices.filter((p) => p.instrumentId === a.instrumentId) })),
+    allocation: assets.map(({ instrumentStatus: _status, sector: _sector, logoFileId, ...a }) => ({ ...a, logoUrl: logos.get(logoFileId ?? "") ?? null, prices: prices.filter((p) => p.instrumentId === a.instrumentId) })),
+    files,
     platformFee: await platformFeeRates(b.organizationId, b.id),
     disclosures: (await currentDisclosures(db, v!)).map((d) => ({ title: d.title, body: d.body })),
   // ponytail: one diff query set per published version on every page view; cache or precompute at publish if histories grow.

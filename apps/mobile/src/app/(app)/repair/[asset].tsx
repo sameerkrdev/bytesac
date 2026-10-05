@@ -4,5 +4,5 @@ import { Screen } from "@/components/ui/screen";
 
 export default function RepairScreen() {
   const { asset } = useLocalSearchParams<{ asset: string }>();
-  return <Screen><RepairPanel asset={asset} /></Screen>;
+  return <Screen edges={["left", "right"]}><RepairPanel asset={asset} /></Screen>;
 }

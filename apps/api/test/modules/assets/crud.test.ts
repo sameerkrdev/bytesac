@@ -292,7 +292,7 @@ describe("list", () => {
     expect(await ids("q=usd")).toEqual([usdc]);
     expect(await ids("q=%25")).toEqual([]);
     expect((await get(r.h, "/v1/ops/assets?status=NOPE")).status).toBe(400);
-    expect((await get(r.h, "/v1/ops/assets")).body.items[0]).toEqual({ id: usdc, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", status: "ACTIVE", chains: ["base"], updatedAt: expect.any(String) });
+    expect((await get(r.h, "/v1/ops/assets")).body.items[0]).toEqual({ id: usdc, name: "USD Coin", symbol: "USDC", assetType: "STABLECOIN", status: "ACTIVE", chains: ["base"], updatedAt: expect.any(String), logoUrl: null });
 
     await adminSql`INSERT INTO app.instruments (id, name, symbol, asset_type, created_by_user_id) SELECT gen_random_uuid(), 'Bulk ' || g, 'B' || g, 'CRYPTO', ${r.userId} FROM generate_series(1, 26) g`;
     const page1 = (await get(r.h, "/v1/ops/assets")).body;

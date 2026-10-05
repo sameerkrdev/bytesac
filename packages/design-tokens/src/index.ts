@@ -10,7 +10,7 @@ export type ThemeRole =
   | "ink" | "inkMuted" | "inkFaint"
   | "primary" | "primaryHover" | "primaryInk"
   | "accent" | "accentSoft"
-  | "sky1" | "sky2" | "sky3"
+  | "sky1" | "sky2" | "sky3" | "skyTop" | "skyMid" | "skyLow"
   | "glass" | "glassLine"
   | "success" | "successSoft" | "warning" | "warningSoft" | "danger" | "dangerSoft" | "info" | "infoSoft"
   | "focus" | "overlay"
@@ -35,6 +35,9 @@ export const themes: Record<"light" | "dark", Record<ThemeRole, string>> = {
     sky1: "#EEF4FA",
     sky2: "#DCE8F4",
     sky3: "#BFD5EC",
+    skyTop: "#78ADE2",
+    skyMid: "#A9CBEC",
+    skyLow: "#DCEAF7",
     glass: "rgba(255, 255, 255, 0.62)",
     glassLine: "rgba(255, 255, 255, 0.78)",
     success: "#1F8A4C",
@@ -72,6 +75,9 @@ export const themes: Record<"light" | "dark", Record<ThemeRole, string>> = {
     sky1: "#0B1424",
     sky2: "#12203A",
     sky3: "#1D3157",
+    skyTop: "#040A15",
+    skyMid: "#0B1931",
+    skyLow: "#1A2E52",
     glass: "rgba(20, 31, 51, 0.58)",
     glassLine: "rgba(255, 255, 255, 0.09)",
     success: "#4CC38A",

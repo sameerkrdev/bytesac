@@ -120,6 +120,34 @@
       "when": 1790993841198,
       "tag": "0016_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791138078591,
+      "tag": "0017_featured_baskets",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791139102093,
+      "tag": "0018_stored_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791139926890,
+      "tag": "0019_custom_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791181463378,
+      "tag": "0020_mobile_push",
+      "breakpoints": true
     }
   ]
 }

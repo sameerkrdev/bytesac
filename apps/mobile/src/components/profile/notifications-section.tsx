@@ -1,12 +1,13 @@
 import { ApiError } from "@repo/api-client";
 import { describeError } from "@repo/app-core";
 import type { NotificationPreferences } from "@repo/validator";
-import { palette } from "@repo/design-tokens";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch, View } from "react-native";
 import { AppText } from "@/components/ui/app-text";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { PushRow } from "./push-row";
+import { useTheme } from "@/lib/theme";
 
 const ITEMS: { key: keyof NotificationPreferences; label: string; hint: string }[] = [
   { key: "rebalance", label: "Rebalances", hint: "New basket versions you can apply or skip" },
@@ -19,26 +20,28 @@ const ITEMS: { key: keyof NotificationPreferences; label: string; hint: string }
 
 export function NotificationsSection() {
   const qc = useQueryClient();
+  const { colors } = useTheme();
   const { data, isLoading, isError } = useQuery({ queryKey: ["prefs"], queryFn: () => api.getPreferences() });
   const m = useMutation({ mutationFn: (p: Partial<NotificationPreferences>) => api.updatePreferences(p), onSuccess: (next) => qc.setQueryData(["prefs"], next) });
   return (
     <Card className="gap-4">
-      <AppText variant="h3" accessibilityRole="header">Notifications</AppText>
-      {isLoading && <AppText tone="stone">Loading preferences…</AppText>}
+      <AppText variant="heading" accessibilityRole="header">Notifications</AppText>
+      <PushRow />
+      {isLoading && <AppText tone="faint">Loading preferences…</AppText>}
       {isError && <AppText tone="danger" accessibilityRole="alert">{"Couldn't load preferences. Try again later."}</AppText>}
       {data && ITEMS.map((it) => (
         <View key={it.key} className="min-h-11 flex-row items-center justify-between gap-4">
           <View className="flex-1">
             <AppText>{it.label}</AppText>
-            <AppText variant="label" tone="stone">{it.hint}</AppText>
+            <AppText variant="label" tone="faint">{it.hint}</AppText>
           </View>
           <Switch accessibilityLabel={it.label} accessibilityHint={it.hint} value={data[it.key]} disabled={m.isPending}
-            trackColor={{ true: palette.sage, false: palette.slate }} thumbColor={palette.ivory}
+            trackColor={{ true: colors.primary, false: colors.lineStrong }} thumbColor={colors.surface}
             onValueChange={(v) => m.mutate({ [it.key]: v })} />
         </View>
       ))}
       {m.isError && <AppText tone="danger" accessibilityRole="alert">{describeError(m.error instanceof ApiError ? m.error.code : "INTERNAL").title}</AppText>}
-      <AppText variant="label" tone="stone">Security and account notices are always sent.</AppText>
+      <AppText variant="label" tone="faint">Security and account notices are always sent.</AppText>
     </Card>
   );
 }

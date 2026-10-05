@@ -10,7 +10,7 @@ import {
   ASSET_CHAINS, RWA_ASSET_TYPES, RWA_ROUTE_METHODS, createDeploymentRequestSchema,
   type AssetChain, type AssetTagView, type CreateAssetTagRequest, type ListAssetTagsResponse, type AssetProviderRequest, type AssetListQuery, type AssetProviderView, type CreateDeploymentRequest, type CreateInstrumentRequest, type CreateRouteRequest, type CreateRuleRequest,
   type IssuerRequest, type IssuerView, type NavEntryRequest, type OpsAssetDetail, type OpsAssetListResponse, type OpsAssetListQuery, type PublicAssetDetail, type PublicAssetListResponse, type PutPriceReferenceRequest,
-  type TokenStandard, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest,
+  type TokenStandard, type UpdateAssetProviderRequest, type UpdateDeploymentRequest, type UpdateInstrumentRequest, type UpdateIssuerRequest, type UpdateRouteRequest, type UpdateRuleRequest, type PresignFileResponse, type PresignLogoRequest,
 } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import { readTokenMetadata } from "@/providers/evm-rpc";
@@ -21,6 +21,7 @@ import { lifiVerification } from "@/modules/routing/routing.service";
 import { enqueue } from "@/config/queues";
 import { notify } from "@/modules/notifications/notifications.service";
 import { getPrices } from "./pricing.service";
+import { logoUrls, pendingFile, presignFile, storeFile } from "@/modules/files/files.service";
 import { canonicalizeAddress } from "@/modules/auth/wallets.service";
 
 export const PAGE_SIZE = 25;
@@ -151,7 +152,8 @@ async function pageInstruments(q: OpsAssetListQuery, live: boolean) {
 
 export async function listAssetsForOps(q: OpsAssetListQuery): Promise<OpsAssetListResponse> {
   const { items, nextCursor } = await pageInstruments(q, false);
-  return { items: items.map((i) => ({ id: i.id, name: i.name, symbol: i.symbol, assetType: i.assetType, status: i.status, chains: i.chains, updatedAt: i.updatedAt.toISOString() })), nextCursor };
+  const logos = await logoUrls(items.map((i) => i.logoFileId));
+  return { items: items.map((i) => ({ id: i.id, name: i.name, symbol: i.symbol, assetType: i.assetType, status: i.status, chains: i.chains, updatedAt: i.updatedAt.toISOString(), logoUrl: logos.get(i.logoFileId ?? "") ?? null })), nextCursor };
 }
 
 export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
@@ -168,9 +170,10 @@ export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
     db.select({ id: assetTags.id, key: assetTags.key, label: assetTags.label }).from(instrumentTags).innerJoin(assetTags, eq(assetTags.id, instrumentTags.tagId))
       .where(and(eq(instrumentTags.instrumentId, id), isNull(instrumentTags.removedAt))).orderBy(assetTags.key),
   ]);
+  const logo = (await logoUrls([inst.logoFileId])).get(inst.logoFileId ?? "") ?? null;
   const navs = refs.length === 0 ? [] : await db.select().from(navObservations).where(inArray(navObservations.priceReferenceId, refs.map((r) => r.id))).orderBy(desc(navObservations.asOf), desc(navObservations.createdAt));
   return {
-    id: inst.id, name: inst.name, symbol: inst.symbol, assetType: inst.assetType, description: inst.description, issuerId: inst.issuerId, riskNotes: inst.riskNotes, links: inst.links,
+    id: inst.id, name: inst.name, symbol: inst.symbol, assetType: inst.assetType, logoUrl: logo, description: inst.description, issuerId: inst.issuerId, riskNotes: inst.riskNotes, links: inst.links,
     sector: inst.sector, tags,
     status: inst.status, createdByUserId: inst.createdByUserId, submittedByUserId: inst.submittedByUserId, decidedByUserId: inst.decidedByUserId,
     createdAt: inst.createdAt.toISOString(), updatedAt: inst.updatedAt.toISOString(),
@@ -191,14 +194,15 @@ export async function getAssetForOps(id: string): Promise<OpsAssetDetail> {
 
 export async function listPublicAssets(q: AssetListQuery): Promise<PublicAssetListResponse> {
   const { items, nextCursor } = await pageInstruments(q, true);
-  return { items: items.map((i) => ({ id: i.id, name: i.name, symbol: i.symbol, assetType: i.assetType, chains: i.chains })), nextCursor };
+  const logos = await logoUrls(items.map((i) => i.logoFileId));
+  return { items: items.map((i) => ({ id: i.id, name: i.name, symbol: i.symbol, assetType: i.assetType, chains: i.chains, logoUrl: logos.get(i.logoFileId ?? "") ?? null })), nextCursor };
 }
 
 /** An instrument that is not ACTIVE is a 404, and so is everything under it: a paused or deprecated instrument hides all of its items. */
 export async function getPublicAsset(id: string): Promise<PublicAssetDetail> {
   const [inst] = await db.select({
     id: instruments.id, name: instruments.name, symbol: instruments.symbol, assetType: instruments.assetType, description: instruments.description, riskNotes: instruments.riskNotes, links: instruments.links,
-    issuerName: assetIssuers.name, issuerWebsite: assetIssuers.website,
+    logoFileId: instruments.logoFileId, issuerName: assetIssuers.name, issuerWebsite: assetIssuers.website,
   }).from(instruments).leftJoin(assetIssuers, eq(assetIssuers.id, instruments.issuerId)).where(and(eq(instruments.id, id), eq(instruments.status, "ACTIVE")));
   if (!inst) throw notFound("Asset");
   const settlement = alias(instruments, "settlement");
@@ -216,8 +220,9 @@ export async function getPublicAsset(id: string): Promise<PublicAssetDetail> {
       .where(and(eq(executionRoutes.instrumentId, id), eq(executionRoutes.status, "ACTIVE"))).orderBy(executionRoutes.createdAt, executionRoutes.id),
     getPrices([id]),
   ]);
+  const logo = (await logoUrls([inst.logoFileId])).get(inst.logoFileId ?? "") ?? null;
   return {
-    id: inst.id, name: inst.name, symbol: inst.symbol, assetType: inst.assetType, description: inst.description, riskNotes: inst.riskNotes, links: inst.links,
+    id: inst.id, name: inst.name, symbol: inst.symbol, assetType: inst.assetType, logoUrl: logo, description: inst.description, riskNotes: inst.riskNotes, links: inst.links,
     issuer: inst.issuerName === null ? null : { name: inst.issuerName, website: inst.issuerWebsite },
     deployments, routes, prices,
   };
@@ -226,6 +231,44 @@ export async function getPublicAsset(id: string): Promise<PublicAssetDetail> {
 // ---------------------------------------------------------------------------------------------------------------------
 // Instruments
 // ---------------------------------------------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Logo (any status: a logo is presentation, not a registry fact)
+// ---------------------------------------------------------------------------------------------------------------------
+
+async function requireInstrument(id: string) {
+  const [inst] = await db.select({ id: instruments.id, logoFileId: instruments.logoFileId }).from(instruments).where(eq(instruments.id, id));
+  if (!inst) throw notFound("Asset");
+  return inst;
+}
+
+export async function presignInstrumentLogo(ctx: OpsCtx, id: string, body: PresignLogoRequest): Promise<PresignFileResponse> {
+  await requireInstrument(id);
+  return presignFile({ purpose: "instrument_logo", userId: ctx.userId, contentType: body.contentType, sizeBytes: body.sizeBytes });
+}
+
+/** Verifies the uploaded logo and makes it the instrument's logo (replacing any previous one). */
+export async function confirmInstrumentLogo(ctx: OpsCtx, id: string, fileId: string): Promise<OpsAssetDetail> {
+  await requireInstrument(id);
+  const file = await pendingFile(fileId, "instrument_logo", ctx.userId);
+  await storeFile(file, async (tx) => {
+    const [prev] = await tx.select({ logoFileId: instruments.logoFileId }).from(instruments).where(eq(instruments.id, id)).for("update");
+    await tx.update(instruments).set({ logoFileId: file.id, updatedAt: sql`now()` }).where(eq(instruments.id, id));
+    await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "instrument.logo_set", entityType: "instrument", entityId: id, requestId: ctx.meta.requestId, metadata: { fileId: file.id, previous: prev?.logoFileId ?? null } });
+  });
+  return getAssetForOps(id);
+}
+
+export async function removeInstrumentLogo(ctx: OpsCtx, id: string): Promise<OpsAssetDetail> {
+  const inst = await requireInstrument(id);
+  if (inst.logoFileId) {
+    await db.transaction(async (tx) => {
+      await tx.update(instruments).set({ logoFileId: null, updatedAt: sql`now()` }).where(eq(instruments.id, id));
+      await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "instrument.logo_removed", entityType: "instrument", entityId: id, requestId: ctx.meta.requestId, metadata: { fileId: inst.logoFileId } });
+    });
+  }
+  return getAssetForOps(id);
+}
 
 async function assertIssuer(tx: Tx, issuerId: string | null | undefined): Promise<void> {
   if (!issuerId) return;

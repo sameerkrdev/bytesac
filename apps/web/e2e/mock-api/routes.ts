@@ -1,5 +1,5 @@
 /** Signed-in and investor routes for the mock API, grouped by area. Extended milestone by milestone. */
-import { investabilitySchema, listInvitationsResponseSchema, notificationsPageSchema, operationSchema, portfolioSchema, type OperationView, publicAssetDetailSchema, publicAssetListResponseSchema } from "@repo/validator";
+import { eligibilityResponseSchema, notificationPreferencesSchema, sessionsResponseSchema, investabilitySchema, listInvitationsResponseSchema, notificationsPageSchema, operationSchema, portfolioSchema, type OperationView, publicAssetDetailSchema, publicAssetListResponseSchema } from "@repo/validator";
 import { investPlan, portfolioFor } from "./portfolio";
 import { ASSETS, BASKETS } from "./catalog";
 import type { Route } from "./server";
@@ -12,6 +12,13 @@ const ADDR: Record<string, string> = { solana: "So111111111111111111111111111111
 const planned = new Map<string, OperationView>();
 
 export const extraRoutes: Route[] = [
+  // Profile hub: preferences, eligibility and sessions (read-only fixtures).
+  ["GET", /^\/v1\/me\/notification-preferences$/, ({ persona }) => (persona ? { schema: notificationPreferencesSchema, body: { rebalance: true, portfolioUpdates: true, managerUpdates: true, offers: false, productUpdates: false, marketing: false } } : null)],
+  ["GET", /^\/v1\/me\/eligibility$/, ({ persona }) => (persona ? { schema: eligibilityResponseSchema, body: { declaration: null } } : null)],
+  ["GET", /^\/v1\/me\/sessions$/, ({ persona }) => (persona ? { schema: sessionsResponseSchema, body: { sessions: [
+    { id: "0192f1c2-7a4b-7c3d-8e9f-000000000901", client: "mobile", createdAt: "2026-10-01T09:00:00.000Z", lastSeenAt: new Date().toISOString(), userAgent: "Bytesac iOS", ipPrefix: "203.0.113.0/24", current: true },
+    { id: "0192f1c2-7a4b-7c3d-8e9f-000000000902", client: "web", createdAt: "2026-09-20T09:00:00.000Z", lastSeenAt: "2026-10-03T18:00:00.000Z", userAgent: "Chrome on macOS", ipPrefix: "198.51.100.0/24", current: false },
+  ] } } : null)],
   ["POST", /^\/v1\/operations\/invest$/, ({ persona, body }) => {
     if (!persona) return null;
     const b = body as { basketId: string; amountUsdc: string; slippageBps: number };

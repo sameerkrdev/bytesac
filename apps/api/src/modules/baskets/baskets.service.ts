@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { copyFilesForward, versionFileIds, versionFiles } from "./basket-file-views";
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, lt, max, sql } from "drizzle-orm";
 import {
@@ -6,7 +7,7 @@ import {
   executionRoutes, instrumentDeployments, instruments, isUniqueViolation, organizationMemberships, organizations, priceReferences, type DbOrTx, type Tx,
 } from "@repo/db";
 import {
-  ASSIGNMENT_FLAGS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS, ROLE_PERMISSIONS, basketConstraintsSchema, basketFeesSchema, canonicalJson, diffBasketVersions, rwaProblem, validateBasketVersion,
+  ASSIGNMENT_FLAGS, CO_MANAGER_DEFAULT_FLAGS, LEAD_FLAGS, basketConstraintsSchema, basketFeesSchema, canonicalJson, diffBasketVersions, rwaProblem, validateBasketVersion,
   type AssignmentFlag, type BasketAssignmentView, type BasketDetail, type BasketEventView, type BasketDiff, type BasketDiffInput, type BasketPreview, type BasketStatus, type BasketValidation, type BasketValidationInput,
   type BasketVersionView, type CreateAssignmentRequest, type CreateBasketRequest, type EndAssignmentRequest, type ListBasketsQuery, type ListBasketsResponse,
   type ListBasketVersionsResponse, type SaveBasketDraftRequest, type UpdateAssignmentRequest,
@@ -16,7 +17,7 @@ import { enqueue } from "@/config/queues";
 import { sendBasketEmail, type BasketEmailData, type BasketEmailKind } from "@/providers/resend";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { isRwa } from "@/modules/eligibility/eligibility.service";
-import { requirePermission, type MembershipRow } from "@/modules/members/access.service";
+import { membershipPermissions, requirePermission, type MembershipRow } from "@/modules/members/access.service";
 import type { OrganizationRow, OwnerCtx } from "@/modules/organizations/organizations.service";
 
 type BasketRow = typeof baskets.$inferSelect;
@@ -32,14 +33,17 @@ const invalid = (message: string) => createHttpError(message, { code: "INVALID_T
 const forbidden = () => createHttpError("You don't have access to this basket.", { code: "FORBIDDEN" });
 const notFound = (what: string) => createHttpError(`${what} not found`, { code: "NOT_FOUND" });
 
+/** Basket-wide authority: the OWNER, and an ADMIN whose permissions (custom role included, ADR-019) still hold baskets.manage. */
+const actsOnAllBaskets = (role: MembershipRow["role"], permissions: readonly string[]) => role === "OWNER" || (role === "ADMIN" && permissions.includes("baskets.manage"));
+
 /** Loads the basket and checks the acting user may perform `action` (spec §7). OWNER/ADMIN act on every basket; others need an ACTIVE assignment with the flag, on an ACTIVE membership that still holds baskets.manage. "read" = any ACTIVE member with org.read. */
 export async function requireBasketAction(conn: DbOrTx, userId: string, basketId: string, action: AssignmentFlag | "read", lock = false): Promise<{ basket: BasketRow; org: OrganizationRow; membership: MembershipRow }> {
   const q = conn.select().from(baskets).where(eq(baskets.id, basketId));
   const [basket] = lock ? await q.for("update") : await q;
   if (!basket) throw createHttpError(404, "Basket not found", { code: "NOT_FOUND" });
-  const { org, membership } = await requirePermission(conn, userId, basket.organizationId, "org.read");
-  if (action === "read" || membership.role === "OWNER" || membership.role === "ADMIN") return { basket, org, membership };
-  if (!ROLE_PERMISSIONS[membership.role].includes("baskets.manage")) throw forbidden();
+  const { org, membership, permissions } = await requirePermission(conn, userId, basket.organizationId, "org.read");
+  if (action === "read" || actsOnAllBaskets(membership.role, permissions)) return { basket, org, membership };
+  if (!permissions.includes("baskets.manage")) throw forbidden();
   const [assignment] = await conn.select({ permissions: basketAssignments.permissions }).from(basketAssignments)
     .where(and(eq(basketAssignments.basketId, basketId), eq(basketAssignments.membershipId, membership.id), eq(basketAssignments.status, "ACTIVE")));
   if (!assignment?.permissions.includes(action)) throw forbidden();
@@ -75,6 +79,7 @@ export async function versionView(conn: DbOrTx, v: VersionRow): Promise<BasketVe
     submittedAt: iso(v.submittedAt), approvedAt: iso(v.approvedAt), publishedAt: iso(v.publishedAt), createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(), revision: v.revision,
     assets,
     disclosures: await currentDisclosures(conn, v),
+    files: await versionFiles(conn, v.id),
   };
 }
 
@@ -124,6 +129,9 @@ export async function contentHash(conn: DbOrTx, versionId: string): Promise<stri
     assets: assets.map((a) => [a.instrumentId, a.targetWeightBps, a.minWeightBps, a.maxWeightBps, a.rationale]).sort((x, y) => (x[0]! < y[0]! ? -1 : 1)),
     disclosureTemplateIds: pins.map((p) => p.templateId).sort(),
   };
+  // Attached files are content too; added only when present so hashes of versions without files are unchanged.
+  const fileIds = await versionFileIds(conn, versionId);
+  if (fileIds.length) Object.assign(canonical, { fileIds });
   return createHash("sha256").update(canonicalJson(canonical)).digest("hex");
 }
 
@@ -221,7 +229,8 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
   const [published] = basket.currentVersionId ? await db.select().from(basketVersions).where(eq(basketVersions.id, basket.currentVersionId)) : [];
   const [mine] = await db.select({ permissions: basketAssignments.permissions, role: basketAssignments.role }).from(basketAssignments)
     .where(and(eq(basketAssignments.basketId, bid), eq(basketAssignments.membershipId, membership.id), eq(basketAssignments.status, "ACTIVE")));
-  const isAdmin = membership.role === "OWNER" || membership.role === "ADMIN";
+  const permissions = await membershipPermissions(db, membership);
+  const isAdmin = actsOnAllBaskets(membership.role, permissions);
   const reviews = await db.select({
     id: basketReviews.id, versionId: basketReviews.versionId, decision: basketReviews.decision, checklist: basketReviews.checklist, sectionComments: basketReviews.sectionComments,
     messageToManager: basketReviews.messageToManager, createdAt: basketReviews.createdAt,
@@ -230,7 +239,7 @@ export async function getBasketForMember(ctx: OwnerCtx, bid: string): Promise<Ba
   return {
     id: basket.id, organizationId: basket.organizationId, slug: basket.slug, status: basket.status, previousStatus: basket.previousStatus, pauseKind: basket.pauseKind, pauseReason: basket.pauseReason,
     createdAt: basket.createdAt.toISOString(), updatedAt: basket.updatedAt.toISOString(),
-    myPermissions: isAdmin ? [...ASSIGNMENT_FLAGS] : ROLE_PERMISSIONS[membership.role].includes("baskets.manage") ? (mine?.permissions ?? []) as AssignmentFlag[] : [],
+    myPermissions: isAdmin ? [...ASSIGNMENT_FLAGS] : permissions.includes("baskets.manage") ? (mine?.permissions ?? []) as AssignmentFlag[] : [],
     canControlLead: isAdmin || mine?.role === "lead",
     openVersion: open ? await versionView(db, open) : null,
     publishedVersion: publishedView,
@@ -308,6 +317,7 @@ export async function createNextVersion(ctx: OwnerCtx, bid: string): Promise<Bas
     if (assets.length > 0) await tx.insert(basketVersionAssets).values(assets.map((a) => ({
       versionId: next!.id, revision: 1, instrumentId: a.instrumentId, targetWeightBps: a.targetWeightBps, minWeightBps: a.minWeightBps, maxWeightBps: a.maxWeightBps, rationale: a.rationale,
     })));
+    await copyFilesForward(tx, published!.id, next!.id);
     await tx.update(baskets).set({ updatedAt: sql`now()` }).where(eq(baskets.id, bid));
     await tx.insert(basketEvents).values({ basketId: bid, versionId: next!.id, kind: "created", toStatus: "draft", actorType: "member", actorUserId: ctx.userId, reason: "new_version", requestId: ctx.meta.requestId });
     await writeAudit(tx, { actorType: "user", actorUserId: ctx.userId, action: "basket.version_created", entityType: "basket", entityId: bid, requestId: ctx.meta.requestId, sessionId: ctx.sessionId, metadata: { versionId: next!.id } });
@@ -358,7 +368,7 @@ export async function addAssignment(ctx: OwnerCtx, bid: string, body: CreateAssi
     if (body.role === "lead") await requireLeadAuthority(tx, bid, membership);
     const [target] = await tx.select().from(organizationMemberships).where(and(eq(organizationMemberships.id, body.membershipId), eq(organizationMemberships.organizationId, basket.organizationId)));
     if (!target) throw notFound("Membership");
-    if (target.status !== "ACTIVE" || !target.userId || !ROLE_PERMISSIONS[target.role].includes("baskets.manage")) throw invalid("This member can't manage baskets.");
+    if (target.status !== "ACTIVE" || !target.userId || !(await membershipPermissions(tx, target)).includes("baskets.manage")) throw invalid("This member can't manage baskets.");
     const [open] = await tx.select({ id: basketAssignments.id }).from(basketAssignments)
       .where(and(eq(basketAssignments.basketId, bid), eq(basketAssignments.userId, target.userId), inArray(basketAssignments.status, ["ACTIVE", "PENDING_APPROVAL"])));
     if (open) throw invalid("This member is already assigned.");
@@ -431,8 +441,8 @@ export async function endAssignment(ctx: OwnerCtx, bid: string, aid: string, bod
 
 /** Ends basket assignments of a membership that can no longer manage baskets (not ACTIVE, or role without baskets.manage). Idempotent; call after any membership status/role write, inside that transaction. Returns the baskets that now need a new lead (the caller emails after commit). */
 export async function endIneligibleAssignments(tx: Tx, membershipId: string, requestId: string, actorUserId: string | null): Promise<string[]> {
-  const [m] = await tx.select({ status: organizationMemberships.status, role: organizationMemberships.role }).from(organizationMemberships).where(eq(organizationMemberships.id, membershipId));
-  if (m && m.status === "ACTIVE" && ROLE_PERMISSIONS[m.role].includes("baskets.manage")) return [];
+  const [m] = await tx.select({ status: organizationMemberships.status, role: organizationMemberships.role, customRoleId: organizationMemberships.customRoleId }).from(organizationMemberships).where(eq(organizationMemberships.id, membershipId));
+  if (m && m.status === "ACTIVE" && (await membershipPermissions(tx, m)).includes("baskets.manage")) return [];
   const open = await tx.select({ id: basketAssignments.id, basketId: basketAssignments.basketId }).from(basketAssignments)
     .where(and(eq(basketAssignments.membershipId, membershipId), inArray(basketAssignments.status, ["ACTIVE", "PENDING_APPROVAL"]))).orderBy(basketAssignments.basketId);
   const reassign: string[] = [];

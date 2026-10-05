@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { opsAssetListQuerySchema, type CreateInstrumentRequest, type UpdateInstrumentRequest, type CreateDeploymentRequest, type UpdateDeploymentRequest, type FeeOnTransferRequest, type PermissionedRequest, type CreateRouteRequest, type UpdateRouteRequest, type CreateRuleRequest, type UpdateRuleRequest, type PutPriceReferenceRequest, type NavEntryRequest, type IssuerRequest, type UpdateIssuerRequest, type AssetProviderRequest, type UpdateAssetProviderRequest, type AssetDecisionRequest, type CreateAssetTagRequest } from "@repo/validator";
+import { opsAssetListQuerySchema, type CreateInstrumentRequest, type UpdateInstrumentRequest, type CreateDeploymentRequest, type UpdateDeploymentRequest, type FeeOnTransferRequest, type PermissionedRequest, type CreateRouteRequest, type UpdateRouteRequest, type CreateRuleRequest, type UpdateRuleRequest, type PutPriceReferenceRequest, type NavEntryRequest, type IssuerRequest, type UpdateIssuerRequest, type AssetProviderRequest, type UpdateAssetProviderRequest, type AssetDecisionRequest, type CreateAssetTagRequest, type PresignLogoRequest } from "@repo/validator";
 import * as assetsService from "./assets.service";
 import * as assetReviewService from "./asset-review.service";
 import { opsCtx } from "@/middlewares/request-context.middleware";
@@ -236,6 +236,30 @@ export const transitionInstrument = (action: InstrumentAction) => async (req: Re
 export const transitionAssetItem = (kind: AssetItemKind, action: AssetItemAction) => async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await assetReviewService.transitionAssetItem(opsCtx(req), req.params.id as string, kind, req.params.itemId as string, action));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const presignInstrumentLogo = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(201).json(await assetsService.presignInstrumentLogo(opsCtx(req), req.params.id as string, req.body as PresignLogoRequest));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const confirmInstrumentLogo = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await assetsService.confirmInstrumentLogo(opsCtx(req), req.params.id as string, req.params.fileId as string));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeInstrumentLogo = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.json(await assetsService.removeInstrumentLogo(opsCtx(req), req.params.id as string));
   } catch (error) {
     next(error);
   }

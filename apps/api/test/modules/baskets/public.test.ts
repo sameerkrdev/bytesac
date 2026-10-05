@@ -50,6 +50,8 @@ const ALLOWED = new Set([
   "toBps", "bandChanged", "constraints", "rebalance", "minimums", "managers", "role", "from", "to",
   // Spec 7: handle (published profile), performance series and metrics, sectors, tags and the label.
   "handle", "performance", "available", "dataDays", "series", "day", "net", "gross", "metrics", "sinceLaunch", "d30", "d90", "y1", "volatility", "maxDrawdown", "sectors", "sector", "key", "label",
+  // Spec 17 round 2: registry logos on the allocation and the published version's files (signed links).
+  "logoUrl", "files", "fileName", "contentType", "sizeBytes", "url", "addedAt",
   // Spec 10: the platform fee rate that applies to the basket (no reasons).
   "platformFee", "operationKind", "minUsdc", "maxUsdc",
   // Spec 11: whether tokenized assets need an eligibility declaration (and the signed-in viewer outcomes).

@@ -121,8 +121,45 @@ Brief: the user's master design directive (web first; Expo SDK 57 later; real mo
 | 3 | Ops console | Inherit new system only (rec.) · full redesign · leave untouched | **Inherit** | Ops gets new tokens, primitives and shell; no IA redesign |
 | 4 | Type direction | Editorial serif + sans (rec.) · Light all-sans | **Light all-sans** | Geist 300 display, Geist 400/500 UI, Geist Mono labels |
 
+### Round 2 (2026-10-04, after PR #1 merged)
+
+User feedback list: 15-fps reference study (section "page swap" from the bottom, slowly drifting clouds); realistic iPhone and hand assets; real 3D models with an assembling glass-stack animation; generate transparent assets instead of cut-outs; primary reference first; better secondary pages and multi-step forms; custom scroll thumb; trending / suggested / featured baskets on home; new basket list; full ops and manager redesign with detailed role management; crypto logos; basket files; asset logos; a download-app CTA.
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Basket files and asset logos | Versioned basket files (rec.) · basket-level files · UI only | **Versioned basket files** | Files attach to a basket version (immutable once published, reviewed with it); asset logo is an instrument field set by ops |
+| 2 | Role management depth | Manage the existing model (rec.) · custom roles | **Custom roles** | Organizations define roles with per-permission toggles; needs an ADR, migration, API, server enforcement and tests |
+| 3 | Crypto logos | Uploaded + `cryptocurrency-icons` pack (rec.) · uploaded only · CoinMarketCap URLs | **Uploaded + icon pack** | Uploaded registry logo wins; bundled CC0 SVGs as fallback |
+| 4 | Delivery | Branch + PR then merge (rec.) · merge myself | **Branch + PR** | Branch `feat/spec17-redesign-2`; merge after confirmation |
+
 Brief vs docs (docs win, per the brief itself): sign-in chains are Solana, Ethereum, Base, BNB Chain and Arbitrum; Bitcoin is link-only (web); Polygon is registry-only. No real portfolio performance or manager analytics exist, so none are shown. Bytesac co-signs Solana legs as fee payer and sends EVM gas drops, so custody copy never claims Bytesac never touches a transaction.
 
+### Round 3: mobile (2026-10-05, PR #2 merged)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | How mobile work starts | Merge #2 then branch (rec.) · branch from #2 · same branch | **Merge #2, then branch** | PR #2 was merged; branch `feat/mobile-redesign` from `main` (plus the landing-rail scrollbar fix pushed after the merge) |
+| 2 | Scope | Full investor redesign (rec.) · plus manager read-only · restyle only | **Full investor redesign** | Design system (light + dark, Geist, sky/glass) on every screen plus new P0/P1 screens: Home tab, position detail, activity, splash + welcome, appearance, rails, crypto logos; manager stays a web hand-off |
+| 3 | New packages | Geist fonts · expo-blur · expo-linear-gradient · expo-haptics | **All four** | Installed with \`npx expo install\` (SDK 57 versions) |
+| 4 | Verification | Expo web + jest (rec.) · Android emulator · jest only | **Expo web + jest** | Expo web target against the mock API, Playwright at phone sizes, jest; user checks on a device at the end |
+
+Rulings made while building (no question asked; product truths unchanged):
+
+- Ruling: signed-in users and finished sign-ins land on Home, not Discover — Home is the new first tab — cost if wrong: one route constant in `sign-in.tsx`, `contact.tsx`.
+- Ruling: the Profile header badge says "Contacts verified / needed", not "Ready to invest" — eligibility also gates investing — cost: wording.
+- Ruling: the invest "target split" shows weights × amount labelled "before fees"; the plan preview stays the source of real amounts — cost: remove the card.
+- Ruling: the signing screen puts the current action above the step track — six-leg plans pushed the button off-screen — cost: layout only.
+- Ruling: the welcome pager shows on every signed-out start (no stored "seen" flag) — simplest, no new storage — cost: add a flag later.
+
+
+### Round 4: mobile push (2026-10-05)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Delivery | Expo push service (rec.) · native FCM with react-native-firebase · Android-only FCM | **Expo push service** | ADR-020, D-118; `providers/expo-push.ts` |
+| 2 | Packages | expo-notifications + expo-device (rec.) · none | **Install** | `npx expo install` (SDK 57); the unrelated viem lock line was reverted again |
+| 3 | Token storage | platform + provider columns (rec.) · separate table | **Columns** | migration `0020_mobile_push.sql` (additive, defaults web / fcm) |
+| 4 | Content | inbox title and body (rec.) · generic text | **Inbox text** | same copy as email and web push; `data.link` mapped by the app |
 
 ---
 

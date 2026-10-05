@@ -2,10 +2,11 @@
 
 import { MEMBERSHIP_ROLE_LABEL, MEMBERSHIP_STATUS_LABEL, ORGANIZATION_STATUS_LABEL } from "@repo/app-core";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Briefcase, Compass, Mail } from "lucide-react";
+import { ArrowRight, Briefcase, Compass, Flame, Mail, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { BasketCard } from "@/components/baskets/basket-card";
+import { BasketRail } from "@/components/baskets/basket-rail";
 import { ErrorState, LoadingState } from "@/components/layout/states";
+import { DownloadApp } from "@/components/marketing/download-app";
 import { useMe } from "@/components/me-context";
 import { AttentionList, PortfolioSummary, PositionRows } from "@/components/portfolio/summary";
 import { StatusBadge } from "@/components/status-badge";
@@ -26,7 +27,8 @@ export default function HomePage() {
   const org = orgs.find((o) => o.status !== "REJECTED") ?? orgs[0];
   const invitations = useQuery({ queryKey: ["invitations"], queryFn: () => api.myInvitations(), retry: false }).data?.invitations ?? [];
   const portfolio = useQuery({ queryKey: ["portfolio"], queryFn: () => api.getPortfolio(), retry: false });
-  const picks = useQuery({ queryKey: ["discover", "home"], queryFn: () => api.discoverBaskets({ sort: "relevance" }), retry: false });
+  const collections = useQuery({ queryKey: ["discover", "collections"], queryFn: () => api.getDiscoveryCollections(), retry: false });
+  const suggested = useQuery({ queryKey: ["discover", "suggested"], queryFn: () => api.getSuggestedBaskets(), retry: false });
   const p = portfolio.data;
   const missingContacts = me && !["email", "phone"].every((t) => me.contacts.some((c) => c.type === t && c.status === "verified"));
 
@@ -80,17 +82,19 @@ export default function HomePage() {
         </section>
       )}
 
-      {picks.data && picks.data.items.length > 0 && (
-        <section aria-labelledby="picks-title" className="space-y-4">
-          <div className="flex items-end justify-between gap-3">
-            <h2 id="picks-title" className="type-heading text-ink">Strategies to research</h2>
-            <Link href="/baskets" className="text-sm text-ink-muted underline-offset-4 hover:text-ink hover:underline">All baskets</Link>
-          </div>
-          <ul className="grid gap-4 md:grid-cols-3">
-            {picks.data.items.slice(0, 3).map((b) => <li key={b.slug}><BasketCard b={b} /></li>)}
-          </ul>
-        </section>
-      )}
+      <div className="space-y-12">
+        {suggested.data && (
+          <BasketRail id="suggested-title" title="Suggested for you" icon={<Compass aria-hidden className="size-4 text-ink-muted" />} items={suggested.data.items} href="/baskets"
+            description={suggested.data.basis === "your_categories" ? "In the categories you already hold, excluding baskets you own." : "Recently published baskets you don’t hold yet."} />
+        )}
+        <BasketRail id="featured-title" title="Featured" icon={<Sparkles aria-hidden className="size-4 text-accent" />} items={collections.data?.featured ?? []} href="/baskets"
+          description="Chosen by the Bytesac team. Being featured is not advice or a view on future returns." />
+        <BasketRail id="trending-title" title="Trending" icon={<Flame aria-hidden className="size-4 text-warning" />} items={collections.data?.trending ?? []} href="/baskets"
+          description="Most new investors over the last 30 days." />
+        <p className="text-xs text-ink-faint">Returns and volatility on cards are simulated model performance, not actual investor results.</p>
+      </div>
+
+      <DownloadApp headingLevel="h2" />
 
       <section aria-label="For managers" className="border-t border-line pt-8">
         {org ? (

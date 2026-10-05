@@ -1,5 +1,5 @@
 import express from "express";
-import { markReadSchema, pushTokenSchema } from "@repo/validator";
+import { markReadSchema, pushTokenSchema, revokePushTokenSchema } from "@repo/validator";
 import { validate } from "@/middlewares/validate.middleware";
 import { listNotifications, markNotificationsRead, registerPushToken, revokePushToken } from "./notifications.me.controller";
 
@@ -11,6 +11,6 @@ router.post("/notifications/read", validate({ body: markReadSchema }), markNotif
 
 router.post("/push-tokens", validate({ body: pushTokenSchema }), registerPushToken);
 
-router.post("/push-tokens/revoke", validate({ body: pushTokenSchema.pick({ token: true }) }), revokePushToken);
+router.post("/push-tokens/revoke", validate({ body: revokePushTokenSchema }), revokePushToken);
 
 export default router;

@@ -23,6 +23,7 @@ import { LoadingState } from "@/components/layout/states";
 import { Adoption } from "./adoption";
 import { AllocationEditor, PercentInput } from "./allocation-editor";
 import { AssignmentsPanel } from "./assignments-panel";
+import { BasketFiles } from "@/components/baskets/basket-files";
 import { BasketView, type AllocationRow } from "./basket-view";
 import { ConfirmReason } from "./confirm-reason";
 import { FeesEditor } from "./fees-editor";
@@ -31,7 +32,7 @@ import { DiffSummary, VersionHistory } from "./version-history";
 
 type Client = Pick<ApiClient,
   "getBasket" | "saveBasketDraft" | "previewBasket" | "getBasketVersionDiff" | "listBasketVersions" | "submitBasket" | "withdrawBasket" | "publishBasket" | "createBasketVersion" |
-  "basketAdoption" | "pauseBasket" | "resumeBasket" | "requestBasketRetirement" | "listAssets" | "listOrganizationMembers" | "addBasketAssignment" | "updateBasketAssignment" | "endBasketAssignment">;
+  "basketAdoption" | "pauseBasket" | "resumeBasket" | "requestBasketRetirement" | "listAssets" | "listOrganizationMembers" | "addBasketAssignment" | "updateBasketAssignment" | "endBasketAssignment" | "presignBasketFile" | "confirmBasketFile" | "removeBasketFile">;
 
 const EDITABLE = ["draft", "changes_required"];
 const FREQUENCY = { none: "No scheduled review", monthly: "Monthly", quarterly: "Quarterly" } as const;
@@ -182,6 +183,7 @@ function Workspace({ detail, client, onDetail, onReload }: { detail: BasketDetai
         {ctl("t-hor", "Horizon", "horizon", 200)}
         {ctl("t-assume", "Key assumptions", "keyAssumptions", 2000, { multiline: true })}
         {ctl("t-limit", "Known limitations", "knownLimitations", 2000, { multiline: true })}
+        {open && <BasketFiles bid={bid} files={open.files} editable={editable} client={client} onDetail={onDetail} />}
       </div>
     ),
     assets: <AllocationEditor assets={d.assets} readOnly={dis} client={client} onChange={(assets) => set({ assets })} />,

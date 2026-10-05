@@ -1,8 +1,9 @@
-# Bytesac web design system
+# Bytesac design system (web and mobile)
 
 Spec 17 (web first). Source of values: `packages/design-tokens/src/index.ts` (`themes`, `radius`, `shadow`, `motion`,
 `fontFamily`), mirrored by `apps/web/app/globals.css` and checked by `apps/web/test/tokens.test.ts`. The legacy dark
-palette (`palette`, `semantic`, `surfaces`, `radii`, `fonts`) stays exported for `apps/mobile` until its redesign.
+palette (`palette`, `semantic`, `surfaces`, `radii`, `fonts`) is still exported but no app imports it any more (mobile moved to
+`themes` in round 3); removing it is an open item.
 
 ## Character
 
@@ -61,24 +62,26 @@ Geist (300/400/500/600) for everything; Geist Mono for small labels and figures 
 
 | Area | Components |
 |---|---|
-| `ui/` | `Button` (default, secondary, outline, glass, ghost, destructive, link), `Card`, `Dialog` (centred panel on desktop, bottom sheet on phones), `Input`/`Select`/`Textarea` (shared `fieldClass`), `Label`, `Switch`, `kit` (`Eyebrow`, `Figure`, `Stat`, `Section`, `Tile`, `Callout`) |
+| `ui/` | `Button` (default, secondary, outline, glass, ghost, destructive, link), `Card`, `Dialog` (centred panel on desktop, bottom sheet on phones), `Input`/`Select`/`Textarea` (shared `fieldClass`), `Label`, `Switch`, `kit` (`Eyebrow`, `Figure`, `Stat`, `Section`, `Tile`, `Callout`), `StepForm` + `Field` + `ChoiceCard` (any form with more than a handful of inputs is split into steps: progress rail, one step at a time, per-step validation, review step, nothing sent before the last step) |
 | `layout/` | `Shell`/`AppShell` (sticky top bar, workspace row, phone tab bar), `PublicShell` + `site-chrome` (floating marketing header, footer with cropped wordmark), `PageLayout`/`PageHeader`/`PageSection`, `ProfileHero`, `states` (loading shimmer, empty, error, stale), `ThemeSwitch` |
-| `visual/` | `AllocationRing`/`AllocationLegend`/`AllocationBar`, `WeightDiff`, `ChainBadge`/`AssetMark` (typographic, no third-party logos), `Sky`, `HandPhone`, `GlassObject` |
-| `motion/` | `Reveal`, `Stagger`, `LineReveal`, `Parallax`, `SmoothScroll` (Lenis, marketing only) |
-| Domain | `BasketCard`, `PerformanceChart` (hover + data table), `BasketView`, `PortfolioSummary`, `AttentionList`, `PositionRows`, `PositionsList` (three layers: target, allocation, verified), `InvestFlow`, `RebalanceReview`, `WorkspaceHeader`/`useOrgWorkspace` |
+| `visual/` | `AllocationRing`/`AllocationLegend`/`AllocationBar`, `WeightDiff`, `ChainBadge`/`AssetMark` (registry logo first, then the vendored CC0 icon pack in `public/crypto`, then a monogram), `Sky` (gradient + drifting transparent clouds), `Phone`/`HandPhone` (screens punched out; real UI sits behind the bezel, sized in `cqw`), `ExampleBasketScreen`, `GlassObject` (stills), `GlassScene` (real-time glass ring / stack, lazy, still fallback) |
+| `motion/` | `Reveal`, `Stagger`, `LineReveal`, `Parallax`, `SwapStack`/`SwapPanel` (page swap), `SmoothScroll` (Lenis, marketing only) |
+| Domain | `BasketCard` (holdings logos, min amount, simulated 1y return, volatility meter, save toggle), `BasketRow` (list view), `BasketRail` (Featured / Trending / Suggested), `BasketFiles`/`FileList`, `DownloadApp`/`StoreButtons`, `Roles` (permission matrix + custom role editor), `WorkspaceLayout`/`OrgPage`, `OpsFrame`, `PerformanceChart` (hover + data table), `BasketView`, `PortfolioSummary`, `AttentionList`, `PositionRows`, `PositionsList` (three layers: target, allocation, verified), `InvestFlow`, `RebalanceReview`, `WorkspaceHeader`/`useOrgWorkspace` |
 
 ## Motion
 
 Tokens and choreography come from `docs/design/MOTION-STUDY.md`: ease `cubic-bezier(0.22, 1, 0.36, 1)`, durations
 160 / 320 / 700 / 1100 ms, 120 ms line stagger, 80 ms item stagger. Load order on heroes: atmosphere → words →
 object → data chips → actions. Reduced motion renders final states; smooth scrolling is marketing-only and off on
-touch devices. `three`/`@react-three/fiber` are installed and approved for a future interactive scene but unused —
-the generated glass objects carry the look without a WebGL cost.
+touch devices. Chapters of the landing page swap like pages (see the round 2 study). `three`/`@react-three/fiber` run
+two procedural glass scenes (ring, stack), code-split, paused off screen, replaced by the still image under reduced
+motion or without WebGL.
 
 ## Imagery
 
 Catalogue and generation record: `apps/web/public/visuals/MANIFEST.md`. One family — frosted glass in ice white, pale
-sky and navy — plus day and night sky plates and a hand holding a blank phone. Add assets only after checking the
+sky and navy — plus natively transparent cloud strips, a modern phone and a hand holding it. Generate with a
+transparent background rather than cutting out (cut-outs dull edges). Crypto logos: `apps/web/public/crypto` (CC0). Add assets only after checking the
 manifest, and record every new one there.
 
 ## Theme
@@ -88,12 +91,44 @@ flash; `system` follows `prefers-color-scheme`. The wallet modal (AppKit) follow
 
 ## Manager and ops surfaces
 
-Same tokens, denser: workspace header with organization identity and role, key-figures strip, section index,
-tables with mono labels. Ops inherits the system without its own IA. Hiding controls is UI convenience only — the
+Same tokens, denser. The manager workspace has a sidebar (identity, switcher, grouped sections: Overview, Baskets,
+Team, Roles & access, Wallets, Settings, Earnings); the overview is a dashboard (status cards, next steps, areas).
+Ops has the same frame with its own groups (Review, Catalog, Money, Access). Hiding controls is UI convenience only — the
 server authorizes every call.
+
+## Scrollbar
+
+A slim floating thumb (`::-webkit-scrollbar`; `scrollbar-color` in Firefox) using `--c-scroll-thumb` tokens per theme;
+the track stays invisible.
 
 ## Visual QA
 
 `apps/web/e2e/mock-api` serves schema-validated fixtures (personas `investor`, `manager`, `ops`, `new`);
 `e2e/shoot.mjs` captures routes at 390–1920px in both themes and flags horizontal overflow; `e2e/flow-invest.mjs`
 walks the investment flow. Run `pnpm --filter web mock-api` and `pnpm --filter web dev` first.
+
+## Mobile (Expo, round 3)
+
+Same roles, same two themes, same Geist type, in `apps/mobile` (branch `feat/mobile-redesign`).
+
+- **Tokens.** `apps/mobile/src/global.css` declares `--color-<role>` in `@theme` and `:root` (light values);
+  `ThemeProvider` (`src/lib/theme.tsx`) swaps them at runtime through NativeWind's `VariableContextProvider` and exposes
+  `useTheme().colors` for raw values (icons, gradients, navigators). `apps/mobile/test/tokens.test.ts` checks parity.
+  Sky roles `skyTop` / `skyMid` / `skyLow` were added to `packages/design-tokens` for the gradient.
+- **Theme choice.** System / Light / Dark in Profile → Appearance, stored in AsyncStorage (`bx_theme`). The resolved
+  scheme follows the choice; `Appearance.setColorScheme` is called only where it exists (not on React Native Web).
+- **Type.** `AppText` variants (hero, display, title, heading, lede, bodyLarge, body, label, eyebrow, figure,
+  buttonLabel, micro) and tones; Geist 300 for large titles, Geist Mono for eyebrows. Figures mute the cents.
+- **Kit** (`src/components/ui`): Button (primary / secondary / glass / ghost / destructive pills, 44 pt minimum, light
+  haptic on primary), Card, Chip (selection haptic), StatusBadge, TextField (`size="lg"` for amounts), Glass
+  (expo-blur on iOS/web; near-opaque fallback on Android, whose blur needs a target view), Sky (gradient plus mirrored
+  cloud tiles drifting; still under reduced motion; tiles keep the art's ratio and fade to the canvas at zero alpha),
+  AssetMark / AssetStack (uploaded logo → vendored CC0 icon → monogram), AllocationRing, Screen / StickyFooter / Section.
+- **Navigation.** Five tabs (Home, Discover, Portfolio, Alerts, Profile) in a floating glass bar with an ink pill for the
+  active tab; stack headers are untitled because each screen carries its own large title.
+- **Patterns.** Atmosphere only on bookends (welcome, sign-in, contact, Home header, basket hero, splash); everything
+  else is calm cards with hairline rows. Money flows show state first, then the one action, then the detail
+  ("What you will sign", the step track, fees). Sticky bottom actions for Invest. Warnings are soft tinted callouts.
+- **Visual QA.** Launch config `mobile-web` (Expo web on 8091, `EXPO_PUBLIC_MOCK_SESSION=1`, `?as=investor`) against
+  `mock-api-alt` (4100); Playwright at 390 and 430 px in both themes with an overflow check. Device checks (iOS and
+  Android) are still the user's final step.

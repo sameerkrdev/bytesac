@@ -1,4 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react-native";
+import { Linking } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import BasketScreen from "@/app/(app)/basket/[slug]";
 import { api } from "@/lib/api";
@@ -57,5 +58,15 @@ describe("Basket detail (mobile)", () => {
     await renderWithClient(<BasketScreen />);
     expect(await screen.findByText("Declare your country.")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Save declaration" })).toBeDisabled();
+  });
+
+  it("lists the version documents and opens one", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    mockApi.getPublicBasket.mockResolvedValue(publicBasket({ files: [{ id: id(61), kind: "factsheet", title: "Q3 factsheet", fileName: "q3.pdf", contentType: "application/pdf", sizeBytes: 204800, url: "https://files.example/q3.pdf", addedAt: "2026-09-20T00:00:00.000Z" }] }));
+    await renderWithClient(<BasketScreen />);
+    expect(await screen.findByText("Documents")).toBeOnTheScreen();
+    expect(screen.getByText("Factsheet · PDF · 200 KB")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("link", { name: "Open Q3 factsheet, Factsheet PDF" }));
+    expect(open).toHaveBeenCalledWith("https://files.example/q3.pdf");
   });
 });

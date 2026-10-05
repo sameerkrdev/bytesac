@@ -30,7 +30,7 @@ export function AssetRules({ a, locked, onChange, client = api }: SectionProps &
     <section aria-labelledby={`${id}-h`} className="space-y-4">
       <h2 id={`${id}-h`} className="type-heading text-ink">Eligibility rules</h2>
       {a.rules.length === 0 ? <p className="text-sm text-ink-muted">No rules yet.</p> : (
-        <div className="overflow-x-auto"><table className="min-w-[36rem] w-full text-left text-sm">
+        <div className="relative overflow-x-auto"><table className="min-w-[36rem] w-full text-left text-sm">
           <thead className="text-xs text-ink-muted"><tr><th className="py-2 pr-4 font-medium">Jurisdiction</th><th className="pr-4 font-medium">Action</th><th className="pr-4 font-medium">Investor status</th><th className="pr-4 font-medium">Outcome</th><th className="pr-4 font-medium">Status</th><th className="font-medium"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {a.rules.map((r) => (

@@ -35,7 +35,7 @@ describe("navFor", () => {
     expect(labels(navFor(null).primary)).toEqual(["Baskets", "How it works", "Your wallet", "For managers", "Fees"]);
   });
   it("a manager needs an active membership", () => {
-    expect(labels(navFor(me({ organizations: [org("ACTIVE")] })).manager)).toEqual(["Overview", "Baskets", "Members", "Earnings"]);
+    expect(labels(navFor(me({ organizations: [org("ACTIVE")] })).manager)).toEqual(["Overview", "Baskets", "Team", "Roles & access", "Wallets", "Settings", "Earnings"]);
     expect(navFor(me({ organizations: [org("UNDER_REVIEW")] })).manager).toEqual([]);
   });
   it("a reviewer sees ops without the admin-only areas, an admin sees all", () => {

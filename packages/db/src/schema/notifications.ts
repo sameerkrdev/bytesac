@@ -10,6 +10,10 @@ export const notificationKind = app.enum("notification_kind", [
 ]);
 
 const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());
+
+/** Where a push token lives and who delivers to it: web browsers through FCM, the mobile app through the Expo push service. */
+export const pushPlatform = app.enum("push_platform", ["web", "ios", "android"]);
+export const pushProvider = app.enum("push_provider", ["fcm", "expo"]);
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
 /** In-app inbox; `dedupe_key` makes every trigger idempotent per user. Only `read_at` is updated. */
@@ -29,13 +33,15 @@ export const notifications = app.table(
   (t) => [uniqueIndex("notifications_user_dedupe").on(t.userId, t.dedupeKey), index("notifications_user_created_idx").on(t.userId, t.createdAt.desc())],
 );
 
-/** Web push (FCM) registration tokens; revoked, never deleted. */
+/** Push registration tokens (web FCM and mobile Expo); revoked, never deleted. Rows before mobile push are web / fcm. */
 export const pushTokens = app.table(
   "push_tokens",
   {
     id: id(),
     userId: uuid("user_id").notNull().references(() => users.id),
     token: text("token").notNull().unique(),
+    platform: pushPlatform("platform").notNull().default("web"),
+    provider: pushProvider("provider").notNull().default("fcm"),
     userAgent: text("user_agent"),
     createdAt: ts("created_at").notNull().defaultNow(),
     revokedAt: ts("revoked_at"),
