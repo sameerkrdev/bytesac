@@ -107,6 +107,23 @@ the track stays invisible.
 `e2e/shoot.mjs` captures routes at 390–1920px in both themes and flags horizontal overflow; `e2e/flow-invest.mjs`
 walks the investment flow. Run `pnpm --filter web mock-api` and `pnpm --filter web dev` first.
 
+## Logo (2026-10-06)
+
+The mark is two stacked rounded slabs, a quiet B, in the platform's two main colours: the top slab in the blue accent
+(`#3D63D9`, `#8AA6FF` on dark surfaces) and the bottom slab in navy ink (`#0F1E3A`, white on dark). The wordmark is
+"Bytesac" in Geist Medium at -0.02em, converted to outlines. The full logo puts the wordmark's capitals (0.56 of the mark
+height) centred on the mark, 0.3 of the mark height apart.
+
+- **Source of truth:** `packages/design-tokens/src/brand.ts` (`brandMark`, `brandWordmark`, `brandAspect`), used by
+  the web `Mark` / `Wordmark` / `Logo` and the mobile `Logo` / `FullLogo`. In code the top slab follows the
+  accent token and the bottom slab the ink colour, so both themes are right automatically.
+- **Files:** `apps/web/public/brand/`: `bytesac-mark`, `bytesac-logo` (mark + wordmark), `bytesac-wordmark`, each as
+  SVG and transparent PNG, plus `-white` versions for dark surfaces, and `bytesac-app-icon-512.png`.
+- **App icons:** navy square with the light-blue and white mark (iOS, Android adaptive, favicon, Apple touch icon),
+  white monochrome and notification icons, splash marks for light and dark.
+- **Process:** concepts were generated with Recraft V4 Vector (`docs/design/logo-concepts/round-1.png`, `round-2.png`);
+  the user chose round 2 #1, wordmark style B and the two-colour treatment (`final.png`).
+
 ## Mobile (Expo, round 3)
 
 Same roles, same two themes, same Geist type, in `apps/mobile` (branch `feat/mobile-redesign`).

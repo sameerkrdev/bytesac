@@ -58,7 +58,7 @@ function Screen({ rect, children }: { rect: CSSProperties; children?: ReactNode 
     <div data-theme="light" className="absolute overflow-hidden rounded-[13%/6%] bg-[#F7F8FA] text-[#0F1E3A] [container-type:inline-size]" style={rect}>
       {children ?? (
         <div className="grid h-full place-items-center">
-          <Mark size={28} className="opacity-25" />
+          <Mark size={28} mono className="opacity-25" />
         </div>
       )}
     </div>

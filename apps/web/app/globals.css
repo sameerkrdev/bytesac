@@ -314,6 +314,12 @@
   ::-webkit-scrollbar-thumb { background-color: var(--c-scroll-thumb); border: 3.5px solid transparent; background-clip: padding-box; border-radius: 999px; min-height: 48px; }
   ::-webkit-scrollbar-thumb:hover { background-color: var(--c-scroll-thumb-hover); border-width: 2.5px; }
   ::-webkit-scrollbar-corner { background: transparent; }
+  /* Side panels (filters): the same pill, invisible until the panel is hovered or focused. Never set the standard
+     scrollbar-width / scrollbar-color on an element: Chrome then ignores these ::-webkit-scrollbar rules and draws
+     its default bar with arrows. */
+  .scroll-quiet::-webkit-scrollbar-thumb { background-color: transparent; }
+  .scroll-quiet:hover::-webkit-scrollbar-thumb, .scroll-quiet:focus-within::-webkit-scrollbar-thumb { background-color: var(--c-scroll-thumb); }
+  .scroll-quiet::-webkit-scrollbar-thumb:hover { background-color: var(--c-scroll-thumb-hover); }
   @supports (-moz-appearance: none) {
     html { scrollbar-width: thin; scrollbar-color: var(--c-scroll-thumb) transparent; }
   }

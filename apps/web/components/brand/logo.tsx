@@ -1,26 +1,35 @@
+import { brandAspect, brandMark, brandWordmark } from "@repo/design-tokens";
 import { cn } from "@/lib/utils";
 
-/**
- * The Bytesac mark: two stacked glass slabs over a half-round bowl, redrawn as a single-colour vector from the
- * brand usage sheet so it stays crisp at 20px and follows the theme. Replace with the official vector when available.
- */
-export function Mark({ size = 28, className }: { size?: number; className?: string }) {
+/** The Bytesac mark (two stacked slabs): top slab in the accent, bottom slab in the text colour; `size` is its height. `mono` uses the text colour for both. */
+export function Mark({ size = 28, className, mono = false }: { size?: number; className?: string; mono?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden className={cn("shrink-0 text-ink", className)}>
-      <path d="M11.5 10.2a6.4 6.4 0 0 0 0 12.8z" fill="currentColor" opacity="0.28" />
-      <path d="M13.4 2.5h7.9a3 3 0 0 1 3 3v6.1a1.9 1.9 0 0 1-2.7 1.7l-8.6-4A2.4 2.4 0 0 1 11.6 7V4.3a1.8 1.8 0 0 1 1.8-1.8z" fill="currentColor" opacity="0.9" />
-      <path d="M11.6 13.6a1.4 1.4 0 0 1 2-1.3l9.2 4.3a2.6 2.6 0 0 1 1.5 2.4v8.5a2 2 0 0 1-2 2h-8.3a2.4 2.4 0 0 1-2.4-2.4z" fill="currentColor" opacity="0.62" />
+    <svg height={size} width={Math.round(size * brandAspect.mark)} viewBox={brandMark.viewBox} fill="currentColor" aria-hidden className={cn("shrink-0 text-ink", className)}>
+      <path d={brandMark.paths[0]} fill={mono ? "currentColor" : "var(--c-accent)"} />
+      <path d={brandMark.paths[1]} />
     </svg>
   );
 }
 
-/** Mark + wide-tracked wordmark, as on the brand sheet. */
+/** The outlined "Bytesac" wordmark (Geist Medium); `size` is the mark height it sits beside. */
+export function Wordmark({ size = 28, className }: { size?: number; className?: string }) {
+  const h = Math.round(size * 0.78);
+  return (
+    <svg height={h} width={Math.round(h * brandAspect.wordmark)} viewBox={brandWordmark.viewBox} fill="currentColor" aria-hidden className={cn("shrink-0 text-ink", className)}
+      // The box includes the y descender: drop it so the capitals centre on the mark (as in the exported logo).
+      style={{ transform: `translateY(${(h * 0.086).toFixed(1)}px)` }}>
+      <path d={brandWordmark.path} />
+    </svg>
+  );
+}
+
+/** Mark + wordmark, as in the brand files (apps/web/public/brand). */
 export function Logo({ size = 28, className, wordmark = true }: { size?: number; className?: string; wordmark?: boolean }) {
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
+    <span className={cn("inline-flex items-center", className)} style={{ gap: Math.round(size * 0.3) }}>
       <Mark size={size} />
-      {wordmark && <span className="text-[0.8125rem] font-medium tracking-[0.32em] text-ink uppercase">Bytesac</span>}
-      {!wordmark && <span className="sr-only">Bytesac</span>}
+      {wordmark ? <Wordmark size={size} /> : null}
+      <span className="sr-only">Bytesac</span>
     </span>
   );
 }
