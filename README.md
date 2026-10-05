@@ -358,6 +358,11 @@ Bytesac has not been deployed. [`docs/engineering/DEPLOYMENT.md`](docs/engineeri
 - Supabase, Redis, R2, edge (`X-Forwarded-For`, geo header), cookies
 - Release order, platform wallets, and the go-live checklist
 
+Docker images: `apps/api/Dockerfile` (API and worker; `--target migrate` for migrations and the ops CLI) and
+`apps/web/Dockerfile` (Next.js standalone), both built from the repository root. For a low-cost pilot on one VM,
+`deploy/docker-compose.yml` runs Caddy (HTTPS), web, API, worker and Redis; follow
+[`docs/engineering/DEPLOY-SINGLE-VM.md`](docs/engineering/DEPLOY-SINGLE-VM.md).
+
 Do not create cloud resources or use production secrets without an explicit go-ahead.
 
 ---

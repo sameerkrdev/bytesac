@@ -17,7 +17,7 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
    - `domains/FUND-MANAGER-FEATURES.md`
 5. `engineering/CODING-STANDARDS.md` — conventions, tests and the agent workflow.
 6. `engineering/INTEGRATION-AUDIT.md` — third-party integration audit against official documentation (Spec 14): versions, findings, fixes, deferrals.
-7. `engineering/DEPLOYMENT.md` — how to deploy and operate Bytesac (prerequisites, services, env, release order, go-live). Hosting vendors are not chosen yet (Spec 16).
+7. `engineering/DEPLOYMENT.md` — how to deploy and operate Bytesac (prerequisites, services, env, release order, go-live). Hosting vendors are not chosen yet (Spec 16). `engineering/DEPLOY-SINGLE-VM.md` — running the whole platform on one VM for a pilot (free-tier options, Docker Compose runbook).
 8. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
 9. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
 10. `design/DESIGN-SYSTEM.md` — web design system (tokens, type, components, motion, imagery). `design/MOTION-STUDY.md` — reference-video analysis. `design/MOBILE-UX-INVENTORY.md` — blueprint for the Expo redesign.

@@ -1,0 +1,33 @@
+# Build context for apps/api/Dockerfile and apps/web/Dockerfile (both build from the repository root).
+# turbo prune needs every workspace package.json, so apps/mobile stays in; its heavy folders do not.
+
+# Dependencies and build output
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/test-results
+**/playwright-report
+
+# Secrets: never send env files into an image (examples are fine)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Mobile-only artefacts and native projects
+apps/mobile/.expo
+apps/mobile/android
+apps/mobile/ios
+apps/mobile/assets
+
+# Repository, docs and tooling
+.git
+.github
+.claude
+docs
+**/*.log
+**/.DS_Store
+docker-compose.yml
+deploy/.env*

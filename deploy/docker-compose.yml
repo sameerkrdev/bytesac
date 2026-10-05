@@ -1,0 +1,162 @@
+# Bytesac on one Linux VM: Caddy (HTTPS) → web (Next.js) → API (Express) + worker (BullMQ) + Redis.
+# PostgreSQL is external (Supabase, ADR-005/006) unless you start the optional "selfhost-db" profile.
+#
+#   cd deploy
+#   cp .env.example .env              # domains and public web settings
+#   cp ../apps/api/.env.example api.env && edit api.env   # API + worker secrets (see docs/engineering/DEPLOYMENT.md)
+#   docker compose build
+#   docker compose --profile tools run --rm migrate      # once per release, before starting the new API
+#   docker compose up -d
+#
+# Guide: docs/engineering/DEPLOY-SINGLE-VM.md
+
+name: bytesac
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN in deploy/.env}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    networks: [edge]
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_ORIGIN: http://api:4000
+        NEXT_PUBLIC_APP_URL: https://${WEB_DOMAIN}
+        NEXT_PUBLIC_REOWN_PROJECT_ID: ${NEXT_PUBLIC_REOWN_PROJECT_ID:-}
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
+        NEXT_PUBLIC_FIREBASE_VAPID_KEY: ${NEXT_PUBLIC_FIREBASE_VAPID_KEY:-}
+        NEXT_PUBLIC_IOS_APP_URL: ${NEXT_PUBLIC_IOS_APP_URL:-}
+        NEXT_PUBLIC_ANDROID_APP_URL: ${NEXT_PUBLIC_ANDROID_APP_URL:-}
+    image: bytesac-web:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: bytesac-api:latest
+    restart: unless-stopped
+    env_file: ./api.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      REDIS_URL: redis://redis:6379
+      # Trust only the hops inside this compose network (Caddy and the web server). Caddy replaces any
+      # client-supplied X-Forwarded-For with the real client IP, so the API sees the true address.
+      TRUST_PROXY: 172.30.0.0/24
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [edge]
+
+  worker:
+    image: bytesac-api:latest
+    pull_policy: never
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    env_file: ./api.env
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+    healthcheck:
+      disable: true
+    depends_on:
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks: [edge]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # BullMQ must never lose keys: no eviction, append-only persistence.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    networks: [edge]
+
+  # One-off: docker compose --profile tools run --rm migrate (needs MIGRATOR_DATABASE_URL in migrate.env)
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    image: bytesac-migrate:latest
+    env_file: ./migrate.env
+    profiles: ["tools"]
+    networks: [edge]
+
+  # One-off: the audited ops CLI, for example
+  #   docker compose --profile tools run --rm cli ops:grant-role -- --user <uuid> --role ops_admin --operator you@example.com
+  cli:
+    image: bytesac-migrate:latest
+    pull_policy: never
+    working_dir: /repo/apps/api
+    entrypoint: ["pnpm"]
+    env_file: ./api.env
+    environment:
+      REDIS_URL: redis://redis:6379
+    profiles: ["tools"]
+    networks: [edge]
+
+  # Optional self-hosted PostgreSQL 17 with pg_cron and pgvector (the repository's dev image) instead of Supabase.
+  # Start with --profile selfhost-db; back up the volume yourself (no managed backups).
+  postgres:
+    build: ../docker/postgres
+    profiles: ["selfhost-db"]
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=bytesac_dev"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: postgres
+    volumes:
+      - ../docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 30
+    networks: [edge]
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  caddy_data:
+  caddy_config:
+  redis_data:
+  pg_data:
