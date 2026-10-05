@@ -186,6 +186,8 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 
 - [ ] Mobile push (ADR-020): run `eas init` and upload the FCM v1 and APNs keys to EAS before a build can receive push; push receipts are not polled (only `DeviceNotRegistered` at send time revokes a token); no app-icon badge; Expo is a new processor of notification titles and bodies (list it in the privacy notice); verify on device: permission prompt, each kind, tap from a cold start.
 
+- [ ] Brand: the mobile app icon, adaptive icon, splash mark, favicon and in-app logo are rendered from the vector redraw of the mark (`apps/mobile/src/components/brand/logo.tsx`, same paths as the web `Mark`); replace with the official vector when available. `apps/web/public/logo.png` (and the WalletConnect metadata icon `https://bytesac.com/logo.png` in `apps/mobile/src/lib/appkit.tsx`) is the whole brand sheet, not a square icon.
+
 ## 8. Open decisions in the register
 
 - [ ] D-025 eligibility rule values and D-026 issuer routes: the engine and secondary-market tokens are decided (ADR-018); legal policy values and issuer subscription/redemption remain open.

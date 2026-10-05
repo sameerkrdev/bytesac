@@ -40,7 +40,7 @@ export function WelcomeCard({ expired, onConnect }: { expired: boolean; onConnec
       {/* Above the absolutely positioned sky (on web it would otherwise paint over in-flow content). */}
       <View className="flex-1" style={{ zIndex: 1 }}>
       <View className="flex-row items-center gap-2 px-5 pt-14">
-        <View className="rounded-control bg-white p-1"><Logo size={24} /></View>
+        <Logo size={28} />
         <AppText variant="heading" accessibilityRole="header">Welcome to Bytesac</AppText>
       </View>
       <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onScroll} onScroll={onScroll} scrollEventThrottle={64} className="flex-1"
