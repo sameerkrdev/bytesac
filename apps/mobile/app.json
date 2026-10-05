@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#F6F8FB",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.bytesac.app",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
@@ -26,7 +26,7 @@
     "android": {
       "package": "com.bytesac.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0B1117",
+        "backgroundColor": "#0A1517",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -44,11 +44,11 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#EEF4FA",
-          "image": "./assets/images/logo.png",
-          "imageWidth": 96,
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120,
           "dark": {
             "backgroundColor": "#070D18",
-            "image": "./assets/images/logo.png"
+            "image": "./assets/images/splash-icon.png"
           }
         }
       ],
@@ -57,8 +57,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/android-icon-monochrome.png",
-          "color": "#0F1E3A",
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#21403F",
           "defaultChannel": "default"
         }
       ]
