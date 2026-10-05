@@ -16,7 +16,7 @@ Copy `.env.example` to `.env`.
 
 ## Screens
 
-Expo Router: `(app)/(tabs)` has Discover, Portfolio, Notifications (unread badge) and Profile; stack screens are `basket/[slug]`, `invest/[slug]`, `operation/[id]`, `rebalance/[positionId]`, `repair/[asset]` and `sell/[positionId]`. Investor parity with the web: discover (keyword, category, sort, highest minimum, AI search), basket detail, the invest wizard, portfolio actions (review update, skip, keep custom, repair or sync, sell, leave), operation detail, the inbox (links map to mobile routes, unknown paths open the portfolio) and profile (contacts, preferences, eligibility). Manager and ops screens are web-only. Shared money-flow logic (the leg signer, fee lines, eligibility copy) lives in `@repo/app-core`; mobile only supplies a `Signer`.
+Expo Router: `(app)/(tabs)` has Home, Discover, Portfolio, Alerts (unread badge) and Profile in a floating glass tab bar; stack screens are `basket/[slug]`, `asset/[id]`, `organization/[id]`, `manager/[handle]`, `position/[id]`, `activity`, `invest/[slug]`, `operation/[id]`, `rebalance/[positionId]`, `repair/[asset]` and `sell/[positionId]`; `(auth)` has the welcome pager, sign-in and contact. Investor parity with the web: discover (keyword, category, sort, highest minimum, AI search), basket detail, the invest wizard, portfolio actions (review update, skip, keep custom, repair or sync, sell, leave), operation detail, the inbox (links map to mobile routes, unknown paths open the portfolio) and profile (contacts, preferences, eligibility). Manager and ops screens are web-only. Shared money-flow logic (the leg signer, fee lines, eligibility copy) lives in `@repo/app-core`; mobile only supplies a `Signer`.
 
 ## Signing
 
