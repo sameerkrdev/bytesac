@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { AppearanceSection } from "@/components/profile/appearance-section";
 import { ContactsSection } from "@/components/profile/contacts-section";
 import { EligibilitySection } from "@/components/profile/eligibility-section";
+import { HelpSection } from "@/components/profile/help-section";
 import { NotificationsSection } from "@/components/profile/notifications-section";
 import { SessionsSection } from "@/components/profile/sessions-section";
 import { WalletSection } from "@/components/profile/wallet-section";
@@ -59,6 +60,9 @@ export default function ProfileScreen() {
           </Group>
           <Group title="Security">
             <SessionsSection />
+          </Group>
+          <Group title="Help">
+            <HelpSection />
           </Group>
         </>
       )}

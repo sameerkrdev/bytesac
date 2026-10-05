@@ -2,9 +2,10 @@ import { HEADLINE_HELP, HEADLINE_LABEL } from "@repo/app-core";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { ArrowRight, ChevronRight, Compass, Flame, Mail, Sparkles } from "lucide-react-native";
+import { ArrowRight, Compass, Flame, Sparkles } from "lucide-react-native";
 import { Pressable, RefreshControl, View } from "react-native";
 import { BasketRail } from "@/components/basket/basket-card";
+import { SetupChecklist } from "@/components/portfolio/setup-checklist";
 import { ErrorState, LoadingState } from "@/components/states/states";
 import { PortfolioSummary, PositionRows } from "@/components/portfolio/summary";
 import { AppText } from "@/components/ui/app-text";
@@ -32,7 +33,6 @@ export default function HomeScreen() {
   const collections = useQuery({ queryKey: ["discover", "collections"], queryFn: () => api.getDiscoveryCollections(), retry: false });
   const suggested = useQuery({ queryKey: ["discover", "suggested"], queryFn: () => api.getSuggestedBaskets(), retry: false });
   const p = portfolio.data;
-  const missingContacts = me.data && !["email", "phone"].every((t) => me.data!.contacts.some((c) => c.type === t && c.status === "verified"));
   const needs = p?.positions.filter((x) => x.headline !== "ALIGNED") ?? [];
   const refresh = () => { void portfolio.refetch(); void collections.refetch(); void suggested.refetch(); };
 
@@ -44,16 +44,7 @@ export default function HomeScreen() {
         <AppText variant="display" accessibilityRole="header">Home</AppText>
       </View>
 
-      {missingContacts && (
-        <Pressable accessibilityRole="link" onPress={() => router.push("/(auth)/contact")} className="flex-row items-center gap-3 rounded-card border border-info/30 bg-info-soft p-4">
-          <Mail size={18} color={colors.info} />
-          <View className="flex-1 gap-0.5">
-            <AppText className="font-medium">Verify your email and phone to invest</AppText>
-            <AppText variant="label" tone="muted">Used for notices about your baskets and the transactions you sign.</AppText>
-          </View>
-          <ChevronRight size={18} color={colors.inkFaint} />
-        </Pressable>
-      )}
+      {me.data ? <SetupChecklist me={me.data} /> : null}
 
       {portfolio.isPending ? <LoadingState /> : portfolio.isError ? <ErrorState error={portfolio.error} onRetry={() => void portfolio.refetch()} /> : p && p.positions.length > 0 ? (
         <>

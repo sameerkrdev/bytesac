@@ -14,6 +14,10 @@ vi.mock("@/providers/fcm", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { sendPush: fakes.fcm.sendPush };
 });
+vi.mock("@/providers/expo-push", async () => {
+  const { fakes } = await import("./helpers/fakes");
+  return { sendExpoPush: fakes.expo.sendExpoPush };
+});
 vi.mock("@/providers/twilio", async () => {
   const { fakes } = await import("./helpers/fakes");
   return { startSmsVerification: fakes.sms.start, checkSmsVerification: fakes.sms.check };

@@ -6,6 +6,7 @@ import {
   notificationText, type Adoption, type NotificationKind, type NotificationPreferences, type NotificationsPage,
 } from "@repo/validator";
 import { env } from "@/config/dotenv";
+import { sendExpoPush } from "@/providers/expo-push";
 import { sendPush } from "@/providers/fcm";
 import { sendNotificationEmail } from "@/providers/resend";
 import { enqueue } from "@/config/queues";
@@ -27,8 +28,9 @@ export async function notify(conn: DbOrTx, n: NewNotification): Promise<string |
 const copy = (n: typeof notifications.$inferSelect) => notificationText(n.kind, { ...(n.data as object), positionId: n.positionId ?? undefined });
 
 /**
- * Email and web push for one inbox row, gated by the user's preference for its kind. Throws when the row is not visible yet (the job can run before the
- * enqueuing transaction commits) so the queue retries; a Resend or FCM failure is only logged, and a push token FCM reports dead is revoked.
+ * Email and push (web through FCM, the mobile app through the Expo push service) for one inbox row, gated by the user's preference for its kind.
+ * Throws when the row is not visible yet (the job can run before the enqueuing transaction commits) so the queue retries; a Resend, FCM or Expo
+ * failure is only logged, and a token either provider reports dead is revoked. Push carries the inbox title and body (decided 2026-10-05).
  */
 export async function deliverNotification(id: string): Promise<void> {
   const [n] = await db.select().from(notifications).where(eq(notifications.id, id));
@@ -38,13 +40,24 @@ export async function deliverNotification(id: string): Promise<void> {
   const text = copy(n);
   const [email] = await db.select({ value: contacts.value }).from(contacts).where(and(eq(contacts.userId, n.userId), eq(contacts.type, "email"), eq(contacts.status, "verified")));
   if (email) await sendNotificationEmail(email.value, text, `notification/${n.id}`).catch((err) => logger.warn("notification email failed", { errMessage: err instanceof Error ? err.message : "unknown" }));
-  const tokens = (await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.userId, n.userId), isNull(pushTokens.revokedAt)))).map((t) => t.token);
-  if (tokens.length === 0) return;
-  try {
-    const dead = await sendPush(tokens, { ...text, link: `${env.AUTH_URI}${text.link}` });
-    if (dead.length) await db.update(pushTokens).set({ revokedAt: sql`now()` }).where(inArray(pushTokens.token, dead));
-  } catch (err) {
-    logger.warn("web push failed", { errMessage: err instanceof Error ? err.message : "unknown" });
+  const rows = await db.select({ token: pushTokens.token, provider: pushTokens.provider }).from(pushTokens).where(and(eq(pushTokens.userId, n.userId), isNull(pushTokens.revokedAt)));
+  const web = rows.filter((r) => r.provider === "fcm").map((r) => r.token);
+  const mobile = rows.filter((r) => r.provider === "expo").map((r) => r.token);
+  const revoke = async (dead: string[]) => { if (dead.length) await db.update(pushTokens).set({ revokedAt: sql`now()` }).where(inArray(pushTokens.token, dead)); };
+  if (web.length) {
+    try {
+      await revoke(await sendPush(web, { ...text, link: `${env.AUTH_URI}${text.link}` }));
+    } catch (err) {
+      logger.warn("web push failed", { errMessage: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+  if (mobile.length) {
+    try {
+      // The app maps the web path to its own screen (`mobileRoute`), as it does for inbox rows.
+      await revoke(await sendExpoPush(mobile, { title: text.title, body: text.body, data: { link: text.link, notificationId: n.id } }));
+    } catch (err) {
+      logger.warn("mobile push failed", { errMessage: err instanceof Error ? err.message : "unknown" });
+    }
   }
 }
 
@@ -96,9 +109,10 @@ export async function markRead(userId: string, body: { ids: string[] } | { all: 
 }
 
 /** A token is one browser. Registering it again un-revokes it, and a browser that a different user signs in to is handed to that user. */
-export async function registerPushToken(userId: string, body: { token: string; userAgent?: string }): Promise<void> {
-  await db.insert(pushTokens).values({ userId, token: body.token, userAgent: body.userAgent ?? null })
-    .onConflictDoUpdate({ target: pushTokens.token, set: { userId, userAgent: body.userAgent ?? null, revokedAt: null } });
+export async function registerPushToken(userId: string, body: { token: string; userAgent?: string; platform: "web" | "ios" | "android"; provider: "fcm" | "expo" }): Promise<void> {
+  const values = { userAgent: body.userAgent ?? null, platform: body.platform, provider: body.provider };
+  await db.insert(pushTokens).values({ userId, token: body.token, ...values })
+    .onConflictDoUpdate({ target: pushTokens.token, set: { userId, ...values, revokedAt: null } });
 }
 
 export async function revokePushToken(userId: string, token: string): Promise<void> {

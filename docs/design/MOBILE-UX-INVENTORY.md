@@ -17,7 +17,7 @@ bottom sheets, sticky bottom actions, swipe between sections, haptics on confirm
 | 5 | Wallet verification | "Connected" vs "Sign to verify" as two steps; what is signed | All | Same screen, step 2 | Sign in wallet; retry/restart states | P0 | `verifyReducer` | redesigned |
 | 6 | Contact information | Email + phone OTP (required to invest) | All | Stepper with OTP field | Auto-fill OTP, resend timer | P0 | `ContactVerifier` logic | redesigned (`(auth)/contact`) |
 | 7 | Authentication state | Session expired → sign in again | All | Banner + re-sign sheet | Sheet | P0 | Query client hook | redesigned (banner on welcome and sign-in) |
-| 8 | Account completion | Checklist: contacts, eligibility, extra chain accounts | Investor | Home card + sheet | Tap rows to fix | P1 | Eligibility | partial (Home contacts banner; no checklist yet) |
+| 8 | Account completion | Checklist: contacts, eligibility, extra chain accounts | Investor | Home card + sheet | Tap rows to fix | P1 | Eligibility | redesigned (Home "Finish setting up" checklist: email, phone, Solana + EVM accounts, eligibility) |
 
 ## Discovery and research
 
@@ -27,10 +27,10 @@ bottom sheets, sticky bottom actions, swipe between sections, haptics on confirm
 | 10 | Discover baskets | Card list with category, top weights, minimum, fee, 1y simulated | All | Tab 2 | Infinite list; sort chip | P0 | Discovery API | redesigned |
 | 11 | Search | Keyword search | All | Search field in Discover header | Debounced | P1 | — | redesigned (in filters) |
 | 12 | AI basket search | Words → editable filter chips (+ Gemini notice) | All | Full-screen research query | Example chips; chips removable | P1 | AI search API | redesigned (inline card; matches open as rows, filters hand-off) |
-| 13 | Basket filters | Structured filters | All | Bottom sheet with grouped sections | Apply / clear | P1 | `decodeDiscoveryFilters` | redesigned (filters card + category chips; not a sheet) |
+| 13 | Basket filters | Structured filters | All | Bottom sheet with grouped sections | Apply / clear | P1 | `decodeDiscoveryFilters` | redesigned (filters in a bottom sheet + category chips) |
 | 14 | Basket detail | Research hero, key figures, sticky Invest | All | Stack screen; sticky bottom CTA | Section tabs (Strategy, Allocation, Performance, Fees, Risks, Versions) | P0 | Public basket API | redesigned (sky hero, sticky Invest bar) |
-| 15 | Basket research | Thesis, ring, chart, version timeline + weight diff | All | Sections inside 14; chart full-screen on tap | Scrub chart with finger | P1 | — | redesigned (ring, themed chart, version timeline as text diffs) |
-| 16–17 | Manager / organization profile | Who runs it; verified badge; baskets | All | Stack screen | — | P2 | Public manager/org APIs | new |
+| 15 | Basket research | Thesis, ring, chart, version timeline + weight diff | All | Sections inside 14; chart full-screen on tap | Scrub chart with finger | P1 | — | redesigned (ring with slice selection, chart scrubbing, version timeline as text diffs) |
+| 16–17 | Manager / organization profile | Who runs it; verified badge; baskets | All | Stack screen | — | P2 | Public manager/org APIs | redesigned (`manager/[handle]`, `organization/[id]`; linked from basket, manager and org pages) |
 
 ## Investment
 
@@ -50,21 +50,21 @@ bottom sheets, sticky bottom actions, swipe between sections, haptics on confirm
 | # | Feature | Purpose | User | Mobile screen / pattern | Interaction | Pri | Depends on | Status |
 |---|---|---|---|---|---|---|---|---|
 | 27 | Portfolio | Value, ring, attention, positions | Investor | Tab 3 | Pull to refresh | P0 | Portfolio API | redesigned |
-| 28 | Asset allocation | Ring by asset, networks | Investor | Section of 27 | Tap slice → asset | P1 | — | partial (ring by asset; no slice tap) |
-| 29 | Asset detail | Instrument → deployments → routes; RWA notes | Investor | Stack screen | — | P2 | Assets API | new |
+| 28 | Asset allocation | Ring by asset, networks | Investor | Section of 27 | Tap slice → asset | P1 | — | redesigned (tap a slice or legend row to highlight it; slice taps are native-only, legend on web) |
+| 29 | Asset detail | Instrument → deployments → routes; RWA notes | Investor | Stack screen | — | P2 | Assets API | redesigned (`asset/[id]`; opened from basket allocation and position holdings) |
 | 30 | Performance | Not available yet — say so; no invented chart | Investor | Note in 27 | — | P2 | Future valuation snapshots | n/a ("Performance history isn't available yet" note) |
 | 31 | Activity | Operations with steps and explorer links | Investor | Stack screen | Filter by kind | P1 | Portfolio history | redesigned (`activity`) |
 | 32 | Transaction detail | One operation | Investor | Stack screen | Explorer deep links | P1 | Operation API | redesigned |
 | 33 | Wallet | Linked addresses per family | Investor | Profile section | Copy address | P1 | Me API | redesigned |
 | 34 | Wallet / network management | Add chain account; Bitcoin → web | Investor | Sheet | Hand-off for Bitcoin | P1 | AppKit RN | redesigned (web hand-off for Bitcoin) |
-| — | Position detail | Three layers: target / allocation / verified | Investor | Stack screen from a position | Segmented control between layers | P0 | Portfolio API | redesigned (`position/[id]`; layers as an explainer, not a segmented control) |
+| — | Position detail | Three layers: target / allocation / verified | Investor | Stack screen from a position | Segmented control between layers | P0 | Portfolio API | redesigned (`position/[id]`; Target / Allocation / Verified switch) |
 | — | Sell / leave / close | Exit actions | Investor | Sheet with confirmation | Slider for % sell | P1 | Sell plan API | redesigned (percent tiles; leave/close on the position screen) |
 
 ## Rebalancing
 
 | # | Feature | Purpose | User | Mobile screen / pattern | Interaction | Pri | Depends on | Status |
 |---|---|---|---|---|---|---|---|---|
-| 35 | Rebalance notification | Push + inbox item | Investor | Notification → deep link | — | P1 | Push (future, FCM web only today) | partial |
+| 35 | Rebalance notification | Push + inbox item | Investor | Notification → deep link | — | P1 | Push (future, FCM web only today) | redesigned (Expo push, opt-in per device, tap opens the screen; ADR-020) |
 | 36 | New basket version | vN → vM, manager's reason | Investor | Rebalance screen header | — | P0 | Portfolio `latestVersion` | redesigned |
 | 37 | Current vs target allocation | Weight diff + your weights vs target | Investor | Section | Swipe between "Change" and "Your weights" | P0 | — | redesigned (now-vs-target tracks) |
 | 38–39 | Rebalance impact / estimated execution | Sells, fee source, buys | Investor | Plan section | Expand legs | P0 | Rebalance plan API | redesigned |
@@ -80,9 +80,9 @@ bottom sheets, sticky bottom actions, swipe between sections, haptics on confirm
 | 45 | Profile | Account hub | Investor | Tab 5 | Grouped list | P0 | Me API | redesigned (Account / Preferences / Security groups) |
 | 46 | Wallets | See 33–34 | Investor | Section | — | P1 | — | redesigned |
 | 47 | Notifications | Preferences (+ push when available) | Investor | Section with switches | — | P1 | Preferences API | redesigned |
-| 48 | Security | Sessions, sign out everywhere | Investor | Section | Swipe to revoke | P1 | Sessions API | redesigned (revoke button, not swipe) |
+| 48 | Security | Sessions, sign out everywhere | Investor | Section | Swipe to revoke | P1 | Sessions API | redesigned (swipe another device left to revoke; Revoke button kept) |
 | 49 | Preferences | Appearance (light/dark/system), eligibility | Investor | Section | Segmented control | P1 | Theme store | redesigned (Appearance: System / Light / Dark) |
-| 50 | Help / support | How it works, self-custody, fees | All | Sheets reusing web copy | — | P2 | — | new |
+| 50 | Help / support | How it works, self-custody, fees | All | Sheets reusing web copy | — | P2 | — | redesigned (Profile → Help: How it works, Self-custody, Fees in sheets; placeholder copy) |
 
 ## Manager on mobile
 

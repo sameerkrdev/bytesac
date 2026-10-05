@@ -83,5 +83,7 @@ export const env = cleanEnv(process.env, {
   REVENUE_TREASURY_SOLANA_ADDRESS: str({ default: "" }),
   /** Firebase service-account JSON for web push (a secret). Empty disables push; the inbox and email still work. */
   FIREBASE_SERVICE_ACCOUNT: str({ default: "" }),
+  /** Optional Expo access token for mobile push (Expo "enhanced push security", a secret). Mobile push works without it. */
+  EXPO_ACCESS_TOKEN: str({ default: "" }),
   ROUTE_PROVIDER_ORDER: routeProviders({ default: ["lifi"] }),
 });

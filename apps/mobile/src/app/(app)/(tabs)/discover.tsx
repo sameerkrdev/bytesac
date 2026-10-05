@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Screen, Section } from "@/components/ui/screen";
+import { Sheet } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 
@@ -52,17 +53,17 @@ export default function DiscoverScreen() {
 
       <View className="gap-3">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}>
-          <Button variant={showFilters ? "primary" : "secondary"} size="sm" onPress={() => setShowFilters(!showFilters)} accessibilityLabel={showFilters ? "Hide filters" : "Filters"}
-            icon={<SlidersHorizontal size={16} color={showFilters ? colors.primaryInk : colors.ink} />}>{showFilters ? "Hide filters" : "Filters"}</Button>
+          <Button variant={filtered ? "primary" : "secondary"} size="sm" onPress={() => setShowFilters(true)}
+            icon={<SlidersHorizontal size={16} color={filtered ? colors.primaryInk : colors.ink} />}>Filters</Button>
           {basketCategorySchema.options.map((c) => <Chip key={c} label={BASKET_CATEGORY_LABEL[c]} selected={filters.categories?.includes(c) ?? false} onPress={() => toggleCategory(c)} />)}
         </ScrollView>
-        {filtered && !showFilters ? (
+        {filtered ? (
           <View className="flex-row items-center justify-between gap-3">
             <AppText variant="label" tone="muted" className="flex-1" numberOfLines={1}>{summary(filters)}</AppText>
             <Button variant="ghost" size="sm" onPress={() => apply({})} icon={<X size={14} color={colors.ink} />}>Clear all</Button>
           </View>
         ) : null}
-        {showFilters ? <Card><Filters key={formKey} filters={filters} onApply={apply} /></Card> : null}
+        <Sheet visible={showFilters} onClose={() => setShowFilters(false)} title="Filters"><Filters key={formKey} filters={filters} onApply={apply} /></Sheet>
       </View>
 
       {!filtered ? (

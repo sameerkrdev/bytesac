@@ -1,8 +1,8 @@
 import { BASKET_CATEGORY_LABEL, BASKET_STATUS_LABEL } from "@repo/app-core";
 import type { BasketStatus } from "@repo/validator";
 import { useQuery } from "@tanstack/react-query";
-import { Redirect, useLocalSearchParams } from "expo-router";
-import { RefreshControl, View } from "react-native";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
+import { Pressable, RefreshControl, View } from "react-native";
 import { ReturnFigure, VolatilityFigure } from "@/components/basket/basket-card";
 import { BasketSections, EligibilityNotices, Notice } from "@/components/basket/basket-sections";
 import { InvestBar, InvestBlockers } from "@/components/basket/invest-section";
@@ -48,7 +48,9 @@ export default function BasketScreen() {
           <AppText variant="eyebrow" tone="muted">{`${BASKET_CATEGORY_LABEL[v.category]} · Version ${v.versionNumber}`}</AppText>
           <AppText variant="display" accessibilityRole="header">{v.name}</AppText>
           <View className="flex-row flex-wrap items-center gap-2">
-            <AppText tone="muted">{`by ${b.organization.displayName ?? "Organization"}`}</AppText>
+            <Pressable accessibilityRole="link" accessibilityLabel={`by ${b.organization.displayName ?? "Organization"}, organization profile`} onPress={() => router.push(`/organization/${b.organization.id}`)} className="min-h-8 justify-center active:opacity-70">
+              <AppText tone="muted" className="underline">{`by ${b.organization.displayName ?? "Organization"}`}</AppText>
+            </Pressable>
             <StatusBadge tone={s.tone} label={s.label} />
           </View>
         </View>

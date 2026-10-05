@@ -123,6 +123,7 @@ One line per decision. Detail lives in the linked ADR; decisions without an ADR 
 | D-115 | Uploaded files | Logos and basket files use presign, server-side byte checks and signed reads; logos (PNG/JPEG/WebP) are set by ops, registry logo first then a vendored CC0 icon pack. | IMPLEMENTED | ADR-019 |
 | D-116 | Basket files | PDF files attach to the open basket version, freeze at submit, carry to the next draft, count in the content hash and show on the public page for the published version. | IMPLEMENTED | ADR-019 |
 | D-117 | Discovery rails | Featured is ops-ranked (active baskets); Trending is distinct new investors in 30 days, at least 5, counts never shown; Suggested uses the user's held categories. | IMPLEMENTED | ADR-019 |
+| D-118 | Mobile push | Mobile push goes through the Expo push service with the inbox title and body, opt-in per device; `push_tokens` gains platform and provider (supersedes "mobile push is deferred" in D-083). | IMPLEMENTED | ADR-020 |
 
 ## How to update
 When a decision is explicitly locked, set its status and put the detail in an ADR for consequential architecture decisions; keep the register line to one sentence.

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useTheme } from "@/lib/theme";
 import { AppText } from "./app-text";
@@ -13,8 +13,16 @@ export function useSliceColor() {
   return (i: number) => colors[DATA[i % DATA.length]!];
 }
 
-/** A target/holdings allocation ring with a centre slot; the label names it for screen readers. */
-export function AllocationRing({ slices, size = 160, thickness = 14, gapDeg = 2.4, label, children }: { slices: Slice[]; size?: number; thickness?: number; gapDeg?: number; label: string; children?: ReactNode }) {
+const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
+
+/**
+ * (On web, react-native-svg forwards onPress to the DOM as an unknown prop, so slices there are selected from the legend.)
+ * A target/holdings allocation ring with a centre slot; the label names it for screen readers. With `onSelect`, a
+ * tapped slice is highlighted (the others dim) and the centre shows its label and share; tapping it again clears it.
+ */
+export function AllocationRing({ slices, size = 160, thickness = 14, gapDeg = 2.4, label, children, selected = null, onSelect }: {
+  slices: Slice[]; size?: number; thickness?: number; gapDeg?: number; label: string; children?: ReactNode; selected?: string | null; onSelect?(key: string | null): void;
+}) {
   const { colors } = useTheme();
   const color = useSliceColor();
   const total = slices.reduce((s, x) => s + x.bps, 0) || 1;
@@ -32,29 +40,47 @@ export function AllocationRing({ slices, size = 160, thickness = 14, gapDeg = 2.
     const [x1, y1] = p(a1);
     return { key: s.key, d: `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`, stroke: color(i) };
   });
+  const pick = selected ? slices.find((x) => x.key === selected) : undefined;
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label} style={{ width: size, height: size }} className="items-center justify-center">
       <Svg width={size} height={size} style={{ position: "absolute" }}>
         <Circle cx={c} cy={c} r={r} stroke={colors.line} strokeWidth={thickness} fill="none" opacity={0.6} />
-        {arcs.map((a) => <Path key={a.key} d={a.d} stroke={a.stroke} strokeWidth={thickness} fill="none" />)}
+        {arcs.map((a) => (
+          <Path key={a.key} d={a.d} stroke={a.stroke} fill="none" strokeWidth={selected === a.key ? thickness + 4 : thickness}
+            opacity={selected && selected !== a.key ? 0.28 : 1} {...(onSelect && Platform.OS !== "web" ? { onPress: () => onSelect(selected === a.key ? null : a.key) } : {})} />
+        ))}
       </Svg>
-      {children}
+      {pick ? (
+        <View pointerEvents="none" className="items-center">
+          <AppText variant="label" className="font-medium" numberOfLines={1}>{pick.label}</AppText>
+          <AppText variant="micro" tone="muted">{pct(pick.bps)}</AppText>
+        </View>
+      ) : children}
     </View>
   );
 }
 
-/** The legend for a ring: dot, label, weight. */
-export function AllocationLegend({ slices }: { slices: Slice[] }) {
+/** The legend for a ring: dot, label, weight. With `onSelect` each row is a button that selects its slice. */
+export function AllocationLegend({ slices, selected = null, onSelect }: { slices: Slice[]; selected?: string | null; onSelect?(key: string | null): void }) {
   const color = useSliceColor();
   return (
-    <View className="gap-2.5">
-      {slices.map((s, i) => (
-        <View key={s.key} className="flex-row items-center gap-2.5">
-          <View className="size-2 rounded-full" style={{ backgroundColor: color(i) }} />
-          <AppText className="flex-1" tone="muted">{s.label}</AppText>
-          <AppText className="font-mono">{`${(s.bps / 100).toFixed(1)}%`}</AppText>
-        </View>
-      ))}
+    <View className="gap-1">
+      {slices.map((s, i) => {
+        const row = (
+          <>
+            <View className="size-2 rounded-full" style={{ backgroundColor: color(i) }} />
+            <AppText className="flex-1" tone={selected === s.key ? "ink" : "muted"}>{s.label}</AppText>
+            <AppText className="font-mono">{pct(s.bps)}</AppText>
+          </>
+        );
+        return onSelect ? (
+          <Pressable key={s.key} accessibilityRole="button" accessibilityLabel={`${s.label} ${pct(s.bps)}`} accessibilityState={{ selected: selected === s.key }}
+            onPress={() => onSelect(selected === s.key ? null : s.key)}
+            className={`min-h-8 flex-row items-center gap-2.5 rounded-control px-1.5 ${selected === s.key ? "bg-surface-muted" : ""} ${selected && selected !== s.key ? "opacity-50" : ""}`}>
+            {row}
+          </Pressable>
+        ) : <View key={s.key} className="min-h-8 flex-row items-center gap-2.5">{row}</View>;
+      })}
     </View>
   );
 }

@@ -1,12 +1,14 @@
 import { ASSET_TYPE_LABEL, blockedAssetNotices, usd, feeText, formatBps, PLATFORM_OPERATION_LABEL, rateText, REVIEW_FREQUENCY_LABEL, SECTOR_LABEL } from "@repo/app-core";
 import { ASSET_CHAINS, type AssetChain, type BasketDiff, type BasketFileKind, type PublicBasketDetail } from "@repo/validator";
-import { Download, FileText, ShieldAlert } from "lucide-react-native";
-import { Fragment, type ReactNode } from "react";
+import { router } from "expo-router";
+import { ChevronRight, Download, FileText, ShieldAlert } from "lucide-react-native";
+import { Fragment, useState, type ReactNode } from "react";
 import { Linking, Pressable, View } from "react-native";
 import { AllocationRing, useSliceColor } from "@/components/ui/allocation-ring";
 import { AppText } from "@/components/ui/app-text";
 import { AssetMark } from "@/components/ui/asset-mark";
 import { Card } from "@/components/ui/card";
+import { Monogram } from "@/components/ui/monogram";
 import { useTheme } from "@/lib/theme";
 
 type Basket = PublicBasketDetail;
@@ -89,12 +91,14 @@ export function EligibilityNotices({ eligibility, names }: { eligibility: Basket
 /** The target allocation: ring, then one row per asset with its weight, band, chains and price. */
 function Allocation({ b }: { b: Basket }) {
   const color = useSliceColor();
+  const { colors } = useTheme();
+  const [pick, setPick] = useState<string | null>(null);
   if (b.allocation.length === 0) return <AppText tone="muted">No assets yet.</AppText>;
   const slices = b.allocation.map((a) => ({ key: a.instrumentId, label: a.symbol, bps: a.targetWeightBps }));
   return (
     <Card className="gap-5">
       <View className="items-center">
-        <AllocationRing slices={slices} size={180} thickness={16} label={`Target allocation: ${b.allocation.map((a) => `${a.symbol} ${formatBps(a.targetWeightBps)}`).join(", ")}`}>
+        <AllocationRing slices={slices} size={180} thickness={16} selected={pick} onSelect={setPick} label={`Target allocation: ${b.allocation.map((a) => `${a.symbol} ${formatBps(a.targetWeightBps)}`).join(", ")}`}>
           <AppText variant="figure">{b.allocation.length}</AppText>
           <AppText variant="micro" tone="faint">{b.allocation.length === 1 ? "asset" : "assets"}</AppText>
         </AllocationRing>
@@ -104,7 +108,8 @@ function Allocation({ b }: { b: Basket }) {
           const p = a.prices.find((x) => x.status === "ok" && x.value !== null);
           const band = a.minWeightBps === null && a.maxWeightBps === null ? null : `Band ${formatBps(a.minWeightBps ?? 0)} to ${formatBps(a.maxWeightBps ?? 10_000)}`;
           return (
-            <View key={a.instrumentId} className={`gap-2.5 py-3.5 ${i > 0 ? "border-t border-line" : ""}`}>
+            <Pressable key={a.instrumentId} accessibilityRole="link" accessibilityLabel={`${a.name}, ${formatBps(a.targetWeightBps)}, asset details`} onPress={() => router.push(`/asset/${a.instrumentId}`)}
+              className={`gap-2.5 py-3.5 active:opacity-70 ${i > 0 ? "border-t border-line" : ""} ${pick && pick !== a.instrumentId ? "opacity-40" : ""}`}>
               <View className="flex-row items-center gap-3">
                 <AssetMark symbol={a.symbol} logoUrl={a.logoUrl} size={34} index={i} />
                 <View className="flex-1 gap-0.5">
@@ -112,12 +117,13 @@ function Allocation({ b }: { b: Basket }) {
                   <AppText variant="micro" tone="faint" numberOfLines={1}>{[ASSET_TYPE_LABEL[a.assetType], ...a.chains.map(chainName)].join(" · ")}</AppText>
                 </View>
                 <AppText variant="heading">{formatBps(a.targetWeightBps)}</AppText>
+                <ChevronRight size={14} color={colors.inkFaint} />
               </View>
               <View className="h-1.5 overflow-hidden rounded-pill bg-surface-muted">
                 <View className="h-full rounded-pill" style={{ width: `${a.targetWeightBps / 100}%`, backgroundColor: color(i) }} />
               </View>
               <AppText variant="micro" tone="faint">{[band, p ? `${price(p.value!, p.currency)}${p.stale ? " (stale)" : ""}` : "Price unavailable"].filter(Boolean).join(" · ")}</AppText>
-            </View>
+            </Pressable>
           );
         })}
       </View>
@@ -239,15 +245,23 @@ export function BasketSections({ b }: { b: Basket }) {
       {managers.map(([title, list]) => list.length > 0 && (
         <Section key={title} eyebrow={title === "Current managers" ? `${b.organization.displayName ?? "Organization"}` : undefined} title={title}>
           <Card className="py-1">
-            {list.map((m, i) => (
-              <View key={i} className={`flex-row items-center gap-3 py-3.5 ${i > 0 ? "border-t border-line" : ""}`}>
-                <View className="size-10 items-center justify-center rounded-pill bg-surface-muted"><AppText className="font-medium">{m.displayName.slice(0, 1).toUpperCase()}</AppText></View>
-                <View className="flex-1 gap-0.5">
-                  <AppText className="font-medium">{m.displayName}</AppText>
-                  <AppText variant="micro" tone="faint">{`${m.role === "lead" ? "Lead" : "Co-manager"} · from ${date(m.from)}${m.to ? ` to ${date(m.to)}` : ""}`}</AppText>
-                </View>
-              </View>
-            ))}
+            {list.map((m, i) => {
+              const body = (
+                <>
+                  <Monogram name={m.displayName} />
+                  <View className="flex-1 gap-0.5">
+                    <AppText className="font-medium">{m.displayName}</AppText>
+                    <AppText variant="micro" tone="faint">{`${m.role === "lead" ? "Lead" : "Co-manager"} · from ${date(m.from)}${m.to ? ` to ${date(m.to)}` : ""}`}</AppText>
+                  </View>
+                </>
+              );
+              const row = `flex-row items-center gap-3 py-3.5 ${i > 0 ? "border-t border-line" : ""}`;
+              return m.handle ? (
+                <Pressable key={i} accessibilityRole="link" accessibilityLabel={`${m.displayName}, manager profile`} onPress={() => router.push(`/manager/${m.handle}`)} className={`${row} active:opacity-70`}>
+                  {body}<ChevronRight size={14} color={colors.inkFaint} />
+                </Pressable>
+              ) : <View key={i} className={row}>{body}</View>;
+            })}
           </Card>
         </Section>
       ))}

@@ -2,8 +2,9 @@ import { formatBps, formatUnits, HEADLINE_HELP, HEADLINE_LABEL, isSkipped, posit
 import { ASSET_CHAINS, type Portfolio } from "@repo/validator";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { Check, Layers, ScanLine, Target } from "lucide-react-native";
-import { Alert, View } from "react-native";
+import { Check, ChevronRight, CircleDashed, Layers, ScanLine, Target, TriangleAlert } from "lucide-react-native";
+import { useState } from "react";
+import { Alert, Pressable, View } from "react-native";
 import { ErrorText } from "@/components/states/states";
 import { AppText } from "@/components/ui/app-text";
 import { AssetMark } from "@/components/ui/asset-mark";
@@ -26,19 +27,32 @@ function WeightTrack({ actual, target }: { actual: number | null; target: number
   );
 }
 
-const LAYERS = [
-  { Icon: Target, title: "Strategy target", body: "The weights in the version you applied. They change only when you accept a new version." },
-  { Icon: Layers, title: "Your basket allocation", body: "How Bytesac attributes your holdings to this basket, kept per basket so several can share a wallet." },
-  { Icon: ScanLine, title: "Verified holdings", body: "What your wallets actually hold, read from each chain. Shortfalls and surpluses are flagged per asset." },
+type Layer = "target" | "allocation" | "verified";
+const LAYERS: { key: Layer; label: string; Icon: typeof Target; title: string; body: string }[] = [
+  { key: "target", label: "Target", Icon: Target, title: "Strategy target", body: "The weights in the version you applied. They change only when you accept a new version." },
+  { key: "allocation", label: "Allocation", Icon: Layers, title: "Your basket allocation", body: "How Bytesac attributes your holdings to this basket, kept per basket so several can share a wallet." },
+  { key: "verified", label: "Verified", Icon: ScanLine, title: "Verified holdings", body: "What your wallets actually hold, read from each chain. Shortfalls and surpluses are flagged per asset." },
 ];
 
 /**
  * One position: its state explained before any action, weights against target, verified holdings and the exits.
  * Nothing here moves assets: every plan is reviewed and signed on its own screen; leave and close make no transaction.
  */
+/** What the chain check found for one holding. */
+function Verified({ r }: { r: "OK" | "SHORT" | "SURPLUS" | null }) {
+  const { colors } = useTheme();
+  const [Icon, color, tone, text] = r === "OK" ? [Check, colors.success, "success", "Verified in wallet"] as const
+    : r === "SHORT" ? [TriangleAlert, colors.warning, "warning", "Less than recorded"] as const
+    : r === "SURPLUS" ? [Layers, colors.inkMuted, "muted", "Extra outside baskets"] as const
+    : [CircleDashed, colors.inkFaint, "faint", "Not checked yet"] as const;
+  return <View className="flex-row items-center gap-1.5"><Icon size={13} color={color} /><AppText variant="label" tone={tone}>{text}</AppText></View>;
+}
+
 export function PositionDetail({ position: p, former = false, repairAsset, openOperationId }: { position: Position; former?: boolean; repairAsset?: string; openOperationId?: string }) {
   const { colors } = useTheme();
   const qc = useQueryClient();
+  const [layer, setLayer] = useState<Layer>("allocation");
+  const L = LAYERS.find((x) => x.key === layer)!;
   const done = () => qc.invalidateQueries({ queryKey: ["portfolio"] });
   const keep = useMutation({ mutationFn: () => api.keepCustom(p.id), onSuccess: done });
   const revert = useMutation({ mutationFn: () => api.revertCustom(p.id), onSuccess: done });
@@ -80,50 +94,60 @@ export function PositionDetail({ position: p, former = false, repairAsset, openO
       {short.length > 0 && <AppText className="rounded-card border border-warning/40 bg-warning-soft p-4">Your wallet holds less {short.map((x) => x.symbol).join(", ")} than Bytesac recorded for this basket, so part of it may have been moved. Shortfalls are shared across your baskets in proportion. Nothing is bought or sold automatically.</AppText>}
       {surplus.length > 0 && <AppText tone="muted" className="rounded-card border border-line p-4">Extra {surplus.map((x) => x.symbol).join(", ")} in your wallet is outside your baskets.</AppText>}
 
-      <Section title={former ? "What was left in your wallets" : "Holdings against the target"} eyebrow={former ? undefined : "Bar: your weight · tick: target"}>
+      <Section title={former ? "What was left in your wallets" : "Holdings against the target"} eyebrow={former ? undefined : "Three layers, never the same"}>
+        {!former && (
+          <View className="gap-2">
+            <View accessibilityRole="radiogroup" className="flex-row rounded-pill bg-surface-muted p-1">
+              {LAYERS.map((x) => (
+                <Pressable key={x.key} accessibilityRole="radio" accessibilityLabel={x.title} accessibilityState={{ checked: layer === x.key }} onPress={() => setLayer(x.key)}
+                  className={`min-h-10 flex-1 flex-row items-center justify-center gap-1.5 rounded-pill ${layer === x.key ? "bg-surface" : ""}`}>
+                  <x.Icon size={14} color={layer === x.key ? colors.ink : colors.inkMuted} />
+                  <AppText variant="label" tone={layer === x.key ? "ink" : "muted"}>{x.label}</AppText>
+                </Pressable>
+              ))}
+            </View>
+            <AppText variant="micro" tone="faint">{L.body}</AppText>
+          </View>
+        )}
         <Card className="gap-0 p-0">
           {p.holdings.map((x, i) => (
             <View key={x.deploymentId} className={`gap-3 px-5 py-4 ${i > 0 ? "border-t border-line" : ""}`}>
-              <View className="flex-row items-center gap-3">
+              <Pressable accessibilityRole="link" accessibilityLabel={`${x.symbol} on ${ASSET_CHAINS[x.chain].label}, asset details`} onPress={() => router.push(`/asset/${x.instrumentId}`)} className="flex-row items-center gap-3 active:opacity-70">
                 <AssetMark symbol={x.symbol} size={30} index={i} />
-                <View className="flex-1">
+                <View className="min-w-20 flex-1">
                   <AppText className="font-medium">{x.symbol}</AppText>
                   <AppText variant="micro" tone="faint">on {ASSET_CHAINS[x.chain].label}</AppText>
                 </View>
-                <View className="items-end">
-                  <AppText>{formatUnits(x.quantity, x.decimals)} {x.symbol}{x.valueUsd !== null ? ` · $${x.valueUsd}` : ""}</AppText>
-                  {x.reconciliation === "OK" ? <View className="flex-row items-center gap-1"><Check size={11} color={colors.success} /><AppText variant="micro" tone="success">Verified in wallet</AppText></View> : null}
-                </View>
-              </View>
-              {!former && (
+                {layer === "target" && !former ? (
+                  <AppText variant="heading">{x.targetBps === null ? "n/a" : formatBps(x.targetBps)}</AppText>
+                ) : layer === "verified" && !former ? (
+                  <Verified r={x.reconciliation} />
+                ) : (
+                  <View className="shrink items-end">
+                    <AppText className="text-right">{formatUnits(x.quantity, x.decimals)} {x.symbol}</AppText>
+                    {x.valueUsd !== null ? <AppText variant="label" tone="muted">{`$${x.valueUsd}`}</AppText> : null}
+                    {x.reconciliation === "OK" ? <View className="flex-row items-center gap-1"><Check size={11} color={colors.success} /><AppText variant="micro" tone="success">Verified in wallet</AppText></View> : null}
+                  </View>
+                )}
+                <ChevronRight size={14} color={colors.inkFaint} />
+              </Pressable>
+              {!former && layer === "allocation" && (
                 <View className="flex-row items-center gap-3">
                   <WeightTrack actual={x.actualBps} target={x.targetBps} />
                   <AppText variant="label" className="font-mono">{x.actualBps === null ? "n/a" : formatBps(x.actualBps)}</AppText>
                   <AppText variant="label" tone="faint" className="font-mono">{x.targetBps === null ? "n/a" : formatBps(x.targetBps)}</AppText>
                 </View>
               )}
-              {x.reconciliation === "SHORT" && <StatusBadge tone="warning" label="Wallet holds less than recorded" />}
-              {x.reconciliation === "SURPLUS" && <StatusBadge tone="neutral" label="Extra outside baskets" />}
+              {!former && layer === "target" && <WeightTrack actual={x.targetBps} target={null} />}
+              {layer === "allocation" && x.reconciliation === "SHORT" && <StatusBadge tone="warning" label="Wallet holds less than recorded" />}
+              {layer === "allocation" && x.reconciliation === "SURPLUS" && <StatusBadge tone="neutral" label="Extra outside baskets" />}
             </View>
           ))}
-          {BigInt(p.cashMicro) > 0n && (
+          {BigInt(p.cashMicro) > 0n && layer !== "target" && (
             <View className="flex-row justify-between gap-2 border-t border-line px-5 py-4"><AppText>Cash (USDC)</AppText><AppText>{formatUnits(p.cashMicro, 6)} USDC</AppText></View>
           )}
         </Card>
       </Section>
-
-      {!former && (
-        <Section title="Three layers, never the same">
-          <View className="gap-3">
-            {LAYERS.map(({ Icon, title, body }) => (
-              <View key={title} className="flex-row gap-3">
-                <View className="size-9 items-center justify-center rounded-full bg-surface-muted"><Icon size={16} color={colors.inkMuted} /></View>
-                <View className="flex-1 gap-0.5"><AppText className="font-medium">{title}</AppText><AppText variant="label" tone="muted">{body}</AppText></View>
-              </View>
-            ))}
-          </View>
-        </Section>
-      )}
 
       <Section title="Exit">
         <View className="gap-2">

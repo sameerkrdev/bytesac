@@ -30,3 +30,14 @@ jest.mock("react-native-reanimated", () => {
     withRepeat: id, withTiming: id, cancelAnimation: () => undefined,
   };
 });
+
+// ReanimatedSwipeable needs native gestures and Reanimated; tests render the row and use its Revoke button instead.
+jest.mock("react-native-gesture-handler/ReanimatedSwipeable", () => ({ __esModule: true, default: ({ children }: { children: unknown }) => children }));
+
+// Push needs native modules; tests see a physical device with push off (the switch and banner logic run against this).
+jest.mock("expo-device", () => ({ isDevice: true, modelName: "Test phone" }));
+jest.mock("expo-notifications", () => ({
+  getPermissionsAsync: jest.fn(async () => ({ status: "undetermined" })), requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: "ExponentPushToken[test]" })), setNotificationChannelAsync: jest.fn(async () => null),
+  setNotificationHandler: jest.fn(), useLastNotificationResponse: jest.fn(() => null), DEFAULT_ACTION_IDENTIFIER: "expo.modules.notifications.actions.DEFAULT", AndroidImportance: { HIGH: 4 },
+}));

@@ -2,7 +2,7 @@ import { formatFraction } from "@repo/app-core";
 import type { PublicBasketDetail } from "@repo/validator";
 import { useState } from "react";
 import { View } from "react-native";
-import Svg, { Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
 import { AppText } from "@/components/ui/app-text";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
@@ -19,6 +19,9 @@ type Props = { performance: PublicBasketDetail["performance"]; metrics: PublicBa
 export function Performance({ performance, metrics, label }: Props) {
   const { colors } = useTheme();
   const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("all");
+  // Scrubbing: the finger's x picks the nearest day; released, the chart shows the whole range again.
+  const [width, setWidth] = useState(1);
+  const [at, setAt] = useState<number | null>(null);
   const unavailable = !metrics.available;
   const tile = (value: string | null, days: number, signed = true) => (unavailable ? "Performance unavailable" : value === null ? `Available after ${days} days of data` : formatFraction(value, signed));
   const tone = (value: string | null) => (unavailable || value === null ? "muted" : Number(value) >= 0 ? "success" : "danger") as "muted" | "success" | "danger";
@@ -33,6 +36,19 @@ export function Performance({ performance, metrics, label }: Props) {
   const lo = Math.min(...values), hi = Math.max(...values);
   const x = (day: string) => PAD + ((Date.parse(day) - Date.parse(first!.day)) / ((Date.parse(end!.day) - Date.parse(first!.day)) || 1)) * (W - 2 * PAD);
   const y = (v: string) => PAD + (1 - (Number(v) - lo) / (hi - lo || 1)) * (H - 2 * PAD);
+  const nearest = (px: number) => {
+    if (pts.length < 2) return null;
+    const vx = (px / width) * W;
+    let best = 0;
+    pts.forEach((p, i) => { if (Math.abs(x(p.day) - vx) < Math.abs(x(pts[best]!.day) - vx)) best = i; });
+    return best;
+  };
+  const scrub = { onStartShouldSetResponder: () => true, onMoveShouldSetResponder: () => true, onResponderTerminationRequest: () => false,
+    onResponderGrant: (e: { nativeEvent: { locationX: number } }) => setAt(nearest(e.nativeEvent.locationX)),
+    onResponderMove: (e: { nativeEvent: { locationX: number } }) => setAt(nearest(e.nativeEvent.locationX)),
+    onResponderRelease: () => setAt(null), onResponderTerminate: () => setAt(null) };
+  const sel = at !== null ? pts[at] : undefined;
+  const change = (v: string, base: string) => formatFraction(String(Number(v) / Number(base) - 1), true);
   const line = (key: "net" | "gross") => pts.map((p, i) => `${i ? "L" : "M"}${x(p.day).toFixed(1)} ${y(p[key]).toFixed(1)}`).join(" ");
 
   return (
@@ -45,7 +61,12 @@ export function Performance({ performance, metrics, label }: Props) {
       <Card className="gap-4">
         {unavailable ? <AppText tone="muted">Performance unavailable</AppText> : !first || !end || pts.length < 2 ? <AppText tone="muted">The chart appears once there are two days of data.</AppText> : (
           <>
-            <View accessible accessibilityRole="image"
+            <View className="min-h-10 justify-center">
+              {sel && first ? (
+                <AppText variant="label">{`${sel.day} · Net ${change(sel.net, first.net)} · Gross ${change(sel.gross, first.gross)}`}</AppText>
+              ) : <AppText variant="micro" tone="faint">Touch and drag across the chart to read a day.</AppText>}
+            </View>
+            <View accessible accessibilityRole="image" onLayout={(e) => setWidth(e.nativeEvent.layout.width || 1)} {...scrub}
               accessibilityLabel={`Simulated index, base 100, from ${first.day} to ${end.day}. Net moved from ${Number(first.net).toFixed(2)} to ${Number(end.net).toFixed(2)}; gross from ${Number(first.gross).toFixed(2)} to ${Number(end.gross).toFixed(2)}.`}>
               <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
                 <Defs>
@@ -58,13 +79,19 @@ export function Performance({ performance, metrics, label }: Props) {
                 <Path d={`${line("net")} L${(W - PAD).toFixed(1)} ${H - PAD} L${PAD} ${H - PAD} Z`} fill="url(#net-fill)" />
                 <Path d={line("gross")} fill="none" stroke={colors.inkFaint} strokeWidth={1.5} strokeDasharray="6 5" />
                 <Path d={line("net")} fill="none" stroke={colors.accent} strokeWidth={2.5} strokeLinejoin="round" />
+                {sel ? (
+                  <>
+                    <Line x1={x(sel.day)} x2={x(sel.day)} y1={PAD} y2={H - PAD} stroke={colors.inkMuted} strokeWidth={1} strokeDasharray="3 3" />
+                    <Circle cx={x(sel.day)} cy={y(sel.net)} r={5} fill={colors.accent} stroke={colors.surface} strokeWidth={2} />
+                  </>
+                ) : null}
               </Svg>
             </View>
             <View className="flex-row items-center justify-between gap-3">
               <AppText variant="micro" tone="faint">{`${first.day} → ${end.day} · Net solid · Gross dashed`}</AppText>
             </View>
             <View accessibilityRole="radiogroup" className="flex-row gap-2">
-              {RANGES.map((r) => <Chip key={r.id} label={r.label} selected={range === r.id} onPress={() => setRange(r.id)} />)}
+              {RANGES.map((r) => <Chip key={r.id} label={r.label} selected={range === r.id} onPress={() => { setAt(null); setRange(r.id); }} />)}
             </View>
           </>
         )}
