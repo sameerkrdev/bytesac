@@ -143,6 +143,14 @@ Brief vs docs (docs win, per the brief itself): sign-in chains are Solana, Ether
 | 3 | New packages | Geist fonts · expo-blur · expo-linear-gradient · expo-haptics | **All four** | Installed with \`npx expo install\` (SDK 57 versions) |
 | 4 | Verification | Expo web + jest (rec.) · Android emulator · jest only | **Expo web + jest** | Expo web target against the mock API, Playwright at phone sizes, jest; user checks on a device at the end |
 
+Rulings made while building (no question asked; product truths unchanged):
+
+- Ruling: signed-in users and finished sign-ins land on Home, not Discover — Home is the new first tab — cost if wrong: one route constant in `sign-in.tsx`, `contact.tsx`.
+- Ruling: the Profile header badge says "Contacts verified / needed", not "Ready to invest" — eligibility also gates investing — cost: wording.
+- Ruling: the invest "target split" shows weights × amount labelled "before fees"; the plan preview stays the source of real amounts — cost: remove the card.
+- Ruling: the signing screen puts the current action above the step track — six-leg plans pushed the button off-screen — cost: layout only.
+- Ruling: the welcome pager shows on every signed-out start (no stored "seen" flag) — simplest, no new storage — cost: add a flag later.
+
 
 ---
 

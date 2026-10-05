@@ -1,8 +1,9 @@
-# Bytesac web design system
+# Bytesac design system (web and mobile)
 
 Spec 17 (web first). Source of values: `packages/design-tokens/src/index.ts` (`themes`, `radius`, `shadow`, `motion`,
 `fontFamily`), mirrored by `apps/web/app/globals.css` and checked by `apps/web/test/tokens.test.ts`. The legacy dark
-palette (`palette`, `semantic`, `surfaces`, `radii`, `fonts`) stays exported for `apps/mobile` until its redesign.
+palette (`palette`, `semantic`, `surfaces`, `radii`, `fonts`) is still exported but no app imports it any more (mobile moved to
+`themes` in round 3); removing it is an open item.
 
 ## Character
 
@@ -105,3 +106,29 @@ the track stays invisible.
 `apps/web/e2e/mock-api` serves schema-validated fixtures (personas `investor`, `manager`, `ops`, `new`);
 `e2e/shoot.mjs` captures routes at 390–1920px in both themes and flags horizontal overflow; `e2e/flow-invest.mjs`
 walks the investment flow. Run `pnpm --filter web mock-api` and `pnpm --filter web dev` first.
+
+## Mobile (Expo, round 3)
+
+Same roles, same two themes, same Geist type, in `apps/mobile` (branch `feat/mobile-redesign`).
+
+- **Tokens.** `apps/mobile/src/global.css` declares `--color-<role>` in `@theme` and `:root` (light values);
+  `ThemeProvider` (`src/lib/theme.tsx`) swaps them at runtime through NativeWind's `VariableContextProvider` and exposes
+  `useTheme().colors` for raw values (icons, gradients, navigators). `apps/mobile/test/tokens.test.ts` checks parity.
+  Sky roles `skyTop` / `skyMid` / `skyLow` were added to `packages/design-tokens` for the gradient.
+- **Theme choice.** System / Light / Dark in Profile → Appearance, stored in AsyncStorage (`bx_theme`). The resolved
+  scheme follows the choice; `Appearance.setColorScheme` is called only where it exists (not on React Native Web).
+- **Type.** `AppText` variants (hero, display, title, heading, lede, bodyLarge, body, label, eyebrow, figure,
+  buttonLabel, micro) and tones; Geist 300 for large titles, Geist Mono for eyebrows. Figures mute the cents.
+- **Kit** (`src/components/ui`): Button (primary / secondary / glass / ghost / destructive pills, 44 pt minimum, light
+  haptic on primary), Card, Chip (selection haptic), StatusBadge, TextField (`size="lg"` for amounts), Glass
+  (expo-blur on iOS/web; near-opaque fallback on Android, whose blur needs a target view), Sky (gradient plus mirrored
+  cloud tiles drifting; still under reduced motion; tiles keep the art's ratio and fade to the canvas at zero alpha),
+  AssetMark / AssetStack (uploaded logo → vendored CC0 icon → monogram), AllocationRing, Screen / StickyFooter / Section.
+- **Navigation.** Five tabs (Home, Discover, Portfolio, Alerts, Profile) in a floating glass bar with an ink pill for the
+  active tab; stack headers are untitled because each screen carries its own large title.
+- **Patterns.** Atmosphere only on bookends (welcome, sign-in, contact, Home header, basket hero, splash); everything
+  else is calm cards with hairline rows. Money flows show state first, then the one action, then the detail
+  ("What you will sign", the step track, fees). Sticky bottom actions for Invest. Warnings are soft tinted callouts.
+- **Visual QA.** Launch config `mobile-web` (Expo web on 8091, `EXPO_PUBLIC_MOCK_SESSION=1`, `?as=investor`) against
+  `mock-api-alt` (4100); Playwright at 390 and 430 px in both themes with an overflow check. Device checks (iOS and
+  Android) are still the user's final step.
