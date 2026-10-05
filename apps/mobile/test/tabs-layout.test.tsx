@@ -16,12 +16,12 @@ const latest = (name: string) => [...mockScreens].reverse().find((s) => s.name =
 describe("Tabs (mobile)", () => {
   beforeEach(() => { resetApi(mockApi); mockScreens.length = 0; });
 
-  it("has Discover, Portfolio, Notifications and Profile, with the unread count as the Notifications badge", async () => {
+  it("has Home, Discover, Portfolio, Alerts and Profile, with the unread count as the Alerts badge", async () => {
     mockApi.notifications.mockResolvedValue({ items: [], unreadCount: 3, nextCursor: null });
     await renderWithClient(<TabsLayout />);
-    expect([...new Set(mockScreens.map((s) => s.name))]).toEqual(["discover", "portfolio", "notifications", "profile"]);
+    expect([...new Set(mockScreens.map((s) => s.name))]).toEqual(["home", "discover", "portfolio", "notifications", "profile"]);
     await waitFor(() => expect(latest("notifications").options.tabBarBadge).toBe(3));
-    expect(latest("notifications").options.tabBarAccessibilityLabel).toBe("Notifications, 3 unread");
+    expect(latest("notifications").options.tabBarAccessibilityLabel).toBe("Alerts, 3 unread");
   });
 
   it("no badge when everything is read", async () => {

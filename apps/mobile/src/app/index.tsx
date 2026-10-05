@@ -4,5 +4,5 @@ import { useAuth } from "@/lib/auth-context";
 export default function Index() {
   const { status } = useAuth();
   if (status === "loading") return null;
-  return <Redirect href={status === "signedIn" ? "/(app)/(tabs)/discover" : "/(auth)/sign-in"} />;
+  return <Redirect href={status === "signedIn" ? "/(app)/(tabs)/home" : "/(auth)/sign-in"} />;
 }

@@ -5,6 +5,7 @@ const TONES = {
   success: { box: "bg-success-soft", dot: "bg-success", text: "success" as const },
   warning: { box: "bg-warning-soft", dot: "bg-warning", text: "warning" as const },
   danger: { box: "bg-danger-soft", dot: "bg-danger", text: "danger" as const },
+  info: { box: "bg-info-soft", dot: "bg-info", text: "accent" as const },
   neutral: { box: "bg-surface-muted", dot: "bg-ink-faint", text: "muted" as const },
 };
 
