@@ -1,0 +1,15 @@
+# Large media and generated output stay out of git
+refs/
+out/
+tests/
+assets/generated/
+node_modules/
+.env
+# Large WAVs are regenerable: tools/*-audio.mjs rebuilds the mixes from the Lyria MP3s
+assets/audio/*.wav
+public/audio/*.wav
+# Exploratory captures and takes not used by the films
+assets/ui/
+assets/audio/brand-0.mp3
+public/ui/*-full.png
+public/audio/brand-music.mp3
