@@ -1,272 +1,427 @@
 # Deploying Bytesac
 
-How to deploy and operate Bytesac: the services, what each one needs, the release order, edge and security
-requirements, and the checks before going live.
+How to take this repository from a local checkout to a running environment. Bytesac has **not been deployed yet**. Hosting vendors (API, worker, web, CI/CD) are still open — Spec 16. This document records the **constraints the product already imposes**, so a later hosting choice cannot silently violate them.
 
-> **Status (2026-10-06):** Bytesac has **not been deployed**. There are no Dockerfiles, CI workflows or
-> production EAS profile in the repository yet; producing them is **Spec 16** (see `docs/superpowers/HANDOFF.md` §6).
-> The hosting providers below are **options, not decisions**. Choose them in Spec 16 and record the choice as an ADR.
-> Everything else here (what each service needs, the order, the security requirements) follows from the code and
-> the accepted ADRs.
+Do not create cloud resources, push images, or put real secrets into a live environment without an explicit go-ahead. Do not move real assets, sign, or broadcast transactions as part of a deploy.
+
+Related: root [`README.md`](../../README.md) (local setup), [`apps/api/README.md`](../../apps/api/README.md) (providers, wallets, mainnet checklist), [`OPEN-ITEMS.md`](../OPEN-ITEMS.md) (accounts still to create), [`architecture/ARCHITECTURE.md`](../architecture/ARCHITECTURE.md).
 
 ---
 
-## 1. What runs in production
+## 1. Status
 
-| # | Component | Source | Runs as | Needs |
-|---|---|---|---|---|
-| 1 | **API** | `apps/api` → `dist/server.js` | Long-running Node.js ≥ 24 process (HTTP, default port 4000) | PostgreSQL, Redis, provider keys |
-| 2 | **Worker** | `apps/api` → `dist/worker.js` | Long-running Node.js process, same image as the API | PostgreSQL, Redis (non-evicting), provider keys |
-| 3 | **Web** | `apps/web` | Next.js 16 server (`next start`) | Reaches the API privately through `API_ORIGIN` |
-| 4 | **PostgreSQL** | `packages/db/migrations` | Managed Postgres 17 (Supabase per ADR-005 and ADR-006) | Extensions `pg_cron` and `vector` |
-| 5 | **Redis** | — | Managed Redis 7 | `maxmemory-policy noeviction` |
-| 6 | **Object storage** | — | Cloudflare R2 bucket (private) | CORS rule, lifecycle rule |
-| 7 | **Mobile app** | `apps/mobile` | Store builds through EAS | EAS project, store accounts, push credentials |
+| Item | State |
+|---|---|
+| Product specs 1–15 | Implemented on `main` |
+| Production / staging deploy | Not done |
+| Docker images for API, worker, web | Not in the repo (local Compose only starts Postgres + Redis) |
+| GitHub Actions CI/CD | Not in the repo |
+| Hosting vendors | **Not chosen.** Postgres is specified as Supabase (ADR-005 / ADR-006). Object storage is Cloudflare R2. Mobile builds are EAS. API, worker, web, and Redis are still open. |
+
+Until Spec 16 lands, treat this file as the contract a deployment must satisfy, not as a click-through for a named cloud.
+
+---
+
+## 2. Prerequisites
+
+### 2.1 Tools (every environment)
+
+| Tool | Version | Why |
+|---|---|---|
+| Node.js | ≥ 24 | Root `package.json` `engines` |
+| pnpm | 11.25.0 | `packageManager` field; enable with `corepack enable` |
+| Docker + Compose | current | Local Postgres 17 (pg_cron + pgvector) and Redis 7; production image builds later |
+| Git | any recent | |
+| `openssl` or Node | — | Generate `SESSION_TOKEN_PEPPER` and `OTP_HMAC_SECRET` (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) |
+
+For **native mobile** development builds you also need Android Studio and/or Xcode, plus the [EAS CLI](https://docs.expo.dev/eas/) (`npx eas-cli@latest`). Expo Go cannot run this app (native wallet modules).
+
+### 2.2 Infrastructure capabilities (production)
+
+These are not optional if you intend to run the real product:
+
+| Capability | Requirement | If missing |
+|---|---|---|
+| PostgreSQL 17 | Extensions **`pg_cron`** and **`vector` (pgvector)**; a schema-owner role for migrations and a least-privilege runtime role `bytesac_api` with DML and **no `DELETE`**; schema `app` **not** exposed on any PostgREST/API gateway | Migrations fail; discovery embeddings fail; retention never runs; financial history can be destroyed |
+| Redis 7 | **`maxmemory-policy noeviction`** (BullMQ). Shared by the API (rate limits, 60 s price cache) and the worker (queues) | Jobs stall or vanish; rate limits fail closed |
+| Object storage | Private Cloudflare R2 bucket, S3 API, no public access | API will not start (`R2_*` are required) |
+| TLS termination + reverse proxy | Overwrite `X-Forwarded-For`; optionally set a country header named by `GEO_COUNTRY_HEADER` after stripping any client value | Per-IP limits and session `ip_prefix` are spoofable; eligibility geo is attacker-chosen |
+| Process model | **Two Node processes** from `apps/api`: HTTP server (`node dist/server.js`) and BullMQ worker (`node dist/worker.js`). They share `DATABASE_URL` and `REDIS_URL` | Discovery, prices, tracking, notifications, and reconciliation stop while the API still answers |
+| Same-origin web | Next.js 16 app that rewrites `/api/*` to the API. Browsers are **not** a CORS client | Cookie sessions and CSRF fail |
+
+### 2.3 Accounts and keys (user actions)
+
+Tracked in [`OPEN-ITEMS.md`](../OPEN-ITEMS.md) §1–§2. Create these before a real environment:
+
+| Account | Used for | Required to boot? |
+|---|---|---|
+| **Reown (WalletConnect) Cloud** project | Web and mobile wallet connect (`NEXT_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_REOWN_PROJECT_ID`) | Web/mobile wallets; API itself does not need it |
+| **Supabase** project | Production Postgres | Yes, for any hosted API |
+| **Cloudflare R2** | Private documents, logos, basket files | Yes (API refuses to start without `R2_*`) |
+| **Alchemy** | EVM, Solana, Bitcoin RPC. Enable BNB, Arbitrum, Polygon, Solana; Bitcoin REST needs the **UTXO add-on** | Config-required; placeholder works until you hit chain paths |
+| **Resend** | Email OTP and notifications; verified sender domain | Config-required |
+| **Twilio Verify** | SMS OTP; allow-list countries in `SMS_ALLOWED_COUNTRIES` | Config-required |
+| **LI.FI** | Quotes, routes, status. Empty key → every route is `ROUTE_UNAVAILABLE` | Optional to boot; required to invest |
+| **CoinMarketCap** | Crypto and RWA market prices. Empty → prices `unavailable` | Optional |
+| **Google Gemini** | AI search and 768-dim embeddings. Empty → keyword/structured search only | Optional |
+| **Firebase** | Web push (`FIREBASE_SERVICE_ACCOUNT` on the API; `NEXT_PUBLIC_FIREBASE_*` on the web) | Optional |
+| **Expo / EAS** | Mobile store and development builds; push credentials (FCM v1 + APNs); optional `EXPO_ACCESS_TOKEN` | Mobile only |
+| **Platform Solana fee-payer keypair** | Co-signs sponsored Solana legs | Required to execute Solana legs |
+| **Platform EVM gas wallet** | One native-gas drop per EVM leg, same address on every EVM chain | Required to execute EVM legs |
+| **Gas treasury** (Solana address) | Receives the user-signed network-fee USDC | Required for the fee leg |
+| **Revenue treasury** (Solana address, **must differ** from gas treasury) | Receives platform fees | Required once any platform fee &gt; 0 |
+
+**Never commit real secrets.** Platform wallet keys must move to a KMS or HSM before launch. Keep them out of client bundles, logs, and CI transcripts.
+
+---
+
+## 3. What you deploy
 
 ```text
-            Internet
-               │
-        Edge / CDN / TLS ── overwrites X-Forwarded-For and the geo header
-               │
-           Web (Next.js) ── /api/* rewrite ──► API (Express) ◄── Mobile app (bearer token, direct)
-                                                │      │
-                                         PostgreSQL   Redis ◄── Worker (BullMQ)
-                                                │
-                                   Cloudflare R2 (signed URLs; files never stream through the API)
+                    ┌─────────────────────────────┐
+  browsers ─────────►  Web (Next.js 16)           │  same-origin /api/* rewrite
+                    │  COOKIE bx_session          │
+                    └────────────┬────────────────┘
+                                 │ HTTP to API (TRUST_PROXY = Next hop only)
+                    ┌────────────▼────────────────┐
+  mobile ───────────►  API  Express 5             │  bearer + X-Client: mobile
+                    │  GET /health                │
+                    │  /v1/*                      │
+                    └─┬─────────────────────────┬─┘
+                      │                         │
+                      │                    ┌────▼─────────────┐
+                      │                    │ Worker (BullMQ)  │  same image, different entry
+                      │                    └────┬─────────────┘
+                      │                         │
+              ┌───────▼────────┐       ┌────────▼────────┐
+              │ PostgreSQL 17  │       │ Redis 7         │
+              │ schema app     │       │ noeviction      │
+              │ role bytesac_api│      └─────────────────┘
+              │ pg_cron, vector│
+              └────────────────┘
+                      │
+              ┌───────▼────────┐
+              │ Cloudflare R2  │  private bucket
+              └────────────────┘
 ```
 
-The browser never calls the API directly: the web app proxies `/api/*` to `API_ORIGIN`, and the API sends **no CORS
-headers** on purpose. The mobile app calls the API directly with a bearer token, so the API needs a public HTTPS URL
-for mobile.
+| Process | Package | Dev command | Production entry | Role |
+|---|---|---|---|---|
+| API | `apps/api` | `pnpm --filter api dev` | `node dist/server.js` after `pnpm --filter api build` | HTTP, planning, signing support, ops |
+| Worker | `apps/api` | `pnpm --filter api dev:worker` | `node dist/worker.js` | Queues only; **never moves user money** |
+| Web | `apps/web` | `pnpm --filter web dev` | `pnpm --filter web build` then `next start` (or the host’s Next adapter) | Marketing, investor, manager, ops UI |
+| Mobile | `apps/mobile` | Expo dev client | EAS build (store / internal) | Investor app; manager and ops are web-only |
 
-### Hosting options (to decide in Spec 16)
+The API and worker are a **modular monolith** (ADR-001): one codebase, two processes. Do not split them into separately versioned services.
 
-| Component | Options | Constraints that matter |
-|---|---|---|
-| API and worker | Fly.io, Render, Railway, AWS ECS/Fargate, Google Cloud Run (always-on) | Two long-running processes; the worker must not scale to zero; graceful SIGTERM is implemented |
-| Web | Vercel, or a container next to the API | The edge must overwrite `X-Forwarded-For` (§7) |
-| PostgreSQL | Supabase (ADR-005/006) | `pg_cron` and `pgvector` required; runtime role without `DELETE` |
-| Redis | Upstash, Redis Cloud, ElastiCache, the host's managed Redis | Must be non-evicting for BullMQ |
-| Mobile builds | EAS Build and Submit | Push needs an EAS project id (ADR-020) |
+---
 
-## 2. Accounts and keys to prepare
+## 4. Hosting constraints (vendor-agnostic)
 
-| Service | Used for | Variables |
-|---|---|---|
-| Supabase (or other Postgres) | System of record | `DATABASE_URL`, `MIGRATOR_DATABASE_URL` |
-| Redis provider | Queues, rate limits, price cache | `REDIS_URL` |
-| Cloudflare R2 | Organization documents, basket files, logos | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` |
-| Alchemy | EVM, Solana, Bitcoin and Polygon RPC (enable Bitcoin and Polygon on the key) | `ALCHEMY_API_KEY` |
-| LI.FI | Swap and bridge routing for every investment leg | `LIFI_API_KEY`, `LIFI_INTEGRATOR` |
-| Resend | Email OTP and notification email | `RESEND_API_KEY`, `EMAIL_FROM` |
-| Twilio Verify | SMS OTP | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, `SMS_ALLOWED_COUNTRIES` |
-| CoinMarketCap (optional) | Market prices and simulated performance | `COINMARKETCAP_API_KEY` |
-| Google Gemini (optional) | AI search and embeddings | `GEMINI_API_KEY` |
-| Firebase (optional) | Web push | API: `FIREBASE_SERVICE_ACCOUNT`; web: `NEXT_PUBLIC_FIREBASE_*` |
-| Expo / EAS | Mobile builds and push | `EXPO_ACCESS_TOKEN` (optional), EAS credentials |
-| Reown Cloud | Wallet connection on web and mobile | `NEXT_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_REOWN_PROJECT_ID` |
-| Apple / Google developer accounts | Store distribution, APNs and FCM keys | — |
-| Platform wallets | Solana fee payer, EVM gas wallet, two USDC treasuries | see §9 |
+When Spec 16 picks hosts, they must satisfy:
 
-Every secret goes into the host's secret store, never into the repository or an image. Platform wallet keys move to a
-**KMS or HSM before launch** (open item).
+1. **API and worker run Node 24** and the tsup output in `apps/api/dist`. Health is `GET /health` (200 when Postgres and Redis answer, 503 `degraded` otherwise). Both processes shut down on `SIGINT`/`SIGTERM` (stop accepting, close HTTP, close BullMQ queues, quit Redis, end the DB pool, exit 0; a shutdown over 10 s exits 1).
+2. **Web is the only browser origin.** Set `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`, and `NEXT_PUBLIC_APP_URL` to that origin. There is no CORS. The Next rewrite proxies `/api/:path*` to `API_ORIGIN/:path*` and **does not** sanitize `X-Forwarded-For`.
+3. **Postgres is Supabase** (ADR-005, ADR-006) unless a later ADR changes that. Enable `pg_cron` and `vector` **before** migrating. Use the project `postgres` role as `MIGRATOR_DATABASE_URL`. Use the pooler URL as `DATABASE_URL` for role `bytesac_api`. Do not expose schema `app` in the Supabase API settings.
+4. **Redis must not evict.** BullMQ stores job state in Redis; an allkeys-lru cache will lose schedules and in-flight tracking.
+5. **One or more worker replicas are fine.** Scheduler ids are fixed, so each repeating job runs once across instances. They need the same Redis and the same DB role as the API. No extra credential.
+6. **Cookie `Secure` in production** (`COOKIE_SECURE=true`). `TRUST_PROXY` must trust **only the Next hop** (hop count `1` if Next is the sole proxy in front of the API, or the Next CIDR / loopback if co-located) — not the entire forwarded chain.
+7. **Secrets stay server-side.** `NEXT_PUBLIC_*` and `EXPO_PUBLIC_*` are public. Platform keys, HMAC peppers, Twilio, R2, Firebase service account, and Alchemy stay on the API/worker.
+8. **Do not run two API test suites against one test database** in CI. Production has no such restriction, but CI must serialize `pnpm --filter api test`.
 
-## 3. Environments
+Suggested (not decided) split from the roadmap: API + worker on a container host (Fly / Render / Railway / ECS / Cloud Run), web on Vercel or a container, Postgres on Supabase, Redis managed, R2 on Cloudflare, mobile on EAS. Confirm with the product owner before creating anything.
 
-Plan for three: **development** (local, `pnpm db:up`), **staging** and **production**, each with its own
-database, Redis, R2 bucket, provider keys, platform wallets and EAS build profile. Staging should use the same hosting
-as production. The web origin decided here also fixes `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`,
-`NEXT_PUBLIC_APP_URL`, `EXPO_PUBLIC_WEB_URL`, the WalletConnect metadata URL in `apps/mobile/src/lib/appkit.tsx`
-(currently `https://bytesac.com`) and the R2 CORS origins.
+---
 
-## 4. Database (PostgreSQL)
+## 5. PostgreSQL (Supabase)
 
-1. **Create the project** (Supabase) and enable the extensions **`pg_cron`** and **`vector`** before migrating
-   (Dashboard → Database → Extensions). Migration `0009_discovery.sql` fails if `vector` cannot be created.
-2. **Run migrations as the schema owner.** Set `MIGRATOR_DATABASE_URL` (the project's `postgres` role) and run
-   `pnpm --filter @repo/db db:migrate`. Migrations are additive and forward-only; there are no down migrations.
-3. **Give the runtime role a password:** `ALTER ROLE bytesac_api LOGIN PASSWORD '<secret>'`. The migrations create
-   `bytesac_api` with DML on schema `app` and **no `DELETE`**; financial tables are insert-only for it.
-4. **Point the app at the runtime role:** `DATABASE_URL` uses `bytesac_api` through the pooler URL.
-5. **Keep schema `app` private:** it must **not** be listed under Dashboard → API → Exposed schemas.
-6. **Retention** runs inside Postgres: `pg_cron` calls `app.purge_expired()` daily at 03:00 UTC. Monitor
-   `cron.job_run_details`.
-7. **Backups:** enable point-in-time recovery, and rehearse a restore before launch.
-8. **At scale:** add an ivfflat or hnsw index for pgvector (none today; a sequential scan is fine pre-launch).
+Step-by-step for a hosted database. Local Docker is in the root README.
 
-## 5. Redis
+1. Create a Supabase project (region close to the API).
+2. Dashboard → Database → Extensions: enable **`pg_cron`** and **`vector`**.
+3. Create the runtime role after the first migration has defined it, or as documented in `apps/api/README.md`:
+   ```sql
+   ALTER ROLE bytesac_api LOGIN PASSWORD '<runtime-secret>';
+   ```
+   The runtime role is granted DML without `DELETE`. Do not use the `postgres` role as `DATABASE_URL`.
+4. In `packages/db/.env` set `MIGRATOR_DATABASE_URL` to the **direct** connection of the schema owner (`postgres`).
+5. Run migrations as a **release step**, not from a running API replica:
+   ```bash
+   pnpm --filter @repo/db db:migrate
+   ```
+   Migration `0002` schedules `app.purge_expired()` daily at 03:00 UTC when pg_cron is present. Migration `0009` creates the vector extension and fails if the role cannot `CREATE EXTENSION`.
+6. Point the API and worker `DATABASE_URL` at the **pooler** URL as `bytesac_api`.
+7. Dashboard → API → Exposed schemas: confirm **`app` is not listed**.
+8. Monitor `cron.job_run_details` for the `bytesac-retention` job. Without pg_cron, run `SELECT app.purge_expired();` as the schema owner by hand.
+9. Backups and restore drills are an operator duty before launch. The runtime role cannot delete financial history; a restore is the recovery path.
 
-- Redis 7, reachable from the API and the worker (`REDIS_URL`; TLS URL in production).
-- **`maxmemory-policy noeviction`**: BullMQ loses jobs if keys are evicted.
-- If Redis is down, the API keeps serving but enqueues fail fast and are logged; rate limits depend on it.
+At scale, choose an ivfflat or hnsw index for pgvector ([`OPEN-ITEMS.md`](../OPEN-ITEMS.md) §6). Sequential scan is acceptable pre-launch.
 
-## 6. Cloudflare R2
+Set a role-level `statement_timeout` on `bytesac_api` in production (open config check).
 
-1. Create a private bucket (no public access, no custom domain, no `r2.dev` URL).
-2. Create an API token with Object Read & Write scoped to that bucket.
-3. Add a CORS rule allowing `PUT` from each web origin, with allowed header `Content-Type`.
-4. Add a lifecycle rule deleting objects under `incoming/` after 1 day (unconfirmed uploads).
-5. Set the four `R2_*` variables. **The API refuses to start without them.**
+---
 
-## 7. Edge, TLS and network requirements
+## 6. Redis
 
-These are **security requirements**, not tuning:
+- One instance (or a non-evicting clustered setup BullMQ supports) shared by API and worker.
+- Database index 0 for runtime (`REDIS_URL`); tests use index 1 locally (`TEST_REDIS_URL`).
+- **`maxmemory-policy noeviction`**. If Redis is down after the first successful connection, producers fail fast (`enableOfflineQueue: false`); `enqueue` logs and does not fail the HTTP request. A process started with Redis down waits for the first connection.
+- Persistence (AOF/RDB) is an operator choice; losing Redis loses queue state and rate-limit counters, not the system of record.
 
-- **TLS everywhere.** Session cookies are `Secure` in production (`COOKIE_SECURE=true`, the default).
-- **`X-Forwarded-For` must be overwritten** by the edge or load balancer in front of the web app with the real
-  client IP, never appended to a client-supplied value. The Next.js rewrite neither sets nor sanitizes it.
-- **`TRUST_PROXY` on the API must trust only the web server hop** (its private CIDR, or loopback when co-located),
-  not the whole chain. A hop count (for example `TRUST_PROXY=1`) is acceptable only when exactly one proxy sits in
-  front of the API. If either rule is wrong, per-IP rate limits and the session `ip_prefix` become spoofable, or
-  collapse into one global bucket.
-- **Geo header:** if `GEO_COUNTRY_HEADER` is set (for example `CF-IPCountry`), the edge must overwrite or strip any
-  client-supplied value on every request. Otherwise a client can choose its own country for RWA eligibility.
-- **Mobile traffic** reaches the API directly over HTTPS; the same `TRUST_PROXY` rules apply to the API's own load
-  balancer.
-- **CSP:** the web app sends a **report-only** Content-Security-Policy with no report endpoint. Add a report collector,
-  run the wallet end-to-end checks, then switch to an enforcing `Content-Security-Policy` (`apps/web/next.config.js`).
+---
 
-## 8. Services
+## 7. Cloudflare R2
 
-### 8.1 API
+The API never streams files; it signs short-lived URLs. It **will not start** without all four `R2_*` variables.
+
+1. Create a bucket. Public access off. No custom domain or `r2.dev` URL.
+2. Create an R2 API token with Object Read & Write scoped to that bucket. Note account id, access key, secret.
+3. CORS: allow `PUT` from every **web origin** (production origin and `http://localhost:3000`), header `Content-Type` only. No other methods, no `*` origin.
+4. Lifecycle: delete objects under prefix `incoming/` after 1 day (unconfirmed uploads). Confirmed objects live under `documents/`.
+5. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` on the API (and worker, same env).
+
+Logos and basket PDFs use the same bucket with presign → server-side byte check → signed read. Organization documents are not malware-scanned in release 1 (`not_scanned`).
+
+---
+
+## 8. API and worker
+
+### Build
 
 ```bash
+corepack enable
 pnpm install --frozen-lockfile
-pnpm --filter api build          # tsup → apps/api/dist
-node apps/api/dist/server.js     # or: pnpm --filter api start
+pnpm --filter api build    # writes dist/server.js and dist/worker.js
 ```
 
-- **Environment:** every variable in `apps/api/.env.example`. The process validates them at startup and exits on a
-  missing required value. Production values: `NODE_ENV=production`, `COOKIE_SECURE=true`, `AUTH_DOMAIN` and
-  `AUTH_URI` set to the web origin, `ALLOWED_ORIGINS` listing the web origins, `TRUST_PROXY` as in §7, and
-  `LOG_LEVEL=info`.
-- **Health check:** `GET /health` checks PostgreSQL and Redis; it returns 200 when both answer and 503 otherwise. Use it for readiness
-  and liveness.
-- **Shutdown:** on SIGTERM the server stops accepting connections and closes HTTP, queues, Redis and the database
-  pool, then exits 0; after 10 s it exits 1. Give the platform a grace period of at least 15 s.
-- **Scaling:** stateless; run two or more instances behind the load balancer. Sessions live in Postgres.
-
-### 8.2 Worker
+### Run
 
 ```bash
-node apps/api/dist/worker.js     # or: pnpm --filter api start:worker
+node dist/server.js        # from apps/api, with env loaded by the host
+node dist/worker.js
 ```
 
-- Same image, same environment and same database role as the API; no extra credentials.
-- Runs every scheduled and background job: price snapshots (00:05 UTC), basket performance, search index and
-  embeddings, leg tracking, position reconciliation (02:30 UTC), gas-wallet checks (every 15 min), revenue
-  reconciliation (04:00 UTC) and notification delivery.
-- **Always on.** Do not scale to zero. Several instances are safe: fixed scheduler ids keep each schedule single-run.
-- If the worker is down, derived data goes stale and notifications queue up, but the API keeps working. **Leg
-  tracking also stops**, so investments stay `SUBMITTED` until it is back. Alert on worker health.
+Use the host’s secret store / env injection. Do not copy `.env` files into images.
 
-### 8.3 Web
+### Worker jobs
+
+| Queue | Schedule / trigger | Purpose |
+|---|---|---|
+| `price-snapshot` | Daily 00:05 UTC | CoinMarketCap snapshot (one batched request) |
+| `basket-performance` | After snapshots | Simulated buy-and-hold series |
+| `search-index-refresh` | On change (10 s debounce) + catch-up | Discovery index |
+| `embed-basket` | Sweep every 15 min | Gemini embeddings (no-op without a key) |
+| `track-leg` | After submit; sweep every 5 min | Chain tracking; never resubmits |
+| `reconcile-positions` | Nightly 02:30 UTC; also on portfolio read | Holdings vs chain |
+| `gas-wallet-check` | Every 15 min | Warns when platform wallets are low |
+| `revenue-reconcile` | Daily 04:00 UTC | Settled platform fees vs treasury inflows |
+| `notifications` | After commit | Inbox fan-out to email / FCM / Expo push |
+
+If the worker is down, the API still serves. Derived data (prices, performance, search, embeddings, tracking, notifications) goes stale. That is a launch blocker, not an acceptable steady state.
+
+### Health
+
+`GET /health` → `{ status: "ok" | "degraded", db, redis }`. Use it as the load-balancer probe on the API. The worker has no HTTP port; probe process liveness and Redis/Postgres from the host or from logs.
+
+### Scaling
+
+- API: scale horizontally behind the proxy. Sessions are in Postgres, rate limits in Redis.
+- Worker: scale horizontally; keep Redis non-evicting. Do not run the worker as a cron on a laptop.
+- Never run migrations from every replica; run them once per release.
+
+---
+
+## 9. Web (Next.js 16)
 
 ```bash
-pnpm --filter web build
-pnpm --filter web start          # next start (PORT, default 3000)
+# apps/web
+API_ORIGIN=https://<api-host>          # server-only; rewrite target
+NEXT_PUBLIC_APP_URL=https://<web-origin>
+NEXT_PUBLIC_REOWN_PROJECT_ID=<reown>
+# optional web push
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_VAPID_KEY=
+# optional store badges; unset → "Coming soon"
+NEXT_PUBLIC_IOS_APP_URL=
+NEXT_PUBLIC_ANDROID_APP_URL=
 ```
 
-| Variable | Value |
+`NEXT_PUBLIC_APP_URL` is also the Reown AppKit metadata URL. It must be the real public origin before wallets are used in production.
+
+Security headers are set in `apps/web/next.config.js` (HSTS, frame deny, nosniff, Permissions-Policy). CSP is **report-only** with no report endpoint; collect violations, then promote to enforcing ([`OPEN-ITEMS.md`](../OPEN-ITEMS.md) §6).
+
+### Edge in front of Next (required)
+
+1. Terminate TLS.
+2. **Overwrite** `X-Forwarded-For` with the real client IP. Do not append to a client-supplied value.
+3. If `GEO_COUNTRY_HEADER` is set on the API (for example `CF-IPCountry`), the edge must **strip any client-supplied value** of that header and set it from its own geo database. Unset on the API means eligibility has no geo signal.
+
+---
+
+## 10. Mobile (EAS)
+
+Expo Go is not supported. `apps/mobile/eas.json` currently has a **development** profile only (`EXPO_PUBLIC_API_URL=http://10.0.2.2:4000`). Production and preview profiles, store credentials, and `extra.eas.projectId` are still operator work (`eas init`).
+
+| Variable | Notes |
 |---|---|
-| `API_ORIGIN` | Private URL of the API, used by the `/api/*` rewrite (build- and run-time; listed in `turbo.json`) |
-| `NEXT_PUBLIC_APP_URL` | Public web origin (also the WalletConnect metadata URL and icon) |
-| `NEXT_PUBLIC_REOWN_PROJECT_ID` | Reown Cloud project id |
-| `NEXT_PUBLIC_FIREBASE_API_KEY`, `_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID`, `_VAPID_KEY` | Optional web push (all or none) |
-| `NEXT_PUBLIC_IOS_APP_URL`, `NEXT_PUBLIC_ANDROID_APP_URL` | Optional store links; unset shows "Coming soon" |
+| `EXPO_PUBLIC_API_URL` | Production API origin. Inlined at **build** time. |
+| `EXPO_PUBLIC_REOWN_PROJECT_ID` | Same Reown project as web, or a dedicated one. |
+| `EXPO_PUBLIC_WEB_URL` | Confirmed web origin. Unset hides Bitcoin / “continue on web” handoffs. |
 
-`NEXT_PUBLIC_*` values are inlined at build time, so build once per environment. Security headers (HSTS,
-Permissions-Policy, frame and referrer policy, report-only CSP) come from `next.config.js`.
+Push (ADR-020):
 
-### 8.4 Mobile (EAS)
+1. `npx eas-cli@latest init` in `apps/mobile`.
+2. Upload FCM v1 (Android) and APNs (iOS) credentials: `npx eas-cli@latest credentials`.
+3. Optional API env `EXPO_ACCESS_TOKEN` for Expo’s enhanced push security.
+4. Bundle id in OPEN-ITEMS: `com.bytesac.app` (confirm before store submit).
 
-`eas.json` has only a `development` profile today. Before the first release:
+Bitcoin legs and Bitcoin linking are web-only; mobile hands off to `EXPO_PUBLIC_WEB_URL`.
 
-1. `npx eas-cli@latest init` in `apps/mobile` (writes `extra.eas.projectId` to `app.json`; push needs it).
-2. Add `preview` and `production` profiles with `EXPO_PUBLIC_API_URL` (the public HTTPS API),
-   `EXPO_PUBLIC_REOWN_PROJECT_ID` and `EXPO_PUBLIC_WEB_URL`, or store them as EAS environment variables. Like web,
-   `EXPO_PUBLIC_*` values are inlined at build time.
-3. Upload credentials with `npx eas-cli@latest credentials`: iOS signing and an **APNs key**, and the **FCM v1
-   service-account key** for Android push.
-4. Build and submit: `eas build --profile production --platform all`, then `eas submit`.
-5. Optional: enable Expo enhanced push security and set `EXPO_ACCESS_TOKEN` on the API and worker.
+---
 
-The app needs a development or store build (it uses native wallet modules; Expo Go is not supported).
+## 11. Environment reference
 
-## 9. Platform wallets and keys
+The API validates env at startup (`apps/api/src/config/dotenv.ts`) and **exits if a required value is missing**. Canonical comments live in `apps/api/.env.example`.
 
-| Wallet | Purpose | Variable | Funding |
-|---|---|---|---|
-| Solana fee payer | Co-signs and pays fees for Solana legs, plus one-time token-account rent | `SOLANA_FEE_PAYER_SECRET` | SOL; warning below 0.5 SOL |
-| EVM gas wallet | Small gas drops so users can sign EVM legs (same address on every EVM chain) | `EVM_GAS_WALLET_SECRET` | Native gas on Ethereum, Base, BNB Chain, Arbitrum and Polygon; warnings below 0.01 ETH, 0.05 BNB, 10 POL |
-| Gas treasury | Receives network fees (USDC on Solana) | `GAS_TREASURY_SOLANA_ADDRESS` | Address only |
-| Revenue treasury | Receives platform fees (must differ from the gas treasury) | `REVENUE_TREASURY_SOLANA_ADDRESS` | Address only; required once any platform fee is above 0 |
+### API / worker (same file)
 
-- These wallets hold **platform funds only**. Never reuse their keys elsewhere.
-- Keys are plain environment secrets today; **move them to a KMS or HSM before launch**.
-- Gas caps are constants in `apps/api/src/modules/operations/gas.service.ts` (per user and global per chain, per
-  day). Review them when prices move.
-- Empty values disable the feature that needs them: without the fee payer, Solana legs are refused.
+| Group | Variables | Production notes |
+|---|---|---|
+| Server | `NODE_ENV=production`, `PORT`, `LOG_LEVEL` | |
+| Data | `DATABASE_URL`, `REDIS_URL` | Pooler + noeviction Redis |
+| Auth | `SESSION_TOKEN_PEPPER`, `OTP_HMAC_SECRET`, `AUTH_DOMAIN`, `AUTH_URI`, `ALLOWED_ORIGINS`, `COOKIE_SECURE=true`, `TRUST_PROXY` | `AUTH_*` and `ALLOWED_ORIGINS` = public web origin. `TRUST_PROXY` = Next hop only |
+| Geo | `GEO_COUNTRY_HEADER` | e.g. `CF-IPCountry`; edge must overwrite |
+| Email | `RESEND_API_KEY`, `EMAIL_FROM` | Verified domain |
+| SMS | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`, `SMS_ALLOWED_COUNTRIES` | |
+| RPC | `ALCHEMY_API_KEY` | Enable every chain you offer, including Bitcoin UTXO |
+| Files | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Required |
+| Optional | `COINMARKETCAP_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL`, `LIFI_API_KEY`, `LIFI_INTEGRATOR`, `FIREBASE_SERVICE_ACCOUNT`, `EXPO_ACCESS_TOKEN` | Empty disables that feature |
+| Execution | `SOLANA_FEE_PAYER_SECRET`, `EVM_GAS_WALLET_SECRET`, `GAS_TREASURY_SOLANA_ADDRESS`, `REVENUE_TREASURY_SOLANA_ADDRESS` | KMS before launch; revenue ≠ gas |
 
-## 10. Release process
+### Web
 
-Recommended order for every release:
+`API_ORIGIN`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_REOWN_PROJECT_ID`, optional Firebase and store URLs (section 9).
 
-1. **CI on Linux:** `pnpm install --frozen-lockfile`, then `pnpm lint`, `pnpm check-types`, `pnpm test` (with
-   Postgres and Redis service containers and the `TEST_*` variables), then `pnpm build`. Linux CI also avoids the
-   Windows Vitest worker crash.
-2. **Migrate:** run `pnpm --filter @repo/db db:migrate` against the target database as the schema owner, as a
-   one-off release step before new code serves traffic. Migrations are additive, so the previous version keeps
-   working against the new schema.
-3. **Deploy the API and the worker** together (same image).
-4. **Deploy the web app.**
-5. **Smoke test:** `GET /health` returns 200, the web loads, wallet sign-in works, `/v1/public/discovery/baskets`
-   answers, and the worker logs its schedules.
-6. **Mobile:** build with EAS and submit; JavaScript-only fixes can use EAS Update once it is configured.
+### Mobile
 
-**Rollback:** redeploy the previous image or build. Because migrations are additive and forward-only, keep the
-schema and roll back code only; write a new forward migration to fix a bad one.
+`EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_REOWN_PROJECT_ID`, `EXPO_PUBLIC_WEB_URL` (section 10).
 
-## 11. Observability and operations
+### Migrator
 
-- **Logs:** winston writes JSON in production (`LOG_LEVEL`); request logs at the `http` level. Secrets, tokens, signatures,
-  OTP codes and full contact details are never logged.
-- **Alert on:** `/health` failures, worker down, BullMQ failed jobs, `gas-wallet-check` warnings, `revenue
-  reconciliation mismatch`, operations stuck in `UNKNOWN`, and `pg_cron` failures.
-- **Operator tools:** `pnpm --filter api ops:*` (grant role, disable address, suspend user; every command is
-  audited). Resolve a leg stuck in `UNKNOWN` with `POST /v1/ops/operations/:id/legs/:legId/resolve` (`ops_admin`).
-- **First operator:** `pnpm --filter api ops:grant-role -- --user <uuid> --role ops_admin --operator <you>`; later
-  roles are managed in the web ops console.
+`packages/db/.env`: `MIGRATOR_DATABASE_URL` only. Never the runtime role.
 
-## 12. Go-live checklist
+---
 
-**Infrastructure**
+## 12. Release order
 
-- [ ] Hosting chosen and recorded as an ADR; Dockerfiles, CI and CD workflows in the repository.
-- [ ] Staging and production environments with separate databases, Redis, R2, keys and wallets.
-- [ ] `pg_cron` and `vector` enabled; migrations applied; runtime role password set; schema `app` not exposed.
-- [ ] Redis `noeviction`; worker always on with alerting.
-- [ ] Edge overwrites `X-Forwarded-For` and the geo header; `TRUST_PROXY` trusts only the web hop.
-- [ ] CSP reports collected, then CSP enforced.
-- [ ] Backups with point-in-time recovery, and one restore rehearsed.
+Run once per environment, in this order. Do not start the API against an unmigrated database.
 
-**Keys and money**
+1. **Postgres** up; extensions enabled; backups configured.
+2. **Redis** up; `noeviction` confirmed.
+3. **R2** bucket, CORS, lifecycle (section 7).
+4. **Secrets** loaded (peppers, provider keys). Platform keys in KMS when available.
+5. **Migrate** as schema owner: `pnpm --filter @repo/db db:migrate`.
+6. **Set** `bytesac_api` password; point `DATABASE_URL` at the pooler.
+7. **Start worker**, then **API**. Confirm `GET /health` is 200.
+8. **Start web** with `API_ORIGIN` at the API. Confirm `/api/health` through the rewrite.
+9. **Smoke:** wallet sign-in on web (Reown), session cookie `Secure`, CSRF header on a mutation.
+10. **Bootstrap ops** (local/dev only for the first human; production: a named operator):
+    ```bash
+    pnpm --filter api ops:grant-role -- --user <user-uuid> --role ops_admin --operator you@example.com
+    ```
+    Later roles are managed in `/ops/roles`. Every command needs `--operator` and is audited.
+11. **Seed the asset registry** only in non-production:
+    ```bash
+    pnpm --filter api ops:seed-assets -- --user <user-uuid>
+    ```
+    Production assets are onboarded through `/ops` review (ADR-010).
+12. **Fund** the Solana fee payer, EVM gas wallet (every chain), and confirm treasury USDC accounts. Watch `gas-wallet-check` logs.
+13. **Mobile** EAS build against the same API origin last (public variables are baked in).
 
-- [ ] All secrets in the host's secret store; platform wallet keys in a KMS or HSM.
-- [ ] Platform wallets funded; `gas-wallet-check` warnings tested.
-- [ ] The manual mainnet checklist in `apps/api/README.md` ("First investment and exit") completed with small amounts.
-- [ ] Platform fee rates set by ops (the default is 0).
+Rollback: revert the web/API/worker release; **do not** reverse a migration that already wrote financial rows. Forward-fix with a new migration.
 
-**Product and compliance**
+---
 
-- [ ] Placeholder legal and disclosure copy replaced after legal review; Expo and Google listed as processors in the
-  privacy notice (push text and AI search queries).
-- [ ] Gemini defaults verified against a real key, or `GEMINI_API_KEY` left empty.
-- [ ] Manual wallet checks on web and on iOS and Android devices (`docs/OPEN-ITEMS.md`).
-- [ ] Push verified on devices; store listings, icons and app store links (`NEXT_PUBLIC_*_APP_URL`).
+## 13. Platform wallets and first real flow
 
-## 13. Open decisions
+Platform wallets hold **platform funds only**. They are not user custody.
 
-Hosting providers, domains, who holds production secrets, the KMS choice, staging versus production promotion
-rules, observability tooling, and the EAS release channels. All are part of Spec 16; see `docs/OPEN-ITEMS.md` §6
-and `docs/superpowers/HANDOFF.md` §6.
+| Wallet | Pays | Floor (warning) |
+|---|---|---|
+| Solana fee payer | Sponsored tx fees + one-time treasury token-account rent | 0.5 SOL |
+| EVM gas wallet | One gas drop per EVM leg | 0.01 ETH, 0.05 BNB, 10 POL (per chain) |
+| Gas treasury | Receives network fees in USDC on Solana | n/a |
+| Revenue treasury | Receives platform fees in USDC on Solana | n/a |
+
+Caps today are constants in `apps/api/src/modules/operations/gas.service.ts` (no env override): ~0.02 SOL per user per day; about $5 per user per EVM chain per day; about $200 global per chain per day. Review before launch ([`OPEN-ITEMS.md`](../OPEN-ITEMS.md) §2).
+
+Solana co-sign only happens when the user-signed message is **byte-identical** to the provider transaction (`TX_MISMATCH` otherwise). EVM approvals are exact-amount, no standing allowance (ADR-013).
+
+The small-amount mainnet checklist lives in [`apps/api/README.md`](../../apps/api/README.md) (invest, partial stop, leave, sell, rebalance, drift fix, buy back, sync, with fees). That is a **user action**, not a deploy script.
+
+---
+
+## 14. Edge, cookies, and eligibility
+
+| Control | Production setting |
+|---|---|
+| TLS | Required. HSTS is already sent by Next |
+| Session cookie | `bx_session`, httpOnly, `Secure` when `COOKIE_SECURE=true`, 12 h idle / 7 d absolute on web |
+| CSRF | Cookie mutations need `Origin` + `X-Requested-With: bytesac` |
+| CORS | Disabled. Do not add `Access-Control-Allow-Origin` |
+| Client IP | Edge overwrites `X-Forwarded-For`; API `TRUST_PROXY` = Next hop |
+| Geo | `GEO_COUNTRY_HEADER` trusted only because the edge overwrites it |
+| CSP | Report-only until a report endpoint exists, then enforce |
+
+---
+
+## 15. Observability (minimum)
+
+Nothing is wired to a SaaS yet. Before launch you need:
+
+- Log drain from API and worker (winston JSON; secrets and OTP codes are redacted in the error handler — keep it that way).
+- Uptime on `GET /health` and on the worker process.
+- Alerts on `gas-wallet-check` warnings, `revenue reconciliation mismatch`, Redis/Postgres down, and failed BullMQ jobs.
+- Error tracking with **no** request bodies that contain signatures, cookies, or documents.
+
+---
+
+## 16. Go-live checklist
+
+Copy of the operational subset; the full list is [`OPEN-ITEMS.md`](../OPEN-ITEMS.md).
+
+**Blockers**
+
+- [ ] Every account in §2.3 created; no placeholders in production.
+- [ ] Platform keys in KMS/HSM; fee payer and gas wallet funded; treasuries distinct.
+- [ ] `pg_cron` + `vector` enabled; migrations applied; schema `app` not exposed.
+- [ ] Redis `noeviction`; worker running.
+- [ ] Edge overwrites `X-Forwarded-For` and the geo header.
+- [ ] `COOKIE_SECURE=true`, `TRUST_PROXY` correct, `NEXT_PUBLIC_APP_URL` = real origin.
+- [ ] Legal review of custody, fees, disclosures, eligibility attestation (placeholder copy today).
+- [ ] Platform fee rates set in `/ops/fees` (defaults are 0).
+- [ ] Eligibility rule values entered per RWA (deny by default).
+- [ ] Alchemy Bitcoin UTXO add-on if you offer native BTC.
+- [ ] Small-amount mainnet run of every money flow (`apps/api/README.md`).
+- [ ] Wallet E2E on web (MetaMask, Phantom) and a mobile dev/store build.
+- [ ] CSP collection, then enforce.
+- [ ] Linux CI for lint, types, tests, build (Windows vitest can crash workers with exit `3221226505`).
+
+**Do not claim launch** until those are done. Simulated performance must stay labelled simulated. Manager publication is not investor consent.
+
+---
+
+## 17. What this file does not cover yet
+
+Spec 16 is expected to add, after an explicit hosting decision:
+
+- Multi-stage Dockerfiles for API, worker, and optionally web (non-root, healthchecks).
+- Compose for a production-like local stack (not only Postgres + Redis).
+- GitHub Actions on Linux: lint, `check-types`, test with service containers, build, migrate, image publish.
+- Environment names (dev / staging / production), domains, and CD gates (`main` → staging, tags → production, manual approval).
+- `docs/engineering/LAUNCH-GUIDE.md` (account-by-account click-path).
+
+Do not add those as if they already existed. When they land, rewrite this document in place.

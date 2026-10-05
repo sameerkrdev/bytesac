@@ -16,11 +16,11 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
    - `domains/USER-FEATURES.md`
    - `domains/FUND-MANAGER-FEATURES.md`
 5. `engineering/CODING-STANDARDS.md` — conventions, tests and the agent workflow.
-6. `engineering/DEPLOYMENT.md` — how to deploy and operate Bytesac (services, release order, edge requirements, go-live checklist). The project overview for newcomers is the root `README.md`.
-7. `engineering/INTEGRATION-AUDIT.md` — third-party integration audit against official documentation (Spec 14): versions, findings, fixes, deferrals.
+6. `engineering/INTEGRATION-AUDIT.md` — third-party integration audit against official documentation (Spec 14): versions, findings, fixes, deferrals.
+7. `engineering/DEPLOYMENT.md` — how to deploy and operate Bytesac (prerequisites, services, env, release order, go-live). Hosting vendors are not chosen yet (Spec 16).
 8. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
 9. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
-10. `design/DESIGN-SYSTEM.md` — design system (web, mobile, logo) (tokens, type, components, motion, imagery). `design/MOTION-STUDY.md` — reference-video analysis. `design/MOBILE-UX-INVENTORY.md` — blueprint for the Expo redesign.
+10. `design/DESIGN-SYSTEM.md` — web design system (tokens, type, components, motion, imagery). `design/MOTION-STUDY.md` — reference-video analysis. `design/MOBILE-UX-INVENTORY.md` — blueprint for the Expo redesign.
 
 ## Document roles (one home per topic)
 
@@ -32,8 +32,8 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
 | Current product behavior | `domains/*.md` |
 | Architecture | `architecture/ARCHITECTURE.md` |
 | Conventions and agent workflow | `engineering/CODING-STANDARDS.md` and root `AGENTS.md` |
-| Deployment and operations | `engineering/DEPLOYMENT.md` |
 | Provider and library audit (versions, deprecations, live-check evidence) | `engineering/INTEGRATION-AUDIT.md` |
+| Deploying and operating | `engineering/DEPLOYMENT.md` |
 | Deferred scope | `domains/FUTURE-PLANS.md` |
 | History (dated, never rewritten) | `superpowers/specs/`, `superpowers/plans/`, `superpowers/reviews/`, `superpowers/audits/`, `superpowers/BRAINSTORM-LOG.md` |
 

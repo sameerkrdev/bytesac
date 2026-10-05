@@ -110,7 +110,7 @@ Spec 15 is merged (`bba1e94`, §2); the next phase is **Spec 16 — deployment**
 7. Observability (logs, error tracking, uptime), CSP enforce mode, load balancer `X-Forwarded-For`, `GEO_COUNTRY_HEADER` edge config.
 8. The step-by-step launch guide (accounts to create, keys to obtain, wallet funding, the mainnet small-amount checklist from `apps/api/README.md`, the manual device checklists in OPEN-ITEMS).
 
-Deliverables: Dockerfiles, compose for local prod-like runs, `.github/workflows/*`, env templates per environment (no secrets), `docs/engineering/DEPLOYMENT.md` and `docs/engineering/LAUNCH-GUIDE.md`. Read the turbo bundled docs (AGENTS.md block) before changing CI/turbo config. **Never deploy, create cloud resources, push, or use real secrets without the user's explicit go-ahead.** At plan approval ask whether the user pre-approves the local merge.
+Deliverables: Dockerfiles, compose for local prod-like runs, `.github/workflows/*`, env templates per environment (no secrets), rewrite `docs/engineering/DEPLOYMENT.md` (constraints and release order already written; add chosen vendors and runbooks), and `docs/engineering/LAUNCH-GUIDE.md`. Read the turbo bundled docs (AGENTS.md block) before changing CI/turbo config. **Never deploy, create cloud resources, push, or use real secrets without the user's explicit go-ahead.** At plan approval ask whether the user pre-approves the local merge.
 ## 7. Roadmap (user order, 2026-10-03; each a full cycle, start only with the user's go-ahead unless pre-approved)
 
 | # | Phase | What to ask / prepare at the start |
@@ -126,4 +126,4 @@ The user's working pattern (keep it): one multiple-choice question at a time wit
 - Product sources (never edit): `docs/source/*`. Index and reading order: `docs/README.md`.
 - Decisions: `docs/decisions/DECISION-REGISTER.md`, `ADR-001..ADR-018`. Architecture: `docs/architecture/ARCHITECTURE.md`. Behavior: `docs/domains/*.md`. Conventions: `docs/engineering/CODING-STANDARDS.md`. Design system: `docs/design/DESIGN-SYSTEM.md`.
 - Open work: `docs/OPEN-ITEMS.md`. Integration audit: `docs/engineering/INTEGRATION-AUDIT.md`. Deferred scope: `docs/domains/FUTURE-PLANS.md`. Brainstorm Q&A: `docs/superpowers/BRAINSTORM-LOG.md`.
-- Setup and operations: `apps/api/README.md`, `apps/web/README.md`, `apps/mobile/README.md`.
+- Setup and operations: root `README.md` (local), `docs/engineering/DEPLOYMENT.md` (hosted; vendors still open), `apps/api/README.md`, `apps/web/README.md`, `apps/mobile/README.md`.
