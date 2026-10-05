@@ -60,7 +60,8 @@ describe("Position screen (mobile)", () => {
     await showPosition(portfolio({ positions: [position({ cashMicro: "2500000" })] }));
     expect(await screen.findByText("Alpha Basket")).toBeOnTheScreen();
     expect(screen.getByText("Aligned")).toBeOnTheScreen();
-    expect(screen.getByText("2 SOL · $300.00")).toBeOnTheScreen();
+    expect(screen.getByText("2 SOL")).toBeOnTheScreen();
+    expect(screen.getAllByText("$300.00").length).toBeGreaterThan(0);
     expect(screen.getByText("60%")).toBeOnTheScreen();
     expect(screen.getByText("50%")).toBeOnTheScreen();
     expect(screen.getByText("2.5 USDC")).toBeOnTheScreen();

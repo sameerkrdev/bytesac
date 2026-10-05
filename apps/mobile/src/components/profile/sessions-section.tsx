@@ -2,7 +2,8 @@ import { ApiError } from "@repo/api-client";
 import { describeError, formatRelative } from "@repo/app-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Monitor, Smartphone } from "lucide-react-native";
-import { Alert, View } from "react-native";
+import { Alert, Pressable, View } from "react-native";
+import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -36,6 +37,7 @@ export function SessionsSection() {
   return (
     <Card className="gap-4">
       <AppText variant="heading" accessibilityRole="header">Sessions</AppText>
+      <AppText variant="micro" tone="faint">Swipe another device left to revoke it.</AppText>
       {isError && <AppText tone="danger" accessibilityRole="alert">{"Couldn't load sessions. Try again later."}</AppText>}
       {revoke.isError && <AppText tone="danger" accessibilityRole="alert">{errorText(revoke.error)}</AppText>}
       {all.isError && <AppText tone="danger" accessibilityRole="alert">{errorText(all.error)}</AppText>}
@@ -43,7 +45,12 @@ export function SessionsSection() {
       {data?.sessions.map((s) => {
         const Icon = s.client === "mobile" ? Smartphone : Monitor;
         return (
-          <View key={s.id} className="gap-2 border-t border-line pt-3">
+          <Swipeable key={s.id} enabled={!s.current} friction={2} rightThreshold={48} overshootRight={false}
+            renderRightActions={() => (
+              <Pressable accessibilityRole="button" accessibilityLabel="Revoke session" onPress={() => revoke.mutate(s.id)}
+                className="ml-2 w-24 items-center justify-center rounded-tile bg-danger"><AppText variant="label" tone="primaryInk">Revoke</AppText></Pressable>
+            )}>
+          <View className="gap-2 border-t border-line bg-surface pt-3">
             <View className="flex-row items-center gap-2">
               <Icon size={16} color={colors.inkMuted} />
               <AppText className="font-medium">{s.client === "mobile" ? "Mobile app" : "Web"}</AppText>
@@ -51,8 +58,9 @@ export function SessionsSection() {
             </View>
             <AppText variant="label" tone="faint" numberOfLines={1}>{s.userAgent ?? "Unknown device"}</AppText>
             <AppText variant="label" tone="faint">{s.ipPrefix ?? ""} · last seen {formatRelative(s.lastSeenAt)}</AppText>
-            {!s.current && <Button variant="ghost" disabled={revoke.isPending} onPress={() => revoke.mutate(s.id)}>Revoke</Button>}
+            {!s.current && <Button variant="ghost" size="sm" className="self-start" disabled={revoke.isPending} onPress={() => revoke.mutate(s.id)}>Revoke</Button>}
           </View>
+          </Swipeable>
         );
       })}
       <Button variant="secondary" loading={all.isPending} onPress={confirmAll}>Log out all devices</Button>

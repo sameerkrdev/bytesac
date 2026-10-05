@@ -30,3 +30,6 @@ jest.mock("react-native-reanimated", () => {
     withRepeat: id, withTiming: id, cancelAnimation: () => undefined,
   };
 });
+
+// ReanimatedSwipeable needs native gestures and Reanimated; tests render the row and use its Revoke button instead.
+jest.mock("react-native-gesture-handler/ReanimatedSwipeable", () => ({ __esModule: true, default: ({ children }: { children: unknown }) => children }));

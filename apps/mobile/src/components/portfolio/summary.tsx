@@ -1,6 +1,7 @@
 import { HEADLINE_LABEL, portfolioAllocation, positionValue, usd } from "@repo/app-core";
 import type { Portfolio } from "@repo/validator";
 import { router } from "expo-router";
+import { useState } from "react";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 import { AllocationLegend, AllocationRing } from "@/components/ui/allocation-ring";
@@ -18,6 +19,7 @@ export function Figure({ value }: { value: string }) {
 /** Value, counts and allocation by asset across open positions. No performance chart: none exists yet. */
 export function PortfolioSummary({ p }: { p: Portfolio }) {
   const { total, legend, slices, attention } = portfolioAllocation(p, 4);
+  const [pick, setPick] = useState<string | null>(null);
   return (
     <Card className="gap-5 p-6" style={{ shadowColor: "#0F1E3A", shadowOpacity: 0.08, shadowRadius: 30, shadowOffset: { width: 0, height: 12 }, elevation: 4 }}>
       <View className="gap-1">
@@ -31,11 +33,11 @@ export function PortfolioSummary({ p }: { p: Portfolio }) {
       </View>
       {slices.length > 0 && (
         <View className="flex-row items-center gap-5 border-t border-line pt-5">
-          <AllocationRing slices={legend} size={112} thickness={11} label={`Portfolio by asset: ${legend.map((s) => `${s.label} ${(s.bps / 100).toFixed(0)}%`).join(", ")}`}>
+          <AllocationRing slices={legend} size={112} thickness={11} selected={pick} onSelect={setPick} label={`Portfolio by asset: ${legend.map((s) => `${s.label} ${(s.bps / 100).toFixed(0)}%`).join(", ")}`}>
             <AppText className="font-light text-2xl">{slices.length}</AppText>
             <AppText variant="micro" tone="muted">assets</AppText>
           </AllocationRing>
-          <View className="flex-1"><AllocationLegend slices={legend} /></View>
+          <View className="flex-1"><AllocationLegend slices={legend} selected={pick} onSelect={setPick} /></View>
         </View>
       )}
       <AppText variant="micro" tone="faint">Values use current market prices for holdings reconciled in your wallets. Performance history isn’t available yet.</AppText>
