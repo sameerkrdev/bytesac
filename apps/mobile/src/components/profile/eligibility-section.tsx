@@ -12,7 +12,7 @@ export function EligibilitySection() {
   const d = q.data?.declaration;
   return (
     <Card className="gap-4">
-      <AppText variant="title" accessibilityRole="header">Eligibility</AppText>
+      <AppText variant="heading" accessibilityRole="header">Eligibility</AppText>
       <AppText tone="muted">Tokenized assets are offered by country and investor status. The declaration is valid for 365 days.</AppText>
       {q.isError ? <ErrorText error={q.error} /> : q.isPending ? <LoadingState /> : d ? (
         <>

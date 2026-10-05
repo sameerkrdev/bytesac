@@ -18,7 +18,7 @@ export function WalletSection({ me }: { me: MeResponse }) {
   const onVerified = useCallback(() => { setOpen(false); void qc.invalidateQueries({ queryKey: ["me"] }); }, [qc]);
   return (
     <Card className="gap-4">
-      <AppText variant="title" accessibilityRole="header">Investment wallet</AppText>
+      <AppText variant="heading" accessibilityRole="header">Investment wallet</AppText>
       <AppText tone="muted">{me.wallet.walletProvider ?? "Wallet"} · one wallet, one address per network</AppText>
       {me.wallet.addresses.map((a) => (
         <View key={`${a.chain}:${a.address}`} className="gap-1 border-t border-line pt-3">

@@ -11,7 +11,7 @@ export function ContactsSection({ me }: { me: MeResponse }) {
   const phone = me.contacts.find((c) => c.type === "phone");
   return (
     <Card className="gap-5">
-      <AppText variant="title" accessibilityRole="header">Contacts</AppText>
+      <AppText variant="heading" accessibilityRole="header">Contacts</AppText>
       <AppText tone="muted">Required later before investing.</AppText>
       <ContactVerifier type="email" existing={email} key={`email:${email?.id}:${email?.status}`} onVerified={refresh} onChanged={refresh} />
       <ContactVerifier type="phone" existing={phone} key={`phone:${phone?.id}:${phone?.status}`} onVerified={refresh} onChanged={refresh} />

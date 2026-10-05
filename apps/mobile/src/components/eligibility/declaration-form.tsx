@@ -2,12 +2,12 @@ import { ELIGIBILITY_ATTESTATION, INVESTOR_STATUSES, type InvestorStatus } from 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Pressable, Switch, View } from "react-native";
-import { palette } from "@repo/design-tokens";
 import { ErrorText } from "@/components/states/states";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { TextField } from "@/components/ui/text-field";
 import { api } from "@/lib/api";
+import { useTheme } from "@/lib/theme";
 
 export const STATUS_LABEL: Record<InvestorStatus, { title: string; help: string }> = {
   retail: { title: "Retail investor", help: "You invest as an individual and do not meet an accredited, qualified or professional test." },
@@ -36,6 +36,7 @@ export const countryName = (code: string) => regionNames()?.of(code) ?? code;
 
 /** Country (search, then tap), investor status and attestation. The server decides what the declaration allows; this only records it. */
 export function DeclarationForm({ onSaved }: { onSaved?(): void }) {
+  const { colors } = useTheme();
   const qc = useQueryClient();
   const list = useMemo(() => countries(), []);
   const [search, setSearch] = useState("");
@@ -78,7 +79,7 @@ export function DeclarationForm({ onSaved }: { onSaved?(): void }) {
         ))}
       </View>
       <View className="min-h-11 flex-row items-start gap-3">
-        <Switch accessibilityLabel="I confirm the declaration is true" value={agreed} onValueChange={setAgreed} trackColor={{ true: palette.sage, false: palette.slate }} thumbColor={palette.ivory} />
+        <Switch accessibilityLabel="I confirm the declaration is true" value={agreed} onValueChange={setAgreed} trackColor={{ true: colors.primary, false: colors.lineStrong }} thumbColor={colors.surface} />
         <AppText variant="label" tone="faint" className="flex-1">{ELIGIBILITY_ATTESTATION.text}</AppText>
       </View>
       <Button disabled={!ready} loading={save.isPending} onPress={() => save.mutate()}>Save declaration</Button>

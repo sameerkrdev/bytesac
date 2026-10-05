@@ -24,11 +24,13 @@ const VARS = { light: themeVars("light"), dark: themeVars("dark") };
 type Ctx = { scheme: Scheme; colors: Record<ThemeRole, string>; choice: ThemeChoice; setChoice(c: ThemeChoice): void };
 const ThemeContext = createContext<Ctx>({ scheme: "light", colors: themes.light, choice: "system", setChoice: () => undefined });
 
-const apply = (c: ThemeChoice) => Appearance.setColorScheme(c === "system" ? "unspecified" : c);
+/** Native status bar, keyboards and system sheets follow the choice; React Native Web has no setColorScheme, so there the resolved scheme below is all. */
+const apply = (c: ThemeChoice) => { if (typeof Appearance.setColorScheme === "function") Appearance.setColorScheme(c === "system" ? "unspecified" : c); };
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setChoiceState] = useState<ThemeChoice>("system");
-  const scheme: Scheme = useColorScheme() === "dark" ? "dark" : "light";
+  const system: Scheme = useColorScheme() === "dark" ? "dark" : "light";
+  const scheme: Scheme = choice === "system" ? system : choice;
 
   useEffect(() => {
     // A failed read keeps the system default; nothing else depends on it.

@@ -1,14 +1,15 @@
 import { ActivityIndicator, View } from "react-native";
 import type { ReactNode } from "react";
-import { palette } from "@repo/design-tokens";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { displayError } from "@/lib/errors";
+import { useTheme } from "@/lib/theme";
 
 export function LoadingState() {
+  const { colors } = useTheme();
   return (
-    <View accessibilityRole="progressbar" accessibilityLabel="Loading" className="items-center py-10"><ActivityIndicator color={palette.mint} /></View>
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading" className="items-center py-10"><ActivityIndicator color={colors.inkMuted} /></View>
   );
 }
 

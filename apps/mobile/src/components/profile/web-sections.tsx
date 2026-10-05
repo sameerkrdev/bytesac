@@ -12,7 +12,7 @@ export function BitcoinSection({ me }: { me: MeResponse }) {
   const linked = me.wallet.addresses.find((a) => a.chain === "bitcoin" && a.status === "active");
   return (
     <Card className="gap-3">
-      <AppText variant="title" accessibilityRole="header">Bitcoin wallet</AppText>
+      <AppText variant="heading" accessibilityRole="header">Bitcoin wallet</AppText>
       <AppText tone="muted">Needed to invest in baskets that hold Bitcoin. Linking and signing Bitcoin steps happen on the web.</AppText>
       {linked
         ? <AppText>Linked {shortAddress(linked.address)}</AppText>
@@ -31,7 +31,7 @@ export function ManageOnWebCard({ me }: { me: MeResponse }) {
   if (!manager && !ops) return null;
   return (
     <Card className="gap-3">
-      <AppText variant="title" accessibilityRole="header">Manage on web</AppText>
+      <AppText variant="heading" accessibilityRole="header">Manage on web</AppText>
       <AppText tone="muted">{manager && ops ? "Your organization, baskets, earnings and the Bytesac operations areas" : manager ? "Your organization, baskets and earnings" : "The Bytesac operations areas"} are managed on the web.</AppText>
       {url ? <Button variant="secondary" onPress={() => void Linking.openURL(url)}>Open on web</Button> : <AppText tone="faint">{WEB_HANDOFF_TEXT}</AppText>}
     </Card>
