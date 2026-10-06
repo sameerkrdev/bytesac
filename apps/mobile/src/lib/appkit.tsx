@@ -5,10 +5,14 @@ import type { ReactNode } from "react";
 import { arbitrum, base, bsc, mainnet } from "viem/chains";
 import { WagmiProvider, type Config } from "wagmi";
 import { appKitStorage } from "./appkit-storage";
+import { webUrl } from "./web-url";
 
 const projectId = process.env.EXPO_PUBLIC_REOWN_PROJECT_ID ?? "";
 if (__DEV__ && !projectId) console.warn("EXPO_PUBLIC_REOWN_PROJECT_ID is empty; wallet connections will not work.");
 const evm = [mainnet, base, bsc, arbitrum] as const;
+// Wallets show this site and icon on the connection prompt, and Reown Verify checks it against the project's domain
+// allowlist: it follows the deployed web origin (EXPO_PUBLIC_WEB_URL), falling back to the brand domain when unset.
+const siteUrl = webUrl("") ?? "https://bytesac.com";
 
 export const wagmiAdapter = new WagmiAdapter({ projectId, networks: [...evm] });
 
@@ -23,8 +27,8 @@ export const appKit = createAppKit({
   metadata: {
     name: "Bytesac",
     description: "Manager-led, multi-chain investment baskets.",
-    url: "https://bytesac.com",
-    icons: ["https://bytesac.com/logo.png"],
+    url: siteUrl,
+    icons: [`${siteUrl}/logo.png`],
     redirect: { native: "bytesac://" },
   },
 });

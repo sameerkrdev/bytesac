@@ -31,3 +31,5 @@ docs
 **/.DS_Store
 docker-compose.yml
 deploy/.env*
+# Server secrets live in deploy/*.env (api.env, migrate.env): never in a build context
+deploy/*.env

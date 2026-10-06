@@ -1,5 +1,8 @@
 # Running Bytesac on one VM (free for a pilot)
 
+> Deploying on Google Cloud with Supabase? Follow the step-by-step runbook in `DEPLOY-GCP.md` (every account, env value
+> and command). This page compares hosting options and summarises the kit.
+
 A low-cost way to run the whole platform for a pilot of about two months: one Linux VM runs Caddy (HTTPS), the web
 app, the API, the worker and Redis with `deploy/docker-compose.yml`; PostgreSQL is Supabase's free plan (or the
 optional self-hosted container). It follows every requirement in `DEPLOYMENT.md` (non-evicting Redis, an always-on
