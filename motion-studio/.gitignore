@@ -17,3 +17,6 @@ runway-kit/clips/
 # Exploratory captures and frame originals (the used copies live in public/ and runway-kit/frames/)
 assets/ui-dark/
 assets/teaser/
+# Product film: originals and voice tests (used copies live in public/product and public/vo)
+assets/product/
+assets/vo/

@@ -1,4 +1,4 @@
-// node tools/gemini.mjs <model> <out-prefix> "<prompt>" [--tts voice] [--image 16:9] [--ref file.png ...]
+// node tools/gemini.mjs <model> <out-prefix> "<prompt>" [--tts voice] [--image 16:9] [--ref file ...] [--system "direction"]
 // Calls generateContent and saves every inline part (audio/image/text) to disk.
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -10,9 +10,12 @@ const body = { contents: [{ parts: [{ text: prompt }] }] };
 // Reference images (inline), e.g. the real logo or a brand object, so generated frames keep exact shapes.
 for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--ref') {
   const file = process.argv[i + 1];
-  const mime = file.endsWith('.png') ? 'image/png' : file.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+  const mime = file.endsWith('.png') ? 'image/png' : file.endsWith('.webp') ? 'image/webp' : file.endsWith('.mp3') ? 'audio/mpeg' : file.endsWith('.wav') ? 'audio/wav' : 'image/jpeg';
   body.contents[0].parts.push({ inlineData: { mimeType: mime, data: readFileSync(file).toString('base64') } });
 }
+// --system "...": direction the model follows but never reads aloud (TTS).
+const sysIdx = process.argv.indexOf("--system");
+if (sysIdx > 0) body.systemInstruction = { parts: [{ text: process.argv[sysIdx + 1] }] };
 const imgIdx = process.argv.indexOf("--image");
 if (imgIdx > 0) body.generationConfig = { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: process.argv[imgIdx + 1] } };
 if (ttsIdx > 0) body.generationConfig = { responseModalities: ['AUDIO'],
@@ -31,7 +34,7 @@ if (!cand?.content?.parts?.length) {
 }
 let n = 0;
 for (const part of json.candidates?.[0]?.content?.parts ?? []) {
-  if (part.text) console.log('text:', part.text.slice(0, 400));
+  if (part.text) console.log('text:', part.text.slice(0, 4000));
   const d = part.inlineData;
   if (!d) continue;
   const e = ext[d.mimeType] ?? (d.mimeType.startsWith('audio/L16') ? 'pcm' : 'bin');
