@@ -27,11 +27,13 @@ export const W = {
   type1: rt(4.45), type2: rt(5.42), shrink: rt(5.8), aside: rt(6.67), phoneUp: rt(6.73), count: rt(7.16),
   textOut: rt(9.6), phoneCentre: rt(10.0), phoneAway: rt(10.6), s2: rt(11.07), s2b: rt(12.0), s2Up: rt(12.67),
   // 9 isometric basket
-  stackUp: rt(13.0), beam: rt(13.4), explode: rt(15.86), travel: rt(16.0),
+  // (explodes a bar earlier than ref1, so the asset chips can be read)
+  stackUp: rt(13.0), beam: rt(13.4), explode: rt(14.12), travel: rt(16.0),
   // 10 outline → fill
   draw: rt(16.6), nest: rt(17.6), drawBottom: rt(18.2), fill: rt(19.34),
   // 11 exit, wait, collide
-  exit: rt(20.0), grey: rt(21.07), fly: rt(22.6), collide: rt(22.81),
+  // (the small slab appears as the big mark leaves, so there is no empty frame)
+  exit: rt(20.0), grey: rt(20.62), fly: rt(22.6), collide: rt(22.81),
   // 12 wordmark, smear
   word: rt(24.0), stretch: rt(24.67), smear: rt(25.33),
   // 13 bars
@@ -41,7 +43,7 @@ export const W = {
   // 15–17 ghost phone: holdings, review, wallet
   ghost: rt(30.3), holdOut: rt(32.4), review: rt(32.7), reviewOut: rt(34.0), wallet: rt(34.3), walletOut: rt(36.6),
   // 18–19 real phone, CTA
-  real: rt(37.0), aside2: rt(38.47), cta: rt(38.6), ctaOut: rt(40.4), fly2: rt(40.6),
+  real: rt(37.0), aside2: rt(38.47), cta: rt(38.6), ctaOut: rt(40.9), fly2: rt(41.05),
   // 20 hero reassembles (loop)
-  rebuild: rt(41.0),
+  rebuild: rt(41.35),
 };
