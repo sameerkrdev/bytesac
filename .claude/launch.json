@@ -70,6 +70,54 @@
         "BROWSER": "none"
       },
       "port": 8091
+    },
+    {
+      "name": "film-mock-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "D:/Coding/projects/bytesac/apps/api/node_modules/tsx/dist/cli.mjs",
+        "--tsconfig",
+        "D:/Coding/projects/bytesac/apps/api/tsconfig.json",
+        "D:/Coding/projects/bytesac/apps/web/e2e/mock-api/server.ts"
+      ],
+      "env": {
+        "MOCK_API_PORT": "4100"
+      },
+      "port": 4100
+    },
+    {
+      "name": "film-web",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "D:/Coding/projects/bytesac/apps/web/node_modules/next/dist/bin/next",
+        "dev",
+        "D:/Coding/projects/bytesac/apps/web",
+        "--port",
+        "3100"
+      ],
+      "env": {
+        "API_ORIGIN": "http://localhost:4100"
+      },
+      "port": 3100
+    },
+    {
+      "name": "film-mobile-web",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "D:/Coding/projects/bytesac/apps/mobile/node_modules/expo/bin/cli",
+        "start",
+        "D:/Coding/projects/bytesac/apps/mobile",
+        "--web",
+        "--port",
+        "8091"
+      ],
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:4100",
+        "EXPO_PUBLIC_MOCK_SESSION": "1",
+        "BROWSER": "none",
+        "CI": "1"
+      },
+      "port": 8091
     }
   ]
 }
