@@ -19,22 +19,28 @@ const cues = [
   ...Array.from({ length: 16 }, (_, i) => ({ t: rt(7.16) + i * 0.065, type: "tick", len: 0.05, gain: 0.45 })), // count-up
   { t: rt(10.6), type: "whoosh", len: 1.2, gain: 0.3 },                       // phone dissolves
   { t: rt(13.0), type: "rise", len: 0.7, gain: 0.5 },                         // stack rises
-  { t: rt(15.86), type: "tink", len: 1.4, gain: 0.6 },                        // explode
+  { t: rt(14.12), type: "tink", len: 1.4, gain: 0.6 },                        // explode
+  ...Array.from({ length: 6 }, (_, i) => ({ t: rt(14.12) + 0.12 + i * 0.06, type: "tick", len: 0.05, gain: 0.5 })), // chips
   { t: rt(16.0), type: "whoosh", len: 0.7, gain: 0.4 },                       // travel up
   { t: rt(16.6), type: "rise", len: 1.0, gain: 0.35 },                        // line draws
   { t: rt(19.34), type: "tink", len: 1.6, gain: 0.7 },                        // fill
   { t: rt(20.0), type: "whoosh", len: 0.9, gain: 0.5 },                       // exit right
-  { t: rt(21.07), type: "tick", len: 0.06, gain: 1 },                         // small slab appears
+  { t: rt(20.62), type: "tick", len: 0.06, gain: 1 },                         // small slab appears
   { t: rt(22.81), type: "thump", len: 0.8, gain: 0.5 },                       // collide
   { t: rt(22.81), type: "tink", len: 1.5, gain: 0.6 },
+  { t: rt(22.81) + 0.05, type: "whoosh", len: 1.0, gain: 0.3 },                // shockwave rings
   ...Array.from({ length: 7 }, (_, i) => ({ t: rt(24.0) + i * 0.075, type: "tick", len: 0.06, gain: 0.8 })), // wordmark
   { t: rt(25.33), type: "whoosh", len: 0.7, gain: 0.6 },                      // smear
-  { t: rt(29.0), type: "whoosh", len: 1.3, gain: 0.55 },                      // diagonal wipe
+  { t: rt(29.0) + 0.1, type: "whoosh", len: 1.4, gain: 0.55 },                      // diagonal wipe
   ...Array.from({ length: 16 }, (_, i) => ({ t: rt(30.3) + i * 0.068, type: "tick", len: 0.05, gain: 0.4 })), // count-up
   { t: rt(34.4), type: "tink", len: 1.4, gain: 0.7 },                         // wallet pops
   { t: rt(37.0), type: "whoosh", len: 0.9, gain: 0.35 },                      // ghost → real phone
-  { t: rt(40.6), type: "whoosh", len: 0.6, gain: 0.45 },                      // phone flies up
-  { t: rt(41.0), type: "shimmer", len: 2.2, gain: 0.5 },                      // hero reassembles
+  ...Array.from({ length: 15 }, (_, i) => ({ t: rt(38.6) + 0.55 + i * 0.04, type: "tick", len: 0.05, gain: 0.6 })), // email typed
+  { t: rt(38.6) + 1.4, type: "tick", len: 0.08, gain: 1.4 },                 // Join pressed
+  { t: rt(38.6) + 1.45, type: "thump", len: 0.5, gain: 0.3 },
+  { t: rt(38.6) + 1.55, type: "shimmer", len: 1.6, gain: 0.6 },              // on the list
+  { t: rt(41.05), type: "whoosh", len: 0.6, gain: 0.45 },                     // phone flies up
+  { t: rt(41.35), type: "shimmer", len: 2.0, gain: 0.45 },                    // hero reassembles
 ];
 writeFileSync("assets/audio/waitlist-cues.json", JSON.stringify(cues, null, 1));
 execFileSync("node", ["tools/sfx.mjs", "assets/audio/waitlist-cues.json", "assets/audio/waitlist-sfx.wav", String(DUR)], { stdio: "inherit" });
