@@ -1,4 +1,4 @@
-// node tools/gemini.mjs <model> <out-prefix> "<prompt>" [--tts voice]
+// node tools/gemini.mjs <model> <out-prefix> "<prompt>" [--tts voice] [--image 16:9] [--ref file.png ...]
 // Calls generateContent and saves every inline part (audio/image/text) to disk.
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -7,6 +7,14 @@ const env = Object.fromEntries(readFileSync(new URL('../.env', import.meta.url),
 const [model, out, prompt] = process.argv.slice(2);
 const ttsIdx = process.argv.indexOf('--tts');
 const body = { contents: [{ parts: [{ text: prompt }] }] };
+// Reference images (inline), e.g. the real logo or a brand object, so generated frames keep exact shapes.
+for (let i = 0; i < process.argv.length; i++) if (process.argv[i] === '--ref') {
+  const file = process.argv[i + 1];
+  const mime = file.endsWith('.png') ? 'image/png' : file.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+  body.contents[0].parts.push({ inlineData: { mimeType: mime, data: readFileSync(file).toString('base64') } });
+}
+const imgIdx = process.argv.indexOf("--image");
+if (imgIdx > 0) body.generationConfig = { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: process.argv[imgIdx + 1] } };
 if (ttsIdx > 0) body.generationConfig = { responseModalities: ['AUDIO'],
   speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.argv[ttsIdx + 1] } } } };
 

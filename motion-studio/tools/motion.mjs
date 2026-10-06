@@ -1,10 +1,10 @@
-// node tools/motion.mjs <yavg.txt> [deadThreshold] — per-frame motion energy (mean abs frame difference, 15 fps)
+// node tools/motion.mjs <yavg.txt> [deadThreshold] [fps=15] — per-frame motion energy (mean abs frame difference, 15 fps)
 // Reports dead spans (no visible change for ≥ 0.4 s) and pops (single-frame spikes far above their neighbours).
 import { readFileSync } from "node:fs";
 const lines = readFileSync(process.argv[2], "utf8").split(/\r?\n/);
 const v = [];
 for (let i = 0; i < lines.length; i++) if (lines[i].startsWith("lavfi.signalstats.YAVG=")) v.push(Number(lines[i].split("=")[1]));
-const fps = 15, dead = Number(process.argv[3] ?? 0.12);
+const fps = Number(process.argv[4] ?? 15), dead = Number(process.argv[3] ?? 0.12);
 const spans = [];
 let start = -1;
 for (let i = 0; i <= v.length; i++) {
@@ -25,5 +25,6 @@ console.log(spans.map(([s, e]) => `${s.toFixed(2)}–${e.toFixed(2)} (${(e - s).
 console.log(`pops: ${pops.map(([t, y]) => `${t}s(${y})`).join(" ")}`);
 // 1-second motion profile
 const sec = [];
+// (per-second profile)
 for (let s = 0; s < Math.ceil(total); s++) { const seg = v.slice(s * fps, (s + 1) * fps); sec.push((seg.reduce((a, b) => a + b, 0) / Math.max(1, seg.length)).toFixed(1)); }
 console.log("per-second:", sec.join(" "));

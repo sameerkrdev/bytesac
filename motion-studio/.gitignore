@@ -13,3 +13,7 @@ assets/ui/
 assets/audio/brand-0.mp3
 public/ui/*-full.png
 public/audio/brand-music.mp3
+runway-kit/clips/
+# Exploratory captures and frame originals (the used copies live in public/ and runway-kit/frames/)
+assets/ui-dark/
+assets/teaser/
