@@ -1,0 +1,39 @@
+# Starts an Android build on EAS (Expo's build service) on demand. The build runs on Expo's servers; the run ends once
+# it is queued and prints the build page link (install link and QR code). Needs the EXPO_TOKEN secret and an EAS
+# project linked in apps/mobile/app.json. Setup: docs/engineering/DEPLOY-GCP.md §22.5.
+name: Android build
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile: preview = installable APK, production = Play Store bundle"
+        type: choice
+        options: [preview, production]
+        default: preview
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # 9.0.0
+        with:
+          eas-version: latest
+          packager: pnpm
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Queue the build
+        working-directory: apps/mobile
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: eas build --platform android --profile "$PROFILE" --non-interactive --no-wait

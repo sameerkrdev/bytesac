@@ -1,9 +1,10 @@
 # Deploying Bytesac on Google Cloud (step by step)
 
-The complete runbook for the chosen pilot setup: **one Google Cloud VM** runs the web app, API, worker, Redis and
-Caddy (HTTPS) with `deploy/docker-compose.yml`; **PostgreSQL is Supabase**; files are in **Cloudflare R2**; the
+The complete runbook for the chosen pilot setup: **one Google Cloud VM** runs the web app, API, worker and Redis in
+**rootless Docker** (as an ordinary user, no root daemon) from `infra/server/docker-compose.yml`, behind **nginx installed
+on the VM** (HTTPS with certbot, configured by hand); **PostgreSQL is Supabase**; files are in **Cloudflare R2**; the
 Android app ships as an **APK** built with EAS. Follow the sections in order. Every value you collect goes into one of
-four files, shown in §15.
+four files, shown in §15. After the first manual deploy, GitHub Actions tests and deploys every merge to `main` (§22).
 
 > Never paste secrets into chats, tickets or commits. Keep them in a password manager until you write them into the
 > files on the server. Provider dashboards change their wording over time; if a button is named differently, look for
@@ -17,36 +18,40 @@ four files, shown in §15.
                  Users (browser)                    Users (Android APK)
                        │ https://app.example.com           │ https://api.example.com
                        ▼                                    ▼
-   ┌──────────────── Google Cloud VM (Ubuntu 24.04, Docker Compose) ───────────────┐
-   │  Caddy :443  ──►  web (Next.js :3000) ── /api/* rewrite ──►  api (Express :4000) │
-   │       └──────────────────────────────────────────────────────►  api              │
-   │                                         worker (BullMQ) ─┐   │                  │
-   │                                         redis (no-evict) ◄┴───┘                  │
-   └───────────────────────────────────────────────┬──────────────────────────────────┘
+   ┌──────────── Google Cloud VM (Ubuntu 24.04) ────────────────────────────────────────┐
+   │  nginx :443 on the VM (certbot)                                                     │
+   │    app.example.com → 127.0.0.1:3000          api.example.com → 127.0.0.1:4000       │
+   │  ┌──── rootless Docker (your user, no root daemon) ────────────────────────────┐    │
+   │  │  web (Next.js :3000) ── /api/* rewrite ──►  api (Express :4000)              │    │
+   │  │                          worker (BullMQ) ─┐   │                             │    │
+   │  │                          redis (no-evict) ◄┴───┘                             │    │
+   │  └──────────────────────────────────────────────────────────────────────────────┘    │
+   └───────────────────────────────────────────────┬─────────────────────────────────────┘
                                                    │ IPv4 pooler
                        Supabase PostgreSQL ◄───────┘        Cloudflare R2 (browser uploads with signed URLs)
 ```
 
 | Runs where | What |
 |---|---|
-| GCP VM | Caddy, web, api, worker, redis (all from `deploy/docker-compose.yml`) |
+| GCP VM | nginx and certbot (installed on the VM); web, api, worker, redis in rootless Docker (`infra/server/docker-compose.yml`) |
 | Supabase | PostgreSQL 17 with `pg_cron` and `pgvector` |
 | Cloudflare R2 | Organization documents, basket files, asset logos |
 | EAS (Expo) | Android APK builds |
 | Providers | Reown (wallets), Alchemy (chain data), LI.FI (routing), Resend (email), Twilio (SMS), CoinMarketCap (prices), Gemini (AI search), Firebase (web push) |
 
-### Why Caddy and not nginx
+### nginx on the VM, Docker without root
 
-Both work. This repository ships **Caddy** (`deploy/Caddyfile`) because for this setup it is simpler and safer:
+- **nginx** is installed from Ubuntu's packages and configured by hand from the reference file
+  `infra/server/nginx/bytesac.conf` (§16.4). **certbot** gets the Let's Encrypt certificates and renews them on a timer.
+  The one rule that matters for the API: nginx **sets** `X-Forwarded-For $remote_addr`, never
+  `$proxy_add_x_forwarded_for` (that keeps whatever the client sent, so anyone could fake their IP for the per-IP
+  rate limits).
+- **Docker runs rootless**: the Docker daemon and every container run as your ordinary user, not root. Nobody is added
+  to the `docker` group (membership is equivalent to root). `sudo` is needed only once, to install packages and set up
+  nginx and certbot; building, deploying and operating the app never use it.
+- The containers publish only on `127.0.0.1` (web 3000, API 4000), so only nginx on the VM can reach them.
 
-| | Caddy | nginx |
-|---|---|---|
-| HTTPS certificates | Automatic (gets and renews Let's Encrypt itself) | Needs certbot, a renewal timer and a reload hook |
-| Client IP (`X-Forwarded-For`) | Ignores values sent by clients and sets the real IP by default, which the API's rate limits require | Must be configured by hand: `proxy_set_header X-Forwarded-For $remote_addr;` (the common `$proxy_add_x_forwarded_for` lets clients spoof their IP) |
-| Config for this app | 12 lines, already written and validated | About 40 lines plus certbot setup, not in the repository |
-| HTTP/3, compression | Built in | Extra modules and config |
-
-Use nginx only if your team already runs it everywhere. In that case keep the two rules above.
+All infrastructure files live in `infra/` (see `infra/README.md`).
 
 ---
 
@@ -123,8 +128,8 @@ At your domain's DNS provider add:
 
 Resend adds its own records in §9. Check from your laptop: `nslookup app.example.com` returns the VM IP.
 
-> Cloudflare proxy (orange cloud) is possible later, but then Caddy must trust Cloudflare's IP ranges and you must set
-> `GEO_COUNTRY_HEADER=CF-IPCountry`. Keep it grey for the first deployment.
+> Cloudflare proxy (orange cloud) is possible later, but then nginx must restore client IPs with its `real_ip` module
+> for Cloudflare's ranges and you must set `GEO_COUNTRY_HEADER=CF-IPCountry`. Keep it grey for the first deployment.
 
 ---
 
@@ -257,19 +262,17 @@ with small amounts first.
 
 ## 15. The four configuration files
 
-All live in `deploy/` on the server and are git-ignored and excluded from Docker builds.
+All live in `infra/server/` on the server and are git-ignored and excluded from Docker builds.
 
 ### 15.1 Secrets you generate
 
 On the server: `openssl rand -hex 32` twice → `SESSION_TOKEN_PEPPER` and `OTP_HMAC_SECRET` (different values).
 Choose a long random password for the runtime database role: `openssl rand -base64 30 | tr -d '/+=' | cut -c1-32`.
 
-### 15.2 `deploy/.env` (compose: domains and public web settings)
+### 15.2 `infra/server/.env` (compose: web domain and public web settings)
 
 ```bash
 WEB_DOMAIN=app.example.com
-API_DOMAIN=api.example.com
-ACME_EMAIL=you@example.com
 NEXT_PUBLIC_REOWN_PROJECT_ID=<reown project id>
 # optional web push (all five or none)
 NEXT_PUBLIC_FIREBASE_API_KEY=
@@ -282,11 +285,12 @@ NEXT_PUBLIC_ANDROID_APP_URL=
 NEXT_PUBLIC_IOS_APP_URL=
 ```
 
-`NEXT_PUBLIC_*` values are built into the web image: run `docker compose build web` after changing them.
+`NEXT_PUBLIC_*` values are built into the web image: run `docker compose build web` after changing them. The API
+domain is configured only in nginx (§16.4).
 
-### 15.3 `deploy/api.env` (API and worker)
+### 15.3 `infra/server/api.env` (API and worker)
 
-Start from the template: `cp deploy/api.env.example deploy/api.env`. Every line is annotated there. The key values:
+Start from the template: `cp api.env.example api.env` (in `infra/server`). Every line is annotated there. The key values:
 
 | Variable | Value |
 |---|---|
@@ -299,9 +303,10 @@ Start from the template: `cp deploy/api.env.example deploy/api.env`. Every line 
 | Provider keys | §5–§13 |
 | `FIREBASE_SERVICE_ACCOUNT` | One line: `jq -c . service-account.json` (install with `sudo apt-get install -y jq`) |
 
-`REDIS_URL`, `PORT` and `TRUST_PROXY` are set by `docker-compose.yml`.
+`REDIS_URL`, `PORT` and `TRUST_PROXY` (`loopback,uniquelocal`: the private hops that nginx and the web container
+arrive from) are set by `docker-compose.yml`.
 
-### 15.4 `deploy/migrate.env` (schema owner, migrations only)
+### 15.4 `infra/server/migrate.env` (schema owner, migrations only)
 
 ```bash
 MIGRATOR_DATABASE_URL=postgresql://postgres.<project-ref>:<database-password>@<pooler-host>:5432/postgres
@@ -309,7 +314,7 @@ MIGRATOR_DATABASE_URL=postgresql://postgres.<project-ref>:<database-password>@<p
 
 Session pooler, port **5432**, user `postgres.<project-ref>` (§4).
 
-Lock them down: `chmod 600 deploy/.env deploy/api.env deploy/migrate.env`.
+Lock them down: `chmod 600 .env api.env migrate.env` (in `infra/server`).
 
 ---
 
@@ -317,23 +322,49 @@ Lock them down: `chmod 600 deploy/.env deploy/api.env deploy/migrate.env`.
 
 SSH into the VM (§2.8) and run:
 
-### 16.1 Docker Engine and Compose (official Ubuntu repository)
+### 16.1 Docker Engine in rootless mode (official Ubuntu repository)
+
+The packages need `sudo` once. The root Docker daemon they install is switched off straight away; only the rootless
+one, owned by your user, runs.
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl git jq
+sudo apt-get install -y ca-certificates curl git jq uidmap
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" \
   | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo usermod -aG docker "$USER"
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras
+
+# Switch off the root daemon: only the rootless one is used
+sudo systemctl disable --now docker.service docker.socket containerd.service
+sudo rm -f /var/run/docker.sock
+
+# Rootless Docker needs subordinate user/group IDs for your user (normally present already)
+grep "^$USER:" /etc/subuid /etc/subgid || sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$USER"
+
+# Keep your user's services (rootless Docker) running after you log out, and start them at boot
+sudo loginctl enable-linger "$USER"
 ```
 
-Log out and back in (close and reopen the SSH window), then check: `docker run --rm hello-world` and
-`docker compose version`.
+Then, as yourself (no `sudo` from here on):
+
+```bash
+dockerd-rootless-setuptool.sh install
+echo "export DOCKER_HOST=unix:///run/user/$(id -u)/docker.sock" >> ~/.bashrc
+source ~/.bashrc
+systemctl --user enable docker
+
+docker run --rm hello-world
+docker info --format '{{.SecurityOptions}}'    # must include name=rootless
+docker compose version
+```
+
+Do **not** add your user to the `docker` group. Ubuntu 24.04 restricts user namespaces with AppArmor; the profile
+rootless Docker needs comes with the apt packages above, so nothing else is required. Images, volumes and build cache
+live in `~/.local/share/docker`.
 
 ### 16.2 Get the code (read-only deploy key)
 
@@ -352,7 +383,7 @@ Host github.com
   IdentitiesOnly yes
 EOF
 git clone git@github.com:sameerkrdev/bytesac.git ~/bytesac
-cd ~/bytesac/deploy
+cd ~/bytesac/infra/server
 ```
 
 ### 16.3 Write the configuration
@@ -366,11 +397,36 @@ chmod 600 .env api.env migrate.env
 
 Fill them in from §15. Leave `DATABASE_URL`'s password as a placeholder for now; you set it in §17.3.
 
+### 16.4 nginx and HTTPS (by hand)
+
+nginx runs directly on the VM. `infra/server/nginx/bytesac.conf` is a reference to copy and edit: it proxies
+`app.example.com` to `127.0.0.1:3000` and `api.example.com` to `127.0.0.1:4000`, and sets the forwarded headers the
+API expects.
+
+```bash
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+sudo cp ~/bytesac/infra/server/nginx/bytesac.conf /etc/nginx/sites-available/bytesac
+sudo nano /etc/nginx/sites-available/bytesac          # replace app.example.com and api.example.com (once each)
+sudo ln -s /etc/nginx/sites-available/bytesac /etc/nginx/sites-enabled/bytesac
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+
+# Certificates for both names; certbot adds the 443 listeners and an HTTP → HTTPS redirect to the site file
+sudo certbot --nginx -d app.example.com -d api.example.com --redirect -m you@example.com
+sudo certbot renew --dry-run                          # renewal works (a systemd timer runs it automatically)
+```
+
+Optional: `server_tokens off;` in the `http { }` block of `/etc/nginx/nginx.conf` hides the nginx version. Until §17.4
+starts the containers, nginx answers `502 Bad Gateway`; that is expected.
+
+To change the site later: edit `/etc/nginx/sites-available/bytesac`, then `sudo nginx -t && sudo systemctl reload
+nginx`. Keep `proxy_set_header X-Forwarded-For $remote_addr;` in every `location` that proxies to the app.
+
 ---
 
 ## 17. Build, migrate and start
 
-All commands run in `~/bytesac/deploy`.
+All commands run in `~/bytesac/infra/server`, as your user (no `sudo`).
 
 ### 17.1 Build the images
 
@@ -405,8 +461,8 @@ Put the same password into `DATABASE_URL` in `api.env`.
 
 ```bash
 docker compose up -d
-docker compose ps                     # caddy, web, api (healthy), worker, redis: all running
-docker compose logs -f caddy          # wait for "certificate obtained successfully" for both domains (Ctrl+C to leave)
+docker compose ps                         # web, api (healthy), worker, redis: all running
+curl -fsS http://127.0.0.1:4000/health    # the API directly, before nginx
 ```
 
 ### 17.5 Check it works
@@ -467,17 +523,19 @@ For the Play Store later: `npx eas-cli@latest build -p android --profile product
 
 ## 19. Operating the server
 
-| Task | Command (in `~/bytesac/deploy`) |
+| Task | Command (in `~/bytesac/infra/server`, as your user) |
 |---|---|
 | Logs | `docker compose logs -f api worker web` |
 | Status | `docker compose ps` |
 | Restart one service | `docker compose restart worker` |
-| Update to the latest `main` | `cd ~/bytesac && git pull && cd deploy && docker compose build && docker compose build migrate && docker compose --profile tools run --rm migrate && docker compose up -d` |
+| Update to the latest `main` | Automatic with GitHub Actions (§22), or by hand: `git -C ~/bytesac fetch origin && ~/bytesac/infra/server/deploy.sh "$(git -C ~/bytesac rev-parse origin/main)"` |
 | Free disk | `docker image prune -f` |
+| Restart Docker itself | `systemctl --user restart docker` (status: `systemctl --user status docker`) |
+| nginx | Logs `sudo tail -f /var/log/nginx/error.log`; after editing the site `sudo nginx -t && sudo systemctl reload nginx` |
 | Database backup | `docker run --rm -e PGURL="$(grep MIGRATOR migrate.env \| cut -d= -f2-)" -v ~/backups:/b postgres:17 sh -c 'pg_dump "$PGURL" -Fc -f /b/bytesac-$(date +%F).dump'` (daily via cron; copy off the VM) |
 
-Rollback: check out the previous commit and rebuild. Migrations are additive and forward-only: never revert one; fix
-forward with a new migration.
+Rollback: run `infra/server/deploy.sh <older commit of main>` (or the Deploy workflow with that commit, §22.4).
+Migrations are additive and forward-only: never revert one; fix forward with a new migration.
 
 Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api.example.com/health` and
 `https://app.example.com/`, alerting to your email; keep the billing budget alert from §2.
@@ -488,12 +546,16 @@ Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api
 
 | Symptom | Likely cause and fix |
 |---|---|
-| `docker compose up` fails: `set WEB_DOMAIN in deploy/.env` | `deploy/.env` missing or not filled in |
+| `docker compose up` fails: `set WEB_DOMAIN in infra/server/.env` | `infra/server/.env` missing or not filled in |
+| `Cannot connect to the Docker daemon` | `DOCKER_HOST` not set in this shell (§16.1), or rootless Docker stopped: `systemctl --user start docker` |
+| Containers do not come back after a reboot | `sudo loginctl enable-linger $USER` and `systemctl --user enable docker` (§16.1) |
+| nginx `502 Bad Gateway` | The containers are not running or not on `127.0.0.1:3000` / `:4000`: `docker compose ps`, `docker compose logs web api` |
 | API container restarts; logs `failed to start api` | A required variable is missing or invalid in `api.env` (`docker compose logs api`); `Non-base58 character` means a wrong `SOLANA_FEE_PAYER_SECRET` (leave it empty until §14) |
 | `/health` returns `"db":"down"` | Wrong `DATABASE_URL`: use the **pooler** host, user `bytesac_api.<project-ref>`, port 6543, URL-encoded password; or §17.3 not done |
 | Migration error `ENETUNREACH` / timeout | You used the IPv6 direct connection: use the session pooler (port 5432) |
 | `password authentication failed for user "bytesac_api"` | Password not set (§17.3) or differs from `DATABASE_URL` |
-| Caddy: certificate errors | DNS not pointing at the VM yet, or ports 80/443 closed (§2.5, §3); Cloudflare proxy must be off |
+| certbot fails | DNS not pointing at the VM yet, ports 80/443 closed (§2.5, §3), the site not enabled in nginx, or the Cloudflare proxy is on |
+| Every user shares one IP in rate limits | nginx appends instead of setting the header: use `proxy_set_header X-Forwarded-For $remote_addr;` (§16.4) |
 | Wallet does not open or warns "unverified" | `NEXT_PUBLIC_REOWN_PROJECT_ID` empty, or the domain / package not on the Reown allowlist (wait 15 minutes after adding) |
 | Sign-in signature rejected | `AUTH_DOMAIN` / `AUTH_URI` do not match the web domain the user is on |
 | Buttons fail with `CSRF_REJECTED` | `ALLOWED_ORIGINS` does not list `https://app.example.com` exactly |
@@ -507,7 +569,10 @@ Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api
 
 ## 21. Security checklist before inviting users
 
-- [ ] `deploy/*.env` files are `chmod 600`, never committed, and not copied anywhere else.
+- [ ] `infra/server/*.env` files are `chmod 600`, never committed, and not copied anywhere else.
+- [ ] Docker is rootless (`docker info` shows `name=rootless`), the root daemon is disabled and nobody is in the
+      `docker` group; containers publish only on `127.0.0.1`.
+- [ ] nginx sets (does not append) `X-Forwarded-For`; `sudo certbot renew --dry-run` passes.
 - [ ] Supabase schema `app` not exposed; database password and runtime password are different and long.
 - [ ] R2 bucket private; the token is scoped to that bucket only.
 - [ ] SSH limited (console SSH or your IP only); VM OS updates: `sudo apt-get update && sudo apt-get upgrade -y`
@@ -516,7 +581,160 @@ Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api
 - [ ] Platform wallets empty or holding small amounts; mainnet checklist in `apps/api/README.md` done before
       enabling investing.
 - [ ] Billing budget alert and uptime checks on.
+- [ ] Deploys only through the `production` environment from `main`; the deploy SSH key can only run `deploy.sh` (§22).
 - [ ] Legal and disclosure copy reviewed (it is placeholder text today).
+
+---
+
+## 22. CI/CD with GitHub Actions
+
+Three workflows live in `.github/workflows/`:
+
+| Workflow | Runs when | What it does |
+|---|---|---|
+| `ci.yml` (**CI**) | Every pull request and every push to `main` | Lint, typecheck and test every package on Linux, with the API tests against the same Postgres and Redis as local development (`docker compose up`). It also builds the API, migrate and web Docker images without pushing them, so a broken Dockerfile fails the PR. |
+| `deploy.yml` (**Deploy**) | After **CI** passes on `main`, or by hand | Signs in to Google Cloud, opens a private tunnel to the VM and runs `infra/server/deploy.sh <commit>` there as your user. |
+| `mobile-apk.yml` (**Android build**) | By hand | Queues an EAS Android build (APK or Play Store bundle) and prints its link. |
+
+```text
+pull request ──► CI ──► review ──► merge to main ──► CI on main ──► Deploy (production environment)
+                                                                       │ Workload Identity Federation (no Google key stored)
+                                                                       ▼
+                                                     IAP tunnel ──► VM :22 ──► infra/server/deploy.sh <commit>
+                                                                       git checkout · build · migrate · up · wait for health
+```
+
+How the deploy stays safe:
+
+- **No Google password or key in GitHub.** GitHub proves its identity to Google with a short-lived token (Workload
+  Identity Federation). Google accepts it only for this repository and only for jobs in the `production` environment.
+- **Port 22 is not opened to the internet.** The runner reaches SSH through Google's Identity-Aware Proxy (IAP).
+- **The deploy key can do one thing.** Its line in `authorized_keys` forces `infra/server/deploy.sh`; the only input is the
+  commit hash, and the script accepts only full hashes that are already on `origin/main`.
+- **The server builds the images.** Secrets stay in `infra/server/*.env` on the VM; GitHub never sees them.
+- **One deploy at a time**, in order (a lock on the VM and a concurrency group in the workflow).
+
+Building on the VM takes a few minutes per deploy, and the containers restart at the end (a few seconds of downtime).
+That is fine for the pilot; DEPLOYMENT.md §17 describes building images in CI and pulling them instead.
+
+**CI works as soon as the workflows are on `main`.** The Deploy workflow is skipped until you finish the setup below.
+
+### 22.1 Google Cloud: tunnel, service account and GitHub sign-in
+
+Open **Cloud Shell** (the `>_` icon at the top right of the Google Cloud console) and run, changing the first three
+lines:
+
+```bash
+REPO=sameerkrdev/bytesac          # GitHub owner/repository, exact spelling
+VM=bytesac                        # VM name (§2)
+ZONE=asia-south1-a                # VM zone (Compute Engine → VM instances, "Zone" column)
+
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
+
+gcloud services enable iap.googleapis.com iamcredentials.googleapis.com sts.googleapis.com
+
+# Let IAP (Google's tunnel range) reach SSH on the VM
+gcloud compute firewall-rules create allow-ssh-from-iap --network default --direction INGRESS \
+  --action allow --rules tcp:22 --source-ranges 35.235.240.0/20
+
+# A service account that may only look up the VM and open IAP tunnels
+gcloud iam service-accounts create github-deploy --display-name "GitHub Actions deploy"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" \
+  --role roles/iap.tunnelResourceAccessor --condition None
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" \
+  --role roles/compute.viewer --condition None
+
+# Trust GitHub's tokens, but only from this repository's production environment
+gcloud iam workload-identity-pools create github --location global --display-name "GitHub Actions"
+gcloud iam workload-identity-pools providers create-oidc bytesac --location global --workload-identity-pool github \
+  --display-name "bytesac repository" \
+  --issuer-uri "https://token.actions.githubusercontent.com" \
+  --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.environment=assertion.environment" \
+  --attribute-condition "assertion.repository == '$REPO' && assertion.environment == 'production'"
+gcloud iam service-accounts add-iam-policy-binding "$SA" --role roles/iam.workloadIdentityUser \
+  --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+
+# Values for GitHub (§22.3)
+echo "GCP_PROJECT_ID=$PROJECT_ID"
+echo "GCP_WORKLOAD_IDENTITY_PROVIDER=projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/bytesac"
+echo "GCP_DEPLOY_SERVICE_ACCOUNT=$SA"
+echo "GCP_VM_NAME=$VM"
+echo "GCP_VM_ZONE=$ZONE"
+```
+
+Nothing printed here is a secret. The firewall rule only admits Google's tunnel; the VM's existing SSH rule is
+unchanged (see §21 if you want to tighten it).
+
+### 22.2 The VM: a deploy key that can only run `deploy.sh`
+
+`infra/server/deploy.sh` must be on the VM first, so merge this change and update the checkout once:
+`cd ~/bytesac && git pull`. Then, in the VM's SSH window (the user who owns `~/bytesac`):
+
+```bash
+ssh-keygen -t ed25519 -N "" -C github-actions-deploy -f ~/gh-deploy
+echo "command=\"$HOME/bytesac/infra/server/deploy.sh\",restrict $(cat ~/gh-deploy.pub)" >> ~/.ssh/authorized_keys
+
+whoami                                                             # → GCP_VM_USER
+echo "bytesac-vm $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"   # → secret VM_SSH_KNOWN_HOSTS
+cat ~/gh-deploy                                                    # → secret VM_DEPLOY_SSH_KEY (whole block)
+```
+
+Copy the last two outputs straight into GitHub (§22.3), then delete the key files from the VM:
+`rm ~/gh-deploy ~/gh-deploy.pub`. Never paste the private key into a chat or a commit.
+
+`restrict` turns off terminals, port forwarding and agent forwarding for this key, and `command=` makes it run only
+the deploy script, whatever the client asks for.
+
+### 22.3 GitHub: environment, variables and secrets
+
+Repository → **Settings**:
+
+1. **Environments → New environment** `production`:
+   - **Deployment branches and tags → Selected branches and tags** → add `main`.
+   - Optional: **Required reviewers** → yourself. Every deploy then waits for your click in the Actions tab.
+   - **Environment secrets → Add secret**:
+     - `VM_DEPLOY_SSH_KEY`: the private key from §22.2 (including the `-----BEGIN` and `-----END` lines).
+     - `VM_SSH_KNOWN_HOSTS`: the `bytesac-vm ssh-ed25519 AAAA…` line from §22.2.
+2. **Secrets and variables → Actions → Variables → New repository variable**, from §22.1 and §22.2:
+   `GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_VM_NAME`, `GCP_VM_ZONE`,
+   `GCP_VM_USER`, and optional `PUBLIC_API_URL` = `https://api.example.com` (checked after each deploy).
+3. **Branches → Add branch ruleset** (or classic branch protection) for `main`: require a pull request and the
+   status checks **Lint, types, tests** and **Docker images**. Pick them after CI has run once.
+4. **Actions → General → Workflow permissions**: keep **Read repository contents** (the workflows ask for nothing
+   more, apart from Deploy's sign-in token).
+
+### 22.4 Deploying, rolling back, checking
+
+- **Normal flow:** merge a pull request into `main`. CI runs; when it passes, Deploy starts (and waits for your
+  approval if you added a reviewer). Watch it under **Actions → Deploy**.
+- **Deploy again or roll back:** **Actions → Deploy → Run workflow**, branch `main`, and paste a full commit hash
+  (empty deploys the latest `main`). Migrations stay applied on rollback: they are forward-only.
+- **By hand on the VM** (same script): `git -C ~/bytesac fetch origin && ~/bytesac/infra/server/deploy.sh <commit>`.
+- After a deploy: `docker compose ps` on the VM, or the `PUBLIC_API_URL` health check in the run's last step.
+
+### 22.5 Android builds from GitHub (optional)
+
+1. Do §18 steps 1–2 once on your laptop (`eas init`, commit the `app.json` change, create the `preview` variables).
+2. **expo.dev → Account settings → Access tokens → Create token** (name `github-actions`).
+3. GitHub → **Settings → Secrets and variables → Actions → New repository secret** `EXPO_TOKEN`.
+4. **Actions → Android build → Run workflow**, profile `preview` (APK) or `production` (Play Store bundle). The run
+   ends once the build is queued; the build page link in its log has the install link and QR code.
+
+### 22.6 When a workflow fails
+
+| Symptom | Cause and fix |
+|---|---|
+| Deploy shows as **skipped** | `GCP_WORKLOAD_IDENTITY_PROVIDER` variable not set, or CI failed on that commit |
+| `Permission 'iam.serviceAccounts.getAccessToken' denied` / `unauthorized_client` | The provider's condition does not match: check the `REPO` spelling in §22.1 and that the job runs in the `production` environment |
+| IAP tunnel step fails (`failed to connect to backend`, `4033`) | Missing firewall rule for `35.235.240.0/20`, wrong `GCP_VM_ZONE` / `GCP_VM_NAME`, or the VM is stopped |
+| `Host key verification failed` | `VM_SSH_KNOWN_HOSTS` must start with `bytesac-vm` and contain the VM's `ssh_host_ed25519_key.pub` |
+| `Permission denied (publickey)` | Wrong `GCP_VM_USER`, or the `authorized_keys` line from §22.2 is missing |
+| `refusing: … is not on origin/main` | You dispatched a commit from another branch: merge it first |
+| `another deploy is running` | Wait for it to finish, then run Deploy again |
+| `the API did not become healthy` | Read the API log printed by the run, fix forward, or roll back with the hash it prints |
+| CI: API tests fail to connect to Postgres | The `docker compose up -d --wait` step failed: read its log (the image build needs network access to Debian mirrors) |
 
 Related: `DEPLOYMENT.md` (requirements every deployment must meet), `DEPLOY-SINGLE-VM.md` (hosting options),
 `apps/api/README.md` (providers, jobs, wallets), `apps/mobile/README.md` (mobile builds and push).

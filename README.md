@@ -187,7 +187,7 @@ This starts:
 - Postgres on `localhost:54329` (user `postgres` / `postgres`, databases `bytesac_dev` and `bytesac_test`)
 - Redis on `localhost:63799`
 
-After pulling a newer Postgres image, run `docker compose down -v` **once** so the volume is recreated (pg_cron / pgvector live in the image).
+After pulling a newer Postgres image, run `pnpm db:down -v` **once** so the volume is recreated (pg_cron / pgvector live in the image).
 
 Stop with `pnpm db:down`.
 
@@ -282,7 +282,7 @@ Sign in as a persona with cookie `bx_session=mock-investor` (or `mock-manager`, 
 |---|---|
 | `docker info` fails | Start Docker Desktop, then `pnpm db:up` |
 | API exits on missing env | Copy `.env.example` fully; R2 and Twilio/Resend/Alchemy keys must be *set*, even if dummy |
-| Migrate cannot create `vector` | Recreate the volume: `docker compose down -v` then `pnpm db:up` |
+| Migrate cannot create `vector` | Recreate the volume: `pnpm db:down -v` then `pnpm db:up` |
 | Web wallet connect does nothing | Set `NEXT_PUBLIC_REOWN_PROJECT_ID` |
 | `GET /health` is 503 | Postgres or Redis is down |
 | Windows Vitest exit `3221226505` | Native Node crash, not a test failure — rerun that file alone |
@@ -358,10 +358,12 @@ Bytesac has not been deployed. [`docs/engineering/DEPLOYMENT.md`](docs/engineeri
 - Supabase, Redis, R2, edge (`X-Forwarded-For`, geo header), cookies
 - Release order, platform wallets, and the go-live checklist
 
-Docker images: `apps/api/Dockerfile` (API and worker; `--target migrate` for migrations and the ops CLI) and
-`apps/web/Dockerfile` (Next.js standalone), both built from the repository root. For a low-cost pilot on one VM,
-`deploy/docker-compose.yml` runs Caddy (HTTPS), web, API, worker and Redis; follow
-[`docs/engineering/DEPLOY-SINGLE-VM.md`](docs/engineering/DEPLOY-SINGLE-VM.md).
+All infrastructure lives in [`infra/`](infra/README.md): Docker images (`infra/docker/api.Dockerfile` for the API,
+worker, migrations and ops CLI; `infra/docker/web.Dockerfile` for Next.js), the local dev services
+(`infra/local/`, used by `pnpm db:up`) and the single-VM server kit (`infra/server/`: rootless Docker compose stack,
+deploy script, env templates, reference nginx site). Follow
+[`docs/engineering/DEPLOY-GCP.md`](docs/engineering/DEPLOY-GCP.md) for the pilot on Google Cloud; GitHub Actions
+(`.github/workflows/`) runs CI on every pull request and deploys `main`.
 
 Do not create cloud resources or use production secrets without an explicit go-ahead.
 

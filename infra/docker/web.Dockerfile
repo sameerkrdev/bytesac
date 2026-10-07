@@ -2,7 +2,7 @@
 #
 # Bytesac web (Next.js 16, standalone output).
 #
-#   docker build -f apps/web/Dockerfile -t bytesac-web \
+#   docker build -f infra/docker/web.Dockerfile -t bytesac-web \
 #     --build-arg API_ORIGIN=http://api:4000 \
 #     --build-arg NEXT_PUBLIC_APP_URL=https://app.example.com \
 #     --build-arg NEXT_PUBLIC_REOWN_PROJECT_ID=<id> .
