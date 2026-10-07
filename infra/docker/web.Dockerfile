@@ -17,12 +17,11 @@ ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
-    COREPACK_HOME=/usr/local/share/corepack \
     CI=true \
     NEXT_TELEMETRY_DISABLED=1 \
     TURBO_TELEMETRY_DISABLED=1
-# pnpm comes from the "packageManager" field (pnpm@11.25.0) through corepack.
-RUN corepack enable && corepack install --global pnpm@11.25.0
+# Same pnpm version as the "packageManager" field in package.json (bump both together).
+RUN npm install -g pnpm@11.25.0 && npm cache clean --force
 WORKDIR /repo
 
 # ---------------------------------------------------------------------------------------------------------------------

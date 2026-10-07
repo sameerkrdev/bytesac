@@ -19,13 +19,12 @@ ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
-    COREPACK_HOME=/usr/local/share/corepack \
     CI=true \
     NEXT_TELEMETRY_DISABLED=1 \
     TURBO_TELEMETRY_DISABLED=1
-# pnpm comes from the "packageManager" field (pnpm@11.25.0) through corepack, cached in a shared folder so the
-# non-root tools image (migrate, ops CLI) finds the same pnpm.
-RUN corepack enable && corepack install --global pnpm@11.25.0 && chmod -R a+rX /usr/local/share/corepack
+# Same pnpm version as the "packageManager" field in package.json (bump both together). A global npm install lives
+# in /usr/local, so the non-root tools image (migrate, ops CLI) can run it too.
+RUN npm install -g pnpm@11.25.0 && npm cache clean --force
 WORKDIR /repo
 
 # ---------------------------------------------------------------------------------------------------------------------
