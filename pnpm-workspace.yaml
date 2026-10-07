@@ -26,3 +26,12 @@ overrides:
   '@wagmi/connectors': 6.2.0
   '@wagmi/core': 2.22.1
   viem: 2.56.9
+# react-native-worklets@0.10.x does not declare these runtime Babel deps
+# (fixed upstream in 0.11+). Without them, pnpm resolves @babel/generator@8
+# from @repo/eslint-config and the Worklets plugin crashes on Babel-7 ASTs
+# (TSFunctionType.parameters → params rename in Babel 8).
+packageExtensions:
+  react-native-worklets:
+    dependencies:
+      '@babel/generator': ^7.27.1
+      '@babel/traverse': ^7.27.1
