@@ -1,4 +1,4 @@
-# Build context for apps/api/Dockerfile and apps/web/Dockerfile (both build from the repository root).
+# Build context for infra/docker/api.Dockerfile and infra/docker/web.Dockerfile (both build from the repository root).
 # turbo prune needs every workspace package.json, so apps/mobile stays in; its heavy folders do not.
 
 # Dependencies and build output
@@ -29,7 +29,6 @@ apps/mobile/assets
 docs
 **/*.log
 **/.DS_Store
-docker-compose.yml
-deploy/.env*
-# Server secrets live in deploy/*.env (api.env, migrate.env): never in a build context
-deploy/*.env
+# Infrastructure: Dockerfiles are passed with -f; compose files, scripts and server secrets
+# (infra/server/*.env) never belong in a build context
+infra

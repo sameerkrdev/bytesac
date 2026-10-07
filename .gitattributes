@@ -1,2 +1,2 @@
-# Shell scripts run on Linux (deploy/deploy.sh on the VM): keep LF line endings on every checkout
+# Shell scripts run on Linux (infra/server/deploy.sh on the VM): keep LF line endings on every checkout
 *.sh text eol=lf

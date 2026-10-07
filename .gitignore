@@ -48,7 +48,7 @@ yarn-error.log*
 firebase-service-account.json
 *firebase*service*account*.json
 *-firebase-adminsdk-*.json
-# Single-VM deployment secrets (deploy/docker-compose.yml)
-deploy/.env
-deploy/api.env
-deploy/migrate.env
+# Single-VM deployment secrets (infra/server/docker-compose.yml)
+infra/server/.env
+infra/server/api.env
+infra/server/migrate.env

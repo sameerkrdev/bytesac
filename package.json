@@ -8,8 +8,8 @@
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "db:up": "docker compose up -d --wait",
-    "db:down": "docker compose down"
+    "db:up": "docker compose -f infra/local/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f infra/local/docker-compose.yml down"
   },
   "devDependencies": {
     "prettier": "3.9.6",

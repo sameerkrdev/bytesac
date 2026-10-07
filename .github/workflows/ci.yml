@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # The API tests use the Postgres and Redis from the root docker-compose.yml (same as local development)
+      # The API tests use the Postgres and Redis from infra/local/docker-compose.yml (same as local development)
       TEST_DATABASE_URL: postgres://bytesac_api:bytesac_api_dev@localhost:54329/bytesac_test
       TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:54329/bytesac_test
       TEST_REDIS_URL: redis://localhost:63799/1
@@ -33,7 +33,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Start Postgres (pg_cron, pgvector) and Redis
-        run: docker compose up -d --wait
+        run: pnpm db:up
       - name: Write Expo's type references (git-ignored; expo start creates it locally)
         run: printf '/// <reference types="expo/types" />\n' > apps/mobile/expo-env.d.ts
       - run: pnpm lint
@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: apps/api/Dockerfile
+          file: infra/docker/api.Dockerfile
           push: false
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
@@ -59,7 +59,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: apps/api/Dockerfile
+          file: infra/docker/api.Dockerfile
           target: migrate
           push: false
           cache-from: type=gha,scope=api
@@ -67,7 +67,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: apps/web/Dockerfile
+          file: infra/docker/web.Dockerfile
           push: false
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web

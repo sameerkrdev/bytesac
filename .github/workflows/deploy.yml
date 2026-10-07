@@ -1,7 +1,8 @@
 # Deploys main to the Google Cloud VM after CI passes on main, or on demand (any commit of main, for rollback).
 # GitHub signs in to Google Cloud with Workload Identity Federation (no stored Google key), opens an IAP tunnel to the
-# VM's SSH port (port 22 stays closed to the internet) and runs deploy/deploy.sh through a key that can only run that
-# script. Skipped until the GCP_* repository variables are set. Setup: docs/engineering/DEPLOY-GCP.md §22.
+# VM's SSH port (port 22 stays closed to the internet) and runs infra/server/deploy.sh as the ordinary user that owns
+# rootless Docker, through a key that can only run that script. Skipped until the GCP_* repository variables are
+# set. Setup: docs/engineering/DEPLOY-GCP.md §22.
 name: Deploy
 
 on:
@@ -66,7 +67,7 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          # The VM's authorized_keys entry forces deploy/deploy.sh; the argument is only the commit hash.
+          # The VM's authorized_keys entry forces infra/server/deploy.sh; the argument is only the commit hash.
           ssh -i ~/.ssh/deploy_key -p 2222 \
             -o HostKeyAlias=bytesac-vm -o HostKeyAlgorithms=ssh-ed25519 -o StrictHostKeyChecking=yes \
             -o ServerAliveInterval=30 \

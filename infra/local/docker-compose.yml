@@ -1,6 +1,11 @@
+# Local development and CI: PostgreSQL 17 (pg_cron, pgvector) on port 54329 and Redis 7 on port 63799.
+# Start and stop from the repository root: pnpm db:up / pnpm db:down (add -v to db:down to wipe the database).
+# The project name stays "bytesac" so existing local volumes (bytesac_bytesac_pg) keep their data after the move.
+name: bytesac
+
 services:
   postgres:
-    build: ./docker/postgres
+    build: ../docker/postgres
     # pg_cron runs jobs only in cron.database_name; the retention job lives in the dev database.
     command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=bytesac_dev"]
     environment:
@@ -10,7 +15,7 @@ services:
     ports:
       - "54329:5432"
     volumes:
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - bytesac_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

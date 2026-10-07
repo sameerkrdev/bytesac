@@ -9,7 +9,7 @@ Layout: `src/app.ts` (configured express `app`), `src/server.ts` (`startServer()
 ## Local setup
 
 ```bash
-pnpm db:up                                  # Postgres (with pg_cron and pgvector) + Redis via Docker; after upgrading run `docker compose down -v` once
+pnpm db:up                                  # Postgres (with pg_cron and pgvector) + Redis via Docker; after upgrading run `pnpm db:down -v` once
 cp apps/api/.env.example apps/api/.env      # then fill in secrets
 cp packages/db/.env.example packages/db/.env  # MIGRATOR_DATABASE_URL for migrations
 openssl rand -hex 32                        # run twice: SESSION_TOKEN_PEPPER and OTP_HMAC_SECRET
@@ -40,7 +40,7 @@ pnpm --filter api build && pnpm --filter api start:worker   # production: node d
 
 - **Jobs:** `price-snapshot` daily at 00:05 UTC (CoinMarketCap, one batched request; idempotent), then `basket-performance`; `search-index-refresh` after basket, assignment, asset and profile changes (delayed to the end of a 10 s window); `embed-basket` and a 15-minute sweep (at most 5 attempts per basket). Default attempts 3 with exponential backoff; failed jobs stay in BullMQ's failed set.
 - **Deployment:** run one or more worker instances (fixed scheduler ids keep each schedule single-run). They share `REDIS_URL` and the API's database role; no extra credential. Redis must not evict keys (`maxmemory-policy noeviction`). If the worker is down, only derived data (prices, performance, index, embeddings) goes stale; the API keeps working. Queue errors never fail an API request (they are logged and swallowed; the index catches up on the next change or nightly run). Producer queues do not buffer commands while Redis is down (`enableOfflineQueue: false`), so an enqueue fails fast instead of waiting (after the first successful connection; a process started with Redis down waits for it); queue, worker and rate-limit Redis connection errors are logged through winston.
-- **pgvector:** the local Docker image installs `postgresql-17-pgvector` (run `docker compose down -v` once to rebuild); on Supabase enable the `vector` extension before migrating.
+- **pgvector:** the local Docker image installs `postgresql-17-pgvector` (run `pnpm db:down -v` once to rebuild); on Supabase enable the `vector` extension before migrating.
 - **Gemini (optional):** `GEMINI_API_KEY` empty disables AI search and embeddings (structured and keyword search still work; baskets keep `embedding_status = pending`). `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite` and `GEMINI_EMBEDDING_MODEL` to `gemini-embedding-2` (768 dimensions). The defaults and tool calling were chosen from the Gemini documentation and have **not** been exercised against the real API: verify with a real key before launch, and confirm Google's data-use terms (query text is sent to Google; no user identity; queries are not stored or logged here).
 - **New dependencies (pinned):** `bullmq` 6.3.10 and `@google/genai` 2.24.0 (newest versions allowed by pnpm's minimum release age at the time); their install scripts are disabled in `allowBuilds`.
 
