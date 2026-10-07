@@ -3,7 +3,7 @@
 The complete runbook for the chosen pilot setup: **one Google Cloud VM** runs the web app, API, worker, Redis and
 Caddy (HTTPS) with `deploy/docker-compose.yml`; **PostgreSQL is Supabase**; files are in **Cloudflare R2**; the
 Android app ships as an **APK** built with EAS. Follow the sections in order. Every value you collect goes into one of
-four files, shown in §15.
+four files, shown in §15. After the first manual deploy, GitHub Actions tests and deploys every merge to `main` (§22).
 
 > Never paste secrets into chats, tickets or commits. Keep them in a password manager until you write them into the
 > files on the server. Provider dashboards change their wording over time; if a button is named differently, look for
@@ -472,12 +472,12 @@ For the Play Store later: `npx eas-cli@latest build -p android --profile product
 | Logs | `docker compose logs -f api worker web` |
 | Status | `docker compose ps` |
 | Restart one service | `docker compose restart worker` |
-| Update to the latest `main` | `cd ~/bytesac && git pull && cd deploy && docker compose build && docker compose build migrate && docker compose --profile tools run --rm migrate && docker compose up -d` |
+| Update to the latest `main` | Automatic with GitHub Actions (§22), or by hand: `git -C ~/bytesac fetch origin && ~/bytesac/deploy/deploy.sh "$(git -C ~/bytesac rev-parse origin/main)"` |
 | Free disk | `docker image prune -f` |
 | Database backup | `docker run --rm -e PGURL="$(grep MIGRATOR migrate.env \| cut -d= -f2-)" -v ~/backups:/b postgres:17 sh -c 'pg_dump "$PGURL" -Fc -f /b/bytesac-$(date +%F).dump'` (daily via cron; copy off the VM) |
 
-Rollback: check out the previous commit and rebuild. Migrations are additive and forward-only: never revert one; fix
-forward with a new migration.
+Rollback: run `deploy/deploy.sh <older commit of main>` (or the Deploy workflow with that commit, §22.4).
+Migrations are additive and forward-only: never revert one; fix forward with a new migration.
 
 Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api.example.com/health` and
 `https://app.example.com/`, alerting to your email; keep the billing budget alert from §2.
@@ -516,7 +516,160 @@ Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api
 - [ ] Platform wallets empty or holding small amounts; mainnet checklist in `apps/api/README.md` done before
       enabling investing.
 - [ ] Billing budget alert and uptime checks on.
+- [ ] Deploys only through the `production` environment from `main`; the deploy SSH key can only run `deploy.sh` (§22).
 - [ ] Legal and disclosure copy reviewed (it is placeholder text today).
+
+---
+
+## 22. CI/CD with GitHub Actions
+
+Three workflows live in `.github/workflows/`:
+
+| Workflow | Runs when | What it does |
+|---|---|---|
+| `ci.yml` (**CI**) | Every pull request and every push to `main` | Lint, typecheck and test every package on Linux, with the API tests against the same Postgres and Redis as local development (`docker compose up`). It also builds the API, migrate and web Docker images without pushing them, so a broken Dockerfile fails the PR. |
+| `deploy.yml` (**Deploy**) | After **CI** passes on `main`, or by hand | Signs in to Google Cloud, opens a private tunnel to the VM and runs `deploy/deploy.sh <commit>` there. |
+| `mobile-apk.yml` (**Android build**) | By hand | Queues an EAS Android build (APK or Play Store bundle) and prints its link. |
+
+```text
+pull request ──► CI ──► review ──► merge to main ──► CI on main ──► Deploy (production environment)
+                                                                       │ Workload Identity Federation (no Google key stored)
+                                                                       ▼
+                                                     IAP tunnel ──► VM :22 ──► deploy/deploy.sh <commit>
+                                                                       git checkout · build · migrate · up · wait for health
+```
+
+How the deploy stays safe:
+
+- **No Google password or key in GitHub.** GitHub proves its identity to Google with a short-lived token (Workload
+  Identity Federation). Google accepts it only for this repository and only for jobs in the `production` environment.
+- **Port 22 is not opened to the internet.** The runner reaches SSH through Google's Identity-Aware Proxy (IAP).
+- **The deploy key can do one thing.** Its line in `authorized_keys` forces `deploy/deploy.sh`; the only input is the
+  commit hash, and the script accepts only full hashes that are already on `origin/main`.
+- **The server builds the images.** Secrets stay in `deploy/*.env` on the VM; GitHub never sees them.
+- **One deploy at a time**, in order (a lock on the VM and a concurrency group in the workflow).
+
+Building on the VM takes a few minutes per deploy, and the containers restart at the end (a few seconds of downtime).
+That is fine for the pilot; DEPLOYMENT.md §17 describes building images in CI and pulling them instead.
+
+**CI works as soon as the workflows are on `main`.** The Deploy workflow is skipped until you finish the setup below.
+
+### 22.1 Google Cloud: tunnel, service account and GitHub sign-in
+
+Open **Cloud Shell** (the `>_` icon at the top right of the Google Cloud console) and run, changing the first three
+lines:
+
+```bash
+REPO=sameerkrdev/bytesac          # GitHub owner/repository, exact spelling
+VM=bytesac                        # VM name (§2)
+ZONE=asia-south1-a                # VM zone (Compute Engine → VM instances, "Zone" column)
+
+PROJECT_ID=$(gcloud config get-value project)
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+SA="github-deploy@$PROJECT_ID.iam.gserviceaccount.com"
+
+gcloud services enable iap.googleapis.com iamcredentials.googleapis.com sts.googleapis.com
+
+# Let IAP (Google's tunnel range) reach SSH on the VM
+gcloud compute firewall-rules create allow-ssh-from-iap --network default --direction INGRESS \
+  --action allow --rules tcp:22 --source-ranges 35.235.240.0/20
+
+# A service account that may only look up the VM and open IAP tunnels
+gcloud iam service-accounts create github-deploy --display-name "GitHub Actions deploy"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" \
+  --role roles/iap.tunnelResourceAccessor --condition None
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" \
+  --role roles/compute.viewer --condition None
+
+# Trust GitHub's tokens, but only from this repository's production environment
+gcloud iam workload-identity-pools create github --location global --display-name "GitHub Actions"
+gcloud iam workload-identity-pools providers create-oidc bytesac --location global --workload-identity-pool github \
+  --display-name "bytesac repository" \
+  --issuer-uri "https://token.actions.githubusercontent.com" \
+  --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.environment=assertion.environment" \
+  --attribute-condition "assertion.repository == '$REPO' && assertion.environment == 'production'"
+gcloud iam service-accounts add-iam-policy-binding "$SA" --role roles/iam.workloadIdentityUser \
+  --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+
+# Values for GitHub (§22.3)
+echo "GCP_PROJECT_ID=$PROJECT_ID"
+echo "GCP_WORKLOAD_IDENTITY_PROVIDER=projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/bytesac"
+echo "GCP_DEPLOY_SERVICE_ACCOUNT=$SA"
+echo "GCP_VM_NAME=$VM"
+echo "GCP_VM_ZONE=$ZONE"
+```
+
+Nothing printed here is a secret. The firewall rule only admits Google's tunnel; the VM's existing SSH rule is
+unchanged (see §21 if you want to tighten it).
+
+### 22.2 The VM: a deploy key that can only run `deploy.sh`
+
+`deploy/deploy.sh` must be on the VM first, so merge this change and update the checkout once:
+`cd ~/bytesac && git pull`. Then, in the VM's SSH window (the user who owns `~/bytesac`):
+
+```bash
+ssh-keygen -t ed25519 -N "" -C github-actions-deploy -f ~/gh-deploy
+echo "command=\"$HOME/bytesac/deploy/deploy.sh\",restrict $(cat ~/gh-deploy.pub)" >> ~/.ssh/authorized_keys
+
+whoami                                                             # → GCP_VM_USER
+echo "bytesac-vm $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"   # → secret VM_SSH_KNOWN_HOSTS
+cat ~/gh-deploy                                                    # → secret VM_DEPLOY_SSH_KEY (whole block)
+```
+
+Copy the last two outputs straight into GitHub (§22.3), then delete the key files from the VM:
+`rm ~/gh-deploy ~/gh-deploy.pub`. Never paste the private key into a chat or a commit.
+
+`restrict` turns off terminals, port forwarding and agent forwarding for this key, and `command=` makes it run only
+the deploy script, whatever the client asks for.
+
+### 22.3 GitHub: environment, variables and secrets
+
+Repository → **Settings**:
+
+1. **Environments → New environment** `production`:
+   - **Deployment branches and tags → Selected branches and tags** → add `main`.
+   - Optional: **Required reviewers** → yourself. Every deploy then waits for your click in the Actions tab.
+   - **Environment secrets → Add secret**:
+     - `VM_DEPLOY_SSH_KEY`: the private key from §22.2 (including the `-----BEGIN` and `-----END` lines).
+     - `VM_SSH_KNOWN_HOSTS`: the `bytesac-vm ssh-ed25519 AAAA…` line from §22.2.
+2. **Secrets and variables → Actions → Variables → New repository variable**, from §22.1 and §22.2:
+   `GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_VM_NAME`, `GCP_VM_ZONE`,
+   `GCP_VM_USER`, and optional `PUBLIC_API_URL` = `https://api.example.com` (checked after each deploy).
+3. **Branches → Add branch ruleset** (or classic branch protection) for `main`: require a pull request and the
+   status checks **Lint, types, tests** and **Docker images**. Pick them after CI has run once.
+4. **Actions → General → Workflow permissions**: keep **Read repository contents** (the workflows ask for nothing
+   more, apart from Deploy's sign-in token).
+
+### 22.4 Deploying, rolling back, checking
+
+- **Normal flow:** merge a pull request into `main`. CI runs; when it passes, Deploy starts (and waits for your
+  approval if you added a reviewer). Watch it under **Actions → Deploy**.
+- **Deploy again or roll back:** **Actions → Deploy → Run workflow**, branch `main`, and paste a full commit hash
+  (empty deploys the latest `main`). Migrations stay applied on rollback: they are forward-only.
+- **By hand on the VM** (same script): `git -C ~/bytesac fetch origin && ~/bytesac/deploy/deploy.sh <commit>`.
+- After a deploy: `docker compose ps` on the VM, or the `PUBLIC_API_URL` health check in the run's last step.
+
+### 22.5 Android builds from GitHub (optional)
+
+1. Do §18 steps 1–2 once on your laptop (`eas init`, commit the `app.json` change, create the `preview` variables).
+2. **expo.dev → Account settings → Access tokens → Create token** (name `github-actions`).
+3. GitHub → **Settings → Secrets and variables → Actions → New repository secret** `EXPO_TOKEN`.
+4. **Actions → Android build → Run workflow**, profile `preview` (APK) or `production` (Play Store bundle). The run
+   ends once the build is queued; the build page link in its log has the install link and QR code.
+
+### 22.6 When a workflow fails
+
+| Symptom | Cause and fix |
+|---|---|
+| Deploy shows as **skipped** | `GCP_WORKLOAD_IDENTITY_PROVIDER` variable not set, or CI failed on that commit |
+| `Permission 'iam.serviceAccounts.getAccessToken' denied` / `unauthorized_client` | The provider's condition does not match: check the `REPO` spelling in §22.1 and that the job runs in the `production` environment |
+| IAP tunnel step fails (`failed to connect to backend`, `4033`) | Missing firewall rule for `35.235.240.0/20`, wrong `GCP_VM_ZONE` / `GCP_VM_NAME`, or the VM is stopped |
+| `Host key verification failed` | `VM_SSH_KNOWN_HOSTS` must start with `bytesac-vm` and contain the VM's `ssh_host_ed25519_key.pub` |
+| `Permission denied (publickey)` | Wrong `GCP_VM_USER`, or the `authorized_keys` line from §22.2 is missing |
+| `refusing: … is not on origin/main` | You dispatched a commit from another branch: merge it first |
+| `another deploy is running` | Wait for it to finish, then run Deploy again |
+| `the API did not become healthy` | Read the API log printed by the run, fix forward, or roll back with the hash it prints |
+| CI: API tests fail to connect to Postgres | The `docker compose up -d --wait` step failed: read its log (the image build needs network access to Debian mirrors) |
 
 Related: `DEPLOYMENT.md` (requirements every deployment must meet), `DEPLOY-SINGLE-VM.md` (hosting options),
 `apps/api/README.md` (providers, jobs, wallets), `apps/mobile/README.md` (mobile builds and push).

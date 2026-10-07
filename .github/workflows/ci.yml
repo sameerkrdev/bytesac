@@ -1,0 +1,73 @@
+# Lint, typecheck and test every package, and build the Docker images, on each pull request and push to main.
+# A green run on main triggers deploy.yml. Runbook: docs/engineering/DEPLOY-GCP.md §22.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The API tests use the Postgres and Redis from the root docker-compose.yml (same as local development)
+      TEST_DATABASE_URL: postgres://bytesac_api:bytesac_api_dev@localhost:54329/bytesac_test
+      TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:54329/bytesac_test
+      TEST_REDIS_URL: redis://localhost:63799/1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start Postgres (pg_cron, pgvector) and Redis
+        run: docker compose up -d --wait
+      - name: Write Expo's type references (git-ignored; expo start creates it locally)
+        run: printf '/// <reference types="expo/types" />\n' > apps/mobile/expo-env.d.ts
+      - run: pnpm lint
+      - run: pnpm check-types
+      - run: pnpm test
+
+  images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: API and worker
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Migrations and ops CLI (tools target)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: migrate
+          push: false
+          cache-from: type=gha,scope=api
+      - name: Web
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web

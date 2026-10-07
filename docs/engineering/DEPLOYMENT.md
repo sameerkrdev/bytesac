@@ -16,7 +16,7 @@ Related: root [`README.md`](../../README.md) (local setup), [`apps/api/README.md
 | Production / staging deploy | Not done |
 | Docker images for API, worker, web | `apps/api/Dockerfile` (API, worker, `migrate` tools target), `apps/web/Dockerfile` (Next.js standalone). Built and smoke-tested locally on 2026-10-06; not yet run on a host. See §8.1 |
 | Single-VM pilot stack | `deploy/docker-compose.yml` + `deploy/Caddyfile` (Caddy HTTPS, web, API, worker, Redis); runbook [`DEPLOY-SINGLE-VM.md`](DEPLOY-SINGLE-VM.md) |
-| GitHub Actions CI/CD | Not in the repo |
+| GitHub Actions CI/CD | `.github/workflows/`: `ci.yml` (Linux lint, types, tests with Postgres and Redis, Docker image builds), `deploy.yml` (GCP VM pilot: Workload Identity Federation, IAP tunnel, `deploy/deploy.sh`), `mobile-apk.yml` (EAS Android build). Setup in [`DEPLOY-GCP.md`](DEPLOY-GCP.md) §22; not yet run on GitHub |
 | Hosting vendors | **Not chosen.** Postgres is specified as Supabase (ADR-005 / ADR-006). Object storage is Cloudflare R2. Mobile builds are EAS. API, worker, web, and Redis are still open. |
 
 Until Spec 16 lands, treat this file as the contract a deployment must satisfy, not as a click-through for a named cloud.
@@ -431,7 +431,7 @@ Copy of the operational subset; the full list is [`OPEN-ITEMS.md`](../OPEN-ITEMS
 
 Spec 16 is expected to add, after an explicit hosting decision (the Dockerfiles and the single-VM compose stack now exist, §8.1):
 
-- GitHub Actions on Linux: lint, `check-types`, test with service containers, build, migrate, image publish.
+- Image publish to a registry (the pilot builds images on the VM; CI and the VM deploy exist, `DEPLOY-GCP.md` §22).
 - Environment names (dev / staging / production), domains, and CD gates (`main` → staging, tags → production, manual approval).
 - `docs/engineering/LAUNCH-GUIDE.md` (account-by-account click-path).
 

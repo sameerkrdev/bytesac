@@ -88,7 +88,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Set `GEO_COUNTRY_HEADER` (for example `CF-IPCountry`) and make the edge strip any client-supplied value of that header; unset means no geo signal (Spec 11).
 - [ ] Enforce CSP after the manual wallet E2E: it is report-only with no report endpoint (violations reach only the browser console), so add collection first. Spec 14 added `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` to the report-only policy.
 - [ ] Choose an ivfflat or hnsw index for pgvector at scale (no ANN index today; sequential scan is fine pre-launch).
-- [ ] Linux CI (or a newer Node) to escape the Windows vitest worker crash 3221226505.
+- [ ] Linux CI (or a newer Node) to escape the Windows vitest worker crash 3221226505. `.github/workflows/ci.yml` added (2026-10-07); tick once it has passed on GitHub.
 
 ## 7. Technical debt (fix opportunistically, don't expand scope)
 
