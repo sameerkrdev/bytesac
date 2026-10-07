@@ -6,6 +6,6 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
 END $$;
 
--- pg_cron only works in cron.database_name (see docker-compose.yml).
+-- pg_cron only works in cron.database_name (see infra/local/docker-compose.yml).
 \connect bytesac_dev
 CREATE EXTENSION IF NOT EXISTS pg_cron;

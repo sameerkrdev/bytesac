@@ -1,45 +1,28 @@
-# Bytesac on one Linux VM: Caddy (HTTPS) → web (Next.js) → API (Express) + worker (BullMQ) + Redis.
-# PostgreSQL is external (Supabase, ADR-005/006) unless you start the optional "selfhost-db" profile.
+# Bytesac on one Linux VM, run by rootless Docker as an ordinary user (no root daemon, no docker group):
+#   nginx on the VM (HTTPS, installed and configured by hand) → web (Next.js, 127.0.0.1:3000) and API (127.0.0.1:4000)
+#   + worker (BullMQ) + Redis. PostgreSQL is external (Supabase, ADR-005/006) unless you start the "selfhost-db" profile.
 #
-#   cd deploy
-#   cp .env.example .env              # domains and public web settings
-#   cp ../apps/api/.env.example api.env && edit api.env   # API + worker secrets (see docs/engineering/DEPLOYMENT.md)
-#   docker compose build
+#   cd infra/server
+#   cp .env.example .env && cp api.env.example api.env && cp migrate.env.example migrate.env   # then fill them in
+#   docker compose build && docker compose build migrate
 #   docker compose --profile tools run --rm migrate      # once per release, before starting the new API
 #   docker compose up -d
 #
-# Guide: docs/engineering/DEPLOY-SINGLE-VM.md
+# Releases: ./deploy.sh <commit> (also what GitHub Actions runs). Runbook: docs/engineering/DEPLOY-GCP.md
+#
+# Web and API publish only on 127.0.0.1: nothing but nginx on this VM can reach them, so the forwarded client IP nginx
+# sets cannot be forged from outside.
 
-name: bytesac
+name: bytesac-server
 
 services:
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      WEB_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN in deploy/.env}
-      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in deploy/.env}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
-      - api
-    networks: [edge]
-
   web:
     build:
-      context: ..
-      dockerfile: apps/web/Dockerfile
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
       args:
         API_ORIGIN: http://api:4000
-        NEXT_PUBLIC_APP_URL: https://${WEB_DOMAIN}
+        NEXT_PUBLIC_APP_URL: https://${WEB_DOMAIN:?set WEB_DOMAIN in infra/server/.env}
         NEXT_PUBLIC_REOWN_PROJECT_ID: ${NEXT_PUBLIC_REOWN_PROJECT_ID:-}
         NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
         NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID:-}
@@ -50,6 +33,8 @@ services:
         NEXT_PUBLIC_ANDROID_APP_URL: ${NEXT_PUBLIC_ANDROID_APP_URL:-}
     image: bytesac-web:latest
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy
@@ -57,18 +42,21 @@ services:
 
   api:
     build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
     image: bytesac-api:latest
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:4000:4000"
     env_file: ./api.env
     environment:
       NODE_ENV: production
       PORT: "4000"
       REDIS_URL: redis://redis:6379
-      # Trust only the hops inside this compose network (Caddy and the web server). Caddy replaces any
-      # client-supplied X-Forwarded-For with the real client IP, so the API sees the true address.
-      TRUST_PROXY: 172.30.0.0/24
+      # Requests reach the API from nginx (through rootless Docker's port forwarder, which arrives from an internal
+      # address) or from the web container (compose network). Trust only those private hops; nginx overwrites
+      # X-Forwarded-For with the real client address, so the API sees the true client IP.
+      TRUST_PROXY: loopback,uniquelocal
     depends_on:
       redis:
         condition: service_healthy
@@ -108,8 +96,8 @@ services:
   # One-off: docker compose --profile tools run --rm migrate (needs MIGRATOR_DATABASE_URL in migrate.env)
   migrate:
     build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
       target: migrate
     image: bytesac-migrate:latest
     env_file: ./migrate.env
@@ -156,7 +144,5 @@ networks:
         - subnet: 172.30.0.0/24
 
 volumes:
-  caddy_data:
-  caddy_config:
   redis_data:
   pg_data:

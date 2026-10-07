@@ -2,10 +2,10 @@
 #
 # Bytesac API and worker: one image, two processes.
 #
-#   docker build -f apps/api/Dockerfile -t bytesac-api .                    # from the repository root
+#   docker build -f infra/docker/api.Dockerfile -t bytesac-api .                    # from the repository root
 #   docker run --env-file apps/api/.env.production -p 4000:4000 bytesac-api                  # API (default)
 #   docker run --env-file apps/api/.env.production bytesac-api node dist/worker.js           # BullMQ worker
-#   docker build -f apps/api/Dockerfile --target migrate -t bytesac-migrate .
+#   docker build -f infra/docker/api.Dockerfile --target migrate -t bytesac-migrate .
 #   docker run -e MIGRATOR_DATABASE_URL=... bytesac-migrate                                  # run migrations once
 #
 # Stages: prune (turbo prune api) → deps (frozen install) → build (tsup) → prod-deps (flat production install)
