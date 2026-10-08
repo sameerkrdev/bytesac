@@ -70,8 +70,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "080d7e77-1574-4a85-9cf1-2110a673d028"
+        "projectId": "043b5f5a-e6b7-4667-be09-5d2c36de9ba9"
       }
-    }
+    },
+    "owner": "sameerkrdev0s-team"
   }
 }

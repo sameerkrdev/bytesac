@@ -24,6 +24,8 @@ export const appKit = createAppKit({
   storage: appKitStorage,
   extraConnectors: [new PhantomConnector({ cluster: "mainnet-beta" }), new SolflareConnector({ cluster: "mainnet-beta" })],
   enableAnalytics: false,
+  // The RN SDK ignores the dashboard toggles; matches the web config (wallet-only sign-in).
+  features: { socials: false, swaps: false, onramp: false },
   metadata: {
     name: "Bytesac",
     description: "Manager-led, multi-chain investment baskets.",

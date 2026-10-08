@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, View, type RefreshControlProps } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "@/lib/theme";
 import { AppText } from "./app-text";
 
 /**
@@ -19,9 +20,11 @@ export function Screen({ children, scroll = true, refreshControl, eyebrow, title
       {description ? <AppText tone="muted">{description}</AppText> : null}
     </View>
   ) : null;
+  const { colors } = useTheme();
   const pad = `gap-6 px-5 pt-4 ${tabBarInset ? "pb-32" : "pb-10"}`;
   return (
-    <SafeAreaView edges={edges ?? ["top", "left", "right"]} className="flex-1 bg-canvas">
+    // className is not applied to the third-party SafeAreaView under NativeWind v5, so it is styled directly.
+    <SafeAreaView edges={edges ?? ["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"}>
         {scroll ? (
           <ScrollView refreshControl={refreshControl} contentContainerClassName={pad} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}>
