@@ -33,16 +33,16 @@ A user links a different wallet per chain, for example Base and BNB Chain from M
 
 ### Challenge and verify
 
-- `POST /v1/auth/challenge` gains `chains: AssetChain[]` (1..5, distinct, all in the address's family; required for `sign_in` and `add_chain_account`; Solana: `["solana"]`). The server stores them on `auth_challenges.chains text[]` and the signed message lists them ("Link this address for: Base, BNB Chain").
+- `POST /v1/auth/challenge` gains `chains: AssetChain[]` (1..5, distinct, all in the address's family; Solana: `["solana"]`). Optional for backward compatibility: omitted means every chain of the address's family (today's behaviour); the web and mobile apps always send it. The server stores them on `auth_challenges.chains text[]` and the signed message lists them ("Link this address for: Base, BNB Chain").
 - `POST /v1/auth/verify` registers exactly the challenge's chains for the address:
   - `eoa_ecdsa`: any of the listed EVM chains from one signature.
-  - `erc1271` / `erc6492`: only the chain the signature was verified on; listing another chain is `VALIDATION_FAILED` at challenge time.
+  - `erc1271` / `erc6492`: only the chain the signature was verified on; the wallet type is known only at verify, so a challenge listing other chains is rejected there (`VALIDATION_FAILED`, "Smart-contract wallets link one chain at a time"), and the UI limits a smart wallet to the connected chain.
   - `ed25519`: `solana`.
 - Refusals:
   - a listed chain already has an active address for this user that differs → `CHAIN_ALREADY_LINKED` (409); the same address → idempotent.
   - the address on a listed chain belongs to another user → `ADDRESS_ALREADY_LINKED` (as now).
   - a chain outside the address's family → `VALIDATION_FAILED`.
-- `CHAIN_FAMILY_ALREADY_LINKED` is removed.
+- `CHAIN_FAMILY_ALREADY_LINKED` no longer applies to EVM or Solana; it stays for Bitcoin (one Bitcoin address, unchanged).
 - `signableChains` (D-119) keeps its behaviour, stored per row.
 - Sign-in: any active address on any linked chain signs in to its account. A logged-out sign-in with an unknown address creates a new user whose wallet gets the listed chains. The session rotates on `add_chain_account` and `reassign_chain` (ADR-003).
 
@@ -118,7 +118,7 @@ A web help page and mobile help sheets, linked from linking, wallets, signing an
 | `CHAIN_NOT_LINKED` | 409 | A plan needs a chain with no active address |
 | `CHAIN_NOT_EMPTY` | 409 | Reassign refused: holdings on the chain (assets listed) |
 | `OPERATION_IN_PROGRESS` | 409 | Existing code, reused: reassign refused while an operation is open |
-| `CHAIN_FAMILY_ALREADY_LINKED` | — | Removed |
+| `CHAIN_FAMILY_ALREADY_LINKED` | 409 | Kept for Bitcoin only (one Bitcoin address per account, unchanged) |
 
 ## Testing
 
