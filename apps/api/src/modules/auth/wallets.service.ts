@@ -2,7 +2,7 @@ import bs58 from "bs58";
 import createHttpError from "http-errors";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db, investmentWallets, notificationPreferences, users, walletAddresses, type DbOrTx, type Tx } from "@repo/db";
-import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type ChainFamily, type VerificationMethod } from "@repo/validator";
+import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type VerificationMethod } from "@repo/validator";
 import { isAddress } from "viem";
 import { Address } from "@scure/btc-signer";
 
@@ -89,21 +89,23 @@ export async function createUserWithWallet(tx: Tx, i: { walletProvider?: string;
   return user!.id;
 }
 
-export type Addresses = Partial<Record<ChainFamily, string>>;
+/** D-120: one address per chain, keyed by the chain it is linked on (Bitcoin keyed `bitcoin`). */
+export type Addresses = Partial<Record<AssetChain, string>>;
 
 export async function userAddresses(db: DbOrTx, userId: string): Promise<Addresses> {
-  const rows = await db.select({ family: walletAddresses.chainFamily, address: walletAddresses.address }).from(investmentWallets)
+  const rows = await db.select({ chain: walletAddresses.chain, address: walletAddresses.address }).from(investmentWallets)
     .innerJoin(walletAddresses, and(eq(walletAddresses.investmentWalletId, investmentWallets.id), eq(walletAddresses.status, "active")))
     .where(and(eq(investmentWallets.userId, userId), eq(investmentWallets.status, "active"))).orderBy(asc(walletAddresses.createdAt));
   const out: Addresses = {};
-  for (const r of rows) out[r.family] ??= r.address;
+  for (const r of rows) out[r.chain] ??= r.address;
   return out;
 }
 
 export function addressOn(addresses: Addresses, chain: AssetChain): string {
-  const a = addresses[ASSET_CHAINS[chain].family];
-  if (!a) throw createHttpError(`Link a ${ASSET_CHAINS[chain].family} wallet first.`, { code: ASSET_CHAINS[chain].family === "bitcoin" ? "BTC_ADDRESS_REQUIRED" : "NOT_ELIGIBLE" });
-  return a;
+  const a = addresses[chain];
+  if (a) return a;
+  if (chain === "bitcoin") throw createHttpError(409, "Link a bitcoin wallet first.", { code: "BTC_ADDRESS_REQUIRED" });
+  throw createHttpError(409, `Link a wallet for ${ASSET_CHAINS[chain].label} first.`, { code: "CHAIN_NOT_LINKED" });
 }
 
 /** D-120 one-off backfill (ops script, not a migration: a new enum value cannot be used in the migration that adds it).

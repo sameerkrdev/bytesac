@@ -25,7 +25,7 @@ describe("basket investability", () => {
     const b = await seedBasket({ assets: [SOL, ETH, BTC], minimum: "250" });
     const res = await investability(b.slug);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ basketId: expect.any(String), investable: true, reasons: [], requiredFamilies: ["solana", "evm", "bitcoin"], minimumUsdc: "250" });
+    expect(res.body).toEqual({ basketId: expect.any(String), investable: true, reasons: [], requiredFamilies: ["solana", "evm", "bitcoin"], requiredChains: expect.arrayContaining(["solana", "bitcoin"]), minimumUsdc: "250" });
     expect(connections).toHaveBeenCalledWith(expect.objectContaining({ fromChain: "solana", toChain: "bitcoin", toToken: null }));
   });
 
@@ -78,7 +78,7 @@ describe("eligibility", () => {
     const u = await seedUser({ phone: false, evm: false });
     const { eligibility } = (await investability(b.slug, u.h)).body;
     expect(eligibility.eligible).toBe(false);
-    expect(reasonCodes(eligibility).sort()).toEqual(["BTC_ADDRESS_REQUIRED", "EVM_ADDRESS_REQUIRED", "PHONE_NOT_VERIFIED"]);
+    expect(reasonCodes(eligibility).sort()).toEqual(["BTC_ADDRESS_REQUIRED", "CHAIN_NOT_LINKED", "PHONE_NOT_VERIFIED"]);
   });
 
   it("a Solana-only basket needs neither EVM nor Bitcoin links", async () => {

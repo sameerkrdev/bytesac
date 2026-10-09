@@ -14,7 +14,7 @@ export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 export interface SeedAsset {
   symbol: string;
-  chain: "solana" | "ethereum" | "base" | "bitcoin";
+  chain: "solana" | "ethereum" | "base" | "bnb" | "arbitrum" | "polygon" | "bitcoin";
   tokenStandard?: "native" | "erc20" | "spl";
   decimals?: number;
   bps: number;
@@ -66,7 +66,7 @@ export async function seedBasket(over: { assets: SeedAsset[]; status?: string; m
 }
 
 /** A signed-in user (Solana investment wallet) with optional verified contacts and extra linked families, inserted directly. */
-export async function seedUser(over: { email?: boolean; phone?: boolean; evm?: boolean; bitcoin?: boolean; wallet?: { address: string; sign(message: string): string | Promise<string> } } = {}) {
+export async function seedUser(over: { email?: boolean; phone?: boolean; evm?: boolean; evmByChain?: Record<string, string>; bitcoin?: boolean; wallet?: { address: string; sign(message: string): string | Promise<string> } } = {}) {
   const solana = over.wallet ?? newSolanaWallet();
   const s = await signIn(app, solana, "solana");
   const [w] = await adminSql<{ id: string }[]>`SELECT id FROM app.investment_wallets WHERE user_id = ${s.userId}`;
@@ -74,9 +74,11 @@ export async function seedUser(over: { email?: boolean; phone?: boolean; evm?: b
   const btcAddress = bitcoinWallet("p2wpkh").address;
   if (over.email ?? true) await adminSql`INSERT INTO app.contacts (id, user_id, type, value, status, verified_at) VALUES (gen_random_uuid(), ${s.userId}, 'email', ${`u-${s.userId.slice(0, 8)}@example.com`}, 'verified', now())`;
   if (over.phone ?? true) await adminSql`INSERT INTO app.contacts (id, user_id, type, value, status, verified_at) VALUES (gen_random_uuid(), ${s.userId}, 'phone', ${"+4477009" + Math.floor(Math.random() * 90000 + 10000)}, 'verified', now())`;
-  if (over.evm ?? true) {
+  // D-120: one row per EVM chain. `evmByChain` links exactly those chains (each with its own address) instead.
+  const evmRows = over.evmByChain ?? (over.evm ?? true ? Object.fromEntries(["ethereum", "base", "bnb", "arbitrum", "polygon"].map((c) => [c, evmAddress])) : {});
+  for (const [chain, address] of Object.entries(evmRows)) {
     await adminSql`INSERT INTO app.wallet_addresses (id, investment_wallet_id, chain_family, chain, address, verification_method, verified_on_chain)
-      VALUES (gen_random_uuid(), ${w!.id}, 'evm', 'ethereum', ${evmAddress}, 'eoa_ecdsa', 'ethereum')`;
+      VALUES (gen_random_uuid(), ${w!.id}, 'evm', ${chain}, ${address}, 'eoa_ecdsa', ${chain})`;
   }
   if (over.bitcoin) {
     await adminSql`INSERT INTO app.wallet_addresses (id, investment_wallet_id, chain_family, chain, address, verification_method, verified_on_chain)

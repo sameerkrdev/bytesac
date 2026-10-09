@@ -13,8 +13,8 @@ import { ctx } from "@/middlewares/request-context.middleware";
 export const getBasketInvestability = async (req: Request, res: Response, next: NextFunction) => {
   try {
     await consume(limits.publicBasketIp, req.ctx.ip);
-    const { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility } = await investabilityService.getInvestability(db, { slug: req.params.slug as string }, req.auth ? { userId: req.auth.userId, ipCountry: req.ctx.ipCountry } : null);
-    const body: Investability = { basketId, investable, reasons, requiredFamilies, minimumUsdc, eligibility };
+    const { basketId, investable, reasons, requiredFamilies, requiredChains, minimumUsdc, eligibility } = await investabilityService.getInvestability(db, { slug: req.params.slug as string }, req.auth ? { userId: req.auth.userId, ipCountry: req.ctx.ipCountry } : null);
+    const body: Investability = { basketId, investable, reasons, requiredFamilies, requiredChains, minimumUsdc, eligibility };
     res.json(body);
   } catch (error) {
     next(error);

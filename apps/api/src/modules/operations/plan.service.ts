@@ -112,7 +112,7 @@ export const reused = () => createHttpError("This idempotency key was already us
 export function assertEligible(inv: Awaited<ReturnType<typeof getInvestability>>): void {
   if (!inv.investable) throw createHttpError(409, "This basket can't be invested in right now.", { code: "NOT_INVESTABLE", details: { reasons: inv.reasons } });
   const blockers = inv.eligibility?.reasons ?? [];
-  for (const code of ["OPERATION_IN_PROGRESS", "BTC_ADDRESS_REQUIRED", "DECLARATION_REQUIRED"] as const) {
+  for (const code of ["OPERATION_IN_PROGRESS", "BTC_ADDRESS_REQUIRED", "CHAIN_NOT_LINKED", "DECLARATION_REQUIRED"] as const) {
     if (blockers.some((r) => r.code === code)) throw createHttpError(409, blockers.find((r) => r.code === code)!.message, { code, details: { reasons: blockers } });
   }
   if (blockers.length) throw createHttpError(409, "You can't invest yet.", { code: "NOT_ELIGIBLE", details: { reasons: blockers } });

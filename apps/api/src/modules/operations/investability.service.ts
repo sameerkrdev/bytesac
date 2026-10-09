@@ -20,7 +20,7 @@ export interface Constituent {
 }
 
 /** The public result plus what the planner needs to act on it (never sent to clients as is). */
-export type InvestabilityResult = Investability & { basketId: string; versionId: string | null; constituents: Constituent[]; rwaDecisions: Map<string, Evaluated> };
+export type InvestabilityResult = Investability & { requiredChains: AssetChain[]; basketId: string; versionId: string | null; constituents: Constituent[]; rwaDecisions: Map<string, Evaluated> };
 
 /** Spec §4: basket rules, then (with a viewer) eligibility. A route-provider outage is reported as a reason, never thrown. */
 export async function getInvestability(db: DbOrTx, basket: { slug: string } | { id: string }, viewer: { userId: string; ipCountry: string | null } | null): Promise<InvestabilityResult> {
@@ -30,6 +30,7 @@ export async function getInvestability(db: DbOrTx, basket: { slug: string } | { 
   const reasons: Investability["reasons"] = [];
   const constituents: Constituent[] = [];
   const families = new Set<ChainFamily>();
+  const chains = new Set<AssetChain>();
   let minimumUsdc: string | null = null;
 
   if (b.status !== "ACTIVE" || !b.versionId) reasons.push({ code: "BASKET_NOT_ACTIVE", message: "This basket is not open for investment." });
@@ -72,6 +73,7 @@ export async function getInvestability(db: DbOrTx, basket: { slug: string } | { 
           continue;
         }
         families.add(ASSET_CHAINS[d.chain].family);
+        chains.add(d.chain);
         return { instrumentId: a.instrumentId, assetType: a.assetType, symbol: a.symbol, weightBps: a.bps, deployment: { id: d.id, chain: d.chain, tokenStandard: d.tokenStandard, address: d.address, decimals: d.decimals }, provider };
       }
       return no(...why);
@@ -83,9 +85,10 @@ export async function getInvestability(db: DbOrTx, basket: { slug: string } | { 
   const result: InvestabilityResult = {
     investable, reasons, minimumUsdc, basketId: b.id, versionId: b.versionId, constituents, rwaDecisions: new Map(),
     requiredFamilies: (["solana", "evm", "bitcoin"] as const).filter((f) => f === "solana" || families.has(f)),
+    requiredChains: (Object.keys(ASSET_CHAINS) as AssetChain[]).filter((c) => c === "solana" || chains.has(c)),
   };
   if (viewer) {
-    result.eligibility = await eligibilityOf(db, viewer.userId, result.requiredFamilies);
+    result.eligibility = await eligibilityOf(db, viewer.userId, result.requiredChains);
     // Spec 11 section 4: each RWA constituent is evaluated for acquiring; anything but ALLOWED blocks the basket for this user.
     result.rwaDecisions = await evaluateFor(db, { userId: viewer.userId, ipCountry: viewer.ipCountry, items: constituents.filter((c) => isRwa(c.assetType)).map((c) => ({ instrumentId: c.instrumentId, assetType: c.assetType, deploymentId: c.deployment.id, action: "acquire" as const })) });
     for (const [instrumentId, r] of result.rwaDecisions) {
@@ -98,16 +101,16 @@ export async function getInvestability(db: DbOrTx, basket: { slug: string } | { 
   return result;
 }
 
-async function eligibilityOf(db: DbOrTx, userId: string, required: readonly ChainFamily[]): Promise<NonNullable<Investability["eligibility"]>> {
+async function eligibilityOf(db: DbOrTx, userId: string, required: readonly AssetChain[]): Promise<NonNullable<Investability["eligibility"]>> {
   const reasons: NonNullable<Investability["eligibility"]>["reasons"] = [];
   const verified = new Set((await db.select({ type: contacts.type }).from(contacts).where(and(eq(contacts.userId, userId), eq(contacts.status, "verified")))).map((c) => c.type));
   if (!verified.has("email")) reasons.push({ code: "EMAIL_NOT_VERIFIED", message: "Verify your email." });
   if (!verified.has("phone")) reasons.push({ code: "PHONE_NOT_VERIFIED", message: "Verify your phone." });
-  const linked = new Set((await db.select({ family: walletAddresses.chainFamily }).from(investmentWallets)
+  const linked = new Set((await db.select({ chain: walletAddresses.chain }).from(investmentWallets)
     .innerJoin(walletAddresses, and(eq(walletAddresses.investmentWalletId, investmentWallets.id), eq(walletAddresses.status, "active")))
-    .where(and(eq(investmentWallets.userId, userId), eq(investmentWallets.status, "active")))).map((r) => r.family));
-  for (const f of required) {
-    if (!linked.has(f)) reasons.push({ code: f === "bitcoin" ? "BTC_ADDRESS_REQUIRED" : `${f.toUpperCase()}_ADDRESS_REQUIRED`, message: `Link a${f === "evm" ? "n EVM" : f === "bitcoin" ? " Bitcoin" : " Solana"} wallet.` });
+    .where(and(eq(investmentWallets.userId, userId), eq(investmentWallets.status, "active")))).map((r) => r.chain));
+  for (const c of required) {
+    if (!linked.has(c)) reasons.push(c === "bitcoin" ? { code: "BTC_ADDRESS_REQUIRED", message: "Link a Bitcoin wallet." } : { code: "CHAIN_NOT_LINKED", message: `Link a wallet for ${ASSET_CHAINS[c].label}.` });
   }
   const [active] = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.userId, userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"]), sql`(${operations.status} = 'IN_PROGRESS' or ${operations.expiresAt} > now())`)).limit(1);
   if (active) reasons.push({ code: "OPERATION_IN_PROGRESS", message: "Finish or cancel your current operation first." });

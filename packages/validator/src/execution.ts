@@ -110,6 +110,7 @@ export const investabilitySchema = z.object({
   investable: z.boolean(),
   reasons: z.array(z.object({ instrumentId: z.uuid().optional(), code: z.string(), message: z.string() })),
   requiredFamilies: z.array(chainFamilySchema),
+  requiredChains: z.array(assetChainSchema).optional(),
   minimumUsdc: z.string().nullable(),
   eligibility: z.object({ eligible: z.boolean(), reasons: z.array(z.object({ instrumentId: z.uuid().optional(), code: z.string(), message: z.string(), outcome: z.string().optional(), reason: z.string().optional() })) }).optional(),
 });
