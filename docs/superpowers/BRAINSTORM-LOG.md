@@ -179,6 +179,10 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 | 8 | Multi-wallet provider | Custom on free Reown · Reown paid · Dynamic | **Reown paid now; custom layer in future plan** | FUTURE-PLANS "Custom multi-wallet layer" |
 | 9 | One address per family vs per chain | Keep per family (rec.) · per chain · A now, B later | **Per chain** (after explanation) | D-120 APPROVED; spec pending |
 | 10 | Mobile multi-wallet | Web paid + mobile custom (rec.) · web only · evaluate Dynamic | **Web paid + mobile custom**, after deep research (Reown RN has no multi-wallet) | D-121; provider switch fallback in FUTURE-PLANS |
+| 11 | Split into 3 projects (per-chain backend · web multi-wallet · mobile multi-wallet) | As proposed (rec.) · combine 1+2 · other order | **Combine 1+2**; mobile later | Spec `2026-10-09-per-chain-addresses-multi-wallet-design.md` |
+| 12 | Move a linked chain to another wallet | Only when empty (rec.) · never · any time | **Only when empty**, plus a full help guide and FAQs (explained with examples twice) | `reassign_chain` with `CHAIN_NOT_EMPTY` |
+| 13 | Assign chains when linking | Tick chains, one approval (rec.) · one approval per chain | **Tick chains**; also at sign-up; Polygon linkable | Challenge carries `chains` |
+| 14 | Data model | Row per chain (rec.) · addresses + assignments · family default + overrides | **Row per chain** | `replaced` status; one active row per chain |
 
 ## Roadmap decisions
 
