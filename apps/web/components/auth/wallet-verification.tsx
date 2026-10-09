@@ -1,13 +1,27 @@
 "use client";
-import type { ChallengePurpose } from "@repo/validator";
-import { useEffect, useRef } from "react";
-import { useWalletVerification } from "@/lib/auth/use-wallet-verification";
+import { linkChoices } from "@repo/app-core";
+import { CHAINS, type AssetChain, type ChallengePurpose, type WalletAddressView } from "@repo/validator";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useWalletVerification, type PreviousWallet } from "@/lib/auth/use-wallet-verification";
 import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
+import { ChainPicker } from "./chain-picker";
 import { VerifyWalletCard } from "./verify-wallet-card";
 
-export function WalletVerification({ purpose, onVerified, expired, linkedAddresses }: { purpose: ChallengePurpose; onVerified(isNewUser: boolean): void; expired?: boolean; linkedAddresses?: ReadonlyArray<{ chain: string; address: string }> }) {
+/** `reassign` moves one chain from its current wallet to the connected one (two signatures); otherwise the user picks the chains (D-120). */
+export function WalletVerification({ purpose, onVerified, expired, linkedAddresses, reassign }: {
+  purpose: ChallengePurpose; onVerified(isNewUser: boolean): void; expired?: boolean;
+  linkedAddresses?: ReadonlyArray<WalletAddressView>;
+  reassign?: { chain: AssetChain; previous: PreviousWallet };
+}) {
   const wallet = useWalletConnector();
-  const { state, run, reset } = useWalletVerification(purpose);
+  const { state, run, reset, notice, awaitingPrevious } = useWalletVerification(purpose);
+  const [picked, setPicked] = useState<AssetChain[]>([]);
+  const account = wallet.account;
+  const choices = useMemo(
+    () => (account && !reassign ? linkChoices({ family: CHAINS[account.chain].family as "evm" | "solana", approved: account.signableChains, addresses: linkedAddresses ?? [], address: account.address }) : null),
+    [account, reassign, linkedAddresses],
+  );
+  const go = () => { if (account) void run(account, reassign ? [reassign.chain] : picked, reassign?.previous); };
 
   const notified = useRef(false);
   useEffect(() => {
@@ -24,10 +38,15 @@ export function WalletVerification({ purpose, onVerified, expired, linkedAddress
       state={state}
       expired={expired}
       linkedAddresses={linkedAddresses}
-      onSign={() => wallet.account && run(wallet.account)}
-      onRetry={() => wallet.account && run(wallet.account)}
-      onRestart={() => { reset(); if (wallet.account) void run(wallet.account); }}
-      onDisconnect={() => { reset(); void wallet.disconnect(); }}
+      notice={notice}
+      picker={account && choices ? <ChainPicker key={`${account.chain}:${account.address}`} walletName={account.walletName} address={account.address} choices={choices} onChange={setPicked} /> : null}
+      signDisabled={!reassign && picked.length === 0}
+      onSign={go}
+      onRetry={go}
+      onRestart={() => { reset(); if (account && !reassign) void run(account, picked); }}
+      // Mid-move the user must switch wallets, so disconnecting keeps the held signature.
+      onDisconnect={() => { if (!awaitingPrevious) reset(); void wallet.disconnect(); }}
+      onConnect={() => void wallet.connect()}
       onSwitchNetwork={() => void wallet.switchToSupported()}
       onChooseNetwork={() => void wallet.chooseNetwork()}
     />

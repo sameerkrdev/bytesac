@@ -3,7 +3,7 @@
 import { describeError, type VerifyState, shortAddress } from "@repo/app-core";
 import { CHAINS } from "@repo/validator";
 import { Check, Copy, Loader2, PenLine, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ConnectedAccount } from "@/lib/wallet/use-wallet-connector";
@@ -18,6 +18,12 @@ interface Props {
   onDisconnect(): void;
   onSwitchNetwork(): void;
   onChooseNetwork?(): void;
+  /** Shown when nothing is connected (e.g. mid-move, after switching wallets). */
+  onConnect?(): void;
+  /** D-120 chain checkboxes; when present Sign needs at least one ticked chain (signDisabled). */
+  picker?: ReactNode;
+  signDisabled?: boolean;
+  notice?: { kind: "info" | "error"; text: string } | null;
   linkedAddresses?: ReadonlyArray<{ chain: string; address: string }>;
   expired?: boolean;
 }
@@ -51,7 +57,7 @@ export function VerifyWalletCard(p: Props) {
   }, [copied]);
   const busy = p.state.step === "signing" || p.state.step === "verifying";
   const err = p.state.step === "error" ? describeError(p.state.code) : null;
-  const alreadyLinked = Boolean(p.account && p.linkedAddresses?.some((a) => a.chain === p.account!.chain && a.address.toLowerCase() === p.account!.address.toLowerCase()));
+  const alreadyLinked = Boolean(!p.picker && p.account && p.linkedAddresses?.some((a) => a.chain === p.account!.chain && a.address.toLowerCase() === p.account!.address.toLowerCase()));
 
   return (
     <Card className="w-full max-w-md rounded-shell border-line bg-surface shadow-float">
@@ -91,6 +97,10 @@ export function VerifyWalletCard(p: Props) {
               <ShieldCheck aria-hidden className="mt-0.5 size-5 shrink-0 text-accent" />
               <p>You're signing a message to prove you control this address. It does not authorize any transaction or spending.</p>
             </div>
+            {p.picker}
+            {p.notice && (
+              <p role={p.notice.kind === "error" ? "alert" : "status"} className="rounded-tile border border-info/25 bg-surface-muted p-3 text-sm text-ink">{p.notice.text}</p>
+            )}
             {err && (
               <div role="alert" className="rounded-tile border border-danger/25 p-4 text-sm">
                 <p className="font-medium text-ink">{err.title}</p>
@@ -107,7 +117,7 @@ export function VerifyWalletCard(p: Props) {
             ) : err?.recovery === "reauthenticate" ? (
               <Button className="min-h-11 w-full" onClick={() => window.location.replace("/sign-in?reason=expired")}>Sign in again</Button>
             ) : err?.recovery === "fix-input" ? null : (
-              <Button className="min-h-11 w-full" disabled={busy || p.state.step === "done" || alreadyLinked} onClick={p.onSign}>
+              <Button className="min-h-11 w-full" disabled={busy || p.state.step === "done" || alreadyLinked || p.signDisabled} onClick={p.onSign}>
                 {p.state.step === "signing" ? <><Loader2 aria-hidden className="animate-spin" />Waiting for wallet…</>
                   : p.state.step === "verifying" ? <><Loader2 aria-hidden className="animate-spin" />Verifying…</>
                   : <><PenLine aria-hidden />Sign message</>}
@@ -120,7 +130,12 @@ export function VerifyWalletCard(p: Props) {
               <Button variant="secondary" className="min-h-11 w-full" onClick={p.onChooseNetwork}>Choose network</Button>
             )}
           </>
-        ) : null}
+        ) : (
+          <>
+            {p.notice && <p role="status" className="rounded-tile border border-info/25 bg-surface-muted p-3 text-sm text-ink">{p.notice.text}</p>}
+            {p.onConnect && <Button className="min-h-11 w-full" onClick={p.onConnect}>Connect wallet</Button>}
+          </>
+        )}
         <Button variant="ghost" className="min-h-11 w-full" onClick={p.onDisconnect}>Disconnect</Button>
       </CardContent>
     </Card>

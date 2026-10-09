@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { MeResponse } from "@repo/validator";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/components/auth/wallet-verification", () => ({ WalletVerification: () => null }));
+const verification = vi.fn((_: unknown) => null);
+vi.mock("@/components/auth/wallet-verification", () => ({ WalletVerification: (p: unknown) => verification(p) }));
 import { canAddChainAccount } from "@repo/app-core";
 import { WalletSection } from "@/components/profile/wallet-section";
 
@@ -35,3 +37,19 @@ describe("WalletSection", () => {
     expect(canAddChainAccount(me([evm("base", "erc1271")]))).toBe(true);
   });
 });
+
+describe("WalletSection per-chain wallets (D-120)", () => {
+  it("shows the wallet per chain, hides replaced rows and opens a fixed-chain move", async () => {
+    const base = { ...evm("base"), walletName: "MetaMask" };
+    const sol = { chain: "solana" as const, chainFamily: "solana" as const, address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T", status: "active" as const, verificationMethod: "ed25519" as const, verifiedAt: "2026-09-29T00:00:00.000Z", walletName: "Phantom" };
+    const old = { ...evm("ethereum"), status: "replaced" as const, walletName: "Old" };
+    render(<QueryClientProvider client={new QueryClient()}><WalletSection me={me([base, sol, old])} /></QueryClientProvider>);
+    expect(screen.getByText("Phantom")).toBeInTheDocument();
+    expect(screen.queryByText("Old")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /to another wallet/ })).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Move Base to another wallet" }));
+    expect(screen.getByText(/Only possible when you hold nothing on Base\./)).toBeInTheDocument();
+    expect(verification).toHaveBeenLastCalledWith(expect.objectContaining({ purpose: "reassign_chain", reassign: { chain: "base", previous: { address: base.address, walletName: "MetaMask" } } }));
+  });
+});
+
