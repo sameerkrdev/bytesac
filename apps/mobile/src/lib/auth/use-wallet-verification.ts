@@ -14,7 +14,8 @@ export const SIGN_FOREGROUND_TIMEOUT_MS = 120_000;
 export type PreviousWallet = { address: string; walletName: string | null };
 export type Notice = { kind: "info" | "error"; text: string };
 
-const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+// EVM addresses compare case-insensitively; Solana (base58) addresses exactly.
+const same = (a: string, b: string, solana: boolean) => (solana ? a === b : a.toLowerCase() === b.toLowerCase());
 
 export function useWalletVerification(purpose: ChallengePurpose) {
   const [state, dispatch] = useReducer(verifyReducer, { step: "idle" });
@@ -83,7 +84,7 @@ export function useWalletVerification(purpose: ChallengePurpose) {
         const reassign = purpose === "reassign_chain" && to !== undefined && previous !== undefined;
         if (reassign && pending.current) {
           const p = pending.current;
-          if (!same(account.address, previous.address)) return wrongWallet(`Connect ${previous.walletName ?? "the current wallet"} (${shortAddress(previous.address)}) to approve the move.`);
+          if (!same(account.address, previous.address, account.chain === "solana")) return wrongWallet(`Connect ${previous.walletName ?? "the current wallet"} (${shortAddress(previous.address)}) to approve the move.`);
           dispatch({ type: "START" });
           const previousSignature = await sign(p.message);
           if (stale()) return;
@@ -98,7 +99,7 @@ export function useWalletVerification(purpose: ChallengePurpose) {
           return;
         }
         if (reassign) {
-          if (same(account.address, previous.address)) return wrongWallet("Connect the wallet you want to move this chain to.");
+          if (same(account.address, previous.address, account.chain === "solana")) return wrongWallet("Connect the wallet you want to move this chain to.");
           if (CHAINS[to].family !== CHAINS[account.chain].family) return wrongWallet(`This wallet can't hold ${CHAINS[to].label}. Connect a ${CHAINS[to].family === "evm" ? "EVM" : "Solana"} wallet.`);
         }
         dispatch({ type: "START" });

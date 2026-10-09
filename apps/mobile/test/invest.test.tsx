@@ -154,7 +154,7 @@ describe("Invest wizard (mobile)", () => {
     expect(await screen.findByText("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Connect wallet" }));
     await waitFor(() => expect(mockAppKit.open).toHaveBeenCalledWith({ view: "Connect" }));
-    expect(mockAppKit.disconnect).toHaveBeenCalledTimes(1);
+    expect(mockAppKit.disconnect).toHaveBeenCalledWith("solana");
     expect(mockSigner.signSolana).toHaveBeenCalledTimes(1);
   });
 

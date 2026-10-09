@@ -3,6 +3,7 @@ import { CHAINS, type AssetChain, type ChallengePurpose, type WalletAddressView 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWalletVerification, type PreviousWallet } from "@/lib/auth/use-wallet-verification";
 import { useAuth } from "@/lib/auth-context";
+import { namespaceOfFamily } from "@/lib/wallet/namespace";
 import { useWalletConnector } from "@/lib/wallet/use-wallet-connector";
 import { ChainPicker } from "./chain-picker";
 import { VerifyWalletCard } from "./verify-wallet-card";
@@ -34,7 +35,7 @@ export function WalletVerification({ purpose, linkedAddresses, reassign, onVerif
     if (!awaitingPrevious) { handedOver.current = false; return; }
     if (handedOver.current) return;
     handedOver.current = true;
-    void wallet.disconnect().then(() => wallet.connect());
+    void wallet.disconnect(namespaceOfFamily(CHAINS[reassign!.chain].family)).then(() => wallet.connect());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per hand-over; the connector object changes every render
   }, [awaitingPrevious]);
 
@@ -47,7 +48,7 @@ export function WalletVerification({ purpose, linkedAddresses, reassign, onVerif
       account={account}
       network={wallet.network}
       state={state}
-      linkedAddresses={linkedAddresses}
+      linkedAddresses={reassign ? undefined : linkedAddresses}
       notice={notice}
       picker={account && choices ? <ChainPicker key={`${account.chain}:${account.address}`} walletName={account.walletName} address={account.address} choices={choices} onChange={setPicked} /> : null}
       signDisabled={!reassign && picked.length === 0}
@@ -60,7 +61,7 @@ export function WalletVerification({ purpose, linkedAddresses, reassign, onVerif
       // Mid-move the user must switch wallets, so disconnecting keeps the held signature.
       onDisconnect={() => {
         if (!awaitingPrevious) reset();
-        void wallet.disconnect();
+        void wallet.disconnect(account ? namespaceOfFamily(CHAINS[account.chain].family) : undefined);
       }}
       onSwitchNetwork={() => void wallet.switchToSupported()}
       onChooseNetwork={() => {
@@ -72,7 +73,7 @@ export function WalletVerification({ purpose, linkedAddresses, reassign, onVerif
       onUseDifferentWallet={purpose === "add_chain_account" ? () => {
         reset();
         // Only the wallet connection is dropped; the Bytesac session stays signed in.
-        void wallet.disconnect().then(() => wallet.connect());
+        void wallet.disconnect(account ? namespaceOfFamily(CHAINS[account.chain].family) : undefined).then(() => wallet.connect());
       } : undefined}
       onReauthenticate={() => void signOut({ expired: true })}
     />

@@ -49,7 +49,8 @@ export function useWalletConnector() {
     network,
     connect: () => open({ view: "Connect" }),
     chooseNetwork: () => open({ view: "Networks" }),
-    disconnect: async () => { await disconnect(); },
+    /** Drops one family's connection; without a namespace every connection goes. */
+    disconnect: async (namespace?: Parameters<typeof disconnect>[0]) => { await disconnect(namespace); },
     switchToSupported: async () => { await switchNetwork("eip155:1"); },
     signMessage,
   };

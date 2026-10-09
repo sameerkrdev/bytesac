@@ -1,12 +1,13 @@
 import { isUserRejection, linkedAddressFor, shortAddress, WalletRejectedError, WrongWalletError, type Signer } from "@repo/app-core";
-import { useAccount, useProvider, useWalletInfo } from "@reown/appkit-react-native";
+import { useAccount, useAppKit, useProvider, useWalletInfo } from "@reown/appkit-react-native";
 import { ASSET_CHAINS, chainFromEvmChainId, type AssetChain, type MeResponse } from "@repo/validator";
 import bs58 from "bs58";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { encodeFunctionData, erc20Abi } from "viem";
 import { useAccount as useEvmAccount, useConfig, useSendTransaction, useSwitchChain } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
 
+const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const fromBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 
@@ -17,7 +18,8 @@ const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
  * Bitcoin is not offered: `signPsbt` is left out, so a Bitcoin leg is continued on the web. The server verifies everything that comes back.
  */
 export function useSigner(me: MeResponse | undefined): Signer {
-  const { address, namespace, chain } = useAccount();
+  const { address, namespace, chain, allAccounts } = useAccount();
+  const { switchNetwork } = useAppKit();
   const { provider } = useProvider();
   const { walletInfo } = useWalletInfo();
   const evm = useEvmAccount();
@@ -25,12 +27,22 @@ export function useSigner(me: MeResponse | undefined): Signer {
   const { switchChainAsync } = useSwitchChain();
   const { sendTransactionAsync } = useSendTransaction();
   const addresses = me?.wallet.addresses;
+  // AppKit RN keeps one connection per namespace but one active namespace, and the hooks above describe the active one. Methods read `live` so a switch made mid-sign is seen after the re-render.
+  const live = useRef({ address, namespace, chain, provider, walletInfo, allAccounts });
+  useEffect(() => { live.current = { address, namespace, chain, provider, walletInfo, allAccounts }; });
 
   return useMemo<Signer>(() => {
     // D-120: each chain has its own wallet. Mobile keeps one wallet per family connected, so a mismatch is fixed by connecting that chain's wallet.
     const linkedFor = (chain: AssetChain) => {
       const row = addresses ? linkedAddressFor(addresses, chain) : undefined;
       return { address: row?.address, hint: new WrongWalletError(`Connect ${row?.walletName ?? "the wallet"} (${row ? shortAddress(row.address) : "linked address"}) to sign this ${ASSET_CHAINS[chain].label} step`, true) };
+    };
+
+    /** Makes the family's connection the active one when it is connected but not active; without a connection nothing changes (the caller's address check then asks to connect). */
+    const activate = async (ns: "eip155" | "solana", caip: string) => {
+      if (live.current.namespace === ns || !live.current.allAccounts.some((a) => a.namespace === ns)) return;
+      try { await switchNetwork(caip as Parameters<typeof switchNetwork>[0]); } catch { return; }
+      for (let i = 0; i < 40 && live.current.namespace !== ns; i++) await new Promise((r) => setTimeout(r, 50));
     };
     const guard = async <T,>(run: () => Promise<T>): Promise<T> => {
       try {
@@ -42,6 +54,8 @@ export function useSigner(me: MeResponse | undefined): Signer {
     return {
       signSolana: (serializedBase64) => guard(async () => {
         const sol = linkedFor("solana");
+        await activate("solana", SOLANA_MAINNET);
+        const { provider, namespace, address, chain, walletInfo } = live.current;
         if (!provider || namespace !== "solana" || !address || address !== sol.address) throw sol.hint;
         const caip = chain?.caipNetworkId;
         if (!caip) throw sol.hint;
@@ -59,6 +73,7 @@ export function useSigner(me: MeResponse | undefined): Signer {
         const leg = chainFromEvmChainId(tx.chainId);
         if (!leg) throw new Error("This network is not supported.");
         const from = linkedFor(leg);
+        await activate("eip155", `eip155:${tx.chainId}`);
         if (!evm.isConnected || !evm.address || evm.address.toLowerCase() !== from.address?.toLowerCase()) throw from.hint;
         if (evm.chainId !== tx.chainId) await switchChainAsync({ chainId: tx.chainId });
         if (approval) {
@@ -73,5 +88,5 @@ export function useSigner(me: MeResponse | undefined): Signer {
         return sendTransactionAsync({ chainId: tx.chainId, to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: BigInt(tx.value) });
       }),
     };
-  }, [provider, namespace, address, chain?.caipNetworkId, walletInfo?.type, addresses, evm.isConnected, evm.address, evm.chainId, config, switchChainAsync, sendTransactionAsync]);
+  }, [addresses, switchNetwork, evm.isConnected, evm.address, evm.chainId, config, switchChainAsync, sendTransactionAsync]);
 }

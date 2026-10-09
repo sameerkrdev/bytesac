@@ -1,5 +1,5 @@
 import { WalletRejectedError, WrongWalletError } from "@repo/app-core";
-import { renderHook } from "@testing-library/react-native";
+import { act, renderHook } from "@testing-library/react-native";
 import bs58 from "bs58";
 import { useSigner } from "@/lib/wallet/use-signer";
 
@@ -7,8 +7,9 @@ const SOL = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
 const EVM = "0xAbC0000000000000000000000000000000000001";
 const EVM_B = "0xBbB0000000000000000000000000000000000002";
 const mockState = {
-  appkit: { address: SOL as string | undefined, namespace: "solana" as string | undefined, chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" } as { caipNetworkId: string } | undefined },
+  appkit: { address: SOL as string | undefined, namespace: "solana" as string | undefined, chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" } as { caipNetworkId: string } | undefined, allAccounts: [{ namespace: "solana" }] },
   provider: { request: jest.fn() },
+  switchNetwork: jest.fn(),
   walletName: "Phantom",
   walletType: "external" as string,
   evm: { isConnected: true, address: EVM as string | undefined, chainId: 1 },
@@ -18,6 +19,7 @@ const mockState = {
 };
 jest.mock("@reown/appkit-react-native", () => ({
   useAccount: () => mockState.appkit,
+  useAppKit: () => ({ switchNetwork: mockState.switchNetwork }),
   useProvider: () => ({ provider: mockState.provider }),
   useWalletInfo: () => ({ walletInfo: { name: mockState.walletName, type: mockState.walletType } }),
 }));
@@ -44,12 +46,13 @@ const evmTx = { to: "0x00000000000000000000000000000000000000aa", data: "0x1234"
 describe("useSigner (AppKit React Native adapter)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockState.appkit = { address: SOL, namespace: "solana", chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" } };
+    mockState.appkit = { address: SOL, namespace: "solana", chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, allAccounts: [{ namespace: "solana" }] };
     mockState.walletName = "Phantom";
     mockState.walletType = "external";
     mockState.evm = { isConnected: true, address: EVM, chainId: 1 };
     mockState.provider.request.mockReset();
     mockState.send.mockReset();
+    mockState.switchNetwork.mockReset();
     mockState.receipt.mockReset();
   });
 
@@ -127,6 +130,33 @@ describe("useSigner (AppKit React Native adapter)", () => {
     await expect((await getSigner()).sendEvm({ ...evmTx, chainId: 42161, approval: null })).rejects.toThrow("Connect the wallet (linked address) to sign this Arbitrum step");
     mockState.appkit = { ...mockState.appkit, address: "SomeoneElse1111111111111111111111111111111111" };
     await expect((await getSigner()).signSolana("AAAA")).rejects.toThrow("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step");
+  });
+
+  it("Solana: activates the connected Solana wallet when another family is active, then signs", async () => {
+    mockState.appkit = { address: EVM, namespace: "eip155", chain: { caipNetworkId: "eip155:1" }, allAccounts: [{ namespace: "eip155" }, { namespace: "solana" }] } as never;
+    mockState.provider.request.mockResolvedValue({ transaction: bs58.encode(bytes(9)) });
+    const hook = await renderHook(() => useSigner(me));
+    mockState.switchNetwork.mockImplementation(async () => {
+      mockState.appkit = { address: SOL, namespace: "solana", chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }, allAccounts: [{ namespace: "eip155" }, { namespace: "solana" }] } as never;
+      await act(async () => { hook.rerender({}); });
+    });
+    await hook.result.current.signSolana(b64(bytes(1)));
+    expect(mockState.switchNetwork).toHaveBeenCalledWith("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp");
+    expect(mockState.provider.request).toHaveBeenCalled();
+  });
+
+  it("Solana: no Solana connection means no switch, only the Connect hint", async () => {
+    mockState.appkit = { address: EVM, namespace: "eip155", chain: undefined, allAccounts: [{ namespace: "eip155" }] } as never;
+    await expect((await getSigner()).signSolana("AAAA")).rejects.toThrow("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step");
+    expect(mockState.switchNetwork).not.toHaveBeenCalled();
+  });
+
+  it("EVM: activates the EVM wallet for the leg's network when Solana is active", async () => {
+    mockState.appkit = { address: SOL, namespace: "solana", chain: undefined, allAccounts: [{ namespace: "solana" }, { namespace: "eip155" }] } as never;
+    mockState.send.mockResolvedValue("0xmain");
+    mockState.switchNetwork.mockImplementation(async () => {});
+    await (await getSigner()).sendEvm({ ...evmTx, approval: null }).catch(() => undefined);
+    expect(mockState.switchNetwork).toHaveBeenCalledWith("eip155:8453");
   });
 
   it("EVM: refuses a wallet that is not the linked EVM address", async () => {

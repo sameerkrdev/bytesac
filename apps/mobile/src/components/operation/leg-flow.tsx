@@ -1,5 +1,5 @@
 import { describeError, formatUnits, LEG_ACTIVE, LEG_IN_FLIGHT, LEG_STEP_LABEL, legAmounts, legRoute, legTitle, nextLeg, OPERATION_STATUS_LABEL } from "@repo/app-core";
-import type { OperationView } from "@repo/validator";
+import { ASSET_CHAINS, type AssetChain, type OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppKit } from "@reown/appkit-react-native";
 import { CircleCheck, Globe, TriangleAlert } from "lucide-react-native";
@@ -9,6 +9,7 @@ import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { api } from "@/lib/api";
+import { namespaceOfFamily } from "@/lib/wallet/namespace";
 import { WEB_HANDOFF_TEXT, webUrl } from "@/lib/web-url";
 import { legBuys } from "@/lib/leg-direction";
 import { useLegRunner } from "@/lib/use-leg-runner";
@@ -26,9 +27,9 @@ function failureCopy(code: string, message: string): { title: string; message?: 
 }
 
 /** WRONG_WALLET: drop the connected wallet and open Connect so the user can pick the one this step needs; they then tap the step again. */
-function ConnectWalletButton() {
+function ConnectWalletButton({ chain }: { chain: AssetChain }) {
   const { open, disconnect } = useAppKit();
-  return <Button variant="secondary" onPress={() => void (async () => { await disconnect(); open({ view: "Connect" }); })()}>Connect wallet</Button>;
+  return <Button variant="secondary" onPress={() => void (async () => { await disconnect(namespaceOfFamily(ASSET_CHAINS[chain].family)); open({ view: "Connect" }); })()}>Connect wallet</Button>;
 }
 
 /**
@@ -96,7 +97,7 @@ export function LegFlow({ operationId }: { operationId: string }) {
           </View>
         </View>
       )}
-      {state.kind === "failed" && state.code === "WRONG_WALLET" ? <ConnectWalletButton /> : null}
+      {state.kind === "failed" && state.code === "WRONG_WALLET" ? <ConnectWalletButton chain={(runner.leg ?? next)?.fromChain ?? "solana"} /> : null}
       <ErrorText error={stop.error} />
       {busy && <AppText accessibilityRole="progressbar" tone="muted">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
       {fresh && (
