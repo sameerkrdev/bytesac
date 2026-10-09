@@ -1,13 +1,14 @@
 "use client";
 
+import { useAppKit } from "@reown/appkit/react";
 import { ApiError } from "@repo/api-client";
 import {
-  explorerTxUrl, formatUnits, GasDropError, initialLegSignerState, LEG_ACTIVE as ACTIVE, LEG_IN_FLIGHT as IN_FLIGHT, LEG_STATUS_LABEL, LEG_STEP_LABEL, legAmounts, legRoute, legSignerReducer, legTitle, nextLeg, OPERATION_STATUS_LABEL, prepareLeg, PRICE_IMPACT_WARNING, signLeg, type Prepared, type Signer,
+  explorerTxUrl, formatUnits, GasDropError, initialLegSignerState, LEG_ACTIVE as ACTIVE, LEG_IN_FLIGHT as IN_FLIGHT, LEG_STATUS_LABEL, LEG_STEP_LABEL, legAmounts, legRoute, legSignerReducer, legTitle, nextLeg, OPERATION_STATUS_LABEL, prepareLeg, PRICE_IMPACT_WARNING, signLeg, type Prepared, type Signer, WrongWalletError,
 } from "@repo/app-core";
 import { ASSET_CHAINS, type Leg, type OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
@@ -58,6 +59,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
   const qc = useQueryClient();
   const { data: me } = useMe();
   const signer = useLegSigner(me);
+  const { open } = useAppKit();
   const [state, dispatch] = useReducer(legSignerReducer, initialLegSignerState);
   const step = LEG_STEP_LABEL[state.kind] ?? "";
   const [prepared, setPrepared] = useState<Prepared | null>(null);
@@ -71,10 +73,19 @@ export function LegProgress({ operationId }: { operationId: string }) {
   const prepare = useMutation({ mutationFn: (leg: Leg) => prepareLeg(api, operationId, leg, dispatch), onSuccess: setPrepared });
   // Step 2: the user approves the fresh figures; the wallet signs and the server verifies and submits.
   const sign = useMutation({
-    mutationFn: (p: Prepared) => signLeg(api, toSigner(signer), operationId, p, dispatch, `/portfolio#operation-${operationId}`),
+    mutationFn: (p: Prepared) => { lastSigned.current = p; return signLeg(api, toSigner(signer), operationId, p, dispatch, `/portfolio#operation-${operationId}`); },
     onSuccess: (o) => { if (o) setOp(o); },
     onSettled: () => setPrepared(null),
   });
+  // After "Connect wallet": retry the step once when the set of connected wallets changes. Never retried again, and never after a rejection (that is a different error).
+  const armed = useRef<{ p: Prepared; key: string } | null>(null);
+  const lastSigned = useRef<Prepared | null>(null);
+  const connectionKey = signer.connectionKey;
+  useEffect(() => {
+    const a = armed.current;
+    if (a && a.key !== connectionKey) { armed.current = null; sign.mutate(a.p); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionKey]);
   const stop = useMutation({ mutationFn: () => api.cancelOperation(operationId), onSuccess: setOp });
 
   if (op.isPending) return <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Loading…</p>;
@@ -102,6 +113,9 @@ export function LegProgress({ operationId }: { operationId: string }) {
       </ol>
 
       {err && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{expired ? "Quote expired" : err.title}</p><p className="text-ink-muted">{expired ? "Get a new quote, then sign again. Nothing was submitted." : err.message}</p></div>}
+      {sign.error instanceof WrongWalletError && !busy && (
+        <Button variant="secondary" onClick={() => { if (lastSigned.current) armed.current = { p: lastSigned.current, key: connectionKey }; void open({ view: "Connect" }); }}>Connect wallet</Button>
+      )}
       {busy && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />{step}…</p>}
       {fresh && !busy && (
         <div role="status" className="space-y-1 rounded-tile border border-line p-3 text-sm">

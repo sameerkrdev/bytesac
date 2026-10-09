@@ -25,7 +25,8 @@ export class WalletRejectedError extends Error {
 
 /** The wallet to sign with is not connected or is not the one linked to Bytesac; the message is fit to show. */
 export class WrongWalletError extends Error {
-  constructor(what: string) { super(`Connect the ${what} you linked to Bytesac, then try again.`); this.name = "WrongWalletError"; }
+  /** `verbatim` uses `what` as the whole message (the per-chain "Connect X to sign this step" prompt). */
+  constructor(what: string, verbatim = false) { super(verbatim ? what : `Connect the ${what} you linked to Bytesac, then try again.`); this.name = "WrongWalletError"; }
 }
 
 /** A connected wallet account on a supported chain (wallet-SDK independent). */

@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => nav.path, useSearchParams
 vi.mock("@/lib/api", () => ({ api: { logout: vi.fn() } }));
 vi.mock("@/lib/wallet/use-wallet-connector", () => ({ useWalletConnector: () => ({ disconnect: vi.fn() }) }));
 vi.mock("@/components/notifications/bell", () => ({ NotificationsBell: () => <span>bell</span> }));
+vi.mock("@/components/layout/wallet-menu", () => ({ WalletMenu: () => <span>wallets</span> }));
 vi.mock("@/components/notifications/push-toggle", () => ({ revokePushOnLogout: vi.fn() }));
 import { AppShell, PublicShell } from "@/components/layout/app-shell";
 import { areaOf, navFor } from "@/components/layout/nav";

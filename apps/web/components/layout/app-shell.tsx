@@ -12,6 +12,7 @@ import { Logo, Mark } from "@/components/brand/logo";
 import { SiteFooter, SiteHeader } from "@/components/layout/site-chrome";
 import { areaOf, isCurrent, navFor, type NavItem } from "@/components/layout/nav";
 import { useMe } from "@/components/me-context";
+import { WalletMenu } from "@/components/layout/wallet-menu";
 import { NotificationsBell } from "@/components/notifications/bell";
 import { revokePushOnLogout } from "@/components/notifications/push-toggle";
 import { api } from "@/lib/api";
@@ -184,6 +185,7 @@ export function Shell({ me, children }: { me: MeResponse; children: ReactNode })
               </Link>
             ))}
             <NotificationsBell />
+            <WalletMenu me={me} />
             <AccountMenu me={me} workspaces={workspaces} />
           </div>
         </div>

@@ -11,15 +11,22 @@ vi.mock("@/lib/api", () => ({
     submitLeg: (o: string, l: string, b: unknown) => api.submitLeg(o, l, b), cancelOperation: (id: string) => api.cancelOperation(id),
   },
 }));
-const signer = { signSolana: vi.fn(), sendEvm: vi.fn(), signBitcoin: vi.fn() };
-vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => signer }));
+const signer = { signSolana: vi.fn(), sendEvm: vi.fn(), signBitcoin: vi.fn(), connectionKey: "a" };
+let rerender = () => {};
+vi.mock("@/lib/wallet/use-leg-signer", async () => {
+  const { useState } = await import("react");
+  return { useLegSigner: () => { const [, n] = useState(0); rerender = () => n((x) => x + 1); return signer; } };
+});
+const reown = vi.hoisted(() => ({ open: vi.fn() }));
+vi.mock("@reown/appkit/react", () => ({ useAppKit: () => ({ open: reown.open }) }));
+import { WalletRejectedError, WrongWalletError } from "@repo/app-core";
 import { LegProgress } from "@/components/invest/leg-progress";
 
 const solanaQuote = { legId: ID(10), estimatedOut: null, minOut: null, quoteExpiresAt: "2026-10-01T12:01:00.000Z", transaction: { kind: "solana" as const, serializedBase64: "AAEC" }, approval: null, gasDrop: null };
 const show = () => renderApp(<LegProgress operationId={ID(20)} />);
 const user = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers({ shouldAdvanceTime: true }); });
+beforeEach(() => { vi.clearAllMocks(); signer.connectionKey = "a"; vi.useFakeTimers({ shouldAdvanceTime: true }); });
 afterEach(() => vi.useRealTimers());
 
 describe("LegProgress", () => {
@@ -123,5 +130,39 @@ describe("LegProgress", () => {
     expect(screen.getByText("Bitcoin needs 2 confirmations, about 20 minutes.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Review step|Approve step/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Stop here" })).toBeInTheDocument();
+  });
+
+  async function toApprove() {
+    api.getOperation.mockResolvedValue(operation());
+    api.quoteLeg.mockResolvedValue(solanaQuote);
+    const view = show();
+    await user().click(await screen.findByRole("button", { name: "Review step 1" }));
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
+    return view;
+  }
+
+  it("offers Connect wallet on a missing wallet and retries the step once after the connections change", async () => {
+    signer.signSolana.mockRejectedValueOnce(new WrongWalletError("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step", true)).mockResolvedValue("c2lnbmVk");
+    api.submitLeg.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xTx" }), buyLeg()] }));
+    await toApprove();
+    expect(await screen.findByText(/Connect Phantom/)).toBeInTheDocument();
+    await user().click(screen.getByRole("button", { name: "Connect wallet" }));
+    expect(reown.open).toHaveBeenCalledWith({ view: "Connect" });
+    expect(signer.signSolana).toHaveBeenCalledTimes(1);
+    signer.connectionKey = "b";
+    act(() => rerender());
+    await waitFor(() => expect(signer.signSolana).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.submitLeg).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not retry after the user rejects, and never more than once", async () => {
+    signer.signSolana.mockRejectedValue(new WalletRejectedError());
+    await toApprove();
+    await waitFor(() => expect(signer.signSolana).toHaveBeenCalledTimes(1));
+    signer.connectionKey = "b";
+    act(() => rerender());
+    await act(async () => { await Promise.resolve(); });
+    expect(signer.signSolana).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Connect wallet" })).toBeNull();
   });
 });
