@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppKitAccount, useAppKitConnection, useAppKitConnections } from "@reown/appkit/react";
+import { useAppKitAccount, useAppKitConnection, useAppKitConnections, type Connection } from "@reown/appkit/react";
 import { linkedAddressFor } from "@repo/app-core";
 import { ASSET_CHAINS, type AssetChain, type MeResponse } from "@repo/validator";
 import { useCallback } from "react";
@@ -31,7 +31,7 @@ export function useWalletForChain(me: MeResponse | undefined) {
     if (f.address && same(f.address, row.address)) return "ready";
     const holder = f.connections.find((c) => c.accounts.some((a) => same(a.address, row.address)));
     if (!holder) return "missing";
-    await f.switchConnection({ connection: holder as never, address: row.address });
+    await f.switchConnection({ connection: holder as Connection, address: row.address });
     return "ready";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, connectionKey]);

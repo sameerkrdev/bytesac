@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppKit } from "@reown/appkit/react";
+import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import { ApiError } from "@repo/api-client";
 import {
   explorerTxUrl, formatUnits, GasDropError, initialLegSignerState, LEG_ACTIVE as ACTIVE, LEG_IN_FLIGHT as IN_FLIGHT, LEG_STATUS_LABEL, LEG_STEP_LABEL, legAmounts, legRoute, legSignerReducer, legTitle, nextLeg, OPERATION_STATUS_LABEL, prepareLeg, PRICE_IMPACT_WARNING, signLeg, type Prepared, type Signer, WrongWalletError,
@@ -60,6 +60,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
   const { data: me } = useMe();
   const signer = useLegSigner(me);
   const { open } = useAppKit();
+  const modal = useAppKitState().open;
   const [state, dispatch] = useReducer(legSignerReducer, initialLegSignerState);
   const step = LEG_STEP_LABEL[state.kind] ?? "";
   const [prepared, setPrepared] = useState<Prepared | null>(null);
@@ -77,15 +78,19 @@ export function LegProgress({ operationId }: { operationId: string }) {
     onSuccess: (o) => { if (o) setOp(o); },
     onSettled: () => setPrepared(null),
   });
-  // After "Connect wallet": retry the step once when the set of connected wallets changes. Never retried again, and never after a rejection (that is a different error).
-  const armed = useRef<{ p: Prepared; key: string } | null>(null);
+  // After "Connect wallet": once the set of connected wallets changes, start the step again from a fresh quote (the user still approves the figures). One shot: it is
+  // dropped when the modal closes without a change and on unmount, and is never armed after a rejection (a different error).
+  const armed = useRef<{ leg: Leg; key: string; opened: boolean } | null>(null);
   const lastSigned = useRef<Prepared | null>(null);
   const connectionKey = signer.connectionKey;
   useEffect(() => {
     const a = armed.current;
-    if (a && a.key !== connectionKey) { armed.current = null; sign.mutate(a.p); }
+    if (!a) return;
+    if (modal) a.opened = true;
+    if (a.key !== connectionKey) { armed.current = null; prepare.mutate(a.leg); } else if (a.opened && !modal) armed.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionKey]);
+  }, [connectionKey, modal]);
+  useEffect(() => () => { armed.current = null; }, []);
   const stop = useMutation({ mutationFn: () => api.cancelOperation(operationId), onSuccess: setOp });
 
   if (op.isPending) return <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Loading…</p>;
@@ -114,7 +119,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
 
       {err && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{expired ? "Quote expired" : err.title}</p><p className="text-ink-muted">{expired ? "Get a new quote, then sign again. Nothing was submitted." : err.message}</p></div>}
       {sign.error instanceof WrongWalletError && !busy && (
-        <Button variant="secondary" onClick={() => { if (lastSigned.current) armed.current = { p: lastSigned.current, key: connectionKey }; void open({ view: "Connect" }); }}>Connect wallet</Button>
+        <Button variant="secondary" onClick={() => { if (!lastSigned.current) return; armed.current = { leg: lastSigned.current.leg, key: connectionKey, opened: false }; void open({ view: "Connect" }); }}>Connect wallet</Button>
       )}
       {busy && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />{step}…</p>}
       {fresh && !busy && (

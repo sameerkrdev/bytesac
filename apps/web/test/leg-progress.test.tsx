@@ -17,8 +17,8 @@ vi.mock("@/lib/wallet/use-leg-signer", async () => {
   const { useState } = await import("react");
   return { useLegSigner: () => { const [, n] = useState(0); rerender = () => n((x) => x + 1); return signer; } };
 });
-const reown = vi.hoisted(() => ({ open: vi.fn() }));
-vi.mock("@reown/appkit/react", () => ({ useAppKit: () => ({ open: reown.open }) }));
+const reown = vi.hoisted(() => ({ open: vi.fn(), modal: false }));
+vi.mock("@reown/appkit/react", () => ({ useAppKit: () => ({ open: reown.open }), useAppKitState: () => ({ open: reown.modal }) }));
 import { WalletRejectedError, WrongWalletError } from "@repo/app-core";
 import { LegProgress } from "@/components/invest/leg-progress";
 
@@ -26,7 +26,7 @@ const solanaQuote = { legId: ID(10), estimatedOut: null, minOut: null, quoteExpi
 const show = () => renderApp(<LegProgress operationId={ID(20)} />);
 const user = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-beforeEach(() => { vi.clearAllMocks(); signer.connectionKey = "a"; vi.useFakeTimers({ shouldAdvanceTime: true }); });
+beforeEach(() => { vi.clearAllMocks(); signer.connectionKey = "a"; reown.modal = false; vi.useFakeTimers({ shouldAdvanceTime: true }); });
 afterEach(() => vi.useRealTimers());
 
 describe("LegProgress", () => {
@@ -141,7 +141,7 @@ describe("LegProgress", () => {
     return view;
   }
 
-  it("offers Connect wallet on a missing wallet and retries the step once after the connections change", async () => {
+  it("offers Connect wallet on a missing wallet and, after the connections change, starts the step again from a fresh quote", async () => {
     signer.signSolana.mockRejectedValueOnce(new WrongWalletError("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step", true)).mockResolvedValue("c2lnbmVk");
     api.submitLeg.mockResolvedValue(operation({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xTx" }), buyLeg()] }));
     await toApprove();
@@ -151,8 +151,21 @@ describe("LegProgress", () => {
     expect(signer.signSolana).toHaveBeenCalledTimes(1);
     signer.connectionKey = "b";
     act(() => rerender());
-    await waitFor(() => expect(signer.signSolana).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.quoteLeg).toHaveBeenCalledTimes(2));
+    expect(signer.signSolana).toHaveBeenCalledTimes(1); // nothing is signed until the user approves the fresh figures
+    await user().click(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
     await waitFor(() => expect(api.submitLeg).toHaveBeenCalledTimes(1));
+  });
+
+  it("drops the pending retry when the modal closes without a connection change", async () => {
+    signer.signSolana.mockRejectedValue(new WrongWalletError("Connect Phantom to sign this Solana step", true));
+    await toApprove();
+    await user().click(await screen.findByRole("button", { name: "Connect wallet" }));
+    reown.modal = true; act(() => rerender());
+    reown.modal = false; act(() => rerender());
+    signer.connectionKey = "b"; act(() => rerender());
+    await act(async () => { await Promise.resolve(); });
+    expect(api.quoteLeg).toHaveBeenCalledTimes(1);
   });
 
   it("does not retry after the user rejects, and never more than once", async () => {

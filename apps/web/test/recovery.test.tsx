@@ -9,7 +9,7 @@ const api = { getOperation: vi.fn(), quoteLeg: vi.fn(), submitLeg: vi.fn(), canc
 vi.mock("@/lib/api", () => ({ api: { getOperation: (id: string) => api.getOperation(id), quoteLeg: (o: string, l: string) => api.quoteLeg(o, l), submitLeg: (o: string, l: string, b: unknown) => api.submitLeg(o, l, b), cancelOperation: (id: string) => api.cancelOperation(id) } }));
 const signer = { signSolana: vi.fn(), sendEvm: vi.fn(), signBitcoin: vi.fn() };
 vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => signer }));
-vi.mock("@reown/appkit/react", () => ({ useAppKit: () => ({ open: vi.fn() }) }));
+vi.mock("@reown/appkit/react", () => ({ useAppKit: () => ({ open: vi.fn() }), useAppKitState: () => ({ open: false }) }));
 import { LegProgress } from "@/components/invest/leg-progress";
 
 const failed = buyLeg({ status: "FAILED", failureReason: "DESTINATION_SWAP_FAILED", recoveryToken: { chain: "ethereum", address: "0xabc", decimals: 6, symbol: "USDC", amount: "299000000" } });

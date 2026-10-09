@@ -20,7 +20,7 @@ export const wagmiAdapter = new WagmiAdapter({ networks: [...evmNetworks], proje
 const solanaAdapter = new SolanaAdapter();
 const bitcoinAdapter = new BitcoinAdapter({ projectId });
 
-const appKit = createAppKit({
+export const appKit = createAppKit({
   adapters: [wagmiAdapter, solanaAdapter, bitcoinAdapter],
   networks: [mainnet, base, bsc, arbitrum, polygon, solana, bitcoin],
   defaultNetwork: mainnet,

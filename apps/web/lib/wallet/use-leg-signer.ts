@@ -2,13 +2,13 @@
 
 import type { BitcoinConnector } from "@reown/appkit-adapter-bitcoin";
 import type { Provider as SolanaProvider } from "@reown/appkit-adapter-solana/react";
-import { useAppKitAccount, useAppKitProvider } from "@reown/appkit/react";
 import { VersionedTransaction } from "@solana/web3.js";
 import { isUserRejection, linkedAddressFor, shortAddress, WalletRejectedError, WrongWalletError } from "@repo/app-core";
 import { ASSET_CHAINS, chainFromEvmChainId, type AssetChain, type MeResponse } from "@repo/validator";
 import { encodeFunctionData, erc20Abi } from "viem";
 import { useConfig, useSendTransaction, useSwitchChain } from "wagmi";
 import { getAccount, waitForTransactionReceipt } from "wagmi/actions";
+import { appKit } from "@/lib/appkit";
 import { same, useWalletForChain } from "@/lib/wallet/use-wallet-for-chain";
 
 /**
@@ -25,10 +25,6 @@ export function useLegSigner(me: MeResponse | undefined) {
     const row = me ? linkedAddressFor(me.wallet.addresses, chain) : undefined;
     throw new WrongWalletError(`Connect ${row?.walletName ?? "the wallet"} (${row ? shortAddress(row.address) : "linked address"}) to sign this ${ASSET_CHAINS[chain].label} step`, true);
   };
-  const solana = useAppKitAccount({ namespace: "solana" });
-  const bitcoin = useAppKitAccount({ namespace: "bip122" });
-  const { walletProvider: solanaProvider } = useAppKitProvider<SolanaProvider>("solana");
-  const { walletProvider: bitcoinProvider } = useAppKitProvider<BitcoinConnector>("bip122");
   const config = useConfig();
   const { switchChainAsync } = useSwitchChain();
   const { sendTransactionAsync } = useSendTransaction();
@@ -45,7 +41,9 @@ export function useLegSigner(me: MeResponse | undefined) {
     connectionKey,
     signSolana: (serializedBase64: string) => guard(async () => {
       await select("solana");
-      if (!solanaProvider || !solana.isConnected || solana.address !== linked("solana")) throw new WrongWalletError("Solana wallet");
+      // Read the provider and address after a possible wallet switch (hook values would be from the last render).
+      const solanaProvider = appKit.getProvider<SolanaProvider>("solana");
+      if (!solanaProvider || appKit.getAddress("solana") !== linked("solana")) throw new WrongWalletError("Solana wallet");
       const signed = await solanaProvider.signTransaction(VersionedTransaction.deserialize(Uint8Array.from(atob(serializedBase64), (c) => c.charCodeAt(0))));
       return btoa(String.fromCharCode(...signed.serialize()));
     }),
@@ -74,7 +72,8 @@ export function useLegSigner(me: MeResponse | undefined) {
     signBitcoin: (psbtBase64: string, inputCount: number) => guard(async () => {
       await select("bitcoin");
       const address = linked("bitcoin");
-      if (!bitcoinProvider || !bitcoin.isConnected || bitcoin.address !== address || !address) throw new WrongWalletError("Bitcoin wallet");
+      const bitcoinProvider = appKit.getProvider<BitcoinConnector>("bip122");
+      if (!bitcoinProvider || !address || appKit.getAddress("bip122") !== address) throw new WrongWalletError("Bitcoin wallet");
       const signed = await bitcoinProvider.signPSBT({
         psbt: psbtBase64, signInputs: Array.from({ length: inputCount }, (_, index) => ({ address, index, sighashTypes: [1] })), broadcast: false,
       });

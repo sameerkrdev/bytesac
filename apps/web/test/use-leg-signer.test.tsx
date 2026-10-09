@@ -1,8 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const wallet = vi.hoisted(() => ({ send: vi.fn(), receipt: vi.fn(), switchChain: vi.fn(), ensure: vi.fn(), account: vi.fn() }));
-vi.mock("@reown/appkit/react", () => ({ useAppKitAccount: () => ({ isConnected: false }), useAppKitProvider: () => ({ walletProvider: undefined }) }));
+const wallet = vi.hoisted(() => ({ send: vi.fn(), receipt: vi.fn(), switchChain: vi.fn(), ensure: vi.fn(), account: vi.fn(), solanaProvider: vi.fn(), solanaAddress: vi.fn() }));
+vi.mock("@/lib/appkit", () => ({ appKit: { getProvider: () => wallet.solanaProvider(), getAddress: () => wallet.solanaAddress() } }));
 vi.mock("wagmi", () => ({
   useConfig: () => ({}),
   useSwitchChain: () => ({ switchChainAsync: wallet.switchChain }),
@@ -24,6 +24,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   wallet.ensure.mockResolvedValue("ready");
   wallet.account.mockReturnValue({ isConnected: true, address: "0xAbC0000000000000000000000000000000000001", chainId: 8453 });
+});
+
+describe("useLegSigner.signSolana", () => {
+  const meSol = { wallet: { addresses: [{ chain: "solana", status: "active", address: "SoLaddr1111111111111111111111111111111111111", walletName: "Phantom" }] } } as never;
+  it("reads the provider after ensure() switched wallets, on the first attempt", async () => {
+    const order: string[] = [];
+    wallet.ensure.mockImplementation(async () => { order.push("ensure"); return "ready"; });
+    wallet.solanaProvider.mockImplementation(() => { order.push("provider"); return { signTransaction: vi.fn() }; });
+    wallet.solanaAddress.mockReturnValue("SoLaddr1111111111111111111111111111111111111");
+    const { result } = renderHook(() => useLegSigner(meSol));
+    // "AAEC" is not a real transaction, so deserializing fails after the checks; what matters is the order and that the wallet check passed.
+    await expect(result.current.signSolana("AAEC")).rejects.not.toThrow(/Connect the Solana wallet/);
+    expect(order.slice(0, 2)).toEqual(["ensure", "provider"]);
+  });
+  it("refuses when the switched wallet's address is not the linked one", async () => {
+    wallet.solanaProvider.mockReturnValue({ signTransaction: vi.fn() });
+    wallet.solanaAddress.mockReturnValue("OtherAddr");
+    const { result } = renderHook(() => useLegSigner(meSol));
+    await expect(result.current.signSolana("AAEC")).rejects.toThrow(/Connect the Solana wallet/);
+  });
 });
 
 describe("useLegSigner.sendEvm", () => {
