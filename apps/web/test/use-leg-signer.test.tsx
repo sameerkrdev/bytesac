@@ -1,8 +1,9 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const wallet = vi.hoisted(() => ({ send: vi.fn(), receipt: vi.fn(), switchChain: vi.fn(), ensure: vi.fn(), account: vi.fn(), solanaProvider: vi.fn(), solanaAddress: vi.fn() }));
-vi.mock("@/lib/appkit", () => ({ appKit: { getProvider: () => wallet.solanaProvider(), getAddress: () => wallet.solanaAddress() } }));
+const wallet = vi.hoisted(() => ({ send: vi.fn(), receipt: vi.fn(), switchChain: vi.fn(), ensure: vi.fn(), account: vi.fn(), provider: vi.fn(), address: vi.fn() }));
+vi.mock("@/lib/appkit", () => ({ appKit: { getProvider: (ns: string) => wallet.provider(ns), getAddress: (ns: string) => wallet.address(ns) } }));
+vi.mock("@solana/web3.js", () => ({ VersionedTransaction: { deserialize: () => ({ serialize: () => new TextEncoder().encode("signed") }) } }));
 vi.mock("wagmi", () => ({
   useConfig: () => ({}),
   useSwitchChain: () => ({ switchChainAsync: wallet.switchChain }),
@@ -26,23 +27,42 @@ beforeEach(() => {
   wallet.account.mockReturnValue({ isConnected: true, address: "0xAbC0000000000000000000000000000000000001", chainId: 8453 });
 });
 
-describe("useLegSigner.signSolana", () => {
-  const meSol = { wallet: { addresses: [{ chain: "solana", status: "active", address: "SoLaddr1111111111111111111111111111111111111", walletName: "Phantom" }] } } as never;
-  it("reads the provider after ensure() switched wallets, on the first attempt", async () => {
-    const order: string[] = [];
-    wallet.ensure.mockImplementation(async () => { order.push("ensure"); return "ready"; });
-    wallet.solanaProvider.mockImplementation(() => { order.push("provider"); return { signTransaction: vi.fn() }; });
-    wallet.solanaAddress.mockReturnValue("SoLaddr1111111111111111111111111111111111111");
-    const { result } = renderHook(() => useLegSigner(meSol));
-    // "AAEC" is not a real transaction, so deserializing fails after the checks; what matters is the order and that the wallet check passed.
-    await expect(result.current.signSolana("AAEC")).rejects.not.toThrow(/Connect the Solana wallet/);
-    expect(order.slice(0, 2)).toEqual(["ensure", "provider"]);
+describe("useLegSigner non-EVM signing after ensure() switches wallet", () => {
+  const SOL = "SoLaddr1111111111111111111111111111111111111", BTC = "bc1qaddr";
+  const meNon = { wallet: { addresses: [{ chain: "solana", status: "active", address: SOL, walletName: "Phantom" }, { chain: "bitcoin", status: "active", address: BTC, walletName: "Xverse" }] } } as never;
+  // Before ensure() the active provider/address are a different wallet's; ensure() switches to the linked one. Only the switched provider may sign.
+  function switching(ns: string, address: string, stale: unknown, switched: unknown) {
+    let done = false;
+    wallet.ensure.mockImplementation(async () => { done = true; return "ready"; });
+    wallet.provider.mockImplementation((n: string) => (n === ns ? (done ? switched : stale) : undefined));
+    wallet.address.mockImplementation((n: string) => (n === ns ? (done ? address : "OtherAddr") : undefined));
+  }
+  it("Solana: signs with the switched provider on the first attempt", async () => {
+    const stale = { signTransaction: vi.fn() }, switched = { signTransaction: vi.fn(async (t: unknown) => t) };
+    switching("solana", SOL, stale, switched);
+    const { result } = renderHook(() => useLegSigner(meNon));
+    await expect(result.current.signSolana("AAEC")).resolves.toBe(btoa("signed"));
+    expect(switched.signTransaction).toHaveBeenCalledTimes(1);
+    expect(stale.signTransaction).not.toHaveBeenCalled();
+    expect(wallet.provider).toHaveBeenCalledWith("solana");
+    expect(wallet.address).toHaveBeenCalledWith("solana");
   });
-  it("refuses when the switched wallet's address is not the linked one", async () => {
-    wallet.solanaProvider.mockReturnValue({ signTransaction: vi.fn() });
-    wallet.solanaAddress.mockReturnValue("OtherAddr");
-    const { result } = renderHook(() => useLegSigner(meSol));
+  it("Solana: refuses when the switched wallet is not the linked one", async () => {
+    const p = { signTransaction: vi.fn() };
+    switching("solana", "OtherAddr", p, p);
+    const { result } = renderHook(() => useLegSigner(meNon));
     await expect(result.current.signSolana("AAEC")).rejects.toThrow(/Connect the Solana wallet/);
+    expect(p.signTransaction).not.toHaveBeenCalled();
+  });
+  it("Bitcoin: signs with the switched provider on the first attempt", async () => {
+    const stale = { signPSBT: vi.fn() }, switched = { signPSBT: vi.fn(async () => ({ psbt: "signedpsbt" })) };
+    switching("bip122", BTC, stale, switched);
+    const { result } = renderHook(() => useLegSigner(meNon));
+    await expect(result.current.signBitcoin("cHNidA==", 1)).resolves.toBe("signedpsbt");
+    expect(switched.signPSBT).toHaveBeenCalledTimes(1);
+    expect(stale.signPSBT).not.toHaveBeenCalled();
+    expect(wallet.provider).toHaveBeenCalledWith("bip122");
+    expect(wallet.address).toHaveBeenCalledWith("bip122");
   });
 });
 
