@@ -27,7 +27,7 @@ describe("add chain account", () => {
     expect((await request(app).get("/v1/me").set("Cookie", newCookie)).status).toBe(200);
     const rotated = (await db.select().from(sessions)).find((x) => x.revokeReason === "rotated");
     expect(rotated?.replacedBySessionId).toBeTruthy();
-    expect((await db.select().from(walletAddresses)).map((a) => a.chain).sort()).toEqual(["arbitrum", "base", "bnb", "ethereum", "solana"]);
+    expect((await db.select().from(walletAddresses)).map((a) => a.chain).sort()).toEqual(["arbitrum", "base", "bnb", "ethereum", "polygon", "solana"]);
   });
 
   it("same address already on this user → idempotent, no rotation", async () => {

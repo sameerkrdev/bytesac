@@ -12,7 +12,7 @@ const db = testDb.db;
 beforeEach(resetDb);
 
 describe("sign-in", () => {
-  it("EOA sign-up registers 4 EVM chains, sets httpOnly cookie, audits", async () => {
+  it("EOA sign-up registers 5 EVM chains, sets httpOnly cookie, audits", async () => {
     const w = newEvmWallet();
     const r = await signIn(app, w, "base");
     expect(r.res.status).toBe(200);
@@ -20,7 +20,7 @@ describe("sign-in", () => {
     expect(r.res.body.token).toBeUndefined();
     expect(String(r.res.headers["set-cookie"])).toMatch(/bx_session=.*HttpOnly.*SameSite=Lax/i);
     const rows = await db.select().from(walletAddresses);
-    expect(rows.map((x) => x.chain).sort()).toEqual(["arbitrum", "base", "bnb", "ethereum"]);
+    expect(rows.map((x) => x.chain).sort()).toEqual(["arbitrum", "base", "bnb", "ethereum", "polygon"]);
     expect(rows.every((x) => x.verificationMethod === "eoa_ecdsa" && x.verifiedOnChain === "base" && x.address === w.address.toLowerCase())).toBe(true);
     const actions = (await db.select().from(auditEvents)).map((a) => a.action).sort();
     expect(actions).toEqual(["session.created", "user.signed_in", "user.signed_up"]);
@@ -163,7 +163,7 @@ describe("sign-in", () => {
 
   it("invalid address or unsupported chain → 400", async () => {
     expect((await challengeFor(app, { purpose: "sign_in", chain: "base", address: "0x123" })).status).toBe(400);
-    expect((await request(app).post("/v1/auth/challenge").set(webHeaders()).send({ purpose: "sign_in", chain: "polygon", address: "0x" + "1".repeat(40) })).status).toBe(400);
+    expect((await request(app).post("/v1/auth/challenge").set(webHeaders()).send({ purpose: "sign_in", chain: "dogecoin", address: "0x" + "1".repeat(40) })).status).toBe(400);
   });
 
   it("challenge and verify are rate limited", async () => {

@@ -5,13 +5,15 @@ import { signInChainSchema } from "./chains";
 export const clientKindSchema = z.enum(["web", "mobile"]);
 export type ClientKind = z.infer<typeof clientKindSchema>;
 
-export const challengePurposeSchema = z.enum(["sign_in", "add_chain_account"]);
+export const challengePurposeSchema = z.enum(["sign_in", "add_chain_account", "reassign_chain"]);
 export type ChallengePurpose = z.infer<typeof challengePurposeSchema>;
 
 export const challengeRequestSchema = z.strictObject({
   purpose: challengePurposeSchema,
   chain: signInChainSchema,
   address: z.string().trim().min(1).max(128),
+  /** D-120: chains to link with this address (same family). Omitted = every chain of the family (backward compatible). */
+  chains: z.array(assetChainSchema).min(1).max(5).refine((c) => new Set(c).size === c.length, "Chains must be distinct").optional(),
 });
 export type ChallengeRequest = z.infer<typeof challengeRequestSchema>;
 

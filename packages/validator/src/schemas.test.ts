@@ -7,7 +7,7 @@ import {
 describe("schemas", () => {
   it("challenge request", () => {
     expect(challengeRequestSchema.parse({ purpose: "sign_in", chain: "base", address: "0xabc" }).chain).toBe("base");
-    expect(() => challengeRequestSchema.parse({ purpose: "sign_in", chain: "polygon", address: "0xabc" })).toThrow();
+    expect(() => challengeRequestSchema.parse({ purpose: "sign_in", chain: "dogecoin", address: "0xabc" })).toThrow();
   });
   it("verify request requires uuid challenge id and client", () => {
     expect(() => verifyRequestSchema.parse({ challengeId: "x", signature: "0x1", client: "web" })).toThrow();

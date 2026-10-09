@@ -70,6 +70,7 @@ export const authChallenges = app.table(
     resolvedAt: ts("resolved_at"),
     sessionId: uuid("session_id").references(() => sessions.id, { onDelete: "set null" }),
     organizationId: uuid("organization_id").references((): AnyPgColumn => organizations.id),
+    chains: text("chains").array(),
   },
   (t) => [
     index("auth_challenges_expires_at_idx").on(t.expiresAt),
@@ -93,16 +94,22 @@ export const walletAddresses = app.table(
     verifiedAt: ts("verified_at").notNull().defaultNow(),
     disabledAt: ts("disabled_at"),
     disabledReason: text("disabled_reason"),
+    /** D-120: wallet app reported at link time. */
+    walletName: text("wallet_name"),
+    replacedAt: ts("replaced_at"),
+    replacedByAddressId: uuid("replaced_by_address_id").references((): AnyPgColumn => walletAddresses.id),
     /** D-119: asset chains the wallet approved when it last signed for this address (client-reported, warnings only); null = unknown. */
     signableChains: text("signable_chains").array(),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("wallet_addresses_chain_address_key").on(t.chain, t.address),
+    uniqueIndex("wallet_addresses_active_chain_key").on(t.investmentWalletId, t.chain).where(sql`${t.status} = 'active'`),
     index("wallet_addresses_wallet_idx").on(t.investmentWalletId),
     // ::text casts: a value added to an enum in the same migration cannot be referenced as an enum literal.
     check("wallet_addresses_chain_family", sql`(${t.chainFamily}::text = 'solana') = (${t.chain}::text = 'solana') and (${t.chainFamily}::text = 'bitcoin') = (${t.chain}::text = 'bitcoin')`),
     check("wallet_addresses_method_family", sql`(${t.chainFamily}::text = 'solana') = (${t.verificationMethod}::text = 'ed25519') and (${t.chainFamily}::text = 'bitcoin') = (${t.verificationMethod}::text in ('bip322', 'bip137'))`),
     check("wallet_addresses_disabled_reason", sql`${t.status} = 'active' OR ${t.disabledReason} IS NOT NULL`),
+    check("wallet_addresses_replaced", sql`${t.status}::text <> 'replaced' OR (${t.replacedAt} IS NOT NULL AND ${t.replacedByAddressId} IS NOT NULL)`),
   ],
 );

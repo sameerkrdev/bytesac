@@ -13,7 +13,9 @@ export const walletAddressViewSchema = z.object({
   chain: chainSchema,
   chainFamily: chainFamilySchema,
   address: z.string(),
-  status: z.enum(["active", "disabled"]),
+  status: z.enum(["active", "disabled", "replaced"]),
+  /** D-120: the wallet app reported when this chain was linked. */
+  walletName: z.string().nullish(),
   verificationMethod: verificationMethodSchema,
   verifiedAt: z.iso.datetime({ offset: true }),
   /** D-119: chains the wallet can sign for this address; null = unknown. */

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const chainSchema = z.enum(["ethereum", "base", "bnb", "arbitrum", "solana", "bitcoin"]);
+export const chainSchema = z.enum(["ethereum", "base", "bnb", "arbitrum", "polygon", "solana", "bitcoin"]);
 /** Chains an address can be linked on. Bitcoin is link-only: sign-in challenges use `signInChainSchema`. */
 export type Chain = z.infer<typeof chainSchema>;
 export const signInChainSchema = chainSchema.exclude(["bitcoin"]);
@@ -20,6 +20,7 @@ export const CHAINS: Readonly<Record<Chain, ChainInfo>> = {
   base: { family: "evm", label: "Base", evmChainId: 8453 },
   bnb: { family: "evm", label: "BNB Chain", evmChainId: 56 },
   arbitrum: { family: "evm", label: "Arbitrum", evmChainId: 42161 },
+  polygon: { family: "evm", label: "Polygon", evmChainId: 137 },
   solana: { family: "solana", label: "Solana", solanaCluster: "mainnet" },
   bitcoin: { family: "bitcoin", label: "Bitcoin" },
 };
