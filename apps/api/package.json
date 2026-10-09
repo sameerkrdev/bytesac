@@ -17,6 +17,7 @@
     "ops:address-reactivate": "tsx --env-file-if-exists=.env src/ops/cli.ts address-reactivate",
     "ops:user-suspend": "tsx --env-file-if-exists=.env src/ops/cli.ts user-suspend",
     "ops:grant-role": "tsx --env-file-if-exists=.env src/ops/cli.ts grant-role",
+    "ops:backfill-polygon": "tsx --env-file-if-exists=.env src/ops/cli.ts backfill-polygon",
     "ops:seed-assets": "tsx --env-file-if-exists=.env src/ops/seed-assets.ts"
   },
   "dependencies": {

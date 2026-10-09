@@ -5,7 +5,7 @@ export type DescribableCode = ErrorCode | "NETWORK_ERROR" | "WALLET_REJECTED";
 
 const COPY: Record<DescribableCode, { title: string; message: string; recovery: Recovery }> = {
   VALIDATION_FAILED: { title: "Check your details", message: "Some information isn't valid. Review the highlighted fields.", recovery: "fix-input" },
-  UNSUPPORTED_CHAIN: { title: "Unsupported network", message: "Switch your wallet to Ethereum, Base, BNB Chain, Arbitrum or Solana.", recovery: "fix-input" },
+  UNSUPPORTED_CHAIN: { title: "Unsupported network", message: "Switch your wallet to Ethereum, Base, BNB Chain, Arbitrum, Polygon or Solana.", recovery: "fix-input" },
   CHALLENGE_NOT_FOUND: { title: "Sign-in request not found", message: "Start the sign-in again.", recovery: "restart" },
   CHALLENGE_EXPIRED: { title: "Sign-in request expired", message: "The request is valid for 5 minutes. Start again to get a new one.", recovery: "restart" },
   CHALLENGE_CONSUMED: { title: "Request already used", message: "This sign-in request was already used. Start again.", recovery: "restart" },

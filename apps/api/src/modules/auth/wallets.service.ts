@@ -1,6 +1,6 @@
 import bs58 from "bs58";
 import createHttpError from "http-errors";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db, investmentWallets, notificationPreferences, users, walletAddresses, type DbOrTx, type Tx } from "@repo/db";
 import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type ChainFamily, type VerificationMethod } from "@repo/validator";
 import { isAddress } from "viem";
@@ -103,4 +103,18 @@ export function addressOn(addresses: Addresses, chain: AssetChain): string {
   const a = addresses[ASSET_CHAINS[chain].family];
   if (!a) throw createHttpError(`Link a ${ASSET_CHAINS[chain].family} wallet first.`, { code: ASSET_CHAINS[chain].family === "bitcoin" ? "BTC_ADDRESS_REQUIRED" : "NOT_ELIGIBLE" });
   return a;
+}
+
+/** D-120 one-off backfill (ops script, not a migration: a new enum value cannot be used in the migration that adds it).
+ * Adds a Polygon row for every active EOA EVM address whose wallet has no active Polygon row and where (polygon, address) is free. Idempotent. */
+export async function backfillPolygon(conn: DbOrTx = db): Promise<number> {
+  const rows = await conn.execute(sql`
+    INSERT INTO "app"."wallet_addresses" ("id", "investment_wallet_id", "chain_family", "chain", "address", "status", "verification_method", "verified_on_chain", "verification_challenge_id", "verified_at", "signable_chains", "created_at")
+    SELECT gen_random_uuid(), w."investment_wallet_id", w."chain_family", 'polygon', w."address", 'active', w."verification_method", w."verified_on_chain", w."verification_challenge_id", w."verified_at", w."signable_chains", now()
+    FROM (SELECT DISTINCT ON ("investment_wallet_id", "address") * FROM "app"."wallet_addresses"
+          WHERE "chain_family" = 'evm' AND "verification_method" = 'eoa_ecdsa' AND "status" = 'active'
+          ORDER BY "investment_wallet_id", "address", "created_at") w
+    WHERE NOT EXISTS (SELECT 1 FROM "app"."wallet_addresses" p WHERE p."chain" = 'polygon' AND (p."address" = w."address" OR (p."investment_wallet_id" = w."investment_wallet_id" AND p."status" = 'active')))
+    RETURNING 1`);
+  return rows.length;
 }

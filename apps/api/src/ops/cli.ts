@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { db } from "@repo/db";
 import { chainSchema, platformRoleSchema, z } from "@repo/validator";
 import { grantRole } from "@/modules/manager-applications/platform-roles.service";
+import { backfillPolygon } from "@/modules/auth/wallets.service";
 import { disableAddress, reactivateAddress, suspendUser } from "@/modules/ops/ops.service";
 
 const [command, ...rest] = process.argv.slice(2).filter((a) => a !== "--");
@@ -20,6 +21,8 @@ try {
     console.log({ reactivated: await reactivateAddress({ chain: chainSchema.parse(values.chain), address: values.address ?? "", operator, requestId }) });
   } else if (command === "user-suspend") {
     console.log({ revokedSessions: await suspendUser({ userId: values.user ?? "", reason: values.reason ?? "", operator, requestId }) });
+  } else if (command === "backfill-polygon") {
+    console.log({ inserted: await backfillPolygon() });
   } else if (command === "grant-role") {
     if (!operator.trim()) throw new Error("operator is required");
     console.log(await grantRole({ operator, requestId }, z.uuid().parse(values.user), platformRoleSchema.parse(values.role)));
