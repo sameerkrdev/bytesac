@@ -74,6 +74,6 @@ export function useWalletVerification(purpose: ChallengePurpose) {
     }
   }, [purpose, signMessage]);
 
-  const reset = useCallback(() => { pending.current = null; setAwaitingPrevious(false); setNotice(null); dispatch({ type: "RESET" }); }, []);
+  const reset = useCallback((text?: string) => { pending.current = null; setAwaitingPrevious(false); setNotice(text ? { kind: "info", text } : null); dispatch({ type: "RESET" }); }, []);
   return { state, run, reset, notice, awaitingPrevious };
 }

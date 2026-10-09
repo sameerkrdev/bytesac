@@ -63,6 +63,8 @@ describe("reassign a chain (only when empty)", () => {
     const res = await reassign(user.h, "base");
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("CHAIN_NOT_EMPTY");
+    expect(res.body.error.details.assets).toEqual(expect.any(Array));
+    expect(res.body.error.details.assets.length).toBeGreaterThan(0);
   });
 
   it("refuses when the ledger still holds units on the chain even if the wallet reads empty", async () => {

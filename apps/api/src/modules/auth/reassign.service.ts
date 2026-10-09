@@ -18,7 +18,7 @@ const FINAL = new Set(["SIGNATURE_INVALID", "CHAIN_NOT_LINKED", "VALIDATION_FAIL
 export function assertChainEmpty(i: { openOperation: boolean; heldUnits: { symbol: string }[]; onchain: { symbol: string; amount: bigint }[] }): void {
   if (i.openOperation) throw createHttpError("Finish or cancel your current operation first.", { code: "OPERATION_IN_PROGRESS" });
   const left = [...new Set([...i.heldUnits.map((h) => h.symbol), ...i.onchain.filter((b) => b.amount > 0n).map((b) => b.symbol)])];
-  if (left.length > 0) throw createHttpError(`Sell what you hold on this chain first: ${left.join(", ")}.`, { code: "CHAIN_NOT_EMPTY", assets: left });
+  if (left.length > 0) throw createHttpError(`Sell what you hold on this chain first: ${left.join(", ")}.`, { code: "CHAIN_NOT_EMPTY", details: { assets: left } });
 }
 
 export type ReassignInput = VerifyInput & { previousSignature?: string };

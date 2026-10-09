@@ -17,7 +17,7 @@ export function ChainPicker({ walletName, address, choices, onChange }: { wallet
         <label key={c.chain} className="flex min-h-11 items-center gap-3 text-sm">
           <input type="checkbox" className="size-4 accent-[var(--c-primary)]" disabled={c.state !== "available"}
             checked={c.state === "linked-here" || picked.includes(c.chain)}
-            onChange={(e) => setPicked((p) => (e.target.checked ? [...p, c.chain] : p.filter((x) => x !== c.chain)))} aria-label={CHAINS[c.chain].label} />
+            onChange={(e) => setPicked((p) => (e.target.checked ? [...p, c.chain] : p.filter((x) => x !== c.chain)))} />
           <span>{CHAINS[c.chain].label}</span>
           {c.state === "linked-elsewhere" && <span className="text-ink-faint">{`linked to ${c.walletName ?? "another wallet"}`}</span>}
           {c.state === "linked-here" && <span className="text-ink-faint">already linked</span>}

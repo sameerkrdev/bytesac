@@ -12,10 +12,10 @@ describe("ChainPicker", () => {
       { chain: "arbitrum", state: "available", walletName: null, preselected: false },
     ]} />);
     expect(screen.getByText(/Use MetaMask/)).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Base" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Ethereum/ })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /^Base/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Ethereum.*linked to Phantom/ })).toBeDisabled();
     expect(screen.getByText("linked to Phantom")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Arbitrum" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Arbitrum/ }));
     expect(onChange).toHaveBeenLastCalledWith(["base", "arbitrum"]);
   });
 });

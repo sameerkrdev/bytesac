@@ -49,6 +49,35 @@ describe("reassign needs both wallets to sign the same challenge", () => {
     expect(h.signMessage).not.toHaveBeenCalled();
   });
 
+  it("refuses the wrong wallet for the second signature", async () => {
+    connect(NEW, "Phantom");
+    const { rerender } = render(view());
+    await userEvent.click(screen.getByRole("button", { name: "Sign message" }));
+    await screen.findByText(/Now approve in/);
+    connect("0xCCC0000000000000000000000000000000000003", "Other");
+    rerender(view());
+    await userEvent.click(screen.getByRole("button", { name: "Sign message" }));
+    expect(await screen.findByText("Connect MetaMask (0xAAA0…0001) to approve the move.")).toBeInTheDocument();
+    expect(h.signMessage).toHaveBeenCalledTimes(1);
+    expect(h.api.reassignChain).not.toHaveBeenCalled();
+  });
+
+  it("restarts cleanly when the challenge expires and says to connect the new wallet", async () => {
+    connect(NEW, "Phantom");
+    const { rerender } = render(view());
+    await userEvent.click(screen.getByRole("button", { name: "Sign message" }));
+    await screen.findByText(/Now approve in/);
+    h.api.reassignChain.mockRejectedValue(new ApiError("CHALLENGE_EXPIRED", 410, "x"));
+    connect(OLD, "MetaMask");
+    rerender(view());
+    await userEvent.click(screen.getByRole("button", { name: "Sign message" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start again" }));
+    expect(await screen.findByText("Start again: connect the wallet you want to move Base to, then sign.")).toBeInTheDocument();
+    expect(h.api.createChallenge).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "Sign message" }));
+    expect(await screen.findByText("Connect the wallet you want to move this chain to.")).toBeInTheDocument();
+  });
+
   it("shows what is still held when the chain is not empty", async () => {
     connect(NEW, "Phantom");
     const { rerender } = render(view());
@@ -71,12 +100,12 @@ describe("link with chain checkboxes", () => {
     h.api.verify.mockResolvedValue({ isNewUser: true });
     h.account = { chain: "base", address: NEW, walletName: "Phantom", signableChains: ["base", "arbitrum"] };
     render(<WalletVerification purpose="sign_in" onVerified={vi.fn()} />);
-    expect(screen.getByRole("checkbox", { name: "Ethereum" })).not.toBeChecked();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Base" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Arbitrum" }));
+    expect(screen.getByRole("checkbox", { name: /^Ethereum/ })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Base/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Arbitrum/ }));
     expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Base" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Arbitrum" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Base/ }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Arbitrum/ }));
     await userEvent.click(screen.getByRole("button", { name: "Sign message" }));
     await waitFor(() => expect(h.api.verify).toHaveBeenCalledWith(expect.objectContaining({ signableChains: ["base", "arbitrum"] })));
     expect(h.api.createChallenge).toHaveBeenCalledWith(expect.objectContaining({ chains: ["base", "arbitrum"] }));

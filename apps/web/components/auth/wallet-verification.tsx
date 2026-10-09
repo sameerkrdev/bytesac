@@ -43,7 +43,10 @@ export function WalletVerification({ purpose, onVerified, expired, linkedAddress
       signDisabled={!reassign && picked.length === 0}
       onSign={go}
       onRetry={go}
-      onRestart={() => { reset(); if (account && !reassign) void run(account, picked); }}
+      onRestart={() => {
+        if (reassign) reset(`Start again: connect the wallet you want to move ${CHAINS[reassign.chain].label} to, then sign.`);
+        else { reset(); if (account) void run(account, picked); }
+      }}
       // Mid-move the user must switch wallets, so disconnecting keeps the held signature.
       onDisconnect={() => { if (!awaitingPrevious) reset(); void wallet.disconnect(); }}
       onConnect={() => void wallet.connect()}
