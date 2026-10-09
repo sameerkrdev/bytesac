@@ -33,6 +33,14 @@ The source lists these as future expansion ideas, not initial-release commitment
 - Registry extras: manager asset proposals, Polygon and Bitcoin on-chain verification (Bitcoin data provider).
 - Basket commentary from managers to investors.
 
+### Mobile wallets (2026-10-09 device run)
+
+- **Automatic wallet switching.** A user may hold an EVM connection and a Solana connection from different wallet apps (MetaMask + Phantom). Today `useSigner` refuses a leg with `WRONG_WALLET` unless the active AppKit connection matches the leg's family, so the user switches by hand (Choose network / Use a different wallet). Plan: before each leg, switch the active AppKit namespace to the leg's family when that connection exists, and show "Reconnect your Solana/EVM wallet" only when it does not. Verify cross-namespace switching on device first (reown-com/appkit#5095 reports failures on web).
+- **Reown Multi Wallet (paid AppKit feature).** Keeps several wallets connected inside one AppKit session; evaluate cost, React Native support and whether it replaces the manual switching above.
+- **Wallet chain hints.** Show per wallet in the connect list whether it signs EVM, Solana or both (WalletConnect registry: MetaMask, Rainbow, Uniswap, Zerion, Rabby EVM only; Trust, OKX, Bitget, Binance, Exodus, SafePal, Backpack, Ledger both; Phantom and Solflare through their own deeplink connectors), so users pick a multichain wallet up front.
+- **MetaMask Solana.** Either wait for MetaMask Mobile's Solana WalletConnect adapter (no client change needed: Bytesac already proposes `solana`) or add the MetaMask Connect SDK (CAIP-25 multichain) next to Reown for MetaMask only; the latter needs an ADR (D-041).
+- **Solana devnet in the proposal.** The AppKit `solana` network also proposes devnet (`solana:4sGjMW1s…`); check and remove before Solana transaction work.
+
 ### RWAs and eligibility (deferred from Spec 11)
 
 - Issuer subscription and redemption routes with asynchronous settlement states (`ELIGIBILITY_PENDING`, `SETTLEMENT_PENDING`, `ISSUANCE_PENDING`, `REDEEMING`, `SETTLED`, `REJECTED`, `CANCELLED`), redemption windows, lockups and fees, and removed-RWA disposition in rebalances (retain as legacy or wait for the window; never a fictional instant sell). Release 1 supports secondary-market RWA tokens through LI.FI only.

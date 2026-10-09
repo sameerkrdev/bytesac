@@ -188,6 +188,9 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 
 - [ ] Logo (2026-10-06): the wordmark outlines have no kerning applied (Geist kerning pairs are not read); review the tight pairs (By, ty) at large sizes. Register the mark with the app stores and update any third-party profiles (WalletConnect metadata now points to the square `logo.png`).
 
+- [ ] Mobile multi-wallet UX (2026-10-09 device run): MetaMask Mobile approves only `eip155` over WalletConnect (metamask-mobile PRs #31616/#35836 closed unmerged), so MetaMask users link a second wallet for Solana through Add chain account; a two-wallet user switches wallets between invest (Solana) and EVM sells. Follow-ups in FUTURE-PLANS "Mobile wallets". The Reown dashboard feature toggles are ignored by the React Native SDK: features are set in `createAppKit`.
+- [ ] Mobile dev setup (2026-10-09): Android dev client via EAS (`development` profile, APK) + platform-tools only; `adb reverse` for 8081 (Metro) and 4000 (API), `EXPO_PUBLIC_API_URL=http://localhost:4000` on a USB device (`10.0.2.2` is emulator-only). WalletConnect's `setDefaultChain` unhandled rejection after a MetaMask connect (universal-provider 2.21.10, fixed upstream in 2.26.0, pinned by Reown 2.0.6) is a dev-only red box; remove when Reown moves to 2.26+.
+
 ## 8. Open decisions in the register
 
 - [ ] D-025 eligibility rule values and D-026 issuer routes: the engine and secondary-market tokens are decided (ADR-018); legal policy values and issuer subscription/redemption remain open.
