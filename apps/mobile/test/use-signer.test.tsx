@@ -155,7 +155,9 @@ describe("useSigner (AppKit React Native adapter)", () => {
     mockState.appkit = { address: SOL, namespace: "solana", chain: undefined, allAccounts: [{ namespace: "solana" }, { namespace: "eip155" }] } as never;
     mockState.send.mockResolvedValue("0xmain");
     mockState.switchNetwork.mockImplementation(async () => {});
-    await (await getSigner()).sendEvm({ ...evmTx, approval: null }).catch(() => undefined);
+    mockState.evm = { isConnected: true, address: EVM_B, chainId: 8453 };
+    await expect((await getSigner()).sendEvm({ ...evmTx, approval: null })).rejects.toBeInstanceOf(WrongWalletError);
+    expect(mockState.send).not.toHaveBeenCalled();
     expect(mockState.switchNetwork).toHaveBeenCalledWith("eip155:8453");
   });
 

@@ -49,7 +49,7 @@ export function useWalletConnector() {
     network,
     connect: () => open({ view: "Connect" }),
     chooseNetwork: () => open({ view: "Networks" }),
-    /** Drops one family's connection; without a namespace every connection goes. */
+    /** Drops one family's connection; without a namespace AppKit 2.0.6 closes only the active namespace. */
     disconnect: async (namespace?: Parameters<typeof disconnect>[0]) => { await disconnect(namespace); },
     switchToSupported: async () => { await switchNetwork("eip155:1"); },
     signMessage,
