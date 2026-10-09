@@ -125,6 +125,18 @@ describe("link exactly the ticked chains (D-120)", () => {
     expect((await db.select().from(sessions)).length).toBe(before);
   });
 
+  it("a contract wallet signing on a chain where the address is not linked never reaches the account holding it elsewhere", async () => {
+    fakes.evm.behavior = "valid";
+    const sw = { address: "0x" + "ab".repeat(20), sign: () => "0x" + "11".repeat(100) };
+    await signIn(app, sw, "base");
+    const before = (await db.select().from(sessions)).length;
+    const res = await link(sw, "ethereum", undefined);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("ADDRESS_ALREADY_LINKED");
+    expect((await db.select().from(sessions)).length).toBe(before);
+    expect(await active()).toHaveLength(1);
+  });
+
   it("a smart wallet links one chain at a time", async () => {
     fakes.evm.behavior = "valid";
     const sw = { address: "0x" + "ab".repeat(20), sign: () => "0x" + "11".repeat(100) };

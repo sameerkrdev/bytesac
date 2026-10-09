@@ -194,12 +194,16 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
     let userId: string;
     let isNewUser = false;
     // One key = one account: the owner is whoever holds this address on ANY chain of its family, not just the connected one.
-    const found = await addressRows(tx, ch.address, familyOf(ch.chain));
+    // A contract-wallet signature proves control on the verified chain only: its owner is judged by (chain, address), and a
+    // contract address held only on other chains is never merged into that account nor given a second one.
+    const scope = (rs: Awaited<ReturnType<typeof addressRows>>) => (multiChain ? rs : rs.filter((r) => r.chain === ch.chain));
+    const found = scope(await addressRows(tx, ch.address, familyOf(ch.chain)));
+    if (found.length === 0 && !multiChain && (await addressRows(tx, ch.address, familyOf(ch.chain))).length > 0) throw addressLinked();
     if (found.length > 0) {
       const target = (found.find((r) => r.status === "active") ?? found[0]!);
       // Lock the wallet, then judge status on a fresh read so a concurrent disable/reassign cannot yield a session.
       await tx.select({ id: investmentWallets.id }).from(investmentWallets).where(eq(investmentWallets.id, target.walletId)).for("update");
-      const fresh = await addressRows(tx, ch.address, familyOf(ch.chain));
+      const fresh = scope(await addressRows(tx, ch.address, familyOf(ch.chain)));
       const owner = fresh.find((r) => r.status === "active" && r.walletId === target.walletId);
       if (!owner) throw addressInactive(fresh.some((r) => r.status === "replaced") ? "replaced" : "disabled");
       if (owner.userStatus !== "active") throw createHttpError("This account is not active", { code: "USER_NOT_ACTIVE" });
@@ -297,9 +301,10 @@ async function linkMissing(tx: Tx, walletId: string, ch: ChallengeRow, rows: New
 
 /** Every row of this address in its chain family, with the owning wallet and user. */
 async function addressRows(tx: Tx, address: string, family: ChainFamily) {
-  return tx.select({ userId: users.id, userStatus: users.status, walletId: investmentWallets.id, status: walletAddresses.status })
+  return tx.select({ userId: users.id, userStatus: users.status, walletId: investmentWallets.id, chain: walletAddresses.chain, status: walletAddresses.status })
     .from(walletAddresses)
     .innerJoin(investmentWallets, eq(investmentWallets.id, walletAddresses.investmentWalletId))
     .innerJoin(users, eq(users.id, investmentWallets.userId))
-    .where(and(eq(walletAddresses.address, address), eq(walletAddresses.chainFamily, family)));
+    .where(and(eq(walletAddresses.address, address), eq(walletAddresses.chainFamily, family)))
+    .orderBy(sql`(${walletAddresses.status} = 'active') desc`, walletAddresses.createdAt, walletAddresses.id);
 }
