@@ -163,6 +163,19 @@ Rulings made while building (no question asked; product truths unchanged):
 
 ---
 
+## Mobile wallets and chain coverage (2026-10-09)
+
+Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phantom-class wallets.
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Patch WalletConnect `setDefaultChain` crash | pnpm patch (rec.) · override to 2.26 · leave | Patch, then **remove it** | Dev-only red box accepted; noted in OPEN-ITEMS |
+| 2 | MetaMask has no Solana on mobile | Keep Reown + link a second wallet (rec.) · WalletConnect only · add MetaMask Connect | **Keep Reown; no MetaMask-only fix** (it would not help other wallets) | Add chain account guidance shipped (`a3d3f7f`); Reown Multi Wallet (paid) in FUTURE-PLANS |
+| 3 | Reduce wallet switching | Auto-switch namespace (rec.) · multichain-wallet hints · one-time setup | **One-time setup + fixes now**; Multi Wallet later | Shipped with #2 |
+| 4 | Basket chain not signable by the wallet (Phantom + Arbitrum) | Warn and allow (rec.) · block · plan only | **Plan only**, options explained | Design in FUTURE-PLANS "Mobile wallets" |
+| 5 | How do Arbitrum tokens reach a Phantom user? | (clarification) | Explained: an EOA has the same address on every EVM chain; ADR-004 registers all four EVM chains from one signature | Verify Phantom phrase import gives the same EVM address |
+| 6 | D-119 policy | Warn and allow (rec.) · block · keep open | **Warn and allow** | D-119 APPROVED; not built. Reown Multi Wallet researched: web-only today, does not solve D-119 |
+
 ## Roadmap decisions
 
 - 2026-10-02: rebalance (Spec 9) before fees (Spec 10); then RWAs (Spec 11).
