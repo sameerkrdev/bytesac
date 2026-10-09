@@ -29,11 +29,11 @@ beforeEach(resetDb);
 afterEach(() => vi.restoreAllMocks());
 
 /** An IN_PROGRESS operation of `kind` with a settled network fee and one asset leg that is PENDING_CHAIN with a finalized source; `legSpec` shapes the asset leg. */
-async function arrange(kind: Kind = "invest", leg: "buy" | "sell" = "buy") {
+async function arrange(kind: Kind = "invest", leg: "buy" | "sell" = "buy", evmByChain?: Record<string, string>) {
   const chain = mockChains();
   await seedPlatformWallets();
   const basket = await seedBasket({ assets: [SOL, TKN] });
-  const user = await seedUser({ wallet: solanaTestWallet() });
+  const user = await seedUser({ wallet: solanaTestWallet(), evmByChain });
   const tkn = basket.deployments[1];
   const positionId = kind === "invest" || kind === "repair" ? null : await seedPosition(user.userId, basket, [{ deploymentId: tkn!.deploymentId, quantity: 1_000_000n }]);
   if (kind === "rebalance" && leg === "buy") await seedCash(user.userId, basket, positionId!, 100_000_000n);
@@ -83,6 +83,21 @@ async function settleRecovery(a: Awaited<ReturnType<typeof arrange>>, recoveryId
 }
 
 describe("recovery after a failed destination swap", () => {
+  it("D-120: the delivered amount is evidenced at the destination chain's own address, not another chain's address of the user", async () => {
+    const base = "0x" + "aa".repeat(20), arbitrum = "0x" + "cc".repeat(20);
+    const a = await arrange("invest", "buy", { ethereum: "0x" + "bb".repeat(20), base, arbitrum });
+    const deliver = (to: string) => {
+      fakes.evm.receipts.set("0xdest", { success: true, blockNumber: 100n, head: 1000n, logs: [{ address: DELIVERED, topics: [TRANSFER_TOPIC, pad("0x" + "22".repeat(20)), pad(to)], data: "0x" + (299_000_000n).toString(16) }] });
+      a.chain.lifiStatus.set("sig-bridge", { state: "UNKNOWN", reason: "partial", substatus: "PARTIAL", receiving: { txHash: "0xdest", token: { address: DELIVERED, decimals: 6, symbol: "USDC" } } } as never);
+    };
+    deliver(arbitrum); // arrived at the user's Arbitrum address: nothing for Base
+    await trackLeg(a.assetId);
+    expect((await legs(a.opId)).map((l) => l.status)).toEqual(["SETTLED", "UNKNOWN"]);
+    deliver(base);
+    await trackLeg(a.assetId, 1);
+    expect((await legs(a.opId)).map((l) => l.status)).toEqual(["SETTLED", "FAILED", "PLANNED"]);
+  });
+
   it("PARTIAL with chain evidence: the leg fails DESTINATION_SWAP_FAILED, a recovery swap is appended from the evidenced amount (299, not the provider's 300), the operation stays open", async () => {
     const a = await arrange();
     partial(a, 299_000_000n, { providerAmount: "300000000" });

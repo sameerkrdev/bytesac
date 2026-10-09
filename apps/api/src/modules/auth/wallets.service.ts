@@ -104,7 +104,7 @@ export async function userAddresses(db: DbOrTx, userId: string): Promise<Address
 export function addressOn(addresses: Addresses, chain: AssetChain): string {
   const a = addresses[chain];
   if (a) return a;
-  if (chain === "bitcoin") throw createHttpError(409, "Link a bitcoin wallet first.", { code: "BTC_ADDRESS_REQUIRED" });
+  if (chain === "bitcoin") throw createHttpError(409, "Link a Bitcoin wallet first.", { code: "BTC_ADDRESS_REQUIRED" });
   throw createHttpError(409, `Link a wallet for ${ASSET_CHAINS[chain].label} first.`, { code: "CHAIN_NOT_LINKED" });
 }
 

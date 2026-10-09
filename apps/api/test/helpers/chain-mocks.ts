@@ -31,7 +31,7 @@ export interface ChainState {
   lifiStatus: Map<string, LegStatus>;
   /** Balance-free estimates asked for (rebalance buys, balance-refused quotes). */
   estimates: Array<{ fromChain: string; toChain: string; fromAmount: bigint; fromToken: string | null; toToken: string | null }>;
-  quotes: Array<{ fromChain: string; toChain: string; fromAmount: bigint; toAddress: string; svmSponsor?: string }>;
+  quotes: Array<{ fromChain: string; toChain: string; fromAmount: bigint; fromAddress: string; toAddress: string; svmSponsor?: string }>;
   /** Overrides applied to the next fresh quotes: scale the output (price move) or add gas. */
   quoteOut: { numerator: bigint; denominator: bigint };
   broadcasts: string[];
@@ -80,7 +80,7 @@ export function mockChains(): ChainState {
     return { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", transaction: null, gasEstimateUsd: 0.05, gasNative: 5_000n, nativePriceUsd: null, priceImpact: null, routeFees: [] };
   });
   vi.spyOn(lifi, "quote").mockImplementation(async (i) => {
-    state.quotes.push({ fromChain: i.fromChain, toChain: i.toChain, fromAmount: i.fromAmount, toAddress: i.toAddress, svmSponsor: i.svmSponsor });
+    state.quotes.push({ fromChain: i.fromChain, toChain: i.toChain, fromAmount: i.fromAmount, fromAddress: i.fromAddress, toAddress: i.toAddress, svmSponsor: i.svmSponsor });
     const out = (i.fromAmount * state.quoteOut.numerator) / state.quoteOut.denominator;
     const base = { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", gasEstimateUsd: 0.05, nativePriceUsd: null, priceImpact: null, routeFees: [], expiresAt: new Date(Date.now() + 60_000), approvalAddress: null };
     if (i.fromChain === "solana") {
