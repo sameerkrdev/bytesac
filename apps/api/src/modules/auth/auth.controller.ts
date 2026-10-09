@@ -44,7 +44,7 @@ export const verifySignature = async (req: Request, res: Response, next: NextFun
     const body = req.body as VerifyRequest;
     await consume(limits.verifyIp, req.ctx.ip);
     const result = await signInService.verifyChallenge({
-      challengeId: body.challengeId, signature: body.signature, walletProvider: body.walletProvider,
+      challengeId: body.challengeId, signature: body.signature, walletProvider: body.walletProvider, signableChains: body.signableChains,
       client: body.client, auth: req.auth, meta: req.ctx,
     });
     respondVerified(res, result);

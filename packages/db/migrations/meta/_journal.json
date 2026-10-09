@@ -148,6 +148,13 @@
       "when": 1791181463378,
       "tag": "0020_mobile_push",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791547505265,
+      "tag": "0021_signable_chains",
+      "breakpoints": true
     }
   ]
 }

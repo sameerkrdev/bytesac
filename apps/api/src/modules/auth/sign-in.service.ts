@@ -4,7 +4,7 @@ import { and, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { authChallenges, challengePurpose, db, investmentWallets, isUniqueViolation, sessions, type Tx } from "@repo/db";
 import {
   chainsInFamily, familyOf,
-  type Chain, type ChallengeResponse, type ClientKind, type VerificationMethod,
+  type AssetChain, type Chain, type ChallengeResponse, type ClientKind, type VerificationMethod,
 } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import type { AuthContext } from "@/middlewares/auth.middleware";
@@ -17,7 +17,7 @@ import { createSession, revokeSession, type IssuedSession } from "./sessions.ser
 import { buildSignInMessage } from "./sign-in-message.service";
 import { verifyBitcoinProof } from "@/providers/bitcoin";
 import { verifyEvmSignature, verifySolanaSignature, type VerifyOutcome } from "./signatures.service";
-import { addressesForWallet, canonicalizeAddress, createUserWithWallet, findAddressOwner, insertAddresses, type NewAddressRow } from "./wallets.service";
+import { addressesForWallet, canonicalizeAddress, createUserWithWallet, findAddressOwner, insertAddresses, recordSignableChains, type NewAddressRow } from "./wallets.service";
 
 export type ChallengeRow = typeof authChallenges.$inferSelect;
 type DbPurpose = (typeof challengePurpose.enumValues)[number];
@@ -111,6 +111,8 @@ export interface VerifyInput {
   challengeId: string;
   signature: string;
   walletProvider?: string;
+  /** D-119: chains the wallet approved (client-reported); omitted = unknown, existing value kept. */
+  signableChains?: AssetChain[];
   client: ClientKind;
   auth?: AuthContext;
   meta: RequestMeta;
@@ -190,6 +192,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
         metadata: { chain: ch.chain, address: ch.address, method, chains: rows.map((r) => r.chain) },
       });
     }
+    await recordSignableChains(tx, ch.chain, ch.address, input.signableChains);
     await grantIfProven(tx, { userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
     await linkInvitesIfProven(tx, { userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
     const issued = await createSession(tx, { userId, client: input.client, pepper: env.SESSION_TOKEN_PEPPER, meta: input.meta });
@@ -203,6 +206,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   if (owner) {
     if (owner.userId !== auth.userId) throw addressLinked();
     if (owner.status === "disabled") throw addressDisabled();
+    await recordSignableChains(tx, ch.chain, ch.address, input.signableChains);
     return { userId: auth.userId, isNewUser: false, issued: null }; // idempotent: no rotation
   }
   // Row-lock the active wallet to serialize concurrent address additions for one user.
@@ -217,6 +221,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   const have = new Set(existing.filter((a) => a.address === ch.address).map((a) => a.chain));
   const toInsert = rows.filter((r) => !have.has(r.chain));
   await insertAddresses(tx, wallet.id, toInsert);
+  await recordSignableChains(tx, ch.chain, ch.address, input.signableChains);
   await grantIfProven(tx, { userId: auth.userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
   await linkInvitesIfProven(tx, { userId: auth.userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
   await writeAudit(tx, {

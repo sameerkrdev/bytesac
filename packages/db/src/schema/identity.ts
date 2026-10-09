@@ -93,6 +93,8 @@ export const walletAddresses = app.table(
     verifiedAt: ts("verified_at").notNull().defaultNow(),
     disabledAt: ts("disabled_at"),
     disabledReason: text("disabled_reason"),
+    /** D-119: asset chains the wallet approved when it last signed for this address (client-reported, warnings only); null = unknown. */
+    signableChains: text("signable_chains").array(),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [

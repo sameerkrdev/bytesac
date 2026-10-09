@@ -67,6 +67,18 @@ export async function insertAddresses(tx: Tx, walletId: string, rows: NewAddress
   })));
 }
 
+/**
+ * D-119: store the chains the wallet approved on every row of this address in its family (an EOA has one row per EVM chain).
+ * Chains of other families are dropped; `undefined` (unknown) keeps the current value. Client-reported: drives warnings only.
+ */
+export async function recordSignableChains(tx: Tx, chain: Chain, address: string, reported: readonly AssetChain[] | undefined): Promise<void> {
+  if (!reported) return;
+  const family = familyOf(chain);
+  const chains = [...new Set(reported.filter((c) => ASSET_CHAINS[c].family === family))];
+  await tx.update(walletAddresses).set({ signableChains: chains })
+    .where(and(eq(walletAddresses.address, address), eq(walletAddresses.chainFamily, family)));
+}
+
 export async function createUserWithWallet(tx: Tx, i: { walletProvider?: string; rows: NewAddressRow[] }): Promise<string> {
   const [user] = await tx.insert(users).values({ status: "active" }).returning({ id: users.id });
   const [wallet] = await tx.insert(investmentWallets).values({ userId: user!.id, status: "active", walletProvider: i.walletProvider ?? null })

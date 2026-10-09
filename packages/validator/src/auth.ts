@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assetChainSchema } from "./assets";
 import { signInChainSchema } from "./chains";
 
 export const clientKindSchema = z.enum(["web", "mobile"]);
@@ -26,6 +27,8 @@ export const verifyRequestSchema = z.strictObject({
   /** EVM: 0x-prefixed hex. Solana: base58 of the 64-byte ed25519 signature. */
   signature: z.string().min(1).max(20_000),
   walletProvider: z.string().trim().max(64).optional(),
+  /** D-119: chains the connected wallet approved (e.g. the WalletConnect session); omitted when unknown. Used only for warnings. */
+  signableChains: z.array(assetChainSchema).max(20).optional(),
   client: clientKindSchema,
 });
 export type VerifyRequest = z.infer<typeof verifyRequestSchema>;

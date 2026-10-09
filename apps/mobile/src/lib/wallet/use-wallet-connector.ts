@@ -1,4 +1,4 @@
-import { chainFromCaip, isUserRejection, WalletRejectedError, type ConnectedAccount, assertSolanaSignature } from "@repo/app-core";
+import { chainFromCaip, isUserRejection, signableChainsFromCaip, WalletRejectedError, type ConnectedAccount, assertSolanaSignature } from "@repo/app-core";
 import { useAccount, useAppKit, useProvider, useWalletInfo } from "@reown/appkit-react-native";
 import bs58 from "bs58";
 import { useCallback, useMemo } from "react";
@@ -8,7 +8,7 @@ export type { ConnectedAccount };
 
 export function useWalletConnector() {
   const { open, disconnect, switchNetwork } = useAppKit();
-  const { address, chainId, isConnected, namespace } = useAccount();
+  const { address, chainId, isConnected, namespace, allAccounts } = useAccount();
   const { provider } = useProvider();
   const { walletInfo } = useWalletInfo();
   const { signMessageAsync } = useSignMessage();
@@ -18,9 +18,14 @@ export function useWalletConnector() {
   const network: "supported" | "unsupported" | "none" = !isConnected || mapped === null ? "none" : mapped === "unsupported" ? "unsupported" : "supported";
   const chain = isConnected && address && mapped && mapped !== "unsupported" ? mapped : null;
   const walletName = walletInfo?.name ?? null;
+  // D-119: every chain the connection approved for this address (one CAIP-10 account per chain), reported at verify.
+  const signableChains = useMemo(
+    () => signableChainsFromCaip(allAccounts.filter((a) => a.address.toLowerCase() === address?.toLowerCase()).map((a) => `${a.namespace}:${a.chainId}`)),
+    [allAccounts, address],
+  );
   const account: ConnectedAccount | null = useMemo(
-    () => (chain && address ? { chain, address, walletName } : null),
-    [chain, address, walletName],
+    () => (chain && address ? { chain, address, walletName, signableChains } : null),
+    [chain, address, walletName, signableChains],
   );
 
   const signMessage = useCallback(async (message: string): Promise<string> => {

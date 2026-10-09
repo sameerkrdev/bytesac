@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { ChainCoverageNotice, useUncoveredChains } from "@/components/invest/chain-coverage";
 
 /** Amount, slippage, preview, then signing leg by leg. */
 export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open, onOpenChange }: {
@@ -26,6 +27,8 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [plan, setPlan] = useState<OperationView | null>(null);
   const [signing, setSigning] = useState(false);
+  const uncovered = useUncoveredChains(plan);
+  const [chainAck, setChainAck] = useState(false);
 
   const bps = Math.round(Number(slippage) * 100);
   const problem = investAmountProblem(amount, minimumUsdc, incrementUsdc);
@@ -47,8 +50,9 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
             <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying />)}</ol>
             <FeeLines fees={plan.fees} />
             <p className="text-sm text-ink-muted">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
+            <ChainCoverageNotice plan={plan} acknowledged={chainAck} onAcknowledge={setChainAck} />
             <div className="flex flex-wrap gap-3">
-              <Button  onClick={() => setSigning(true)}>Continue to signing</Button>
+              <Button disabled={uncovered.length > 0 && !chainAck} onClick={() => setSigning(true)}>Continue to signing</Button>
               <Button variant="secondary"  disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
             </div>
           </div>

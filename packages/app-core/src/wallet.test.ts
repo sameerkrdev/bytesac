@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAddChainAccount, chainFromCaip, isUserRejection } from "./wallet";
+import { canAddChainAccount, chainFromCaip, isUserRejection, signableChainsFromCaip, uncoveredChains } from "./wallet";
 
 describe("chainFromCaip", () => {
   it("maps supported networks", () => {
@@ -33,4 +33,32 @@ it("canAddChainAccount", () => {
   expect(canAddChainAccount(me([addr("base", "evm", "eoa_ecdsa"), addr("solana", "solana", "ed25519")]))).toBe(false);
   expect(canAddChainAccount(me([addr("base", "evm", "erc1271"), addr("solana", "solana", "ed25519")]))).toBe(true);
   expect(canAddChainAccount(me([addr("solana", "solana", "ed25519")]))).toBe(true);
+});
+
+describe("signableChainsFromCaip (D-119)", () => {
+  it("maps approved mainnet chains, drops unknown and testnets, dedupes", () => {
+    expect(signableChainsFromCaip([
+      "eip155:1", "eip155:8453", "eip155:56", "eip155:42161", "eip155:137", "eip155:1",
+      "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "solana:4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZ", "eip155:10", "bip122:000000000019d6689c085ae165831e93",
+    ])).toEqual(["ethereum", "base", "bnb", "arbitrum", "polygon", "solana"]);
+  });
+});
+
+describe("uncoveredChains (D-119)", () => {
+  const evm = (signableChains: string[] | null) => ["ethereum", "base", "bnb", "arbitrum"].map((chain) => ({ chain, chainFamily: "evm", status: "active", signableChains }));
+  const sol = (signableChains: string[] | null) => [{ chain: "solana", chainFamily: "solana", status: "active", signableChains }];
+
+  it("lists the chains the wallet cannot sign, once each, in plan order", () => {
+    const addresses = [...evm(["ethereum", "base", "polygon"]), ...sol(["solana"])] as Parameters<typeof uncoveredChains>[1];
+    expect(uncoveredChains(["solana", "arbitrum", "base", "bnb", "arbitrum", "polygon"], addresses)).toEqual(["arbitrum", "bnb"]);
+  });
+
+  it("an unknown list (null) never warns", () => {
+    expect(uncoveredChains(["arbitrum", "solana"], [...evm(null), ...sol(null)] as Parameters<typeof uncoveredChains>[1])).toEqual([]);
+  });
+
+  it("ignores disabled rows and families with no linked address", () => {
+    const addresses = evm(["ethereum"]).map((a) => ({ ...a, status: "disabled" })) as Parameters<typeof uncoveredChains>[1];
+    expect(uncoveredChains(["arbitrum"], addresses)).toEqual([]);
+  });
 });

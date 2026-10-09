@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import createHttpError from "http-errors";
 import { contacts, db, investmentWallets, userPermissions, users } from "@repo/db";
-import { familyOf, type MeResponse } from "@repo/validator";
+import { familyOf, type AssetChain, type MeResponse } from "@repo/validator";
 import { contactView } from "@/modules/contacts/contacts.service";
 import { listMyOrganizations } from "@/modules/organizations/organizations.service";
 import { activeRoles } from "@/modules/manager-applications/platform-roles.service";
@@ -23,6 +23,7 @@ export async function getMe(userId: string): Promise<MeResponse> {
       addresses: addresses.map((a) => ({
         chain: a.chain, chainFamily: familyOf(a.chain), address: a.address, status: a.status,
         verificationMethod: a.verificationMethod, verifiedAt: a.verifiedAt.toISOString(),
+        signableChains: (a.signableChains as AssetChain[] | null) ?? null,
       })),
     },
     contacts: current.map(contactView),

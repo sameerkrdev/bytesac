@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { assetChainSchema } from "./assets";
 import { chainFamilySchema, chainSchema } from "./chains";
 import { clientKindSchema } from "./auth";
 import { contactViewSchema } from "./contacts";
@@ -15,6 +16,8 @@ export const walletAddressViewSchema = z.object({
   status: z.enum(["active", "disabled"]),
   verificationMethod: verificationMethodSchema,
   verifiedAt: z.iso.datetime({ offset: true }),
+  /** D-119: chains the wallet can sign for this address; null = unknown. */
+  signableChains: z.array(assetChainSchema).nullish(),
 });
 export type WalletAddressView = z.infer<typeof walletAddressViewSchema>;
 

@@ -17,6 +17,7 @@ import { ChainBadge } from "@/components/visual/chain-badge";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { ChainCoverageNotice, useUncoveredChains } from "@/components/invest/chain-coverage";
 
 const STEPS = ["Amount", "Review the plan", "Authorize in your wallet", "Done"] as const;
 const SLIPPAGES = ["0.5", "1", "2", "3"];
@@ -67,6 +68,8 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
   const [plan, setPlan] = useState<OperationView | null>(null);
   const [signing, setSigning] = useState(false);
   const [understood, setUnderstood] = useState(false);
+  const uncovered = useUncoveredChains(plan);
+  const [chainAck, setChainAck] = useState(false);
 
   const bps = Math.round(Number(slippage) * 100);
   const problem = investAmountProblem(amount, v.minimumInvestmentUsdc, v.minimumIncrementUsdc);
@@ -119,12 +122,13 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
               <p className="text-sm text-ink-muted">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
             </div>
             <div className="rounded-card border border-line bg-surface p-5"><FeeLines fees={plan.fees} /></div>
+            <ChainCoverageNotice plan={plan} acknowledged={chainAck} onAcknowledge={setChainAck} />
             <label className="flex cursor-pointer gap-3 rounded-tile border border-line bg-surface-muted p-4 text-sm text-ink">
               <input type="checkbox" className="mt-0.5 size-4 accent-[var(--c-primary)]" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
               <span>I&apos;ll sign each step in my own wallet. If the operation doesn&apos;t complete, fees already paid are not refunded and what settled stays in my wallet.</span>
             </label>
             <div className="flex flex-wrap gap-2">
-              <Button size="lg" disabled={!understood} onClick={() => setSigning(true)}><PenLine aria-hidden />Continue to signing</Button>
+              <Button size="lg" disabled={!understood || (uncovered.length > 0 && !chainAck)} onClick={() => setSigning(true)}><PenLine aria-hidden />Continue to signing</Button>
               <Button variant="secondary" size="lg" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
             </div>
           </section>

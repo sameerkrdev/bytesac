@@ -1,7 +1,10 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { operation, renderApp } from "./invest-fixtures";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render } from "@testing-library/react";
+import { MeProvider } from "@/components/me-context";
+import { buyLeg, feeLeg, me, operation, renderApp } from "./invest-fixtures";
 
 const api = { investPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn() };
 vi.mock("@/lib/api", () => ({ api: { investPlan: (b: unknown) => api.investPlan(b), cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id) } }));
@@ -56,6 +59,20 @@ describe("InvestWizard", () => {
     expect(screen.getByText("1. Fees")).toBeInTheDocument();
     expect(screen.getByText("2. Buy ETH")).toBeInTheDocument();
     expect(screen.getByText("99.93 USDC → about 0.03 ETH (at least 0.0297 ETH)")).toBeInTheDocument();
+  });
+
+  it("D-119: warns about a chain the wallet cannot sign and needs an acknowledgement before signing", async () => {
+    const evm = (chain: "ethereum" | "base" | "bnb" | "arbitrum") => ({ chain, chainFamily: "evm" as const, address: "0xabc", status: "active" as const, verificationMethod: "eoa_ecdsa" as const, verifiedAt: "2026-10-01T00:00:00.000Z", signableChains: ["ethereum" as const, "base" as const] });
+    const user = { ...me(), wallet: { ...me().wallet, addresses: (["ethereum", "base", "bnb", "arbitrum"] as const).map(evm) } };
+    api.investPlan.mockResolvedValue(operation({ legs: [feeLeg(), buyLeg({ toChain: "arbitrum" })] }));
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MeProvider initial={user}>
+      <InvestWizard basketId="b" name="Core Crypto" minimumUsdc="250" incrementUsdc="50" open onOpenChange={() => undefined} />
+    </MeProvider></QueryClientProvider>);
+    await userEvent.click(preview());
+    expect(await screen.findByText("Your wallet can't sign on Arbitrum")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue to signing" })).toBeDisabled();
+    await userEvent.click(screen.getByLabelText("I understand that selling assets on Arbitrum needs another wallet."));
+    expect(screen.getByRole("button", { name: "Continue to signing" })).toBeEnabled();
   });
 
   it("going back discards the plan so another can be made", async () => {

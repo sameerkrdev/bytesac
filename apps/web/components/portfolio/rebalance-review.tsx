@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { PageHeader } from "@/components/layout/page-layout";
 import { LoadingState } from "@/components/layout/states";
+import { ChainCoverageNotice } from "@/components/invest/chain-coverage";
 
 const Legs = ({ title, legs, buying, note }: { title: string; legs: Leg[]; buying: boolean; note?: string }) => legs.length === 0 ? null : (
   <div className="space-y-3">
@@ -117,6 +118,7 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
               {feeLeg && <div className="space-y-2 rounded-tile bg-surface-muted p-4"><FeeLines fees={plan.fees} /><p className="text-xs text-ink-muted">Fees are {fromCash ? "paid from this basket's sale proceeds" : "paid from your free USDC"}.</p></div>}
               <Legs title="Buys" legs={plan.legs.filter((l) => l.toDeploymentId)} buying note="Buy amounts are resized to what your sales actually return." />
               <p className="text-sm text-ink-muted">Outputs are estimates, protected by a minimum per step ({SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.</p>
+              <ChainCoverageNotice plan={plan} />
               <div className="flex flex-wrap gap-2">
                 <Button size="lg" onClick={() => setSigning(true)}><PenLine aria-hidden />Continue to signing</Button>
                 <Button variant="secondary" size="lg" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>

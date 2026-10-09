@@ -33,6 +33,28 @@ describe("Invest wizard (mobile)", () => {
     jest.spyOn(Linking, "openURL").mockResolvedValue(true);
   });
 
+  it("D-119: warns about a chain the wallet cannot sign and gates signing on an explicit acknowledgement", async () => {
+    const evm = (chain: string) => ({ chain, chainFamily: "evm", address: "0xabc", status: "active", verificationMethod: "eoa_ecdsa", verifiedAt: "2026-10-01T00:00:00.000Z", signableChains: ["ethereum", "base"] });
+    mockApi.me.mockResolvedValue({ wallet: { addresses: ["ethereum", "base", "bnb", "arbitrum"].map(evm) } });
+    mockApi.investPlan.mockResolvedValue(operation({ legs: [leg({ kind: "cross_chain", fromChain: "solana", toChain: "arbitrum" })] }));
+    await wizard();
+    await fireEvent.press(screen.getByRole("button", { name: "Get preview" }));
+    expect(await screen.findByText("Your wallet can't sign on Arbitrum")).toBeOnTheScreen();
+    const go = screen.getByRole("button", { name: "Continue to signing" });
+    expect(go).toBeDisabled();
+    await fireEvent(screen.getByLabelText("I understand that selling assets on Arbitrum needs another wallet"), "valueChange", true);
+    expect(screen.getByRole("button", { name: "Continue to signing" })).toBeEnabled();
+  });
+
+  it("D-119: no warning when the wallet's chain list is unknown", async () => {
+    mockApi.me.mockResolvedValue({ wallet: { addresses: [{ chain: "arbitrum", chainFamily: "evm", address: "0xabc", status: "active", verificationMethod: "eoa_ecdsa", verifiedAt: "2026-10-01T00:00:00.000Z", signableChains: null }] } });
+    mockApi.investPlan.mockResolvedValue(operation({ legs: [leg({ kind: "cross_chain", fromChain: "solana", toChain: "arbitrum" })] }));
+    await wizard();
+    await fireEvent.press(screen.getByRole("button", { name: "Get preview" }));
+    expect(await screen.findByRole("button", { name: "Continue to signing" })).toBeEnabled();
+    expect(screen.queryByText(/can't sign on/)).toBeNull();
+  });
+
   it("validates the amount before any plan is requested", async () => {
     await wizard();
     await fireEvent.changeText(screen.getByLabelText("Amount (USDC on Solana)"), "55");

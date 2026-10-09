@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/layout/page-layout";
 import { Callout } from "@/components/ui/kit";
 import { Activity } from "lucide-react";
 import { LoadingState } from "@/components/layout/states";
+import { ChainCoverageNotice } from "@/components/invest/chain-coverage";
 
 const exact = (raw: string, decimals: number) => formatUnits(raw, decimals, decimals);
 
@@ -38,6 +39,7 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
           <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying />)}</ol>
           <FeeLines fees={plan.fees} />
           <p className="text-sm text-ink-muted">Prices are re-quoted when you sign each step.</p>
+          <ChainCoverageNotice plan={plan} />
           <div className="flex flex-wrap gap-3">
             <Button  onClick={() => setSigning(true)}>Continue to signing</Button>
             <Button variant="secondary"  disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>

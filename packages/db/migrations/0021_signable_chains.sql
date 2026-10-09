@@ -1,0 +1,1 @@
+ALTER TABLE "app"."wallet_addresses" ADD COLUMN "signable_chains" text[];

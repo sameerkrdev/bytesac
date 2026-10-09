@@ -76,6 +76,8 @@ export function useWalletVerification(purpose: ChallengePurpose) {
           signature,
           client: "mobile",
           walletProvider: account.walletName ?? undefined,
+          // D-119: an empty list means the connection told us nothing; send it as unknown.
+          signableChains: account.signableChains?.length ? account.signableChains : undefined,
         });
         if (stale()) return;
         await acceptToken(out.token); // persist rotated/new token before anything else uses the API

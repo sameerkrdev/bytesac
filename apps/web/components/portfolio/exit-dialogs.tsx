@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { ChainCoverageNotice } from "@/components/invest/chain-coverage";
 
 type Position = Portfolio["positions"][number];
 
@@ -103,6 +104,7 @@ export function SellDialog({ position }: { position: Position }) {
               <FeeLines fees={plan.fees} />
               <p className="text-xs text-ink-muted">{plan.legs[0]?.kind === "network_fee" ? "Fees are paid first from the USDC already in your wallet." : "Fees are taken from your proceeds."}</p>
               <p className="text-sm text-ink-muted">Outputs are estimates, protected by a minimum per step ({SLIPPAGE_DEFAULT_BPS / 100}% slippage). Prices are re-quoted when you sign each step.</p>
+              <ChainCoverageNotice plan={plan} />
               <div className="flex flex-wrap gap-3">
                 <Button  onClick={() => setSigning(true)}>Continue to signing</Button>
                 <Button variant="secondary"  disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
