@@ -101,6 +101,30 @@ describe("link exactly the ticked chains (D-120)", () => {
     expect(add.body.error.code).toBe("ADDRESS_DISABLED");
   });
 
+  it("an address known on another chain signs into the same account, never a second one", async () => {
+    const w = newEvmWallet();
+    const first = await link(w, "base", ["base"]);
+    const again = await link(w, "ethereum", ["ethereum"]);
+    expect(again.status).toBe(200);
+    expect(again.body.userId).toBe(first.body.userId);
+    expect(again.body.isNewUser).toBe(false);
+    expect(await active()).toHaveLength(2);
+  });
+
+  it("replaced on ethereum while another address holds ethereum -> CHAIN_ALREADY_LINKED, no session", async () => {
+    const w = newEvmWallet();
+    const a = await link(w, "base", ["base", "ethereum"]);
+    const [baseRow] = (await db.select().from(walletAddresses)).filter((r) => r.chain === "base");
+    await adminSql`UPDATE app.wallet_addresses SET status = 'replaced', replaced_at = now(), replaced_by_address_id = ${baseRow!.id}, disabled_reason = 'chain_reassigned' WHERE chain = 'ethereum'`;
+    const b = await link(newEvmWallet(), "ethereum", ["ethereum"], { purpose: "add_chain_account", cookie: cookieOf(a) });
+    expect(b.status).toBe(200);
+    const before = (await db.select().from(sessions)).length;
+    const res = await link(w, "ethereum", ["ethereum"]);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CHAIN_ALREADY_LINKED");
+    expect((await db.select().from(sessions)).length).toBe(before);
+  });
+
   it("a smart wallet links one chain at a time", async () => {
     fakes.evm.behavior = "valid";
     const sw = { address: "0x" + "ab".repeat(20), sign: () => "0x" + "11".repeat(100) };

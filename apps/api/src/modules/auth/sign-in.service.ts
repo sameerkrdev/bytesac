@@ -1,10 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import createHttpError, { isHttpError } from "http-errors";
 import { and, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
-import { authChallenges, challengePurpose, db, investmentWallets, isUniqueViolation, sessions, walletAddresses, type Tx } from "@repo/db";
+import { authChallenges, challengePurpose, db, investmentWallets, isUniqueViolation, sessions, users, walletAddresses, type Tx } from "@repo/db";
 import {
   ASSET_CHAINS, CHAINS, chainsInFamily, familyOf,
-  type AssetChain, type Chain, type ChallengeResponse, type ClientKind, type VerificationMethod,
+  type AssetChain, type Chain, type ChainFamily, type ChallengeResponse, type ClientKind, type VerificationMethod,
 } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import type { AuthContext } from "@/middlewares/auth.middleware";
@@ -188,18 +188,23 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   const rows: NewAddressRow[] = wanted.map((chain) => ({
     chain, address: ch.address, method, verifiedOnChain: ch.chain, challengeId: ch.id, walletName: input.walletProvider ?? null,
   }));
-  const owner = await findAddressOwner(tx, ch.chain, ch.address);
   const audit = { requestId: input.meta.requestId, challengeId: ch.id };
 
   if (ch.purpose === "sign_in") {
     let userId: string;
     let isNewUser = false;
-    if (owner) {
-      if (owner.status !== "active") throw addressInactive(owner.status);
+    // One key = one account: the owner is whoever holds this address on ANY chain of its family, not just the connected one.
+    const found = await addressRows(tx, ch.address, familyOf(ch.chain));
+    if (found.length > 0) {
+      const target = (found.find((r) => r.status === "active") ?? found[0]!);
+      // Lock the wallet, then judge status on a fresh read so a concurrent disable/reassign cannot yield a session.
+      await tx.select({ id: investmentWallets.id }).from(investmentWallets).where(eq(investmentWallets.id, target.walletId)).for("update");
+      const fresh = await addressRows(tx, ch.address, familyOf(ch.chain));
+      const owner = fresh.find((r) => r.status === "active" && r.walletId === target.walletId);
+      if (!owner) throw addressInactive(fresh.some((r) => r.status === "replaced") ? "replaced" : "disabled");
       if (owner.userStatus !== "active") throw createHttpError("This account is not active", { code: "USER_NOT_ACTIVE" });
       userId = owner.userId;
       // Add ticked chains the account lacks. Without an explicit tick (legacy) a clash is skipped, never a sign-in failure.
-      await tx.select({ id: investmentWallets.id }).from(investmentWallets).where(eq(investmentWallets.id, owner.walletId)).for("update");
       const added = await linkMissing(tx, owner.walletId, ch, rows, explicit);
       if (added.length > 0) {
         await writeAudit(tx, {
@@ -226,6 +231,7 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
 
   // add_chain_account
   const auth = input.auth!;
+  const owner = await findAddressOwner(tx, ch.chain, ch.address);
   if (owner) {
     if (owner.userId !== auth.userId) throw addressLinked();
     if (owner.status !== "active") throw addressInactive(owner.status);
@@ -274,17 +280,26 @@ async function linkMissing(tx: Tx, walletId: string, ch: ChallengeRow, rows: New
     const row = taken.find((t) => t.chain === r.chain);
     const strict = explicit || r.chain === ch.chain; // the connected chain is always asked for
     if (row?.walletId === walletId && row.status === "active") continue; // already linked
+    if (existing.some((a) => a.status === "active" && a.chain === r.chain && a.address !== ch.address)) {
+      if (!strict) continue;
+      throw createHttpError(`${CHAINS[r.chain].label} is already linked to another wallet. Move it first.`, { code: "CHAIN_ALREADY_LINKED" });
+    }
     if (row) {
       if (!strict) continue;
       if (row.walletId !== walletId) throw addressLinked();
       throw addressInactive(row.status);
     }
-    if (existing.some((a) => a.status === "active" && a.chain === r.chain)) {
-      if (!strict) continue;
-      throw createHttpError(`${CHAINS[r.chain].label} is already linked to another wallet. Move it first.`, { code: "CHAIN_ALREADY_LINKED" });
-    }
     toInsert.push(r);
   }
   await insertAddresses(tx, walletId, toInsert);
   return toInsert;
+}
+
+/** Every row of this address in its chain family, with the owning wallet and user. */
+async function addressRows(tx: Tx, address: string, family: ChainFamily) {
+  return tx.select({ userId: users.id, userStatus: users.status, walletId: investmentWallets.id, status: walletAddresses.status })
+    .from(walletAddresses)
+    .innerJoin(investmentWallets, eq(investmentWallets.id, walletAddresses.investmentWalletId))
+    .innerJoin(users, eq(users.id, investmentWallets.userId))
+    .where(and(eq(walletAddresses.address, address), eq(walletAddresses.chainFamily, family)));
 }
