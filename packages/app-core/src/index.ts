@@ -16,3 +16,4 @@ export * from "./sync-split";
 export * from "./use-countdown";
 export * from "./verify-flow";
 export * from "./wallet";
+export * from "./wallet-help";

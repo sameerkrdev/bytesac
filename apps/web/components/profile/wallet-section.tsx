@@ -41,7 +41,7 @@ export function WalletSection({ me }: { me: MeResponse }) {
           </li>
         ))}
       </ul>
-      <p className="text-xs text-ink-muted">Lost access to a wallet? Contact support.</p>
+      <p className="text-xs text-ink-muted">Lost access to a wallet? Contact support. <a href="/help/wallets#move-chain" className="underline">How wallets work</a></p>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="border-line bg-canvas">
           <DialogHeader>

@@ -5,6 +5,7 @@ import { PenLine } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
 import { Switch, View } from "react-native";
 import { ErrorText } from "@/components/states/states";
+import { WalletHelpLink } from "@/components/help/wallet-help-sheet";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { legBuys } from "@/lib/leg-direction";
@@ -56,6 +57,7 @@ export function PlanFlow({ plan, note, extra, onDiscarded, onSigning }: {
               ? `You will still receive these assets at your same address. To sell them later you need a wallet that signs on ${names}, for example by importing your recovery phrase into a wallet that supports it.`
               : `Steps on ${names} need a wallet that signs there. Connect one for the same address (for example by importing your recovery phrase into a wallet that supports it) before those steps.`}
           </AppText>
+          <WalletHelpLink topic="cannot-sign-chain" />
           {needsAck && (
             <View className="flex-row items-center gap-3">
               <Switch accessibilityLabel={`I understand that selling assets on ${names} needs another wallet`} value={acknowledged} onValueChange={setAcknowledged}

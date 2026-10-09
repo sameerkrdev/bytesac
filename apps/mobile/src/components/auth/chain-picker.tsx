@@ -2,6 +2,7 @@ import { shortAddress } from "@repo/app-core";
 import { ASSET_CHAINS, type AssetChain } from "@repo/validator";
 import { useEffect, useState } from "react";
 import { Switch, View } from "react-native";
+import { WalletHelpLink } from "@/components/help/wallet-help-sheet";
 import { AppText } from "@/components/ui/app-text";
 import { useTheme } from "@/lib/theme";
 
@@ -26,6 +27,7 @@ export function ChainPicker({ walletName, address, choices, onChange }: { wallet
           {c.state === "linked-here" && <AppText variant="label" tone="faint">already linked</AppText>}
         </View>
       ))}
+      <WalletHelpLink topic="several-wallets" />
     </View>
   );
 }

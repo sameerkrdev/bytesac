@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { Modal, View } from "react-native";
 import { WalletVerification } from "@/components/auth/wallet-verification";
+import { WalletHelpLink } from "@/components/help/wallet-help-sheet";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -44,6 +45,7 @@ export function WalletSection({ me }: { me: MeResponse }) {
       ))}
       {canAddChainAccount(me) && <Button variant="secondary" onPress={() => setOpen(true)}>Add chain account</Button>}
       <AppText variant="label" tone="faint">Lost access to a wallet? Contact support.</AppText>
+      <WalletHelpLink topic="move-chain" />
       <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
         <Screen>
           <AppText variant="title" accessibilityRole="header">Add chain account</AppText>

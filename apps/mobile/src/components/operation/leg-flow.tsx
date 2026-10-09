@@ -5,6 +5,7 @@ import { useAppKit } from "@reown/appkit-react-native";
 import { CircleCheck, Globe, TriangleAlert } from "lucide-react-native";
 import { Linking, View } from "react-native";
 import { ErrorState, ErrorText, LoadingState } from "@/components/states/states";
+import { WalletHelpLink } from "@/components/help/wallet-help-sheet";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -97,7 +98,7 @@ export function LegFlow({ operationId }: { operationId: string }) {
           </View>
         </View>
       )}
-      {state.kind === "failed" && state.code === "WRONG_WALLET" ? <ConnectWalletButton chain={(runner.leg ?? next)?.fromChain ?? "solana"} /> : null}
+      {state.kind === "failed" && state.code === "WRONG_WALLET" ? <><ConnectWalletButton chain={(runner.leg ?? next)?.fromChain ?? "solana"} /><WalletHelpLink topic="wrong-wallet" /></> : null}
       <ErrorText error={stop.error} />
       {busy && <AppText accessibilityRole="progressbar" tone="muted">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
       {fresh && (

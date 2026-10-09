@@ -119,7 +119,10 @@ export function LegProgress({ operationId }: { operationId: string }) {
 
       {err && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{expired ? "Quote expired" : err.title}</p><p className="text-ink-muted">{expired ? "Get a new quote, then sign again. Nothing was submitted." : err.message}</p></div>}
       {sign.error instanceof WrongWalletError && !busy && (
-        <Button variant="secondary" onClick={() => { if (!lastSigned.current) return; armed.current = { leg: lastSigned.current.leg, key: connectionKey, opened: false }; void open({ view: "Connect" }); }}>Connect wallet</Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={() => { if (!lastSigned.current) return; armed.current = { leg: lastSigned.current.leg, key: connectionKey, opened: false }; void open({ view: "Connect" }); }}>Connect wallet</Button>
+          <a href="/help/wallets#wrong-wallet" target="_blank" rel="noreferrer" className="text-sm text-ink-muted underline">How wallets work</a>
+        </div>
       )}
       {busy && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />{step}…</p>}
       {fresh && !busy && (

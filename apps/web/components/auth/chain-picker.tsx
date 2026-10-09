@@ -23,6 +23,7 @@ export function ChainPicker({ walletName, address, choices, onChange }: { wallet
           {c.state === "linked-here" && <span className="text-ink-faint">already linked</span>}
         </label>
       ))}
+      <a href="/help/wallets#several-wallets" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm text-ink-muted underline">How wallets work</a>
     </fieldset>
   );
 }

@@ -28,6 +28,7 @@ export function ChainCoverageNotice({ plan, acknowledged, onAcknowledge }: { pla
           ? `You will still receive these assets at your same address. To sell them later you need a wallet that signs on ${names}, for example by importing your recovery phrase into a wallet that supports it.`
           : `Steps on ${names} need a wallet that signs there. Connect one for the same address (for example by importing your recovery phrase into a wallet that supports it) before those steps.`}
       </p>
+      <p className="mt-2 text-sm"><a href="/help/wallets#cannot-sign-chain" target="_blank" rel="noreferrer" className="underline">How wallets work</a></p>
       {onAcknowledge && (
         <label className="mt-3 flex cursor-pointer gap-3 text-sm text-ink">
           <input type="checkbox" className="mt-0.5 size-4 accent-[var(--c-primary)]" checked={!!acknowledged} onChange={(e) => onAcknowledge(e.target.checked)} />
