@@ -1,9 +1,9 @@
 # ADR-004: Chain-account association
 
-- **Status:** APPROVED
+- **Status:** APPROVED (superseded in part by ADR-021: family rule)
 - **Date:** 2026-09-29
 - **Owners:** Backend / Identity
-- **Related:** D-002, D-032, D-033, D-037, D-039; `docs/domains/USER-AUTHENTICATION.md`; spec §5.1-5.2
+- **Related:** ADR-021, D-002, D-032, D-033, D-037, D-039; `docs/domains/USER-AUTHENTICATION.md`; spec §5.1-5.2
 
 ## Context
 One active investment wallet per user holds chain accounts. An EVM key controls the same address on every EVM chain, but a smart-contract wallet (ERC-1271) or counterfactual wallet (ERC-6492) may be deployed differently, or not at all, per chain. A signature therefore proves different things depending on how it is verified.

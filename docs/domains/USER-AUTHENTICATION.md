@@ -25,15 +25,31 @@ For EVM, use SIWE-compatible verification; for Solana, SIWS-compatible verificat
 
 ## Chain-account association
 The verification method decides scope (D-033, ADR-004):
-- EOA signature (ECDSA-recovered, including EIP-7702-delegated EOAs) proves the key and registers all supported EVM chains from one proof.
-- ERC-1271 (deployed contract wallet) and ERC-6492 (undeployed wallet) register only the chain verified; other EVM chains for the same address need their own verification.
-- Solana ed25519 registers `solana`.
-- **Bitcoin** is link-only, never a sign-in method (`signInChainSchema` excludes it; D-032). A logged-in user links one Bitcoin address with `POST /v1/me/chain-accounts/bitcoin/challenge` and `/verify` (purpose `add_chain_account`, 10 attempts per hour per user). The server builds the BIP-322 `to_sign` PSBT with the challenge, the wallet only signs it, and the server verifies the witness (P2WPKH, P2TR, P2SH-P2WPKH); a BIP-137 message signature is accepted as a fallback for legacy, P2SH-P2WPKH and P2WPKH addresses. The same one-per-family, not-linked-elsewhere and session-rotation rules apply (ADR-014).
-- A different chain family is added only through an explicit, logged-in "Add chain account" with a fresh signature. Linking is serialized per wallet, so two sessions cannot link two addresses in one family.
-- Refused: an address that belongs to another user (`ADDRESS_ALREADY_LINKED`), or a different address in a family the user already has (`CHAIN_FAMILY_ALREADY_LINKED`). A logged-out sign-in with an unknown address always creates a new user.
-- The two families may come from **different wallet apps** (for example MetaMask for EVM and Phantom or Trust Wallet for Solana). A wallet only approves the families it supports over WalletConnect: MetaMask Mobile approves `eip155` only (its Solana WalletConnect adapter is unreleased as of 2026-10), so a MetaMask user links a second wallet for Solana. Investing signs only on Solana (funding is USDC on Solana, D-030); EVM sells and rebalances sign on EVM.
-- Verify accepts an optional `signableChains` (the asset chains the connected wallet approved; mobile reads them from the WalletConnect session accounts for the signed address, Phantom/Solflare deeplinks report Solana). The server keeps only the signed address's family and stores it on every row of that address; omitted keeps the current value (D-119). It is client-reported and only drives warnings. The web client reports nothing yet (injected wallets expose no approved-chain list).
-- Mobile client guards (Add chain account sheet): the sheet names the missing family; Sign is disabled with an explanation when the connected address is in a family the account already has under a different address (so `CHAIN_FAMILY_ALREADY_LINKED` is caught before the wallet opens); "Use a different wallet" drops only the wallet connection (the Bytesac session stays) and reopens the wallet list. The sign-in screen states that an unknown wallet creates a new account and points to Add chain account.
+- EOA signature (ECDSA-recovered, including EIP-7702-delegated EOAs) proves the key. It covers the EVM chains the user ticks (Ethereum, Base, BNB Chain, Arbitrum, Polygon) from one proof.
+- ERC-1271 (deployed contract wallet) and ERC-6492 (undeployed wallet) cover only the chain verified; other EVM chains for the same address need their own verification.
+- Solana ed25519 covers `solana`.
+- **Bitcoin** is link-only, never a sign-in method (`signInChainSchema` excludes it; D-032). A logged-in user links one Bitcoin address with `POST /v1/me/chain-accounts/bitcoin/challenge` and `/verify` (purpose `add_chain_account`, 10 attempts per hour per user). The server builds the BIP-322 `to_sign` PSBT with the challenge, the wallet only signs it, and the server verifies the witness (P2WPKH, P2TR, P2SH-P2WPKH); a BIP-137 message signature is accepted as a fallback for legacy, P2SH-P2WPKH and P2WPKH addresses. Bitcoin keeps one address per family (`CHAIN_FAMILY_ALREADY_LINKED`) and the session-rotation rules (ADR-014).
+- **One address per chain (D-120, ADR-021).** An account has at most one active address per chain, so it can use different wallets on different chains (for example MetaMask for Base and BNB Chain, Phantom for Ethereum and Solana). The challenge body may carry `chains`; the signed message names them.
+  - With `chains`, linking is strict: a chain that already has an address is refused with `CHAIN_ALREADY_LINKED`.
+  - Without `chains` (older clients), an EOA or ed25519 proof covers its whole family, a smart wallet covers the connected chain, and chains that already have an address are skipped.
+  - A different chain family is added only through an explicit, logged-in "Add chain account" with a fresh signature. Linking is serialized per wallet.
+- **Sign-in** looks up an EOA or ed25519 address across its whole family, so the same key always reaches the same account. A contract wallet matches only on the chain it was verified on; on another chain it is `ADDRESS_ALREADY_LINKED`. An unknown address on a logged-out sign-in creates a new user.
+- **Move a chain to another wallet** (`POST /v1/auth/reassign`, session required). The new address signs, and the chain's current address signs the same message (`previousSignature`). It is allowed only when the chain is empty: no open operation, no ledger units on the chain, and zero on-chain balance at the old address for every registered non-native asset (gas dust in the native coin does not block). Otherwise `CHAIN_NOT_EMPTY` lists the assets (`error.details.assets`); if a balance cannot be read the call returns 503 and nothing moves. The old row becomes `replaced` (reason `chain_reassigned`), the audit event is `wallet.chain_reassigned`, and the session rotates. A replaced address cannot sign in or be linked again.
+
+| Case | Result |
+|---|---|
+| Address belongs to another user | `ADDRESS_ALREADY_LINKED` |
+| Address is disabled or was moved to another wallet | `ADDRESS_DISABLED` |
+| Chain already has an address (explicit `chains`) | `CHAIN_ALREADY_LINKED` |
+| Bitcoin: a different address in the family | `CHAIN_FAMILY_ALREADY_LINKED` |
+| Move while the chain holds assets, units or an open operation | `CHAIN_NOT_EMPTY` |
+| Move while a balance cannot be read | 503, nothing changes |
+| Plan or sell on a chain with no address | `CHAIN_NOT_LINKED` (409) |
+
+- The families may come from **different wallet apps**. A wallet only approves the families it supports over WalletConnect: MetaMask Mobile approves `eip155` only (its Solana adapter is unreleased as of 2026-10), so a MetaMask user links a second wallet for Solana. Investing signs only on Solana (funding is USDC on Solana, D-030); EVM sells and rebalances sign on EVM.
+- Web keeps several wallets connected (Reown Multiwallet, a paid dashboard feature) and picks the one that owns each step's address. Mobile has one connected wallet per family; the Connect wallet prompt asks the user to switch before a step that needs another wallet.
+- Verify accepts an optional `signableChains` (the asset chains the connected wallet approved; mobile reads them from the WalletConnect session accounts for the signed address, Phantom/Solflare deeplinks report Solana). The server keeps only the signed address's family and stores it on every row of that address; omitted keeps the current value (D-119). It is client-reported and only drives warnings. The web client reports nothing yet.
+- Client guards: the Add chain account sheet shows the chains still without an address and disables Sign when the connected address cannot be used (for example it already belongs to another account). "Use a different wallet" drops only the wallet connection; the Bytesac session stays.
 
 ## Unlink and recovery (release 1)
 - No user-initiated unlink or address removal; every user keeps at least one verified address.

@@ -80,6 +80,9 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Replace the redrawn SVG mark (`components/brand/logo.tsx`) with the official logo vector; `public/logo.png` is a usage sheet, not a single mark.
 - [ ] Real wallet sign-in and one small real investment on the redesigned flow (only mock-API runs so far).
 - [ ] Lighthouse / LCP on `/` with a production build (the hero sky plate and hand cut-out are priority images).
+- [ ] Reown dashboard: enable Multi Wallet (Pro plan). Web multi-wallet needs it; without it web falls back to one connection per namespace.
+- [ ] Per-chain addresses: after applying migration 0022 on each environment, run `pnpm --filter api ops:backfill-polygon` once (idempotent; gives Polygon to wallets with an EOA EVM address).
+- [ ] Device checks for per-chain addresses (D-120, D-121): web with three wallets (MetaMask, Phantom, Trust) doing invest, sell and rebalance; mobile namespace switching (`switchNetwork` to the leg's family when connected but not active, not verified on a device) and the two-approval move.
 
 ## 6. Deployment and operations
 
@@ -190,6 +193,10 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 
 - [ ] Mobile multi-wallet UX (2026-10-09 device run): MetaMask Mobile approves only `eip155` over WalletConnect (metamask-mobile PRs #31616/#35836 closed unmerged), so MetaMask users link a second wallet for Solana through Add chain account; a two-wallet user switches wallets between invest (Solana) and EVM sells. Follow-ups in FUTURE-PLANS "Mobile wallets". The Reown dashboard feature toggles are ignored by the React Native SDK: features are set in `createAppKit`.
 - [ ] Mobile dev setup (2026-10-09): Android dev client via EAS (`development` profile, APK) + platform-tools only; `adb reverse` for 8081 (Metro) and 4000 (API), `EXPO_PUBLIC_API_URL=http://localhost:4000` on a USB device (`10.0.2.2` is emulator-only). WalletConnect's `setDefaultChain` unhandled rejection after a MetaMask connect (universal-provider 2.21.10, fixed upstream in 2.26.0, pinned by Reown 2.0.6) is a dev-only red box; remove when Reown moves to 2.26+.
+- [ ] Security: the per-address challenge rate limit (10 per 60 s, keyed on the public address before any proof) lets anyone who knows an address keep its sign-in rate-limited (pre-existing). Fix: key on IP plus address, or count verification failures.
+- [ ] Security: `add_chain_account` on a chain with no address needs only the session and the new wallet, so a stolen session could link an attacker address there. Consider the same step-up as reassign (a signature from an existing linked address). Needs a product decision.
+- [ ] Design limit: an attacker who can deploy a contract at a victim's counterfactual address on another chain can link that (chain, address) first.
+- [ ] Web eslint config ignores several new files (wallet, linking and help components), so they have no lint coverage; remove the ignores and fix what appears.
 
 ## 8. Open decisions in the register
 

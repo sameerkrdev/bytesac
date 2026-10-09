@@ -24,7 +24,7 @@ The one document to read first in a new session (human or AI). It holds the star
 
 ## 2. Current state (after Spec 15)
 
-Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migrations `0000..0019`; decision register up to D-117; ADRs up to ADR-019.
+Repository `git@github.com:sameerkrdev/bytesac.git`, default branch `main`. Migrations `0000..0022`; decision register up to D-121; ADRs up to ADR-021. Per-chain addresses (D-120, ADR-021) and web multi-wallet (D-121) are built on branch `feat/per-chain-addresses` and not yet merged; after migrating run `ops:backfill-polygon` (OPEN-ITEMS §5).
 
 | Spec | What exists | Merge | Key docs |
 |---|---|---|---|
