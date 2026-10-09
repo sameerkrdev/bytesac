@@ -111,7 +111,7 @@ describe("link exactly the ticked chains (D-120)", () => {
     expect(await active()).toHaveLength(2);
   });
 
-  it("replaced on ethereum while another address holds ethereum -> CHAIN_ALREADY_LINKED, no session", async () => {
+  it("replaced on ethereum while another address holds ethereum -> ADDRESS_DISABLED (moved away), no session", async () => {
     const w = newEvmWallet();
     const a = await link(w, "base", ["base", "ethereum"]);
     const [baseRow] = (await db.select().from(walletAddresses)).filter((r) => r.chain === "base");
@@ -120,8 +120,8 @@ describe("link exactly the ticked chains (D-120)", () => {
     expect(b.status).toBe(200);
     const before = (await db.select().from(sessions)).length;
     const res = await link(w, "ethereum", ["ethereum"]);
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe("CHAIN_ALREADY_LINKED");
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("ADDRESS_DISABLED");
     expect((await db.select().from(sessions)).length).toBe(before);
   });
 

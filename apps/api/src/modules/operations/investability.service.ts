@@ -101,6 +101,12 @@ export async function getInvestability(db: DbOrTx, basket: { slug: string } | { 
   return result;
 }
 
+/** An operation that blocks others: PLANNED and not expired, or IN_PROGRESS. */
+export async function hasOpenOperation(db: DbOrTx, userId: string): Promise<boolean> {
+  const [active] = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.userId, userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"]), sql`(${operations.status} = 'IN_PROGRESS' or ${operations.expiresAt} > now())`)).limit(1);
+  return Boolean(active);
+}
+
 async function eligibilityOf(db: DbOrTx, userId: string, required: readonly AssetChain[]): Promise<NonNullable<Investability["eligibility"]>> {
   const reasons: NonNullable<Investability["eligibility"]>["reasons"] = [];
   const verified = new Set((await db.select({ type: contacts.type }).from(contacts).where(and(eq(contacts.userId, userId), eq(contacts.status, "verified")))).map((c) => c.type));
@@ -112,7 +118,6 @@ async function eligibilityOf(db: DbOrTx, userId: string, required: readonly Asse
   for (const c of required) {
     if (!linked.has(c)) reasons.push(c === "bitcoin" ? { code: "BTC_ADDRESS_REQUIRED", message: "Link a Bitcoin wallet." } : { code: "CHAIN_NOT_LINKED", message: `Link a wallet for ${ASSET_CHAINS[c].label}.` });
   }
-  const [active] = await db.select({ id: operations.id }).from(operations).where(and(eq(operations.userId, userId), inArray(operations.status, ["PLANNED", "IN_PROGRESS"]), sql`(${operations.status} = 'IN_PROGRESS' or ${operations.expiresAt} > now())`)).limit(1);
-  if (active) reasons.push({ code: "OPERATION_IN_PROGRESS", message: "Finish or cancel your current operation first." });
+  if (await hasOpenOperation(db, userId)) reasons.push({ code: "OPERATION_IN_PROGRESS", message: "Finish or cancel your current operation first." });
   return { eligible: reasons.length === 0, reasons };
 }

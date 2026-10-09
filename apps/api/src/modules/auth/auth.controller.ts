@@ -6,6 +6,7 @@ import { bip322ToSignPsbt } from "@/providers/bitcoin";
 import type { VerifyResult } from "./sign-in.service";
 import { env } from "@/config/dotenv";
 import * as signInService from "./sign-in.service";
+import { reassignChain } from "./reassign.service";
 import * as sessionsService from "./sessions.service";
 import * as walletsService from "./wallets.service";
 
@@ -29,10 +30,10 @@ function respondVerified(res: Response, result: VerifyResult): void {
 export const requestChallenge = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body = req.body as ChallengeRequest;
-    if (body.purpose === "add_chain_account" && !req.auth) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
+    if (body.purpose !== "sign_in" && !req.auth) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
     res.json(await signInService.issueChallenge({
       purpose: body.purpose, chain: body.chain, rawAddress: body.address, chains: body.chains,
-      sessionId: body.purpose === "add_chain_account" ? req.auth!.sessionId : null, meta: req.ctx,
+      sessionId: body.purpose === "sign_in" ? null : req.auth!.sessionId, meta: req.ctx,
     }));
   } catch (error) {
     next(error);
@@ -48,6 +49,19 @@ export const verifySignature = async (req: Request, res: Response, next: NextFun
       client: body.client, auth: req.auth, meta: req.ctx,
     });
     respondVerified(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reassignChainHandler = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const body = req.body as VerifyRequest;
+    await consume(limits.verifyIp, req.ctx.ip);
+    respondVerified(res, await reassignChain({
+      challengeId: body.challengeId, signature: body.signature, walletProvider: body.walletProvider, signableChains: body.signableChains,
+      client: body.client, auth: req.auth, meta: req.ctx,
+    }));
   } catch (error) {
     next(error);
   }

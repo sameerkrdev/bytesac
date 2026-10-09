@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
-import { basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operations, positionCashEntries, positionDecisions, positionLedgerEntries } from "@repo/db";
+import { basketPositions, basketVersionAssets, basketVersions, baskets, db, instrumentDeployments, instruments, operations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx } from "@repo/db";
 import { logger } from "@repo/logger";
-import { DRIFT_THRESHOLD_BPS_DEFAULT, headlineOf, type Portfolio, type PositionStates, type Repair } from "@repo/validator";
+import { DRIFT_THRESHOLD_BPS_DEFAULT, headlineOf, type AssetChain, type Portfolio, type PositionStates, type Repair } from "@repo/validator";
 import { redis } from "@/middlewares/rate-limit.middleware";
 import { operationView, type OpCtx } from "@/modules/operations/operations.service";
 import { versionDiff } from "@/modules/baskets/baskets.service";
@@ -85,4 +85,14 @@ export async function getPortfolio(ctx: OpCtx): Promise<Portfolio> {
     positions: openView, repairs, formerPositions: view.filter((p) => p.status === "CLOSED"),
     openOperations: await Promise.all(open.map((o) => operationView(db, o))), history: await Promise.all(past.map((o) => operationView(db, o))),
   };
+}
+
+/** Instruments with position units on a chain for this user's OPEN positions (reassign_chain's ledger check). */
+export async function heldUnitsOnChain(conn: DbOrTx, userId: string, chain: AssetChain): Promise<{ symbol: string }[]> {
+  return conn.select({ symbol: instruments.symbol }).from(positionLedgerEntries)
+    .innerJoin(basketPositions, and(eq(basketPositions.id, positionLedgerEntries.positionId), eq(basketPositions.userId, userId), eq(basketPositions.status, "OPEN")))
+    .innerJoin(instrumentDeployments, and(eq(instrumentDeployments.id, positionLedgerEntries.deploymentId), eq(instrumentDeployments.chain, chain)))
+    .innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId))
+    .groupBy(positionLedgerEntries.positionId, positionLedgerEntries.deploymentId, instruments.symbol)
+    .having(sql`sum(${positionLedgerEntries.quantityDelta}) > 0`);
 }

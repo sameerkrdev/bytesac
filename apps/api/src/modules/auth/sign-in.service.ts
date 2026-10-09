@@ -45,10 +45,11 @@ async function dbNow(): Promise<Date> {
 /** `organizationId` is for payout-wallet proofs: the row is bound to the organization and the signed text is a plain custom message (not SIWS), naming it. */
 export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; chains?: AssetChain[]; meta: RequestMeta }): Promise<ChallengeResponse> {
   if (familyOf(i.chain) === "bitcoin" && i.purpose === "sign_in") throw createHttpError("Bitcoin can be linked but not used to sign in.", { code: "UNSUPPORTED_CHAIN" });
+  if (i.purpose === "reassign_chain" && familyOf(i.chain) === "bitcoin") throw createHttpError("Bitcoin cannot be moved to another wallet.", { code: "UNSUPPORTED_CHAIN" });
   const address = canonicalizeAddress(i.chain, i.rawAddress);
   const family = familyOf(i.chain);
   // Omitted = legacy "every chain of the family", decided at verify (a smart wallet then links only the connected chain).
-  const chains = i.chains ?? (i.purpose === "reassign_chain" ? [i.chain] : null);
+  const chains = i.purpose === "reassign_chain" ? [i.chain] : i.chains ?? null;
   if (chains && (chains.some((c) => ASSET_CHAINS[c].family !== family) || !chains.includes(i.chain))) {
     throw createHttpError("Pick chains of this wallet's network family, including the connected one.", { code: "VALIDATION_FAILED" });
   }
@@ -284,6 +285,7 @@ async function linkMissing(tx: Tx, walletId: string, ch: ChallengeRow, rows: New
     const row = taken.find((t) => t.chain === r.chain);
     const strict = explicit || r.chain === ch.chain; // the connected chain is always asked for
     if (row?.walletId === walletId && row.status === "active") continue; // already linked
+    if (strict && row?.walletId === walletId && row.status !== "active") throw addressInactive(row.status); // this address was moved away or disabled: say so
     if (existing.some((a) => a.status === "active" && a.chain === r.chain && a.address !== ch.address)) {
       if (!strict) continue;
       throw createHttpError(`${CHAINS[r.chain].label} is already linked to another wallet. Move it first.`, { code: "CHAIN_ALREADY_LINKED" });

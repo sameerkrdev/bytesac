@@ -98,6 +98,7 @@ export function createApiClient(options: ApiClientOptions) {
   return {
     createChallenge: (b: ChallengeRequest): Promise<ChallengeResponse> => request("POST", "/v1/auth/challenge", challengeResponseSchema, b),
     verify: (b: VerifyRequest): Promise<VerifyResponse> => request("POST", "/v1/auth/verify", verifyResponseSchema, b),
+    reassignChain: (b: VerifyRequest): Promise<VerifyResponse> => request("POST", "/v1/auth/reassign", verifyResponseSchema, b),
     logout: (): Promise<void> => request<z.ZodVoid>("POST", "/v1/auth/logout", null),
     logoutAll: (): Promise<void> => request<z.ZodVoid>("POST", "/v1/auth/logout-all", null),
     me: (): Promise<MeResponse> => request("GET", "/v1/me", meResponseSchema),

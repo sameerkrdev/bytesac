@@ -85,6 +85,7 @@ exports[`mounts exactly the same endpoints and middleware 1`] = `
   "POST /v1/auth/challenge handlers=3",
   "POST /v1/auth/logout handlers=2",
   "POST /v1/auth/logout-all handlers=2",
+  "POST /v1/auth/reassign handlers=3",
   "POST /v1/auth/verify handlers=3",
   "POST /v1/baskets/:bid/assignments handlers=2",
   "POST /v1/baskets/:bid/assignments/:aid/end handlers=2",
