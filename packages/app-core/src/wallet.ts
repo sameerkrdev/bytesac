@@ -1,4 +1,4 @@
-import { ASSET_CHAINS, chainFromEvmChainId, type AssetChain, type MeResponse, type SignInChain, type WalletAddressView } from "@repo/validator";
+import { ASSET_CHAINS, chainFromEvmChainId, chainsInFamily, type AssetChain, type MeResponse, type SignInChain, type WalletAddressView } from "@repo/validator";
 
 /** Solana mainnet-beta genesis hash used in CAIP-2 ids. */
 const SOLANA_MAINNET_CAIP = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -35,12 +35,25 @@ export interface ConnectedAccount {
   signableChains?: AssetChain[];
 }
 
+/** The active row for a chain (D-120: one address per chain). */
+export function linkedAddressFor(addresses: readonly Pick<WalletAddressView, "chain" | "status">[], chain: AssetChain): WalletAddressView | undefined {
+  return addresses.find((a) => a.chain === chain && a.status === "active") as WalletAddressView | undefined;
+}
+
+/** True while any EVM or Solana chain has no active address. */
 export function canAddChainAccount(me: MeResponse): boolean {
-  const a = me.wallet.addresses;
-  const hasSolana = a.some((x) => x.chainFamily === "solana");
-  const evm = a.filter((x) => x.chainFamily === "evm");
-  const evmComplete = evm.length > 0 && (evm.some((x) => x.verificationMethod === "eoa_ecdsa") || evm.length === 4);
-  return !(hasSolana && evmComplete);
+  return ([...chainsInFamily("evm"), ...chainsInFamily("solana")] as AssetChain[]).some((c) => !linkedAddressFor(me.wallet.addresses, c));
+}
+
+/** D-120 checkbox screen: every chain of the family, what is linked where, and what to pre-tick (approved by the wallet and free). */
+export function linkChoices(i: { family: "evm" | "solana"; approved: readonly AssetChain[] | undefined; addresses: readonly WalletAddressView[]; address: string; smartWalletChain?: AssetChain }) {
+  const chains = i.smartWalletChain ? [i.smartWalletChain] : (chainsInFamily(i.family) as AssetChain[]);
+  return chains.map((chain) => {
+    const row = linkedAddressFor(i.addresses, chain);
+    const same = row && (i.family === "solana" ? row.address === i.address : row.address.toLowerCase() === i.address.toLowerCase());
+    const state = !row ? "available" as const : same ? "linked-here" as const : "linked-elsewhere" as const;
+    return { chain, state, walletName: row?.walletName ?? null, preselected: state === "available" && (i.approved === undefined || i.approved.includes(chain)) };
+  });
 }
 
 /** CAIP-2 ids of the mainnets Bytesac executes on, as asset chains (D-119). Testnets and other chains are not listed. */
@@ -55,14 +68,14 @@ export function signableChainsFromCaip(caipIds: readonly string[]): AssetChain[]
 }
 
 /**
- * D-119: the chains of a plan the user's linked wallet cannot sign, once each in plan order. A family whose list is unknown (null)
- * or has no active address never warns: receiving still works (an EOA has the same address on every EVM chain); only signing there later needs another wallet.
+ * D-119: the chains of a plan the user's linked wallet cannot sign, once each in plan order. A chain whose own row has an unknown list (null)
+ * or no active row never warns: receiving still works (an EOA has the same address on every EVM chain); only signing there later needs another wallet.
  */
-export function uncoveredChains(chains: readonly AssetChain[], addresses: readonly Pick<WalletAddressView, "chainFamily" | "status" | "signableChains">[]): AssetChain[] {
+export function uncoveredChains(chains: readonly AssetChain[], addresses: readonly Pick<WalletAddressView, "chain" | "status" | "signableChains">[]): AssetChain[] {
   const out: AssetChain[] = [];
   for (const c of chains) {
     if (out.includes(c)) continue;
-    const list = addresses.find((a) => a.status === "active" && a.chainFamily === ASSET_CHAINS[c].family)?.signableChains;
+    const list = linkedAddressFor(addresses, c)?.signableChains;
     if (list && !list.includes(c)) out.push(c);
   }
   return out;
