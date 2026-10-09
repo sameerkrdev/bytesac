@@ -7,7 +7,7 @@ vi.mock("@/components/auth/wallet-verification", () => ({ WalletVerification: ()
 import { canAddChainAccount } from "@repo/app-core";
 import { WalletSection } from "@/components/profile/wallet-section";
 
-const evm = (chain: "ethereum" | "base" | "bnb" | "arbitrum", method: "eoa_ecdsa" | "erc1271" = "eoa_ecdsa") =>
+const evm = (chain: "ethereum" | "base" | "bnb" | "arbitrum" | "polygon", method: "eoa_ecdsa" | "erc1271" = "eoa_ecdsa") =>
   ({ chain, chainFamily: "evm" as const, address: "0x1234567890abcdef1234567890abcdef12345678", status: "active" as const, verificationMethod: method, verifiedAt: "2026-09-29T00:00:00.000Z" });
 const me = (addresses: MeResponse["wallet"]["addresses"]): MeResponse => ({
   user: { id: "0192f1c2-7a4b-7c3d-8e9f-0a1b2c3d4e5f", status: "active", createdAt: "2026-09-29T00:00:00.000Z" },
@@ -28,8 +28,8 @@ describe("WalletSection", () => {
     expect(screen.queryByRole("button", { name: /remove|unlink/i })).toBeNull();
     expect(screen.getByText("Lost access to a wallet? Contact support.")).toBeInTheDocument();
   });
-  it("hides Add chain account when EOA EVM + Solana are linked", () => {
-    const all = me([evm("ethereum"), evm("base"), evm("bnb"), evm("arbitrum"),
+  it("hides Add chain account when every EVM chain + Solana are linked", () => {
+    const all = me([evm("ethereum"), evm("base"), evm("bnb"), evm("arbitrum"), evm("polygon"),
       { chain: "solana", chainFamily: "solana", address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T", status: "active", verificationMethod: "ed25519", verifiedAt: "2026-09-29T00:00:00.000Z" }]);
     expect(canAddChainAccount(all)).toBe(false);
     expect(canAddChainAccount(me([evm("base", "erc1271")]))).toBe(true);

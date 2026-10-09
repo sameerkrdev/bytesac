@@ -1,4 +1,4 @@
-import { ASSET_CHAINS, chainFromEvmChainId, chainsInFamily, type AssetChain, type MeResponse, type SignInChain, type WalletAddressView } from "@repo/validator";
+import { chainFromEvmChainId, chainsInFamily, type AssetChain, type MeResponse, type SignInChain, type WalletAddressView } from "@repo/validator";
 
 /** Solana mainnet-beta genesis hash used in CAIP-2 ids. */
 const SOLANA_MAINNET_CAIP = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
