@@ -41,4 +41,15 @@ describe("backfillPolygon", () => {
     expect(await backfillPolygon(db)).toBe(0);
     expect(await polygonRows(eoa)).toHaveLength(1);
   });
+
+  it("gives a wallet with different EVM addresses per chain one polygon row, from its earliest address", async () => {
+    const [u] = await db.insert(users).values({ status: "active" }).returning();
+    const [w] = await db.insert(investmentWallets).values({ userId: u!.id, status: "active" }).returning();
+    const base = { investmentWalletId: w!.id, chainFamily: "evm" as const, verificationMethod: "eoa_ecdsa" as const, verifiedOnChain: "base" as const };
+    await db.insert(walletAddresses).values({ ...base, chain: "ethereum", address: "0x" + "d".repeat(40), createdAt: new Date("2026-01-01") });
+    await db.insert(walletAddresses).values({ ...base, chain: "base", address: "0x" + "e".repeat(40), createdAt: new Date("2026-02-01") });
+    expect(await backfillPolygon(db)).toBe(1);
+    const rows = await polygonRows(w!.id);
+    expect(rows.map((r) => r.address)).toEqual(["0x" + "d".repeat(40)]);
+  });
 });
