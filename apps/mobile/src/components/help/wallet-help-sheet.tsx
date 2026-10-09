@@ -1,6 +1,6 @@
 import { WALLET_HELP } from "@repo/app-core";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,11 @@ import { useTheme } from "@/lib/theme";
 export function WalletHelpSheet({ visible, onClose, topic }: { visible: boolean; onClose(): void; topic?: string }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState<string | null>(topic ?? null);
-  useEffect(() => { if (visible) setOpen(topic ?? null); }, [visible, topic]);
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setOpen(topic ?? null);
+  }
   return (
     <Sheet visible={visible} onClose={onClose} title="How wallets work">
       {WALLET_HELP.map((h) => {
