@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { SESSION_COOKIE, type ChallengeRequest, type VerifyRequest, type BitcoinChallengeRequest, type BitcoinVerify, type VerifyResponse } from "@repo/validator";
+import { SESSION_COOKIE, type ChallengeRequest, type ReassignRequest, type VerifyRequest, type BitcoinChallengeRequest, type BitcoinVerify, type VerifyResponse } from "@repo/validator";
 import createHttpError from "http-errors";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import { bip322ToSignPsbt } from "@/providers/bitcoin";
@@ -56,11 +56,11 @@ export const verifySignature = async (req: Request, res: Response, next: NextFun
 
 export const reassignChainHandler = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const body = req.body as VerifyRequest;
+    const body = req.body as ReassignRequest;
     await consume(limits.verifyIp, req.ctx.ip);
     respondVerified(res, await reassignChain({
       challengeId: body.challengeId, signature: body.signature, walletProvider: body.walletProvider, signableChains: body.signableChains,
-      client: body.client, auth: req.auth, meta: req.ctx,
+      previousSignature: body.previousSignature, client: body.client, auth: req.auth, meta: req.ctx,
     }));
   } catch (error) {
     next(error);

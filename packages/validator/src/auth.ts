@@ -35,6 +35,10 @@ export const verifyRequestSchema = z.strictObject({
 });
 export type VerifyRequest = z.infer<typeof verifyRequestSchema>;
 
+/** D-120: moving a chain also needs a signature of the same message from the chain's CURRENT address (step-up; a stolen session alone cannot redirect it). Missing is judged by the service as SIGNATURE_INVALID. */
+export const reassignRequestSchema = verifyRequestSchema.extend({ previousSignature: z.string().min(1).max(20_000).optional() });
+export type ReassignRequest = z.infer<typeof reassignRequestSchema>;
+
 export const verifyResponseSchema = z.object({
   userId: z.uuid(),
   isNewUser: z.boolean(),

@@ -1,5 +1,5 @@
 import createHttpError, { isHttpError } from "http-errors";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { authChallenges, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, sessions, walletAddresses } from "@repo/db";
 import { CHAINS, familyOf, type AssetChain } from "@repo/validator";
 import { env } from "@/config/dotenv";
@@ -21,8 +21,10 @@ export function assertChainEmpty(i: { openOperation: boolean; heldUnits: { symbo
   if (left.length > 0) throw createHttpError(`Sell what you hold on this chain first: ${left.join(", ")}.`, { code: "CHAIN_NOT_EMPTY", assets: left });
 }
 
+export type ReassignInput = VerifyInput & { previousSignature?: string };
+
 /** D-120: move one chain to a new address, only when the chain is empty. The new address signs; the session rotates. */
-export async function reassignChain(input: VerifyInput): Promise<VerifyResult> {
+export async function reassignChain(input: ReassignInput): Promise<VerifyResult> {
   const auth = input.auth;
   if (!auth) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
   const { ch, claimId } = await claimChallenge(input.challengeId, ["reassign_chain"]);
@@ -38,19 +40,31 @@ export async function reassignChain(input: VerifyInput): Promise<VerifyResult> {
       .where(and(eq(investmentWallets.userId, auth.userId), eq(investmentWallets.status, "active"), eq(walletAddresses.chain, chain), eq(walletAddresses.status, "active")));
     if (!current) throw createHttpError(`${CHAINS[chain].label} is not linked yet. Link a wallet for it instead.`, { code: "CHAIN_NOT_LINKED" });
 
-    // On-chain balances of every registered asset on the chain, read outside any transaction (RPC). The ledger and open operations are re-checked inside, under the wallet lock.
+    // Step-up: the chain's current address must sign the same message, so a stolen session alone cannot redirect the chain.
+    const previous = input.previousSignature
+      ? await (familyOf(chain) === "evm" ? verifyEvmSignature({ chain, address: current.address, message: ch.message, signature: input.previousSignature })
+        : Promise.resolve(verifySolanaSignature({ address: current.address, message: ch.message, signature: input.previousSignature })))
+      : { kind: "invalid" as const };
+    if (previous.kind === "invalid") throw createHttpError("The wallet now linked to this chain must also sign.", { code: "SIGNATURE_INVALID" });
+
+    // On-chain balances of every registered non-native asset on the chain, read outside any transaction (RPC). The ledger and open operations are re-checked inside, under the wallet lock.
     const deployments = await db.select({ symbol: instruments.symbol, address: instrumentDeployments.address }).from(instrumentDeployments)
-      .innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.chain, chain));
-    const onchain = await Promise.all(deployments.map(async (d) => ({ symbol: d.symbol, amount: await walletBalance({ [chain]: current.address }, chain, d.address) })));
+      .innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(and(eq(instrumentDeployments.chain, chain), isNotNull(instrumentDeployments.address))); // native dust (gas drops) never blocks a move; native held through Bytesac is in the ledger
+    // Fail closed: an unreadable balance is never treated as empty.
+    const onchain = await Promise.all(deployments.map(async (d) => ({ symbol: d.symbol, amount: await walletBalance({ [chain]: current.address }, chain, d.address).catch((e: unknown) => {
+      throw isHttpError(e) ? e : createHttpError("The chain is temporarily unavailable. Try again.", { code: "VERIFIER_UNAVAILABLE", cause: e });
+    }) })));
 
     return await db.transaction(async (tx) => {
       await tx.select({ id: investmentWallets.id }).from(investmentWallets).where(eq(investmentWallets.id, current.walletId)).for("update");
       // Re-read under the lock: a concurrent move or disable must not be overwritten.
       const [still] = await tx.select({ id: walletAddresses.id }).from(walletAddresses)
         .where(and(eq(walletAddresses.id, current.id), eq(walletAddresses.status, "active")));
-      if (!still) throw createHttpError(`${CHAINS[chain].label} is not linked yet. Link a wallet for it instead.`, { code: "CHAIN_NOT_LINKED" });
+      if (!still) throw createHttpError("This chain changed while you were signing. Start again.", { code: "CHAIN_NOT_LINKED" });
       if (current.address === ch.address) throw createHttpError("That wallet already holds this chain.", { code: "VALIDATION_FAILED" });
-      if (await findAddressOwner(tx, chain, ch.address)) throw createHttpError("This address is linked to another account", { code: "ADDRESS_ALREADY_LINKED" });
+      const holder = await findAddressOwner(tx, chain, ch.address);
+      if (holder?.userId === auth.userId) throw createHttpError("This address was used for this chain before. Pick another wallet.", { code: "VALIDATION_FAILED" });
+      if (holder) throw createHttpError("This address is linked to another account", { code: "ADDRESS_ALREADY_LINKED" });
 
       assertChainEmpty({ openOperation: await hasOpenOperation(tx, auth.userId), heldUnits: await heldUnitsOnChain(tx, auth.userId, chain), onchain });
 

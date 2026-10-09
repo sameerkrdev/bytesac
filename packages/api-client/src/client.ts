@@ -23,7 +23,7 @@ import {
   type ApplicationDetail, type GrantRoleRequest, type ListApplicationsQuery, type ListApplicationsResponse, type PlatformRoleView, type PlatformRolesResponse,
   type TransitionApplicationRequest, type ConfirmApplicationEmailRequest, type ConfirmApplicationEmailResponse, type CreateApplicationRequest, type CreateApplicationResponse,
   type ContactView, type MeResponse, type NotificationPreferences, type SessionsResponse,
-  type UpdateNotificationPreferences, type VerifyContactRequest, type VerifyRequest, type VerifyResponse,
+  type UpdateNotificationPreferences, type ReassignRequest, type VerifyContactRequest, type VerifyRequest, type VerifyResponse,
   type EnterPayoutWalletRequest, type ListOrganizationsQuery, type ListOrganizationsResponse, type OrganizationNoteRequest, type OrganizationReviewDetail, type PayoutWalletDecisionRequest,
   type PublicOrganization, type TransitionOrganizationRequest, type VerifyPayoutWalletRequest, type VersionDecisionRequest,
   type CreateOrganizationRequest, type ListMyOrganizationsResponse, type OrganizationDetail, type PresignDocumentRequest, type PresignDocumentResponse, type UpdateDraftRequest,
@@ -98,7 +98,7 @@ export function createApiClient(options: ApiClientOptions) {
   return {
     createChallenge: (b: ChallengeRequest): Promise<ChallengeResponse> => request("POST", "/v1/auth/challenge", challengeResponseSchema, b),
     verify: (b: VerifyRequest): Promise<VerifyResponse> => request("POST", "/v1/auth/verify", verifyResponseSchema, b),
-    reassignChain: (b: VerifyRequest): Promise<VerifyResponse> => request("POST", "/v1/auth/reassign", verifyResponseSchema, b),
+    reassignChain: (b: ReassignRequest): Promise<VerifyResponse> => request("POST", "/v1/auth/reassign", verifyResponseSchema, b),
     logout: (): Promise<void> => request<z.ZodVoid>("POST", "/v1/auth/logout", null),
     logoutAll: (): Promise<void> => request<z.ZodVoid>("POST", "/v1/auth/logout-all", null),
     me: (): Promise<MeResponse> => request("GET", "/v1/me", meResponseSchema),

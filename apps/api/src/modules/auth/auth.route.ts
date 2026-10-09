@@ -1,5 +1,5 @@
 import express from "express";
-import { challengeRequestSchema, verifyRequestSchema } from "@repo/validator";
+import { challengeRequestSchema, reassignRequestSchema, verifyRequestSchema } from "@repo/validator";
 import { optionalSession, requireSession } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { logout, logoutAll, reassignChainHandler, requestChallenge, verifySignature } from "./auth.controller";
@@ -10,7 +10,7 @@ router.post("/challenge", optionalSession, validate({ body: challengeRequestSche
 
 router.post("/verify", optionalSession, validate({ body: verifyRequestSchema }), verifySignature);
 
-router.post("/reassign", requireSession, validate({ body: verifyRequestSchema }), reassignChainHandler);
+router.post("/reassign", requireSession, validate({ body: reassignRequestSchema }), reassignChainHandler);
 
 router.post("/logout", requireSession, logout);
 

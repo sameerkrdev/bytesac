@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
-import { basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, isUniqueViolation, operationLegs, operations, eligibilityDecisions, operationFees, positionLedgerEntries } from "@repo/db";
+import { basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations, eligibilityDecisions, operationFees, positionLedgerEntries } from "@repo/db";
 import { ASSET_CHAINS, USDC_DECIMALS, USDC_SOLANA_MINT, micro, minOut, networkFeeMicro, splitInvestment, type AssetChain, type AssetType, type BasketFees, type InvestRequest, type OperationView, type SellRequest } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
@@ -75,6 +75,8 @@ export async function insertPlan(ctx: OpCtx, i: { op: Omit<typeof operations.$in
   await assertWalletsCanFund(i.gas);
   try {
     return await db.transaction(async (tx) => {
+      // Serialize with reassign_chain (which holds this row FOR UPDATE while it checks for open operations).
+      await tx.select({ id: investmentWallets.id }).from(investmentWallets).where(and(eq(investmentWallets.userId, ctx.userId), eq(investmentWallets.status, "active"))).for("share");
       const stale = await tx.select().from(operations).where(and(eq(operations.userId, ctx.userId), eq(operations.status, "PLANNED"), sql`${operations.expiresAt} <= now()`));
       for (const s of stale) await cancelIfExpired(tx, ctx, s);
       for (const [chain, amountNative] of i.gas) if (amountNative > 0n) await reserveGas(tx, { userId: ctx.userId, chain, amountNative });
