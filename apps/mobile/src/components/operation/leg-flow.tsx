@@ -1,6 +1,7 @@
 import { describeError, formatUnits, LEG_ACTIVE, LEG_IN_FLIGHT, LEG_STEP_LABEL, legAmounts, legRoute, legTitle, nextLeg, OPERATION_STATUS_LABEL } from "@repo/app-core";
 import type { OperationView } from "@repo/validator";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAppKit } from "@reown/appkit-react-native";
 import { CircleCheck, Globe, TriangleAlert } from "lucide-react-native";
 import { Linking, View } from "react-native";
 import { ErrorState, ErrorText, LoadingState } from "@/components/states/states";
@@ -22,6 +23,12 @@ function failureCopy(code: string, message: string): { title: string; message?: 
   if (code === "WRONG_WALLET") return { title: "Wrong wallet", message };
   if (code === "VALIDATION_FAILED") return { title: message };
   return describeError(code as Parameters<typeof describeError>[0]) ?? describeError("INTERNAL");
+}
+
+/** WRONG_WALLET: drop the connected wallet and open Connect so the user can pick the one this step needs; they then tap the step again. */
+function ConnectWalletButton() {
+  const { open, disconnect } = useAppKit();
+  return <Button variant="secondary" onPress={() => void (async () => { await disconnect(); open({ view: "Connect" }); })()}>Connect wallet</Button>;
 }
 
 /**
@@ -89,6 +96,7 @@ export function LegFlow({ operationId }: { operationId: string }) {
           </View>
         </View>
       )}
+      {state.kind === "failed" && state.code === "WRONG_WALLET" ? <ConnectWalletButton /> : null}
       <ErrorText error={stop.error} />
       {busy && <AppText accessibilityRole="progressbar" tone="muted">{LEG_STEP_LABEL[state.kind] ?? "Working"}…</AppText>}
       {fresh && (

@@ -1,8 +1,8 @@
 import { describeError, type ConnectedAccount, type VerifyState, shortAddress } from "@repo/app-core";
-import { CHAINS, familyOf, type Chain } from "@repo/validator";
+import { CHAINS } from "@repo/validator";
 import * as Clipboard from "expo-clipboard";
 import { Check, Copy, PenLine, ShieldCheck } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { AppText } from "@/components/ui/app-text";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,11 @@ interface Props {
   state: VerifyState;
   /** Addresses already linked to this user; signing for one of them is pointless. */
   linkedAddresses?: readonly LinkedAddress[];
+  /** D-120 chain switches; when present Sign needs at least one ticked chain (signDisabled). */
+  picker?: ReactNode;
+  signDisabled?: boolean;
+  /** Guidance from the verification hook, e.g. the second step of a move. */
+  notice?: { kind: "info" | "error"; text: string } | null;
   onSign(): void;
   onRetry(): void;
   onRestart(): void;
@@ -35,9 +40,6 @@ interface Props {
 }
 
 const ALREADY_LINKED_HINT = "This account is already linked. Choose another network or account in your wallet.";
-const FAMILY_LABEL = { evm: "EVM", solana: "Solana", bitcoin: "Bitcoin" } as const;
-const familyTakenHint = (family: keyof typeof FAMILY_LABEL) =>
-  `Your Bytesac account already has a different ${FAMILY_LABEL[family]} address. Choose the missing network in your wallet, or use a different wallet.`;
 
 function sameAddress(chain: string, a: string, b: string): boolean {
   return chain === "solana" ? a === b : a.toLowerCase() === b.toLowerCase();
@@ -86,15 +88,10 @@ export function VerifyWalletCard(p: Props) {
   const busy = p.state.step === "signing" || p.state.step === "verifying";
   const err = p.state.step === "error" ? describeError(p.state.code) : null;
   const retryAfterSec = p.state.step === "error" ? p.state.retryAfterSec ?? 0 : 0;
+  // Without the chain picker (a move), signing for an address that is already linked is pointless.
   const alreadyLinked =
-    p.account !== null &&
+    !p.picker && p.account !== null &&
     (p.linkedAddresses ?? []).some((l) => l.chain === p.account!.chain && sameAddress(l.chain, l.address, p.account!.address));
-  // One address per chain family (ADR-004): a different address in a family the account already has is refused server-side, so do not ask for a signature.
-  const family = p.account ? familyOf(p.account.chain) : null;
-  const familyTaken =
-    p.account !== null && family !== null &&
-    (p.linkedAddresses ?? []).some((l) => familyOf(l.chain as Chain) === family) &&
-    !(p.linkedAddresses ?? []).some((l) => familyOf(l.chain as Chain) === family && sameAddress(l.chain, l.address, p.account!.address));
 
   let primary: React.ReactNode;
   if (err?.recovery === "restart") primary = <Button onPress={p.onRestart}>Start again</Button>;
@@ -106,11 +103,10 @@ export function VerifyWalletCard(p: Props) {
     primary = (
       <>
         {alreadyLinked ? <AppText tone="muted" accessibilityRole="alert">{ALREADY_LINKED_HINT}</AppText> : null}
-        {!alreadyLinked && familyTaken && family ? <AppText tone="muted" accessibilityRole="alert">{familyTakenHint(family)}</AppText> : null}
         <Button
           onPress={p.onSign}
           loading={busy}
-          disabled={p.state.step === "done" || alreadyLinked || familyTaken}
+          disabled={p.state.step === "done" || alreadyLinked || p.signDisabled}
           size="lg"
           icon={busy ? undefined : <PenLine size={16} color={colors.primaryInk} />}
         >
@@ -128,6 +124,12 @@ export function VerifyWalletCard(p: Props) {
         <Step n={2} done={p.state.step === "done"} label="Sign to verify" />
       </View>
       <AppText variant="heading" accessibilityRole="header">Verify your wallet</AppText>
+
+      {p.notice && (
+        <View accessibilityRole={p.notice.kind === "error" ? "alert" : undefined} accessibilityLiveRegion="polite" className="rounded-tile border border-info/25 bg-surface-muted p-4">
+          <AppText>{p.notice.text}</AppText>
+        </View>
+      )}
 
       {p.network === "unsupported" ? (
         <View accessibilityRole="alert" className="gap-3 rounded-tile border border-warning/30 bg-warning-soft p-4">
@@ -158,6 +160,7 @@ export function VerifyWalletCard(p: Props) {
             <ShieldCheck size={20} color={colors.success} />
             <AppText className="flex-1">{"You're signing a message to prove you control this address. It does not authorize any transaction or spending."}</AppText>
           </View>
+          {p.picker}
           {err && (
             <View accessibilityRole="alert" className="gap-1 rounded-tile border border-danger/30 bg-danger-soft p-4">
               <AppText className="font-medium">{err.title}</AppText>

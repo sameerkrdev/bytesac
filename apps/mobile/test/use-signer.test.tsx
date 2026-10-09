@@ -5,6 +5,7 @@ import { useSigner } from "@/lib/wallet/use-signer";
 
 const SOL = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
 const EVM = "0xAbC0000000000000000000000000000000000001";
+const EVM_B = "0xBbB0000000000000000000000000000000000002";
 const mockState = {
   appkit: { address: SOL as string | undefined, namespace: "solana" as string | undefined, chain: { caipNetworkId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" } as { caipNetworkId: string } | undefined },
   provider: { request: jest.fn() },
@@ -30,8 +31,9 @@ jest.mock("wagmi/actions", () => ({ waitForTransactionReceipt: (...a: unknown[])
 
 const me = {
   wallet: { addresses: [
-    { chain: "solana", address: SOL, status: "active" },
-    { chain: "ethereum", address: EVM.toLowerCase(), status: "active" },
+    { chain: "solana", address: SOL, status: "active", walletName: "Phantom" },
+    { chain: "base", address: EVM.toLowerCase(), status: "active", walletName: "MetaMask" },
+    { chain: "ethereum", address: EVM_B.toLowerCase(), status: "active", walletName: "Rabby" },
   ] },
 } as never;
 const bytes = (...n: number[]) => Uint8Array.from(n);
@@ -109,6 +111,22 @@ describe("useSigner (AppKit React Native adapter)", () => {
     mockState.receipt.mockResolvedValue({ status: "reverted" });
     await expect((await getSigner()).sendEvm({ ...evmTx, approval: { token: "0x00000000000000000000000000000000000000bb", spender: "0x00000000000000000000000000000000000000cc", amount: "1" } })).rejects.toThrow("not confirmed");
     expect(mockState.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("EVM: signs for the leg's chain only; the other chain's wallet is refused with a Connect hint", async () => {
+    const base = { ...evmTx, approval: null };
+    mockState.send.mockResolvedValue("0xmain");
+    expect(await (await getSigner()).sendEvm(base)).toBe("0xmain");
+    mockState.evm = { isConnected: true, address: EVM_B, chainId: 8453 };
+    await expect((await getSigner()).sendEvm(base)).rejects.toThrow("Connect MetaMask (0xabc0…0001) to sign this Base step");
+    await expect((await getSigner()).sendEvm(base)).rejects.toBeInstanceOf(WrongWalletError);
+    expect(mockState.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("EVM: a chain with no linked address asks for a wallet; Solana mismatch names the linked Solana wallet", async () => {
+    await expect((await getSigner()).sendEvm({ ...evmTx, chainId: 42161, approval: null })).rejects.toThrow("Connect the wallet (linked address) to sign this Arbitrum step");
+    mockState.appkit = { ...mockState.appkit, address: "SomeoneElse1111111111111111111111111111111111" };
+    await expect((await getSigner()).signSolana("AAAA")).rejects.toThrow("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step");
   });
 
   it("EVM: refuses a wallet that is not the linked EVM address", async () => {

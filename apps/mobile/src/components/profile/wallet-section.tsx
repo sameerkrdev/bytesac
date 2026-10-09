@@ -1,5 +1,5 @@
 import { canAddChainAccount, shortAddress } from "@repo/app-core";
-import { CHAINS, type MeResponse } from "@repo/validator";
+import { CHAINS, type MeResponse, type WalletAddressView } from "@repo/validator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { Modal, View } from "react-native";
@@ -24,18 +24,22 @@ const METHOD = { eoa_ecdsa: "Key signature", erc1271: "Smart wallet", erc6492: "
 export function WalletSection({ me }: { me: MeResponse }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const onVerified = useCallback(() => { setOpen(false); void qc.invalidateQueries({ queryKey: ["me"] }); }, [qc]);
+  const [moving, setMoving] = useState<WalletAddressView | null>(null);
+  const onVerified = useCallback(() => { setOpen(false); setMoving(null); void qc.invalidateQueries({ queryKey: ["me"] }); }, [qc]);
   return (
     <Card className="gap-4">
       <AppText variant="heading" accessibilityRole="header">Investment wallet</AppText>
-      <AppText tone="muted">One EVM address and one Solana address per account, from the same wallet or different wallets.</AppText>
-      {me.wallet.addresses.map((a) => (
+      <AppText tone="muted">One address per network. Each can come from the same wallet or a different one.</AppText>
+      {me.wallet.addresses.filter((a) => a.status !== "replaced").map((a) => (
         <View key={`${a.chain}:${a.address}`} className="gap-1 border-t border-line pt-3">
           <View className="flex-row items-center justify-between">
             <AppText className="font-medium">{CHAINS[a.chain].label}</AppText>
             <StatusBadge tone={a.status === "active" ? "success" : "danger"} label={a.status === "active" ? "Active" : "Disabled"} />
           </View>
-          <AppText tone="faint">{shortAddress(a.address)} · {METHOD[a.verificationMethod]}</AppText>
+          <AppText tone="faint">{a.walletName ?? "Wallet"} · {shortAddress(a.address)} · {METHOD[a.verificationMethod]}</AppText>
+          {a.status === "active" && (
+            <Button variant="ghost" accessibilityLabel={`Move ${CHAINS[a.chain].label} to another wallet`} onPress={() => setMoving(a)}>Move to another wallet</Button>
+          )}
         </View>
       ))}
       {canAddChainAccount(me) && <Button variant="secondary" onPress={() => setOpen(true)}>Add chain account</Button>}
@@ -46,6 +50,14 @@ export function WalletSection({ me }: { me: MeResponse }) {
           <AppText tone="muted">{addChainHint(me)}</AppText>
           {open && <WalletVerification purpose="add_chain_account" linkedAddresses={me.wallet.addresses} onVerified={onVerified} />}
           <Button variant="ghost" onPress={() => setOpen(false)}>Close</Button>
+        </Screen>
+      </Modal>
+      <Modal visible={moving !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setMoving(null)}>
+        <Screen>
+          <AppText variant="title" accessibilityRole="header">{`Move ${moving ? CHAINS[moving.chain].label : ""} to another wallet`}</AppText>
+          <AppText tone="muted">{`Only possible when you hold nothing on ${moving ? CHAINS[moving.chain].label : "this chain"}. Connect the new wallet and sign, then approve in the current one to confirm.`}</AppText>
+          {moving && <WalletVerification purpose="reassign_chain" linkedAddresses={me.wallet.addresses} reassign={{ chain: moving.chain, previous: { address: moving.address, walletName: moving.walletName ?? null } }} onVerified={onVerified} />}
+          <Button variant="ghost" onPress={() => setMoving(null)}>Close</Button>
         </Screen>
       </Modal>
     </Card>

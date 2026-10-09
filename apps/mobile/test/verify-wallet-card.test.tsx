@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { Text } from "react-native";
 import { VerifyWalletCard } from "@/components/auth/verify-wallet-card";
 
 const account = { chain: "solana" as const, address: "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T", walletName: "Phantom" };
@@ -58,13 +59,22 @@ describe("VerifyWalletCard (mobile)", () => {
     expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
   });
 
-  it("blocks Sign when the account already has a different address in the connected family", async () => {
+  it("renders the chain picker and notice, and signDisabled blocks Sign (no ticked chain)", async () => {
     await render(
-      <VerifyWalletCard account={evm} network="supported" state={{ step: "idle" }}
-        linkedAddresses={[{ chain: "ethereum", address: "0x1111111111111111111111111111111111111111" }]} {...h} />,
+      <VerifyWalletCard account={evm} network="supported" state={{ step: "idle" }} picker={<Text>picker</Text>} signDisabled
+        notice={{ kind: "info", text: "Now approve in MetaMask (0xAbCd…ef01) to confirm the move." }} {...h} />,
     );
-    expect(screen.getByText("Your Bytesac account already has a different EVM address. Choose the missing network in your wallet, or use a different wallet.")).toBeOnTheScreen();
+    expect(screen.getByText("picker")).toBeOnTheScreen();
+    expect(screen.getByText("Now approve in MetaMask (0xAbCd…ef01) to confirm the move.")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
+  });
+
+  it("with a picker, the server answers per chain: no already-linked block", async () => {
+    await render(
+      <VerifyWalletCard account={evm} network="supported" state={{ step: "idle" }} picker={<Text>picker</Text>}
+        linkedAddresses={[{ chain: "ethereum", address: evm.address.toLowerCase() }]} {...h} />,
+    );
+    expect(screen.getByRole("button", { name: "Sign message" })).toBeEnabled();
   });
 
   it("allows Sign for a family the account does not have yet", async () => {

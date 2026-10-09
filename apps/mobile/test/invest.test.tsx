@@ -1,4 +1,5 @@
 import { ApiError } from "@repo/api-client";
+import { WrongWalletError } from "@repo/app-core";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { Linking } from "react-native";
 import { InvestWizard } from "@/components/invest/invest-wizard";
@@ -10,6 +11,8 @@ jest.mock("expo-router", () => ({ router: { push: jest.fn(), replace: jest.fn() 
 jest.mock("@/lib/api", () => ({ api: require("./helpers").apiMock() }));
 const mockSigner = { signSolana: jest.fn(), sendEvm: jest.fn() };
 jest.mock("@/lib/wallet/use-signer", () => ({ useSigner: () => mockSigner }));
+const mockAppKit = { open: jest.fn(), disconnect: jest.fn(async () => undefined) };
+jest.mock("@reown/appkit-react-native", () => ({ useAppKit: () => mockAppKit }));
 const mockApi = api as unknown as ReturnType<typeof apiMock>;
 
 const quote = (over: Record<string, unknown> = {}) => ({
@@ -139,6 +142,19 @@ describe("Invest wizard (mobile)", () => {
     expect(await screen.findByText("Quote expired")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Get a new quote" })).toBeOnTheScreen();
     expect(mockApi.submitLeg).toHaveBeenCalledTimes(1);
+    expect(mockSigner.signSolana).toHaveBeenCalledTimes(1);
+  });
+
+  it("a wrong wallet shows the Connect hint and a Connect wallet button that opens the wallet list; no auto-retry", async () => {
+    mockApi.quoteLeg.mockResolvedValue(quote());
+    mockSigner.signSolana.mockRejectedValue(new WrongWalletError("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step", true));
+    await toSigning();
+    await fireEvent.press(await screen.findByRole("button", { name: "Review step 1" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Approve step 1 in your wallet" }));
+    expect(await screen.findByText("Connect Phantom (4Nd1mB…DB4T) to sign this Solana step")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Connect wallet" }));
+    await waitFor(() => expect(mockAppKit.open).toHaveBeenCalledWith({ view: "Connect" }));
+    expect(mockAppKit.disconnect).toHaveBeenCalledTimes(1);
     expect(mockSigner.signSolana).toHaveBeenCalledTimes(1);
   });
 

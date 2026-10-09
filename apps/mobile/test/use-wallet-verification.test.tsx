@@ -1,3 +1,4 @@
+import { ApiError } from "@repo/api-client";
 import { act, renderHook } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import { api } from "@/lib/api";
@@ -7,7 +8,7 @@ const mockSignMessage = jest.fn();
 jest.mock("@/lib/wallet/use-wallet-connector", () => ({ useWalletConnector: () => ({ signMessage: mockSignMessage }) }));
 const mockAcceptToken = jest.fn(async () => undefined);
 jest.mock("@/lib/auth-context", () => ({ useAuth: () => ({ acceptToken: mockAcceptToken }) }));
-jest.mock("@/lib/api", () => ({ api: { createChallenge: jest.fn(), verify: jest.fn() } }));
+jest.mock("@/lib/api", () => ({ api: { createChallenge: jest.fn(), verify: jest.fn(), reassignChain: jest.fn() } }));
 
 const account = { chain: "ethereum" as const, address: "0xabc", walletName: "MetaMask" };
 
@@ -80,5 +81,55 @@ describe("useWalletVerification", () => {
     mockSignMessage.mockResolvedValueOnce("sig");
     await act(async () => { await result.current.run(account); });
     expect(result.current.state.step).toBe("done");
+  });
+
+  it("sends the picked chains with the challenge", async () => {
+    mockSignMessage.mockResolvedValueOnce("sig");
+    const { result } = await renderHook(() => useWalletVerification("add_chain_account"));
+    await act(async () => { await result.current.run(account, ["base", "ethereum"]); });
+    expect(api.createChallenge).toHaveBeenCalledWith({ purpose: "add_chain_account", chain: "ethereum", address: "0xabc", chains: ["base", "ethereum"] });
+  });
+
+  describe("reassign_chain (two signatures over one challenge)", () => {
+    const next = { chain: "ethereum" as const, address: "0xnew", walletName: "Rabby" };
+    const old = { chain: "ethereum" as const, address: "0xOLD", walletName: "MetaMask" };
+    const previous = { address: "0xold", walletName: "MetaMask" };
+
+    it("holds the new wallet's signature, asks for the old wallet, then posts both", async () => {
+      (api.reassignChain as jest.Mock).mockResolvedValue({ token: "tok2", isNewUser: false });
+      mockSignMessage.mockResolvedValueOnce("sigNew").mockResolvedValueOnce("sigOld");
+      const { result } = await renderHook(() => useWalletVerification("reassign_chain"));
+      await act(async () => { await result.current.run(next, ["base"], previous); });
+      expect(api.createChallenge).toHaveBeenCalledWith({ purpose: "reassign_chain", chain: "base", address: "0xnew", chains: ["base"] });
+      expect(result.current.awaitingPrevious).toBe(true);
+      expect(result.current.notice?.text).toBe("Now approve in MetaMask (0xold…xold) to confirm the move.");
+      expect(api.reassignChain).not.toHaveBeenCalled();
+      await act(async () => { await result.current.run(next, ["base"], previous); });
+      expect(result.current.notice?.kind).toBe("error"); // still the new wallet: refused, nothing signed
+      expect(mockSignMessage).toHaveBeenCalledTimes(1);
+      await act(async () => { await result.current.run(old, ["base"], previous); });
+      expect(mockSignMessage).toHaveBeenLastCalledWith("m");
+      expect(api.reassignChain).toHaveBeenCalledWith({ challengeId: "c1", signature: "sigNew", previousSignature: "sigOld", client: "mobile", walletProvider: "Rabby", signableChains: undefined });
+      expect(mockAcceptToken).toHaveBeenCalledWith("tok2");
+      expect(result.current.state.step).toBe("done");
+      expect(result.current.awaitingPrevious).toBe(false);
+    });
+
+    it("an expired challenge drops the held signature and fails for a clean restart", async () => {
+      (api.reassignChain as jest.Mock).mockRejectedValue(new ApiError("CHALLENGE_EXPIRED", 410, "expired"));
+      mockSignMessage.mockResolvedValue("sig");
+      const { result } = await renderHook(() => useWalletVerification("reassign_chain"));
+      await act(async () => { await result.current.run(next, ["base"], previous); });
+      await act(async () => { await result.current.run(old, ["base"], previous); });
+      expect(result.current.state).toMatchObject({ step: "error", code: "CHALLENGE_EXPIRED" });
+      expect(result.current.awaitingPrevious).toBe(false);
+    });
+
+    it("CHAIN_NOT_EMPTY lists what is still held", async () => {
+      (api.createChallenge as jest.Mock).mockRejectedValue(new ApiError("CHAIN_NOT_EMPTY", 409, "held", undefined, { assets: ["USDC", "WETH"] }));
+      const { result } = await renderHook(() => useWalletVerification("reassign_chain"));
+      await act(async () => { await result.current.run(next, ["base"], previous); });
+      expect(result.current.notice?.text).toBe("You still hold: USDC, WETH.");
+    });
   });
 });

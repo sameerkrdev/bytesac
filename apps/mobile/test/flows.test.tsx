@@ -12,6 +12,7 @@ import { id, leg, operation, portfolio, position } from "./fixtures";
 
 jest.mock("expo-router", () => ({ router: { push: jest.fn(), replace: jest.fn() }, useLocalSearchParams: jest.fn() }));
 jest.mock("@/lib/api", () => ({ api: require("./helpers").apiMock() }));
+jest.mock("@reown/appkit-react-native", () => ({ useAppKit: () => ({ open: jest.fn(), disconnect: jest.fn() }) }));
 const mockSigner = { signSolana: jest.fn(), sendEvm: jest.fn() };
 jest.mock("@/lib/wallet/use-signer", () => ({ useSigner: () => mockSigner }));
 const mockApi = api as unknown as ReturnType<typeof apiMock>;
