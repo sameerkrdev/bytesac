@@ -46,8 +46,8 @@ describe("userAddresses (D-120)", () => {
     const user = await seedUser({ wallet: solanaTestWallet(), evmByChain: { base: ADDR.base, arbitrum: ADDR.arbitrum } });
     const [wallet] = await adminSql<{ id: string }[]>`SELECT id FROM app.investment_wallets WHERE user_id = ${user.userId}`;
     const [active] = await adminSql<{ id: string }[]>`SELECT id FROM app.wallet_addresses WHERE chain = 'base' AND address = ${ADDR.base}`;
-    await adminSql`INSERT INTO app.wallet_addresses (id, investment_wallet_id, chain_family, chain, address, status, disabled_reason, replaced_at, replaced_by_address_id, verification_method, verified_on_chain)
-      VALUES (gen_random_uuid(), ${wallet!.id}, 'evm', 'base', ${"0x" + "99".repeat(20)}, 'replaced', 'chain_reassigned', now(), ${active!.id}, 'eoa_ecdsa', 'base')`;
+    await adminSql`INSERT INTO app.wallet_addresses (id, investment_wallet_id, chain_family, chain, address, status, disabled_reason, replaced_at, replaced_by_address_id, verification_method, verified_on_chain, created_at)
+      VALUES (gen_random_uuid(), ${wallet!.id}, 'evm', 'base', ${"0x" + "99".repeat(20)}, 'replaced', 'chain_reassigned', now(), ${active!.id}, 'eoa_ecdsa', 'base', now() - interval '1 day')`; // older than the active row: a missing status filter would return it
     await adminSql`UPDATE app.wallet_addresses SET status = 'disabled', disabled_reason = 'test' WHERE chain = 'arbitrum' AND address = ${ADDR.arbitrum}`;
     const addresses = await userAddresses(db, user.userId);
     expect(addressOn(addresses, "base")).toBe(ADDR.base);
@@ -107,9 +107,9 @@ describe("rebalance with a different address per chain (D-120)", () => {
     await seedVersion(basket, 2, [8000, 2000]); // Arbitrum is trimmed and Base bought
     const res = await post(user.h, "/v1/operations/rebalance", { positionId, target: "latest", slippageBps: 100, idempotencyKey: "reb-aaaaaaaa" });
     expect(res.status).toBe(201);
-    const baseSells = chain.quotes.filter((q) => q.fromChain === "arbitrum");
-    expect(baseSells.length).toBeGreaterThan(0);
-    expect(new Set(baseSells.map((q) => q.fromAddress))).toEqual(new Set([ADDR.arbitrum]));
+    const arbSells = chain.quotes.filter((q) => q.fromChain === "arbitrum");
+    expect(arbSells.length).toBeGreaterThan(0);
+    expect(new Set(arbSells.map((q) => q.fromAddress))).toEqual(new Set([ADDR.arbitrum]));
   });
 });
 
