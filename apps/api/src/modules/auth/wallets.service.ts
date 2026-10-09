@@ -6,7 +6,7 @@ import { ASSET_CHAINS, familyOf, type AssetChain, type Chain, type ChainFamily, 
 import { isAddress } from "viem";
 import { Address } from "@scure/btc-signer";
 
-export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string }
+export interface NewAddressRow { chain: Chain; address: string; method: VerificationMethod; verifiedOnChain: Chain; challengeId: string; walletName: string | null }
 
 const invalid = (message: string) => createHttpError(message, { code: "VALIDATION_FAILED" });
 
@@ -64,6 +64,7 @@ export async function insertAddresses(tx: Tx, walletId: string, rows: NewAddress
     verificationMethod: r.method,
     verifiedOnChain: r.verifiedOnChain,
     verificationChallengeId: r.challengeId,
+    walletName: r.walletName,
   })));
 }
 

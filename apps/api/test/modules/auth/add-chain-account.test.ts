@@ -57,10 +57,19 @@ describe("add chain account", () => {
     expect((await db.select().from(walletAddresses)).filter((x) => x.chain === "solana")).toHaveLength(1);
   });
 
-  it("different address in an already-linked family → 409 CHAIN_FAMILY_ALREADY_LINKED", async () => {
+  it("different address on a chain the user already has → 409 CHAIN_ALREADY_LINKED", async () => {
     const s = await signIn(app, newEvmWallet(), "base");
     const res = await addChain(app, s.cookie!, newEvmWallet(), "base");
-    expect(res.body.error.code).toBe("CHAIN_FAMILY_ALREADY_LINKED");
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CHAIN_ALREADY_LINKED");
+  });
+
+  it("different EVM address on a chain the user lacks → 200", async () => {
+    fakes.evm.behavior = "valid";
+    const sw = { address: "0x" + "ab".repeat(20), sign: () => "0x" + "11".repeat(100) };
+    const s = await signIn(app, sw, "base");
+    const res = await addChain(app, s.cookie!, newEvmWallet(), "ethereum");
+    expect(res.status).toBe(200);
   });
 
   it("smart wallet can add the same address on another EVM chain", async () => {

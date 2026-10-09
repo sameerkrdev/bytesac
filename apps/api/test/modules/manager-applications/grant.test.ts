@@ -161,7 +161,7 @@ describe("approval and sign-in overlapping in time", () => {
     const held = new Promise<string>((r) => { holding = r; });
     // The sign-in transaction: user and address exist but are uncommitted, and it holds the application lock.
     const signInTx = db.transaction(async (tx) => {
-      const userId = await createUserWithWallet(tx, { rows: [{ chain: "base", address, method: "eoa_ecdsa", verifiedOnChain: "base", challengeId: undefined as unknown as string }] });
+      const userId = await createUserWithWallet(tx, { rows: [{ chain: "base", address, method: "eoa_ecdsa", verifiedOnChain: "base", challengeId: undefined as unknown as string, walletName: null }] });
       await grantIfProven(tx, { userId, chain: "base", address, method: "eoa_ecdsa", requestId: "r" });
       holding(userId);
       await gate;

@@ -24,6 +24,7 @@ export async function getMe(userId: string): Promise<MeResponse> {
         chain: a.chain, chainFamily: familyOf(a.chain), address: a.address, status: a.status,
         verificationMethod: a.verificationMethod, verifiedAt: a.verifiedAt.toISOString(),
         signableChains: (a.signableChains as AssetChain[] | null) ?? null,
+        walletName: a.walletName ?? null,
       })),
     },
     contacts: current.map(contactView),

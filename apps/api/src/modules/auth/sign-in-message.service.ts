@@ -4,6 +4,10 @@ import { CHAINS, familyOf, type Chain } from "@repo/validator";
 
 export const SIGN_IN_STATEMENT = "Sign in to Bytesac. This does not authorize any transaction or spending.";
 
+/** D-120: when the caller ticked chains, the signed text names them. */
+const statementFor = (chains?: readonly Chain[]) =>
+  chains && chains.length > 0 ? `${SIGN_IN_STATEMENT} Link this address for: ${chains.map((c) => CHAINS[c].label).join(", ")}.` : SIGN_IN_STATEMENT;
+
 /** Bitcoin is link-only: it can never sign you in. */
 const LINK_STATEMENT = "Link this Bitcoin address to your Bytesac account. This does not sign you in or authorize any transaction or spending.";
 
@@ -15,6 +19,7 @@ export interface SignInMessageInput {
   nonce: string;
   issuedAt: Date;
   expiresAt: Date;
+  chains?: readonly Chain[];
 }
 
 export function buildSignInMessage(i: SignInMessageInput): { message: string; chainId: string } {
@@ -24,7 +29,7 @@ export function buildSignInMessage(i: SignInMessageInput): { message: string; ch
     const message = createSiweMessage({
       domain: i.domain,
       address: getAddress(i.address),
-      statement: SIGN_IN_STATEMENT,
+      statement: statementFor(i.chains),
       uri: i.uri,
       version: "1",
       chainId,
@@ -55,7 +60,7 @@ export function buildSignInMessage(i: SignInMessageInput): { message: string; ch
     `${i.domain} wants you to sign in with your Solana account:`,
     i.address,
     "",
-    SIGN_IN_STATEMENT,
+    statementFor(i.chains),
     "",
     `URI: ${i.uri}`,
     "Version: 1",

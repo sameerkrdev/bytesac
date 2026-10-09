@@ -1,9 +1,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import createHttpError, { isHttpError } from "http-errors";
 import { and, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
-import { authChallenges, challengePurpose, db, investmentWallets, isUniqueViolation, sessions, type Tx } from "@repo/db";
+import { authChallenges, challengePurpose, db, investmentWallets, isUniqueViolation, sessions, walletAddresses, type Tx } from "@repo/db";
 import {
-  chainsInFamily, familyOf,
+  ASSET_CHAINS, CHAINS, chainsInFamily, familyOf,
   type AssetChain, type Chain, type ChallengeResponse, type ClientKind, type VerificationMethod,
 } from "@repo/validator";
 import { env } from "@/config/dotenv";
@@ -25,11 +25,15 @@ type DbPurpose = (typeof challengePurpose.enumValues)[number];
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const CHALLENGE_LEASE = "30 seconds";
 /** Business rejections that make the challenge terminal (it is marked `rejected`). */
-const TERMINAL = new Set(["SIGNATURE_INVALID", "ADDRESS_DISABLED", "USER_NOT_ACTIVE", "ADDRESS_ALREADY_LINKED", "CHAIN_FAMILY_ALREADY_LINKED"]);
+const TERMINAL = new Set(["SIGNATURE_INVALID", "ADDRESS_DISABLED", "USER_NOT_ACTIVE", "ADDRESS_ALREADY_LINKED", "CHAIN_FAMILY_ALREADY_LINKED", "CHAIN_ALREADY_LINKED", "VALIDATION_FAILED"]);
 
 const addressLinked = () => createHttpError("This address is linked to another account", { code: "ADDRESS_ALREADY_LINKED" });
 const inProgress = () => createHttpError("This sign-in request is already being verified.", { code: "CHALLENGE_IN_PROGRESS" });
-const addressDisabled = () => createHttpError("This wallet address has been disabled. Contact support.", { code: "ADDRESS_DISABLED" });
+/** Any non-active address is refused; a replaced one was moved to another wallet (D-120). */
+const addressInactive = (status: string) => createHttpError(
+  status === "replaced" ? "This address was moved to another wallet. Sign in with the wallet now linked to that chain." : "This wallet address has been disabled. Contact support.",
+  { code: "ADDRESS_DISABLED" },
+);
 
 /** Database time: challenge lifetimes never depend on the API host's clock. */
 async function dbNow(): Promise<Date> {
@@ -39,9 +43,15 @@ async function dbNow(): Promise<Date> {
 }
 
 /** `organizationId` is for payout-wallet proofs: the row is bound to the organization and the signed text is a plain custom message (not SIWS), naming it. */
-export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; meta: RequestMeta }): Promise<ChallengeResponse> {
+export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawAddress: string; sessionId: string | null; organizationId?: string; chains?: AssetChain[]; meta: RequestMeta }): Promise<ChallengeResponse> {
   if (familyOf(i.chain) === "bitcoin" && i.purpose === "sign_in") throw createHttpError("Bitcoin can be linked but not used to sign in.", { code: "UNSUPPORTED_CHAIN" });
   const address = canonicalizeAddress(i.chain, i.rawAddress);
+  const family = familyOf(i.chain);
+  // Omitted = legacy "every chain of the family", decided at verify (a smart wallet then links only the connected chain).
+  const chains = i.chains ?? (i.purpose === "reassign_chain" ? [i.chain] : null);
+  if (chains && (chains.some((c) => ASSET_CHAINS[c].family !== family) || !chains.includes(i.chain))) {
+    throw createHttpError("Pick chains of this wallet's network family, including the connected one.", { code: "VALIDATION_FAILED" });
+  }
   await consume(limits.challengeIp, i.meta.ip);
   await consume(limits.challengeAddress, address);
 
@@ -50,7 +60,7 @@ export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawA
   const nonce = randomBytes(16).toString("hex");
   const domain = env.AUTH_DOMAIN;
   const uri = env.AUTH_URI;
-  const built = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt });
+  const built = buildSignInMessage({ chain: i.chain, address, domain, uri, nonce, issuedAt, expiresAt, chains: chains as Chain[] | undefined });
   const chainId = built.chainId;
   const message = i.organizationId ? [
     "Bytesac payout wallet verification",
@@ -67,7 +77,7 @@ export async function issueChallenge(i: { purpose: DbPurpose; chain: Chain; rawA
 
   const [row] = await db.insert(authChallenges).values({
     nonce, purpose: i.purpose, chainFamily: familyOf(i.chain), chain: i.chain, address, message, domain, uri, chainId,
-    issuedAt, expiresAt, sessionId: i.sessionId, organizationId: i.organizationId,
+    issuedAt, expiresAt, sessionId: i.sessionId, organizationId: i.organizationId, chains,
   }).returning({ id: authChallenges.id });
   return { challengeId: row!.id, message, expiresAt: expiresAt.toISOString() };
 }
@@ -170,9 +180,13 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
     .returning({ id: authChallenges.id });
   if (consumed.length !== 1) throw inProgress();
 
-  // Only an ECDSA-recovered EOA key proves control on every EVM chain; contract wallets are per chain.
-  const rows: NewAddressRow[] = (method === "eoa_ecdsa" ? chainsInFamily(familyOf(ch.chain)) : [ch.chain]).map((chain) => ({
-    chain, address: ch.address, method, verifiedOnChain: ch.chain, challengeId: ch.id,
+  // D-120: link exactly the chains the user ticked. Only an ECDSA-recovered EOA key (or ed25519) proves control on several chains; contract wallets are per chain.
+  const explicit = ch.chains !== null;
+  const multiChain = method === "eoa_ecdsa" || method === "ed25519";
+  const wanted = (ch.chains ?? (method === "eoa_ecdsa" ? chainsInFamily(familyOf(ch.chain)) : [ch.chain])) as Chain[];
+  if (!multiChain && !(wanted.length === 1 && wanted[0] === ch.chain)) throw createHttpError("Smart-contract wallets link one chain at a time.", { code: "VALIDATION_FAILED" });
+  const rows: NewAddressRow[] = wanted.map((chain) => ({
+    chain, address: ch.address, method, verifiedOnChain: ch.chain, challengeId: ch.id, walletName: input.walletProvider ?? null,
   }));
   const owner = await findAddressOwner(tx, ch.chain, ch.address);
   const audit = { requestId: input.meta.requestId, challengeId: ch.id };
@@ -181,9 +195,18 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
     let userId: string;
     let isNewUser = false;
     if (owner) {
-      if (owner.status === "disabled") throw addressDisabled();
+      if (owner.status !== "active") throw addressInactive(owner.status);
       if (owner.userStatus !== "active") throw createHttpError("This account is not active", { code: "USER_NOT_ACTIVE" });
       userId = owner.userId;
+      // Add ticked chains the account lacks. Without an explicit tick (legacy) a clash is skipped, never a sign-in failure.
+      await tx.select({ id: investmentWallets.id }).from(investmentWallets).where(eq(investmentWallets.id, owner.walletId)).for("update");
+      const added = await linkMissing(tx, owner.walletId, ch, rows, explicit);
+      if (added.length > 0) {
+        await writeAudit(tx, {
+          ...audit, actorType: "user", actorUserId: userId, action: "wallet.chain_account_added", entityType: "investment_wallet",
+          entityId: owner.walletId, metadata: { chain: ch.chain, address: ch.address, method, chains: added.map((r) => r.chain) },
+        });
+      }
     } else {
       userId = await createUserWithWallet(tx, { walletProvider: input.walletProvider, rows });
       isNewUser = true;
@@ -205,22 +228,17 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
   const auth = input.auth!;
   if (owner) {
     if (owner.userId !== auth.userId) throw addressLinked();
-    if (owner.status === "disabled") throw addressDisabled();
-    await recordSignableChains(tx, ch.chain, ch.address, input.signableChains);
-    return { userId: auth.userId, isNewUser: false, issued: null }; // idempotent: no rotation
+    if (owner.status !== "active") throw addressInactive(owner.status);
   }
   // Row-lock the active wallet to serialize concurrent address additions for one user.
   const [wallet] = await tx.select({ id: investmentWallets.id }).from(investmentWallets)
     .where(and(eq(investmentWallets.userId, auth.userId), eq(investmentWallets.status, "active"))).for("update");
   if (!wallet) throw createHttpError("No active investment wallet", { code: "USER_NOT_ACTIVE" });
-  const existing = await addressesForWallet(tx, wallet.id);
-  const family = familyOf(ch.chain);
-  if (existing.some((a) => a.chainFamily === family && a.address !== ch.address)) {
-    throw createHttpError("A different address in this chain family is already linked", { code: "CHAIN_FAMILY_ALREADY_LINKED" });
+  const toInsert = await linkMissing(tx, wallet.id, ch, rows, explicit);
+  if (toInsert.length === 0) { // idempotent: nothing new, no rotation
+    await recordSignableChains(tx, ch.chain, ch.address, input.signableChains);
+    return { userId: auth.userId, isNewUser: false, issued: null };
   }
-  const have = new Set(existing.filter((a) => a.address === ch.address).map((a) => a.chain));
-  const toInsert = rows.filter((r) => !have.has(r.chain));
-  await insertAddresses(tx, wallet.id, toInsert);
   await recordSignableChains(tx, ch.chain, ch.address, input.signableChains);
   await grantIfProven(tx, { userId: auth.userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
   await linkInvitesIfProven(tx, { userId: auth.userId, chain: ch.chain, address: ch.address, method, requestId: input.meta.requestId });
@@ -238,4 +256,35 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
     requestId: input.meta.requestId, sessionId: issued.id, metadata: { previousSessionId: auth.sessionId },
   });
   return { userId: auth.userId, isNewUser: false, issued };
+}
+
+/**
+ * Inserts the wanted rows the wallet lacks and returns them. `explicit` (or the connected chain): a wanted chain held by another address, another wallet or a non-active row of this address is an error;
+ * otherwise (legacy, no explicit tick) such chains are skipped. The caller holds the wallet row lock.
+ */
+async function linkMissing(tx: Tx, walletId: string, ch: ChallengeRow, rows: NewAddressRow[], explicit: boolean): Promise<NewAddressRow[]> {
+  const existing = await addressesForWallet(tx, walletId);
+  if (familyOf(ch.chain) === "bitcoin" && existing.some((a) => a.chainFamily === "bitcoin" && a.status === "active" && a.address !== ch.address)) {
+    throw createHttpError("A different address in this chain family is already linked", { code: "CHAIN_FAMILY_ALREADY_LINKED" });
+  }
+  const taken = await tx.select({ chain: walletAddresses.chain, walletId: walletAddresses.investmentWalletId, status: walletAddresses.status }).from(walletAddresses)
+    .where(and(eq(walletAddresses.address, ch.address), inArray(walletAddresses.chain, rows.map((r) => r.chain))));
+  const toInsert: NewAddressRow[] = [];
+  for (const r of rows) {
+    const row = taken.find((t) => t.chain === r.chain);
+    const strict = explicit || r.chain === ch.chain; // the connected chain is always asked for
+    if (row?.walletId === walletId && row.status === "active") continue; // already linked
+    if (row) {
+      if (!strict) continue;
+      if (row.walletId !== walletId) throw addressLinked();
+      throw addressInactive(row.status);
+    }
+    if (existing.some((a) => a.status === "active" && a.chain === r.chain)) {
+      if (!strict) continue;
+      throw createHttpError(`${CHAINS[r.chain].label} is already linked to another wallet. Move it first.`, { code: "CHAIN_ALREADY_LINKED" });
+    }
+    toInsert.push(r);
+  }
+  await insertAddresses(tx, walletId, toInsert);
+  return toInsert;
 }

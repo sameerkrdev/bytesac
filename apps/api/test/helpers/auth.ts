@@ -1,4 +1,4 @@
-import type { Chain } from "@repo/validator";
+import type { AssetChain, Chain } from "@repo/validator";
 import type { Express } from "express";
 import request, { type Response } from "supertest";
 
@@ -10,7 +10,7 @@ export function webHeaders(cookie?: string): Record<string, string> {
   return { Origin: ORIGIN, "X-Requested-With": "bytesac", ...(cookie ? { Cookie: cookie } : {}) };
 }
 
-export async function challengeFor(app: Express, body: { purpose: "sign_in" | "add_chain_account"; chain: Chain; address: string }, headers: Record<string, string> = webHeaders()): Promise<Response> {
+export async function challengeFor(app: Express, body: { purpose: "sign_in" | "add_chain_account"; chain: Chain; address: string; chains?: AssetChain[] }, headers: Record<string, string> = webHeaders()): Promise<Response> {
   return request(app).post("/v1/auth/challenge").set(headers).send(body);
 }
 

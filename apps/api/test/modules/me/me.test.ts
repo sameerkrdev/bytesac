@@ -15,7 +15,7 @@ describe("/v1/me", () => {
     expect(res.status).toBe(200);
     const me = meResponseSchema.parse(res.body);
     expect(me.user.id).toBe(s.userId);
-    expect(me.wallet.addresses).toHaveLength(4);
+    expect(me.wallet.addresses).toHaveLength(5);
     expect(me.contacts).toEqual([]);
   });
 

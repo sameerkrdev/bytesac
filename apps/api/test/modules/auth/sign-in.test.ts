@@ -52,6 +52,20 @@ describe("sign-in", () => {
     expect(rows[0]).toMatchObject({ chain: "base", verificationMethod: "erc1271" });
   });
 
+  it("smart wallet with several ticked chains → 400 VALIDATION_FAILED and no rows; one chain → 200", async () => {
+    fakes.evm.behavior = "valid";
+    const address = "0x" + "ab".repeat(20);
+    const verify = async (chains: string[]) => {
+      const ch = await challengeFor(app, { purpose: "sign_in", chain: "base", address, chains: chains as never });
+      return request(app).post("/v1/auth/verify").set(webHeaders()).send({ challengeId: ch.body.challengeId, signature: "0x" + "11".repeat(100), client: "web" });
+    };
+    const bad = await verify(["base", "arbitrum"]);
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe("VALIDATION_FAILED");
+    expect(await db.select().from(walletAddresses)).toHaveLength(0);
+    expect((await verify(["base"])).status).toBe(200);
+  });
+
   it("undeployed smart wallet (ERC-6492) registers only the verified chain", async () => {
     fakes.evm.behavior = "valid";
     const r = await signIn(app, { address: "0x" + "cd".repeat(20), sign: () => "0x" + "22".repeat(96) + ERC6492_SUFFIX }, "arbitrum");
@@ -191,7 +205,7 @@ describe("add_chain_account race", () => {
     const statuses = [a.status, b.status].sort();
     expect(statuses).toEqual([200, 409]);
     const loser = a.status === 409 ? a : b;
-    expect(loser.body.error.code).toBe("CHAIN_FAMILY_ALREADY_LINKED");
+    expect(loser.body.error.code).toBe("CHAIN_ALREADY_LINKED");
     expect((await db.select().from(walletAddresses)).filter((r) => r.chain === "solana")).toHaveLength(1);
   });
 });

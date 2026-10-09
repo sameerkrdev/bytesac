@@ -61,7 +61,7 @@ describe("wallets and audit", () => {
     }).returning();
     const userId = await db.transaction((tx) => createUserWithWallet(tx, {
       walletProvider: "MetaMask",
-      rows: [{ chain: "base", address: "0xabc", method: "eoa_ecdsa", verifiedOnChain: "base", challengeId: c!.id }],
+      rows: [{ chain: "base", address: "0xabc", method: "eoa_ecdsa", verifiedOnChain: "base", challengeId: c!.id, walletName: null }],
     }));
     const owner = await findAddressOwner(db, "base", "0xabc");
     expect(owner).toMatchObject({ userId, status: "active", userStatus: "active" });

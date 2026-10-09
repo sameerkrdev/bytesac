@@ -15,11 +15,11 @@ describe("ops", () => {
     const w = newEvmWallet();
     const s = await signIn(app, w, "base");
     const out = await disableAddress({ chain: "ethereum", address: w.address, reason: "reported compromised", operator: "ops@bytesac", requestId: "ops-1" });
-    expect(out).toEqual({ disabledRows: 4, revokedSessions: 1 });
+    expect(out).toEqual({ disabledRows: 5, revokedSessions: 1 });
     expect((await request(app).get("/v1/me").set("Cookie", s.cookie!)).status).toBe(401);
     expect((await signIn(app, w, "arbitrum")).res.body.error.code).toBe("ADDRESS_DISABLED");
     expect((await db.select().from(walletAddresses)).every((a) => a.status === "disabled" && a.disabledReason === "reported compromised")).toBe(true);
-    expect(await reactivateAddress({ chain: "base", address: w.address, operator: "ops@bytesac", requestId: "ops-2" })).toBe(4);
+    expect(await reactivateAddress({ chain: "base", address: w.address, operator: "ops@bytesac", requestId: "ops-2" })).toBe(5);
     expect((await signIn(app, w, "base")).res.status).toBe(200);
     const actions = (await db.select().from(auditEvents)).filter((a) => a.actorType === "ops").map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["wallet.address_disabled", "session.revoked_all", "wallet.address_reactivated"]));

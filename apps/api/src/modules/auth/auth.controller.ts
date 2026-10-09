@@ -31,7 +31,7 @@ export const requestChallenge = async (req: Request, res: Response, next: NextFu
     const body = req.body as ChallengeRequest;
     if (body.purpose === "add_chain_account" && !req.auth) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
     res.json(await signInService.issueChallenge({
-      purpose: body.purpose, chain: body.chain, rawAddress: body.address,
+      purpose: body.purpose, chain: body.chain, rawAddress: body.address, chains: body.chains,
       sessionId: body.purpose === "add_chain_account" ? req.auth!.sessionId : null, meta: req.ctx,
     }));
   } catch (error) {
