@@ -39,6 +39,11 @@ export function WalletVerification({ purpose, linkedAddresses, onVerified }: {
       }}
       onCancel={reset}
       onConnect={() => void wallet.connect()}
+      onUseDifferentWallet={purpose === "add_chain_account" ? () => {
+        reset();
+        // Only the wallet connection is dropped; the Bytesac session stays signed in.
+        void wallet.disconnect().then(() => wallet.connect());
+      } : undefined}
       onReauthenticate={() => void signOut({ expired: true })}
     />
   );

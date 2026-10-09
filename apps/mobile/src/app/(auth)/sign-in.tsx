@@ -36,6 +36,10 @@ export default function SignInScreen() {
       </View>
       {expired && <SessionExpiredBanner />}
       <WalletVerification purpose="sign_in" onVerified={onVerified} />
+      {/* ADR-004: an unknown address signing in creates a new user; accounts are never merged. */}
+      <AppText variant="label" tone="faint">
+        {"Signing in with a wallet Bytesac hasn't seen creates a new account. To add a wallet to your existing account, sign in with that account, then use Profile → Add chain account."}
+      </AppText>
     </Screen>
   );
 }

@@ -1,5 +1,5 @@
 import { describeError, type ConnectedAccount, type VerifyState, shortAddress } from "@repo/app-core";
-import { CHAINS } from "@repo/validator";
+import { CHAINS, familyOf, type Chain } from "@repo/validator";
 import * as Clipboard from "expo-clipboard";
 import { Check, Copy, PenLine, ShieldCheck } from "lucide-react-native";
 import { useEffect, useState } from "react";
@@ -30,9 +30,14 @@ interface Props {
   /** Abandon a pending sign/verify request (e.g. the wallet never answered). */
   onCancel(): void;
   onConnect(): void;
+  /** Add chain account only: drop the current wallet connection and pick another wallet (the Bytesac session stays). */
+  onUseDifferentWallet?(): void;
 }
 
 const ALREADY_LINKED_HINT = "This account is already linked. Choose another network or account in your wallet.";
+const FAMILY_LABEL = { evm: "EVM", solana: "Solana", bitcoin: "Bitcoin" } as const;
+const familyTakenHint = (family: keyof typeof FAMILY_LABEL) =>
+  `Your Bytesac account already has a different ${FAMILY_LABEL[family]} address. Choose the missing network in your wallet, or use a different wallet.`;
 
 function sameAddress(chain: string, a: string, b: string): boolean {
   return chain === "solana" ? a === b : a.toLowerCase() === b.toLowerCase();
@@ -84,6 +89,12 @@ export function VerifyWalletCard(p: Props) {
   const alreadyLinked =
     p.account !== null &&
     (p.linkedAddresses ?? []).some((l) => l.chain === p.account!.chain && sameAddress(l.chain, l.address, p.account!.address));
+  // One address per chain family (ADR-004): a different address in a family the account already has is refused server-side, so do not ask for a signature.
+  const family = p.account ? familyOf(p.account.chain) : null;
+  const familyTaken =
+    p.account !== null && family !== null &&
+    (p.linkedAddresses ?? []).some((l) => familyOf(l.chain as Chain) === family) &&
+    !(p.linkedAddresses ?? []).some((l) => familyOf(l.chain as Chain) === family && sameAddress(l.chain, l.address, p.account!.address));
 
   let primary: React.ReactNode;
   if (err?.recovery === "restart") primary = <Button onPress={p.onRestart}>Start again</Button>;
@@ -95,10 +106,11 @@ export function VerifyWalletCard(p: Props) {
     primary = (
       <>
         {alreadyLinked ? <AppText tone="muted" accessibilityRole="alert">{ALREADY_LINKED_HINT}</AppText> : null}
+        {!alreadyLinked && familyTaken && family ? <AppText tone="muted" accessibilityRole="alert">{familyTakenHint(family)}</AppText> : null}
         <Button
           onPress={p.onSign}
           loading={busy}
-          disabled={p.state.step === "done" || alreadyLinked}
+          disabled={p.state.step === "done" || alreadyLinked || familyTaken}
           size="lg"
           icon={busy ? undefined : <PenLine size={16} color={colors.primaryInk} />}
         >
@@ -155,6 +167,7 @@ export function VerifyWalletCard(p: Props) {
           {primary}
           {busy ? <Button variant="secondary" onPress={p.onCancel}>Cancel</Button> : null}
           <Button variant="ghost" onPress={p.onChooseNetwork}>Choose network</Button>
+          {p.onUseDifferentWallet ? <Button variant="ghost" onPress={p.onUseDifferentWallet}>Use a different wallet</Button> : null}
         </>
       ) : p.network === "none" ? (
         <Button size="lg" onPress={p.onConnect}>Connect wallet</Button>

@@ -58,6 +58,32 @@ describe("VerifyWalletCard (mobile)", () => {
     expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
   });
 
+  it("blocks Sign when the account already has a different address in the connected family", async () => {
+    await render(
+      <VerifyWalletCard account={evm} network="supported" state={{ step: "idle" }}
+        linkedAddresses={[{ chain: "ethereum", address: "0x1111111111111111111111111111111111111111" }]} {...h} />,
+    );
+    expect(screen.getByText("Your Bytesac account already has a different EVM address. Choose the missing network in your wallet, or use a different wallet.")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
+  });
+
+  it("allows Sign for a family the account does not have yet", async () => {
+    await render(
+      <VerifyWalletCard account={account} network="supported" state={{ step: "idle" }}
+        linkedAddresses={[{ chain: "ethereum", address: evm.address }]} {...h} />,
+    );
+    expect(screen.getByRole("button", { name: "Sign message" })).toBeEnabled();
+  });
+
+  it("offers Use a different wallet only when the caller provides it", async () => {
+    const onUseDifferentWallet = jest.fn();
+    const { rerender } = await render(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...h} />);
+    expect(screen.queryByRole("button", { name: "Use a different wallet" })).toBeNull();
+    await rerender(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} onUseDifferentWallet={onUseDifferentWallet} {...h} />);
+    await fireEvent.press(screen.getByRole("button", { name: "Use a different wallet" }));
+    expect(onUseDifferentWallet).toHaveBeenCalled();
+  });
+
   it("does not treat the same address on another chain as linked", async () => {
     await render(
       <VerifyWalletCard account={evm} network="supported" state={{ step: "idle" }}

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 jest.mock("@/components/auth/wallet-verification", () => ({ WalletVerification: () => null }));
 import { WalletSection } from "@/components/profile/wallet-section";
 
@@ -22,5 +22,12 @@ describe("WalletSection (mobile)", () => {
     expect(screen.getByRole("button", { name: "Add chain account" })).toBeOnTheScreen();
     expect(screen.queryByRole("button", { name: /remove|unlink/i })).toBeNull();
     expect(screen.getByText("Lost access to a wallet? Contact support.")).toBeOnTheScreen();
+  });
+
+  it("explains the multi-wallet model and names the missing family in the Add chain account sheet", async () => {
+    await render(<QueryClientProvider client={new QueryClient()}><WalletSection me={me} /></QueryClientProvider>);
+    expect(screen.getByText("One EVM address and one Solana address per account, from the same wallet or different wallets.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Add chain account" }));
+    expect(screen.getByText(/^Add your EVM address/)).toBeOnTheScreen();
   });
 });
