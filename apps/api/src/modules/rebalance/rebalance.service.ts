@@ -2,7 +2,7 @@ import createHttpError from "http-errors";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { basketPositions, basketVersionAssets, basketVersions, baskets, db, executionRoutes, instrumentDeployments, instruments, operationLegs, operations, positionCashEntries, positionDecisions, positionLedgerEntries } from "@repo/db";
 import { logger } from "@repo/logger";
-import { ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, RWA_ROUTE_METHODS, MIN_TRADE_USDC_DEFAULT, USDC_DECIMALS, USDC_SOLANA_MINT, feePlacement, micro, minOut, networkFeeMicro, planRebalance, type AssetChain, type BasketFees, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult } from "@repo/validator";
+import { ASSET_CHAINS, MIN_TRADE_BPS_DEFAULT, RWA_ROUTE_METHODS, MIN_TRADE_USDC_DEFAULT, USDC_DECIMALS, USDC_SOLANA_MINT, feePlacement, micro, networkFeeMicro, planRebalance, type AssetChain, type BasketFees, type OperationView, type RebalanceRequest, type RepairRequest, type SkipRequest, type SyncRequest, type SyncResult } from "@repo/validator";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
 import { solanaBalance } from "@/providers/solana-tx";
 import { writeAudit } from "@/modules/audit/audit.service";
@@ -219,7 +219,7 @@ export async function createRepairPlan(ctx: OpCtx, body: RepairRequest): Promise
     const legs: LegDraft[] = [
       { kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fee, minOut: null, routeSummary: null, expectedTx: reservedExpectedTx({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports }), gasPayer: "platform_fee_payer" },
       {
-        kind: d.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: d.chain, toDeploymentId: body.deploymentId, amountIn: buy, minOut: minOut(q.estimatedOut, body.slippageBps),
+        kind: d.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: d.chain, toDeploymentId: body.deploymentId, amountIn: buy, minOut: q.minOut,
         routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: d.symbol, decimals: d.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact }, expectedTx: reservedExpectedTx(cost), gasPayer: "platform_fee_payer",
         decision: decisionOf(eligibility, d.instrumentId, "acquire"),
       },

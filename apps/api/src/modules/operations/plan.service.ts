@@ -1,7 +1,7 @@
 import createHttpError from "http-errors";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { basketPositions, basketVersions, baskets, db, instrumentDeployments, instruments, investmentWallets, isUniqueViolation, operationLegs, operations, eligibilityDecisions, operationFees, positionLedgerEntries } from "@repo/db";
-import { ASSET_CHAINS, USDC_DECIMALS, USDC_SOLANA_MINT, micro, minOut, networkFeeMicro, splitInvestment, type AssetChain, type AssetType, type BasketFees, type InvestRequest, type OperationView, type SellRequest } from "@repo/validator";
+import { ASSET_CHAINS, USDC_DECIMALS, USDC_SOLANA_MINT, micro, networkFeeMicro, splitInvestment, type AssetChain, type AssetType, type BasketFees, type InvestRequest, type OperationView, type SellRequest } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
 import { routeProviderById } from "@/providers/routes";
@@ -192,11 +192,15 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   const legs: LegDraft[] = [{ kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fees.totalMicro, minOut: null, routeSummary: null, expectedTx: reservedExpectedTx({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports }), gasPayer: "platform_fee_payer" }];
   let solanaGas = SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports;
   inv.constituents.forEach((c, n) => {
-    const estimatedOut = (quotes[n]!.estimatedOut * shares[n]!.amountMicro) / provisional[n]!.amountMicro;
+    // Scale the plan quote to the fee-adjusted share. Store LI.FI's own toAmountMin (not slippageFloor(estimatedOut)): D-073 compares
+    // the fresh quote's toAmountMin to this, and LI.FI's minimum often sits a hair under toAmount×(1−slippage) (minOutAccepted / ADR-017).
+    const scale = shares[n]!.amountMicro;
+    const base = provisional[n]!.amountMicro;
+    const estimatedOut = (quotes[n]!.estimatedOut * scale) / base;
     solanaGas += costs[n]!.lamports;
     legs.push({
       kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id,
-      amountIn: shares[n]!.amountMicro, minOut: minOut(estimatedOut, body.slippageBps), routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: reservedExpectedTx(costs[n]!), gasPayer: "platform_fee_payer",
+      amountIn: scale, minOut: (quotes[n]!.minOut * scale) / base, routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: reservedExpectedTx(costs[n]!), gasPayer: "platform_fee_payer",
       decision: decisionOf(inv.rwaDecisions, c.instrumentId, "acquire"),
     });
   });
@@ -220,7 +224,7 @@ export function sellLeg(
   gas.set(gasChain, (gas.get(gasChain) ?? 0n) + (payer === "platform_gas_drop" ? drop : payer === "platform_fee_payer" ? cost.lamports : 0n));
   return {
     kind: s.chain === "solana" ? "swap" : "cross_chain", fromChain: s.chain, fromDeploymentId: s.deploymentId, toChain: "solana", toDeploymentId: null, amountIn: s.quantity,
-    minOut: minOut(q.estimatedOut, slippageBps), routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol, decimals: s.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact },
+    minOut: q.minOut, routeSummary: { tool: q.toolSummary, estimatedOut: q.estimatedOut.toString(), symbol: s.symbol, decimals: s.decimals, routeFees: q.routeFees, priceImpact: q.priceImpact },
     expectedTx: payer === "platform_gas_drop" ? { gasReserved: true, gasDropNative: drop.toString() } : reservedExpectedTx(cost), gasPayer: payer,
   };
 }
