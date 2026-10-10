@@ -5,8 +5,8 @@ import { db, instrumentDeployments, instruments, operationLegs, operations, oper
 import { USDC_DECIMALS, USDC_SOLANA_MINT, minOut, scaleBuys, type AssetChain, type LegQuoteResponse } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { expectedBtcTx, psbtInputs } from "@/providers/bitcoin";
-import { routeProviderById } from "@/providers/routes";
 import { buildFeeTransfer, describeUnsigned, solanaBalance, sponsorExposure } from "@/providers/solana-tx";
+import { quoteSponsorable } from "./plan.service";
 import { platformAddress, reserveGas, sendGasDrop } from "./gas.service";
 import { assertAllowed, evaluateFor, isRwa, recordDecisions } from "@/modules/eligibility/eligibility.service";
 import { routeDenyList } from "@/modules/routing/routing.service";
@@ -129,8 +129,7 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     if (gasDrop.status !== "confirmed" && gasDrop.status !== "skipped") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop };
   }
 
-  const provider = routeProviderById(leg.provider ?? "")!;
-  const q = await provider.quote({
+  const q = await quoteSponsorable({
     fromChain: leg.fromChain, fromToken, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, toDecimals: to ? to.decimals : USDC_DECIMALS, fromAmount: BigInt(leg.amountIn),
     slippageBps: op.slippageBps, fromAddress: addressOn(addresses, leg.fromChain), toAddress: addressOn(addresses, leg.toChain),
     svmSponsor: leg.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,

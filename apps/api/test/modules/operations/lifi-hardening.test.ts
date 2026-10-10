@@ -1,4 +1,5 @@
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import bs58 from "bs58";
 import createHttpError from "http-errors";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -310,6 +311,53 @@ describe("planners", () => {
     expect((await invest(user.h, basket.basketId, "key-bbbbbbbb")).status).toBe(409); // the first plan is still the user's active operation
     await adminSql`UPDATE app.operations SET status = 'CANCELLED'`;
     expect((await invest(user.h, basket.basketId, "key-cccccccc")).status).toBe(503);
+  });
+
+  it("skips a Solana quote the fee payer cannot sponsor and plans with the next tool", async () => {
+    const chain = mockChains();
+    await seedPlatformWallets();
+    await redis.set("lifi:tools", JSON.stringify({ bridges: [], exchanges: [{ key: "titan", name: "Titan" }, { key: "jupiter", name: "Jupiter" }] }), "EX", 3600);
+    const basket = await seedBasket({ assets: [{ ...TKN, bps: 10000 }] });
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    const { feePayer } = await import("@/providers/solana-tx");
+    const original = vi.mocked(lifi.quote).getMockImplementation()!;
+    const drain = new VersionedTransaction(new TransactionMessage({
+      payerKey: feePayer().publicKey, recentBlockhash: bs58.encode(Buffer.alloc(32, 9)),
+      instructions: [SystemProgram.transfer({ fromPubkey: feePayer().publicKey, toPubkey: new PublicKey(Buffer.alloc(32, 4)), lamports: 1_000_000n })],
+    }).compileToV0Message());
+    vi.mocked(lifi.quote).mockImplementation(async (i) => {
+      const q = await original(i);
+      if (i.deny?.exchanges.includes("titan")) return { ...q, toolSummary: "jupiter" };
+      return { ...q, toolSummary: "titan", transaction: { kind: "solana" as const, serializedBase64: Buffer.from(drain.serialize()).toString("base64") } };
+    });
+    const res = await invest(user.h, basket.basketId);
+    expect(res.status).toBe(201);
+    expect(res.body.legs.find((l: { kind: string }) => l.kind === "swap").routeSummary.tool).toBe("jupiter");
+    expect(vi.mocked(lifi.quote).mock.calls.some((c) => c[0].deny?.exchanges.includes("titan"))).toBe(true);
+  });
+
+  it("refuses the plan when every Solana route uses the fee payer beyond fees and rent", async () => {
+    const chain = mockChains();
+    await seedPlatformWallets();
+    await redis.set("lifi:tools", JSON.stringify({ bridges: [], exchanges: [{ key: "titan", name: "Titan" }] }), "EX", 3600);
+    const basket = await seedBasket({ assets: [{ ...TKN, bps: 10000 }] });
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    const { feePayer } = await import("@/providers/solana-tx");
+    const original = vi.mocked(lifi.quote).getMockImplementation()!;
+    const drain = new VersionedTransaction(new TransactionMessage({
+      payerKey: feePayer().publicKey, recentBlockhash: bs58.encode(Buffer.alloc(32, 9)),
+      instructions: [SystemProgram.transfer({ fromPubkey: feePayer().publicKey, toPubkey: new PublicKey(Buffer.alloc(32, 4)), lamports: 1_000_000n })],
+    }).compileToV0Message());
+    vi.mocked(lifi.quote).mockImplementation(async (i) => {
+      const q = await original(i);
+      return { ...q, toolSummary: "titan", transaction: { kind: "solana" as const, serializedBase64: Buffer.from(drain.serialize()).toString("base64") } };
+    });
+    const res = await invest(user.h, basket.basketId);
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
+    expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(0);
   });
 
   it("the plan quote and the execution quote both carry the deny list; a contract destination adds the mayan bridges", async () => {

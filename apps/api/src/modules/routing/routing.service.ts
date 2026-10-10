@@ -23,6 +23,14 @@ async function lifiTools(): Promise<z.infer<typeof toolsSchema>> {
   return tools;
 }
 
+/** Which deny list a LI.FI tool key belongs to, or null if `/v1/tools` does not list it (unknown keys 400 the whole quote). */
+export async function lifiToolKind(toolKey: string): Promise<"bridge" | "exchange" | null> {
+  const tools = await lifiTools();
+  if (tools.exchanges.some((t) => t.key === toolKey)) return "exchange";
+  if (tools.bridges.some((t) => t.key === toolKey)) return "bridge";
+  return null;
+}
+
 const POLICY_TTL_MS = 60_000;
 let policy: { at: number; rows: { kind: "bridge" | "exchange"; toolKey: string }[] } | null = null;
 /** An ops change takes effect on this process at once; other processes pick it up within 60 s. */

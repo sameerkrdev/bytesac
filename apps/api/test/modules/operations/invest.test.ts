@@ -3,6 +3,7 @@ import bs58 from "bs58";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "@/app";
+import { redis } from "@/middlewares/rate-limit.middleware";
 import { connection } from "@/providers/solana-tx";
 import { seedPlatformWallets } from "@/modules/operations/gas.service";
 import { adminSql, resetDb } from "../../helpers/db";
@@ -345,6 +346,7 @@ describe("review fixes", () => {
   it("I4: a provider transaction in which the fee payer would pay for anything but fees and token-account rent is refused at quote time", async () => {
     const { user, op, feeLeg, solLeg, chain } = await ready();
     await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${feeLeg.id}`;
+    await redis.set("lifi:tools", JSON.stringify({ bridges: [], exchanges: [] }), "EX", 3600);
     const { lifi } = await import("@/providers/routes/lifi");
     const { feePayer } = await import("@/providers/solana-tx");
     const { PublicKey, SystemProgram, TransactionMessage } = await import("@solana/web3.js");

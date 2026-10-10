@@ -5,8 +5,9 @@ import { ASSET_CHAINS, USDC_DECIMALS, USDC_SOLANA_MINT, micro, minOut, networkFe
 import { env } from "@/config/dotenv";
 import { maxBtcMinerFee } from "@/providers/bitcoin";
 import { routeProviderById } from "@/providers/routes";
+import { logger } from "@repo/logger";
 import { isBuildRefusal } from "@/providers/routes/lifi";
-import type { LegEstimate, LegQuote } from "@/providers/routes/types";
+import type { LegEstimate, LegQuote, LegQuoteInput } from "@/providers/routes/types";
 import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, solanaBalance, sponsorExposure, tokenAccountMissing } from "@/providers/solana-tx";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { assertWalletsCanFund, platformAddress, reserveGas } from "./gas.service";
@@ -14,7 +15,7 @@ import { assertAllowed, decisionOf, evaluateFor, isRwa, recordDecisions, type De
 import { getInvestability } from "./investability.service";
 import { planFees, type PlannedFee } from "@/modules/fees/fees.service";
 import { getPrices, priceToMicro } from "@/modules/assets/pricing.service";
-import { routeDenyList } from "@/modules/routing/routing.service";
+import { lifiToolKind, routeDenyList } from "@/modules/routing/routing.service";
 import { type OpCtx, type Leg, PLAN_TTL, SOLANA_FEE_TRANSFER_LAMPORTS, FEE_LEG_GAS_USD, operationView, getOperation, auditBase, freeUsdcMicro, cancelIfExpired, usdcPrice } from "./operations.service";
 import { type Addresses, userAddresses, addressOn } from "@/modules/auth/wallets.service";
 import { walletBalance } from "./operations.service";
@@ -31,10 +32,42 @@ export const gasPayerFor = (chain: AssetChain): Leg["gasPayer"] => (chain === "s
 /** What a plan holds per leg: a quote (a built transaction) or an estimate (no transaction, no funded wallet needed). */
 export type PlanQuote = LegQuote | LegEstimate;
 
+/** How many unsponsorable Solana tools we skip on one quote before giving up (Titan, OKX, DFlow and similar currently fail the fee-payer check). */
+const MAX_UNSPONSORABLE_SKIPS = 6;
+
+/**
+ * A Solana quote the platform can co-sign, or the original quote for other chains. An unsponsorable tool is denied for this request only and the next
+ * cheapest route is taken; the fee-payer rules themselves do not change (ADR-014).
+ */
+export async function quoteSponsorable(input: LegQuoteInput): Promise<LegQuote> {
+  const provider = routeProviderById(env.ROUTE_PROVIDER_ORDER[0]!)!;
+  const deny = { bridges: [...(input.deny?.bridges ?? [])], exchanges: [...(input.deny?.exchanges ?? [])] };
+  let last: unknown;
+  for (let n = 0; n < MAX_UNSPONSORABLE_SKIPS; n++) {
+    const q = await provider.quote({ ...input, deny });
+    if (q.transaction.kind !== "solana") return q;
+    try {
+      sponsorExposure(q.transaction.serializedBase64);
+      return q;
+    } catch (err) {
+      last = err;
+      const tool = q.toolSummary.split(" > ")[0]?.trim() ?? "";
+      if (!tool || (err as { code?: string }).code !== "ROUTE_UNAVAILABLE") throw err;
+      const kind = await lifiToolKind(tool).catch(() => null);
+      const list = kind === "bridge" ? deny.bridges : kind === "exchange" ? deny.exchanges : null;
+      if (!list || list.includes(tool)) throw err;
+      list.push(tool);
+      logger.warn("skipping unsponsorable Solana route", { tool, kind });
+    }
+  }
+  throw last;
+}
+
 /**
  * One quote per asset leg is taken at plan time only to estimate gas and outputs; quotes that are signed are fetched later, per leg. `estimate`: the wallet
  * does not hold the funds yet (a rebalance buy paid from sale proceeds), so LI.FI's balance-free route estimate is used. A quote LI.FI refuses because it
- * cannot build the transaction for this wallet (code 1001) falls back to an estimate as well.
+ * cannot build the transaction for this wallet (code 1001) falls back to an estimate as well. A built Solana transaction the fee payer must not sign is
+ * skipped (that tool denied for this request) and the next route is taken.
  */
 export async function planQuote(i: { fromChain: AssetChain; fromToken: string | null; toChain: AssetChain; toToken: string | null; toDecimals: number; amount: bigint; slippageBps: number; addresses: Addresses; estimate?: boolean }): Promise<PlanQuote> {
   const provider = routeProviderById(env.ROUTE_PROVIDER_ORDER[0]!)!;
@@ -42,7 +75,7 @@ export async function planQuote(i: { fromChain: AssetChain; fromToken: string | 
   const trade = { fromChain: i.fromChain, fromToken: i.fromToken, toChain: i.toChain, toToken: i.toToken, fromAmount: i.amount, slippageBps: i.slippageBps, toAddress, toDecimals: i.toDecimals, deny: await routeDenyList(i.toChain, toAddress) };
   if (i.estimate) return provider.estimate(trade);
   try {
-    return await provider.quote({ ...trade, fromAddress: addressOn(i.addresses, i.fromChain), svmSponsor: i.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined });
+    return await quoteSponsorable({ ...trade, fromAddress: addressOn(i.addresses, i.fromChain), svmSponsor: i.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined });
   } catch (err) {
     if (!isBuildRefusal(err)) throw err;
     return provider.estimate(trade);
