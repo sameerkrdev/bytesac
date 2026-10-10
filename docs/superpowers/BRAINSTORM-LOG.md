@@ -199,7 +199,8 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 
 | # | Question | Options | User's answer | Result |
 |---|---|---|---|---|
-| 1 | How to unblock Phantom rewriting the fee transaction | Add CU to our fee tx (rec.) · accept wallet CU-only extras · user pays fee-leg gas · wallet settings only | **Explain 1 and 2**, then **option 1 now** and write the problem plus option 2 (and 3) into FUTURE-PLANS | Fee transfer gets LI.FI-shaped compute budget; byte-identical co-sign unchanged; option 2/3 in FUTURE-PLANS |
+| 1 | How to unblock Phantom rewriting the fee transaction | Add CU to our fee tx (rec.) · accept wallet CU-only extras · user pays fee-leg gas · wallet settings only | **Explain 1 and 2**, then **option 1 now** and write the problem plus option 2 (and 3) into FUTURE-PLANS | Fee transfer gets LI.FI-shaped compute budget; option 2/3 logged in FUTURE-PLANS |
+| 2 | Option 1 still `TX_MISMATCH` after deploy | Ship option 2 · option 3 · keep failing | **still same issue** (option 1 insufficient) | Option 2 shipped: co-sign accepts ComputeBudget-only wallet rewrites against stored `preparedBase64` |
 
 ## Roadmap decisions
 

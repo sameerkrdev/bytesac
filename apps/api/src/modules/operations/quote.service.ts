@@ -110,7 +110,8 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     if (!rows.length && !env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
     const transfers = rows.length ? charged.map((c) => ({ recipient: c.recipient!, amountMicro: BigInt(c.amountMicro) })) : [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS!, amountMicro: BigInt(leg.amountIn) }];
     const built = await buildFeeTransfer({ owner: solanaAddress, transfers });
-    await save({ builtMessageHash: built.messageHash });
+    // preparedBase64 lets submit accept wallet ComputeBudget padding while still matching this quote's transfers (ADR-014).
+    await save({ builtMessageHash: built.messageHash, expectedTx: { ...(leg.expectedTx ?? {}), preparedBase64: built.serializedBase64 } });
     return response({ estimatedOut: null, minOut: null, transaction: { kind: "solana", serializedBase64: built.serializedBase64 } });
   }
 
@@ -145,7 +146,7 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     // A recovery's Solana fees were not reserved with the plan: reserve them now (per-chain lock and daily caps; refusal is 409 GAS_BUDGET_EXHAUSTED), once per leg.
     // A planned estimate leg reserved LI.FI's gas figure (and rent if the account was missing): if this transaction needs more, the reservation is topped up under the same lock and caps.
     await reserveLegGas(op, leg, "solana", exposure.lamports > q.gasNative ? exposure.lamports : q.gasNative);
-    await save({ ...base, builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash });
+    await save({ ...base, builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash, expectedTx: { ...planned, preparedBase64: q.transaction.serializedBase64 } });
   } else if (q.transaction.kind === "evm") {
     await save({ ...base, expectedTx: { ...planned, to: q.transaction.to.toLowerCase(), dataHash: sha256Hex(q.transaction.data), value: q.transaction.value } });
   } else {

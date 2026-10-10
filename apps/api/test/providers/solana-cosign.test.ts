@@ -60,6 +60,57 @@ describe("fee-payer co-signing", () => {
     expect(() => cosign(userSigned(tx), "")).toThrow(expect.objectContaining({ code: "TX_MISMATCH" }));
     expect(send).not.toHaveBeenCalled();
   });
+
+  it("co-signs a wallet message that only changes ComputeBudget when the prepared bytes are supplied", () => {
+    const prepared = new VersionedTransaction(new TransactionMessage({
+      payerKey: feePayer().publicKey, recentBlockhash: BLOCKHASH,
+      instructions: [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 16_001n }),
+        SystemProgram.transfer({ fromPubkey: user.publicKey, toPubkey: recipient, lamports: 5_000n }),
+      ],
+    }).compileToV0Message());
+    const { messageHash, serializedBase64 } = describeUnsigned(b64(prepared));
+    const walleted = new VersionedTransaction(new TransactionMessage({
+      payerKey: feePayer().publicKey, recentBlockhash: BLOCKHASH,
+      instructions: [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000n }),
+        SystemProgram.transfer({ fromPubkey: user.publicKey, toPubkey: recipient, lamports: 5_000n }),
+      ],
+    }).compileToV0Message());
+    const signed = cosign(userSigned(walleted), messageHash, serializedBase64);
+    expect(messageHash).not.toBe(describeUnsigned(b64(walleted)).messageHash);
+    expect(VersionedTransaction.deserialize(signed.raw).message.recentBlockhash).toBe(BLOCKHASH);
+    expect(sponsorExposure(Buffer.from(signed.raw).toString("base64")).lamports).toBe(10_000n + 10_000n); // 2 sigs + 50k micro × 200k units
+  });
+
+  it("refuses a wallet rewrite that changes a non-compute-budget instruction even when prepared bytes are supplied", () => {
+    const prepared = unsigned(feePayer().publicKey, 5_000n);
+    const { messageHash, serializedBase64 } = describeUnsigned(b64(prepared));
+    const tampered = unsigned(feePayer().publicKey, 9_000n);
+    expect(() => cosign(userSigned(tampered), messageHash, serializedBase64)).toThrow(expect.objectContaining({ code: "TX_MISMATCH" }));
+  });
+
+  it("refuses a wallet that swaps the fee payer even when prepared bytes are supplied", () => {
+    const prepared = unsigned(feePayer().publicKey, 5_000n);
+    const { messageHash, serializedBase64 } = describeUnsigned(b64(prepared));
+    const stranger = unsigned(Keypair.generate().publicKey, 5_000n);
+    expect(() => cosign(userSigned(stranger), messageHash, serializedBase64)).toThrow(expect.objectContaining({ code: "TX_MISMATCH" }));
+  });
+
+  it("refuses a wallet ComputeBudget price above the sponsor cap", () => {
+    const prepared = new VersionedTransaction(new TransactionMessage({
+      payerKey: feePayer().publicKey, recentBlockhash: BLOCKHASH,
+      instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 16_001n }), SystemProgram.transfer({ fromPubkey: user.publicKey, toPubkey: recipient, lamports: 1n })],
+    }).compileToV0Message());
+    const { messageHash, serializedBase64 } = describeUnsigned(b64(prepared));
+    const over = new VersionedTransaction(new TransactionMessage({
+      payerKey: feePayer().publicKey, recentBlockhash: BLOCKHASH,
+      instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000_000n }), SystemProgram.transfer({ fromPubkey: user.publicKey, toPubkey: recipient, lamports: 1n })],
+    }).compileToV0Message());
+    expect(() => cosign(userSigned(over), messageHash, serializedBase64)).toThrow(expect.objectContaining({ code: "ROUTE_UNAVAILABLE" }));
+  });
 });
 
 describe("fee-payer exposure (I4)", () => {

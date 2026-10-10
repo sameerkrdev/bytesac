@@ -9,6 +9,7 @@ export const connection = new Connection(`https://solana-mainnet.g.alchemy.com/v
 
 const TOKEN_PROGRAM = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
 
 /** The platform fee payer. The key never leaves this module; an empty `SOLANA_FEE_PAYER_SECRET` disables Solana legs. */
 let keypair: Keypair | undefined;
@@ -19,7 +20,7 @@ export function feePayer(): Keypair {
 
 export const messageHash = (tx: VersionedTransaction): string => createHash("sha256").update(tx.message.serialize()).digest("hex");
 
-/** The unsigned transaction the user signs: the hash returned here is what the planner stores and `cosignAndSubmit` later demands. */
+/** The unsigned transaction the user signs: the hash returned here is what the planner stores and `cosign` later demands (byte-identical, or CU-only wallet padding with the prepared bytes). */
 export function describeUnsigned(serializedBase64: string): { serializedBase64: string; messageHash: string } {
   return { serializedBase64, messageHash: messageHash(VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64"))) };
 }
@@ -30,9 +31,9 @@ export const ata = (owner: PublicKey, mint: PublicKey) => PublicKey.findProgramA
 export const tokenAccountMissing = (owner: string, mint: string): Promise<boolean> => connection.getAccountInfo(ata(new PublicKey(owner), new PublicKey(mint)), "confirmed").then((info) => !info, () => true);
 
 /**
- * The fee leg: compute-budget (same CU limit/price as live LI.FI Solana quotes, so wallets that inject those skip rewriting), then one USDC
- * TransferChecked per recorded fee from the user's token account to each recipient's (network, manager, platform, in that order). Fee payer =
- * platform (which also creates a recipient token account that is missing). Server-built, so the planner knows every byte. Co-sign is still byte-identical.
+ * The fee leg: compute-budget (same CU limit/price as live LI.FI Solana quotes), then one USDC TransferChecked per recorded fee from the user's
+ * token account to each recipient's (network, manager, platform, in that order). Fee payer = platform (which also creates a recipient token
+ * account that is missing). Server-built; co-sign allows wallet compute-budget padding when non-CU instructions still match.
  */
 const FEE_LEG_CU_LIMIT = 1_400_000;
 const FEE_LEG_CU_PRICE_MICRO = 16_001n;
@@ -73,7 +74,6 @@ export async function buildFeeTransfer(i: { owner: string; transfers: { recipien
 export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
 /** Used for the rent estimate only when LI.FI's gas costs carry no native token price. */
 export const SOL_USD_FALLBACK = 150;
-const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
 const LAMPORTS_PER_SIGNATURE = 5_000n;
 /** Priority fee the platform will pay for one transaction (price x limit), the instruction and static-account counts it accepts. */
 const MAX_PRIORITY_LAMPORTS = 1_000_000n;
@@ -118,16 +118,53 @@ export function sponsorExposure(serializedBase64: string): { lamports: bigint; r
   return { lamports: BigInt(message.header.numRequiredSignatures) * LAMPORTS_PER_SIGNATURE + priority + rentLamports, rentLamports };
 }
 
+/** Non-compute-budget instructions as program + accounts + data (pubkeys resolved from static keys only). */
+function nonComputeCore(tx: VersionedTransaction): { program: string; accounts: string[]; data: string }[] {
+  const keys = tx.message.staticAccountKeys;
+  return tx.message.compiledInstructions
+    .filter((ix) => keys[ix.programIdIndex]!.toBase58() !== COMPUTE_BUDGET)
+    .map((ix) => ({
+      program: keys[ix.programIdIndex]!.toBase58(),
+      accounts: ix.accountKeyIndexes.map((i) => keys[i]!.toBase58()),
+      data: Buffer.from(ix.data).toString("hex"),
+    }));
+}
+
+/** True when the wallet message differs from the prepared one only in ComputeBudget instructions (or their values). */
+function sameExceptComputeBudget(prepared: VersionedTransaction, signed: VersionedTransaction): boolean {
+  if (prepared.message.recentBlockhash !== signed.message.recentBlockhash) return false;
+  if (JSON.stringify(prepared.message.addressTableLookups) !== JSON.stringify(signed.message.addressTableLookups)) return false;
+  const pKeys = prepared.message.staticAccountKeys;
+  const sKeys = signed.message.staticAccountKeys;
+  // CU data rewrite keeps the account key list identical: compare compiled non-CU wire form (works with address lookups).
+  if (pKeys.length === sKeys.length && pKeys.every((k, i) => k.equals(sKeys[i]!))) {
+    const strip = (tx: VersionedTransaction) => tx.message.compiledInstructions
+      .filter((ix) => tx.message.staticAccountKeys[ix.programIdIndex]!.toBase58() !== COMPUTE_BUDGET)
+      .map((ix) => ({ programIdIndex: ix.programIdIndex, accountKeyIndexes: [...ix.accountKeyIndexes], data: Buffer.from(ix.data).toString("hex") }));
+    return JSON.stringify(strip(prepared)) === JSON.stringify(strip(signed));
+  }
+  // CU injection can insert ComputeBudget into the static key list (indexes shift). Only safe without address lookups.
+  if (prepared.message.addressTableLookups.length || signed.message.addressTableLookups.length) return false;
+  return JSON.stringify(nonComputeCore(prepared)) === JSON.stringify(nonComputeCore(signed));
+}
+
 /**
- * Verifies the user-signed transaction is byte-identical to the message we stored a hash for and still safe to sponsor, then adds the platform
- * fee-payer signature. Nothing is sent: the caller claims the leg under `signature` first, then sends `raw` with `sendSolana`.
+ * Verifies the user-signed transaction matches the prepared message (byte-identical, or only ComputeBudget differs when `preparedBase64`
+ * is the quote we stored) and is still safe to sponsor, then adds the platform fee-payer signature. Nothing is sent: the caller claims
+ * the leg under `signature` first, then sends `raw` with `sendSolana`.
  */
-export function cosign(signedBase64: string, storedMessageHash: string): { raw: Uint8Array; signature: string; recentBlockhash: string } {
+export function cosign(signedBase64: string, storedMessageHash: string, preparedBase64?: string): { raw: Uint8Array; signature: string; recentBlockhash: string } {
+  const mismatch = () => createHttpError(409, "The transaction changed after it was prepared.", { code: "TX_MISMATCH" });
   const tx = VersionedTransaction.deserialize(Buffer.from(signedBase64, "base64"));
-  if (messageHash(tx) !== storedMessageHash) throw createHttpError(409, "The transaction changed after it was prepared.", { code: "TX_MISMATCH" });
+  if (!storedMessageHash) throw mismatch();
   if (!tx.message.staticAccountKeys[0]!.equals(feePayer().publicKey)) throw createHttpError(409, "Unexpected fee payer.", { code: "TX_MISMATCH" });
+  if (messageHash(tx) !== storedMessageHash) {
+    if (!preparedBase64) throw mismatch();
+    const prepared = VersionedTransaction.deserialize(Buffer.from(preparedBase64, "base64"));
+    if (messageHash(prepared) !== storedMessageHash || !sameExceptComputeBudget(prepared, tx)) throw mismatch();
+  }
   sponsorExposure(signedBase64);
-  tx.sign([feePayer()]); // adds only the fee-payer signature; user signatures already present stay valid because the message is unchanged
+  tx.sign([feePayer()]); // adds only the fee-payer signature; the message is the one the user signed (possibly with wallet CU padding)
   return { raw: tx.serialize(), signature: bs58.encode(tx.signatures[0]!), recentBlockhash: tx.message.recentBlockhash };
 }
 

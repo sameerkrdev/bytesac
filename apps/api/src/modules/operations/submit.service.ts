@@ -42,7 +42,8 @@ export async function submitLeg(ctx: OpCtx, opId: string, legId: string, body: L
   let send: (() => Promise<unknown>) | null = null;
   if (leg.fromChain === "solana") {
     if (!body.signedTx || !leg.builtMessageHash) throw createHttpError("Send the signed transaction.", { code: "VALIDATION_FAILED" });
-    const signed = cosign(body.signedTx, leg.builtMessageHash);
+    const preparedBase64 = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
+    const signed = cosign(body.signedTx, leg.builtMessageHash, preparedBase64);
     ({ signature: sourceTx, recentBlockhash } = signed);
     send = () => sendSolana(signed.raw);
   } else if (leg.fromChain === "bitcoin") {

@@ -55,24 +55,15 @@ The source lists these as future expansion ideas, not initial-release commitment
 
 ### Wallet-rewritten Solana transactions (`TX_MISMATCH`)
 
-Phantom, Solflare and similar wallets often **rewrite** a versioned transaction when the user approves it: they inject `ComputeBudget` (priority fee / CU limit) or replace the fee payer with the connected wallet. Bytesac co-signs only a **byte-identical** message (ADR-014, D-072). A rewrite is `409 TX_MISMATCH`, nothing is sent. Getting a new quote does not help: the wallet rewrites the next transaction too. The fee leg is the usual failure (it used to have no compute-budget instructions); LI.FI swap quotes already include them, so they fail less often.
+Phantom, Solflare and similar wallets often **rewrite** a versioned transaction when the user approves it: they inject or replace `ComputeBudget` (priority fee / CU limit) or replace the fee payer with the connected wallet. Getting a new quote does not help if the wallet rewrites every attempt.
 
-**Shipped (option 1, 2026-10-11):** the server-built fee transfer includes `SetComputeUnitLimit` (1,400,000) and `SetComputeUnitPrice` (16,001 micro-lamports), the same shape as live LI.FI Solana quotes, still under the 0.001 SOL priority-fee cap. Many wallets skip injecting when those instructions are already present. The co-sign rule is unchanged: the signed message must still match the stored hash.
+**Shipped (option 1, 2026-10-11):** the server-built fee transfer includes `SetComputeUnitLimit` (1,400,000) and `SetComputeUnitPrice` (16,001 micro-lamports), matching live LI.FI Solana quotes.
 
-**Deferred — accept wallet-added compute budget only (option 2).** If option 1 is not enough (the wallet still replaces our CU numbers, or still injects on LI.FI legs), loosen co-sign **only** for compute-budget padding:
-
-1. After the wallet returns a signed tx, decode it.
-2. Refuse unless: fee payer is still the platform at index 0; `sponsorExposure` passes (priority fee ≤ 0.001 SOL; fee payer used only as ATA `CreateIdempotent` funder); every non-compute-budget instruction matches the prepared message (same programs, accounts, and data — so USDC `TransferChecked` recipients and amounts cannot change).
-3. Co-sign **the wallet’s** message (the one with extra CU instructions) and send that. Update the stored hash only after this check, never before the user signs.
-4. Still `TX_MISMATCH` if the fee payer, a transfer, an account, or any non-CU instruction changed.
-5. Apply the same rule to LI.FI Solana legs, not only the fee leg.
-6. Tests: CU-only addition accepted and co-signed; recipient swap refused; fee-payer swap refused; CU price over the cap refused; byte-identical still accepted.
-
-Needs an ADR-014 amendment (byte-identical becomes “byte-identical except allowlisted ComputeBudget”). Cost if wrong: we could co-sign a wallet-mutated tx that spends extra SOL (mitigated by the existing cap) or, if the instruction-equality check is buggy, a changed transfer.
+**Shipped (option 2, 2026-10-11):** co-sign accepts a wallet message that differs **only** in ComputeBudget instructions when the quote stored `expectedTx.preparedBase64`. Fee payer must stay the platform; `sponsorExposure` still caps priority fee; every non-CU instruction must match the prepared message. Applies to fee legs and LI.FI Solana legs. Still `TX_MISMATCH` if the fee payer, a transfer, or any non-CU instruction changed.
 
 **Deferred — user pays the fee-leg gas (option 3).** Build the fee transfer with the user’s Solana address as fee payer (no platform co-sign on that leg). Avoids the rewrite because the wallet is the payer it expects to be. The user needs a little SOL (`SOL_REQUIRED`); conflicts with “platform sponsors all Solana legs” (D-068) unless scoped to the fee leg only.
 
-Do not implement option 2 or 3 until separately approved.
+Do not implement option 3 until separately approved.
 
 ### Execution robustness (deferred from Spec 12)
 
