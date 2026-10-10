@@ -86,4 +86,16 @@ export const env = cleanEnv(process.env, {
   /** Optional Expo access token for mobile push (Expo "enhanced push security", a secret). Mobile push works without it. */
   EXPO_ACCESS_TOKEN: str({ default: "" }),
   ROUTE_PROVIDER_ORDER: routeProviders({ default: ["lifi"] }),
+  /** Waitlist welcome sender (Resend-verified). Falls back to EMAIL_FROM when empty. */
+  WAITLIST_EMAIL_FROM: str({ default: "" }),
+  /** Soft-launch gate: all three must be set to enable. Empty PREVIEW_GATE_JWT_SECRET disables the gate. */
+  PREVIEW_GATE_JWT_SECRET: str({ default: "" }),
+  PREVIEW_GATE_EMAIL: str({ default: "" }),
+  PREVIEW_GATE_PASSWORD: str({ default: "" }),
 });
+
+export function previewGateEnabled(): boolean {
+  return env.PREVIEW_GATE_JWT_SECRET.trim().length >= 32
+    && env.PREVIEW_GATE_EMAIL.trim().length > 0
+    && env.PREVIEW_GATE_PASSWORD.length > 0;
+}

@@ -14,3 +14,4 @@ export * from "./notifications";
 export * from "./fees";
 export * from "./routing";
 export * from "./eligibility";
+export * from "./waitlist";

@@ -23,3 +23,5 @@ export * from "./rebalance";
 export * from "./fees";
 export * from "./eligibility";
 export * from "./files";
+export * from "./waitlist";
+export * from "./preview-gate";

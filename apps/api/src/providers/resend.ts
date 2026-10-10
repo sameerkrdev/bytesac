@@ -126,3 +126,14 @@ export async function sendNotificationEmail(to: string, n: { title: string; body
   const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, subject: n.title, text: `${n.body}\n\n${env.AUTH_URI}${n.link}` }, { idempotencyKey });
   if (error) logger.warn("notification email failed", { errorName: error.name });
 }
+
+/** Waitlist welcome (founder voice). Failures throw so the signup can be retried. */
+export async function sendWaitlistWelcomeEmail(
+  to: string,
+  mail: { subject: string; html: string; text: string },
+  idempotencyKey: string,
+): Promise<void> {
+  const from = env.WAITLIST_EMAIL_FROM.trim() || env.EMAIL_FROM;
+  const { error } = await resend.emails.send({ from, to, subject: mail.subject, html: mail.html, text: mail.text }, { idempotencyKey });
+  if (error) throw createHttpError("We couldn't send your confirmation email. Try again shortly.", { code: "WAITLIST_EMAIL_FAILED", cause: error });
+}

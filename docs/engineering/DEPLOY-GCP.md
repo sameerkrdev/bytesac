@@ -16,11 +16,12 @@ four files, shown in §15. After the first manual deploy, GitHub Actions tests a
 
 ```text
                  Users (browser)                    Users (Android APK)
-                       │ https://app.example.com           │ https://api.example.com
+                       │ https://example.com (waitlist)    │ https://api.example.com
+                       │ https://app.example.com (product) │
                        ▼                                    ▼
    ┌──────────── Google Cloud VM (Ubuntu 24.04) ────────────────────────────────────────┐
    │  nginx :443 on the VM (certbot)                                                     │
-   │    app.example.com → 127.0.0.1:3000          api.example.com → 127.0.0.1:4000       │
+   │    example.com + app.example.com → :3000     api.example.com → 127.0.0.1:4000       │
    │  ┌──── rootless Docker (your user, no root daemon) ────────────────────────────┐    │
    │  │  web (Next.js :3000) ── /api/* rewrite ──►  api (Express :4000)              │    │
    │  │                          worker (BullMQ) ─┐   │                             │    │
@@ -90,7 +91,8 @@ Replace them everywhere:
 
 | Placeholder | Example | Meaning |
 |---|---|---|
-| `app.example.com` | `app.bytesac.com` | The web app |
+| `example.com` | `bytesac.com` | Marketing / waitlist (apex) |
+| `app.example.com` | `app.bytesac.com` | The product web app |
 | `api.example.com` | `api.bytesac.com` | The API (the mobile app calls it directly) |
 | `mail.example.com` | `mail.bytesac.com` | Email sending subdomain (Resend) |
 | `<project-ref>` | `abcdwxyz` | Your Supabase project reference |
@@ -123,10 +125,12 @@ At your domain's DNS provider add:
 
 | Type | Name | Value | Proxy |
 |---|---|---|---|
-| A | `app` | VM static IP | DNS only (Cloudflare: grey cloud) |
+| A | `@` | VM static IP | DNS only (Cloudflare: grey cloud) |
+| A | `www` | VM static IP | DNS only (or CNAME to apex) |
+| A | `app` | VM static IP | DNS only |
 | A | `api` | VM static IP | DNS only |
 
-Resend adds its own records in §9. Check from your laptop: `nslookup app.example.com` returns the VM IP.
+Resend adds its own records in §9. Check from your laptop: `nslookup example.com` and `nslookup app.example.com` return the VM IP.
 
 > Cloudflare proxy (orange cloud) is possible later, but then nginx must restore client IPs with its `real_ip` module
 > for Cloudflare's ranges and you must set `GEO_COUNTRY_HEADER=CF-IPCountry`. Keep it grey for the first deployment.
@@ -159,7 +163,7 @@ Resend adds its own records in §9. Check from your laptop: `nslookup app.exampl
    ```json
    [
      {
-       "AllowedOrigins": ["https://app.example.com"],
+       "AllowedOrigins": ["https://app.example.com", "https://example.com"],
        "AllowedMethods": ["PUT"],
        "AllowedHeaders": ["Content-Type"],
        "MaxAgeSeconds": 3600
@@ -207,7 +211,7 @@ The API refuses to start without all four `R2_*` values.
 2. Add the DNS records Resend shows (SPF/MX and DKIM `TXT`, optionally DMARC) at your DNS provider; wait until the
    domain shows **Verified**.
 3. **API Keys → Create** with **Sending access** for that domain → `RESEND_API_KEY`.
-4. `EMAIL_FROM=Bytesac <no-reply@mail.example.com>`.
+4. `EMAIL_FROM=Bytesac <no-reply@mail.example.com>`. Verify **bytesac.com** (or your apex) in Resend as well if `WAITLIST_EMAIL_FROM=Sameer <sameer@bytesac.com>`.
 
 ## 10. Twilio (SMS verification)
 
@@ -273,6 +277,9 @@ Choose a long random password for the runtime database role: `openssl rand -base
 
 ```bash
 WEB_DOMAIN=app.example.com
+MARKETING_DOMAIN=example.com
+# Same value as PREVIEW_GATE_JWT_SECRET in api.env when the soft-launch gate is on
+PREVIEW_GATE_JWT_SECRET=
 NEXT_PUBLIC_REOWN_PROJECT_ID=<reown project id>
 # optional web push (all five or none)
 NEXT_PUBLIC_FIREBASE_API_KEY=
@@ -298,7 +305,9 @@ Start from the template: `cp api.env.example api.env` (in `infra/server`). Every
 | `SESSION_TOKEN_PEPPER`, `OTP_HMAC_SECRET` | §15.1 |
 | `AUTH_DOMAIN` | `app.example.com` (no `https://`) |
 | `AUTH_URI` | `https://app.example.com` |
-| `ALLOWED_ORIGINS` | `https://app.example.com` |
+| `ALLOWED_ORIGINS` | `https://app.example.com,https://example.com` |
+| `WAITLIST_EMAIL_FROM` | `Sameer <sameer@example.com>` (Resend-verified apex domain) |
+| `PREVIEW_GATE_*` | Optional soft launch: JWT secret (≥32 chars), team email and password; copy the JWT secret into `infra/server/.env` for the web container |
 | `COOKIE_SECURE` | `true` |
 | Provider keys | §5–§13 |
 | `FIREBASE_SERVICE_ACCOUNT` | One line: `jq -c . service-account.json` (install with `sudo apt-get install -y jq`) |
@@ -412,7 +421,7 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
 # Certificates for both names; certbot adds the 443 listeners and an HTTP → HTTPS redirect to the site file
-sudo certbot --nginx -d app.example.com -d api.example.com --redirect -m you@example.com
+sudo certbot --nginx -d example.com -d www.example.com -d app.example.com -d api.example.com --redirect -m you@example.com
 sudo certbot renew --dry-run                          # renewal works (a systemd timer runs it automatically)
 ```
 
@@ -539,6 +548,20 @@ Migrations are additive and forward-only: never revert one; fix forward with a n
 
 Monitoring (free): Google Cloud **Monitoring → Uptime checks** on `https://api.example.com/health` and
 `https://app.example.com/`, alerting to your email; keep the billing budget alert from §2.
+
+### 19.1 Already on §19 — turn on apex waitlist + app preview gate
+
+If the VM already runs web + api from an earlier deploy:
+
+1. Pull the release that includes waitlist + preview gate, then deploy (`deploy.sh` or GitHub Actions).
+2. DNS: apex `@` and `www` A records → VM IP (§3).
+3. nginx: copy the updated `infra/server/nginx/bytesac.conf`, set `example.com`, `www.example.com`, `app.example.com`, `api.example.com`, reload nginx, extend certbot with all four names (§16.4).
+4. `infra/server/.env`: `MARKETING_DOMAIN=example.com`, `WEB_DOMAIN=app.example.com`, `PREVIEW_GATE_JWT_SECRET` (same as api.env when gate enabled).
+5. `infra/server/api.env`: `ALLOWED_ORIGINS=https://app.example.com,https://example.com`, `WAITLIST_EMAIL_FROM`, optional `PREVIEW_GATE_*`.
+6. Cloudflare R2 CORS: add `https://example.com` to allowed origins (§5.3).
+7. Resend: verify apex domain for `sameer@example.com` (§9).
+8. Rebuild web after env changes: `docker compose build web && docker compose up -d`.
+9. Smoke test: `https://example.com/` waitlist form; `https://app.example.com/preview-access` then wallet sign-in.
 
 ---
 

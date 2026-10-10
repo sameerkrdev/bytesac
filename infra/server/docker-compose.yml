@@ -33,6 +33,10 @@ services:
         NEXT_PUBLIC_ANDROID_APP_URL: ${NEXT_PUBLIC_ANDROID_APP_URL:-}
     image: bytesac-web:latest
     restart: unless-stopped
+    environment:
+      APP_HOST: ${WEB_DOMAIN:?set WEB_DOMAIN in infra/server/.env}
+      MARKETING_HOST: ${MARKETING_DOMAIN:-}
+      PREVIEW_GATE_JWT_SECRET: ${PREVIEW_GATE_JWT_SECRET:-}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
