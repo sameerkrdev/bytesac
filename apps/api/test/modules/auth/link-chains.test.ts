@@ -147,4 +147,47 @@ describe("link exactly the ticked chains (D-120)", () => {
     const ok = await signIn(app, sw, "base");
     expect(ok.res.status).toBe(200);
   });
+
+  it("a chain whose wallet was disabled by support refuses a different address (no row)", async () => {
+    const a = newEvmWallet();
+    const first = await link(a, "base", ["base"]);
+    await adminSql`UPDATE app.wallet_addresses SET status = 'disabled', disabled_at = now(), disabled_reason = 'support' WHERE chain = 'base'`;
+    const res = await link(newEvmWallet(), "base", ["base"], { purpose: "add_chain_account", cookie: cookieOf(first) });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("CHAIN_ALREADY_LINKED");
+    expect(res.body.error.message).toContain("disabled by support");
+    expect(await db.select().from(walletAddresses)).toHaveLength(1);
+  });
+
+  it("a replaced row on a chain does not block a new address there", async () => {
+    const a = await link(newEvmWallet(), "ethereum", ["ethereum", "base"]);
+    const [eth] = (await db.select().from(walletAddresses)).filter((r) => r.chain === "ethereum");
+    const [base] = (await db.select().from(walletAddresses)).filter((r) => r.chain === "base");
+    await adminSql`UPDATE app.wallet_addresses SET status = 'replaced', replaced_at = now(), replaced_by_address_id = ${eth!.id}, disabled_reason = 'chain_reassigned' WHERE id = ${base!.id}`;
+    const res = await link(newEvmWallet(), "base", ["base"], { purpose: "add_chain_account", cookie: cookieOf(a) });
+    expect(res.status).toBe(200);
+    expect(await active()).toHaveLength(2);
+  });
+
+  it("legacy omitted chains skip a support-disabled chain without failing sign-in", async () => {
+    const w = newEvmWallet();
+    await link(w, "base", ["base"]);
+    const first = await link(w, "base", ["base"]);
+    expect((await link(newEvmWallet(), "ethereum", ["ethereum"], { purpose: "add_chain_account", cookie: cookieOf(first) })).status).toBe(200);
+    await adminSql`UPDATE app.wallet_addresses SET status = 'disabled', disabled_at = now(), disabled_reason = 'support' WHERE chain = 'ethereum'`;
+    const res = await link(w, "base", undefined);
+    expect(res.status).toBe(200);
+    expect((await db.select().from(walletAddresses)).filter((r) => r.chain === "ethereum" && r.address === w.address.toLowerCase())).toHaveLength(0);
+  });
+
+  it("an EOA already active in another account on any chain of the family is ADDRESS_ALREADY_LINKED on add_chain_account", async () => {
+    const shared = newEvmWallet();
+    await link(shared, "ethereum", ["ethereum"]);
+    const mine = await link(newEvmWallet(), "base", ["base"]);
+    const before = await db.select().from(walletAddresses);
+    const res = await link(shared, "base", ["base"], { purpose: "add_chain_account", cookie: cookieOf(mine) });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("ADDRESS_ALREADY_LINKED");
+    expect(await db.select().from(walletAddresses)).toHaveLength(before.length);
+  });
 });

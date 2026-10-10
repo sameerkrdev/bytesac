@@ -4,6 +4,8 @@ import { authChallenges, db, instrumentDeployments, instruments, investmentWalle
 import { CHAINS, familyOf, type AssetChain } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { writeAudit } from "@/modules/audit/audit.service";
+import { grantIfProven } from "@/modules/manager-applications/applications.service";
+import { linkInvitesIfProven } from "@/modules/members/members.service";
 import { hasOpenOperation } from "@/modules/operations/investability.service";
 import { walletBalance } from "@/modules/operations/operations.service";
 import { heldUnitsOnChain } from "@/modules/portfolio/portfolio.service";
@@ -84,6 +86,10 @@ export async function reassignChain(input: ReassignInput): Promise<VerifyResult>
         actorType: "user", actorUserId: auth.userId, action: "wallet.chain_reassigned", entityType: "investment_wallet", entityId: current.walletId,
         requestId: input.meta.requestId, sessionId: auth.sessionId, challengeId: ch.id, metadata: { chain, from: current.address, to: ch.address },
       });
+      // The moved-to address is newly proven control, like an add_chain_account link: run the same manager-grant and invite hooks.
+      const proof = { userId: auth.userId, chain, address: ch.address, method: outcome.method, requestId: input.meta.requestId };
+      await grantIfProven(tx, proof);
+      await linkInvitesIfProven(tx, proof);
 
       if (!(await revokeSession(tx, auth.sessionId, "rotated"))) throw createHttpError("Please sign in again", { code: "SESSION_EXPIRED" });
       const issued = await createSession(tx, { userId: auth.userId, client: auth.client, pepper: env.SESSION_TOKEN_PEPPER, meta: input.meta });

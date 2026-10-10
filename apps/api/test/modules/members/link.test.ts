@@ -25,6 +25,19 @@ describe("an invite waits for the wallet proof", () => {
     expect((await adminSql`SELECT action FROM app.audit_events WHERE entity_id = ${mid} AND action = 'membership.linked'`)).toHaveLength(1);
   });
 
+  it("reassigning a chain to an invited wallet links the invite like any other proof", async () => {
+    const owner = await orgWithOwner(app);
+    const old = newEvmWallet();
+    const { mid, wallet } = await invitePending(app, owner, "VIEWER");
+    const s = await signIn(app, old, "base");
+    const ch = await request(app).post("/v1/auth/challenge").set(webHeaders(s.cookie)).send({ purpose: "reassign_chain", chain: "base", address: wallet.address });
+    const res = await request(app).post("/v1/auth/reassign").set(webHeaders(s.cookie)).send({
+      challengeId: ch.body.challengeId, signature: await wallet.sign(ch.body.message), previousSignature: await old.sign(ch.body.message), client: "web",
+    });
+    expect(res.status).toBe(200);
+    expect(await rowOf(mid)).toMatchObject({ status: "INVITED", user_id: s.userId });
+  });
+
   it("Solana", async () => {
     const owner = await orgWithOwner(app);
     const wallet = newSolanaWallet();

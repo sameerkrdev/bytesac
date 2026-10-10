@@ -241,6 +241,8 @@ async function finalize(tx: Tx, ch: ChallengeRow, claimId: string, method: Verif
     if (owner.userId !== auth.userId) throw addressLinked();
     if (owner.status !== "active") throw addressInactive(owner.status);
   }
+  // A key proves every chain of its family, so another account holding it on any chain of the family also refuses (contract wallets stay per chain).
+  if (multiChain && (await addressRows(tx, ch.address, familyOf(ch.chain))).some((r) => r.status === "active" && r.userId !== auth.userId)) throw addressLinked();
   // Row-lock the active wallet to serialize concurrent address additions for one user.
   const [wallet] = await tx.select({ id: investmentWallets.id }).from(investmentWallets)
     .where(and(eq(investmentWallets.userId, auth.userId), eq(investmentWallets.status, "active"))).for("update");
@@ -286,6 +288,11 @@ async function linkMissing(tx: Tx, walletId: string, ch: ChallengeRow, rows: New
     const strict = explicit || r.chain === ch.chain; // the connected chain is always asked for
     if (row?.walletId === walletId && row.status === "active") continue; // already linked
     if (strict && row?.walletId === walletId && row.status !== "active") throw addressInactive(row.status); // this address was moved away or disabled: say so
+    if (existing.some((a) => a.status === "disabled" && a.chain === r.chain && a.address !== ch.address)) {
+      // Support disabled the chain's wallet, which may still hold assets: a new address must not take the chain over (a later reactivation would clash).
+      if (!strict) continue;
+      throw createHttpError("This chain's wallet was disabled by support. Contact support.", { code: "CHAIN_ALREADY_LINKED" });
+    }
     if (existing.some((a) => a.status === "active" && a.chain === r.chain && a.address !== ch.address)) {
       if (!strict) continue;
       throw createHttpError(`${CHAINS[r.chain].label} is already linked to another wallet. Move it first.`, { code: "CHAIN_ALREADY_LINKED" });
