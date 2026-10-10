@@ -512,6 +512,8 @@ Run on your laptop in `apps/mobile` (Node 24 installed):
    npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_API_URL --value https://api.example.com --visibility plaintext
    npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_WEB_URL --value https://app.example.com --visibility plaintext
    npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_REOWN_PROJECT_ID --value <reown project id> --visibility plaintext
+   # Only while the soft-launch preview gate is on: the app shows the team login first
+   npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_PREVIEW_GATE --value 1 --visibility plaintext
    ```
    `EXPO_PUBLIC_WEB_URL` is also the site wallets show when the app connects (it must be on the Reown allowlist, §6).
 3. Optional, for push notifications: Firebase → **Project settings → Service accounts → Generate new private key**,
@@ -561,7 +563,7 @@ If the VM already runs web + api from an earlier deploy:
 6. Cloudflare R2 CORS: add `https://example.com` to allowed origins (§5.3).
 7. Resend: verify apex domain for `sameer@example.com` (§9).
 8. Rebuild web after env changes: `docker compose build web && docker compose up -d`.
-9. Smoke test: `https://example.com/` waitlist form; `https://app.example.com/preview-access` then wallet sign-in.
+9. Smoke test: `https://example.com/` landing in waitlist mode (Join the waitlist → form, welcome email arrives); `https://example.com/how-it-works` stays on the apex; `https://app.example.com/preview-access` then wallet sign-in; on the APK (built with `EXPO_PUBLIC_PREVIEW_GATE=1`) the team login shows before the wallet sign-in.
 
 ---
 

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { Providers } from "@/components/providers";
+import { SurfaceProvider } from "@/components/layout/surface";
+import { SURFACE_HEADER } from "@/lib/surface";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], weight: ["300", "400", "500", "600"], variable: "--font-geist", display: "swap" });
@@ -20,14 +22,17 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const cookieHeader = (await headers()).get("cookie");
+  const h = await headers();
+  const cookieHeader = h.get("cookie");
   // A forced theme is rendered on the server so there is no flash; `system` leaves it to prefers-color-scheme.
   const choice = (await cookies()).get("bx_theme")?.value;
   const theme = choice === "light" || choice === "dark" ? choice : undefined;
   return (
     <html lang="en" data-theme={theme} className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body className="bg-canvas font-sans text-ink antialiased">
-        <Providers cookies={cookieHeader}>{children}</Providers>
+        <SurfaceProvider value={h.get(SURFACE_HEADER) === "marketing" ? "marketing" : "app"}>
+          <Providers cookies={cookieHeader}>{children}</Providers>
+        </SurfaceProvider>
       </body>
     </html>
   );

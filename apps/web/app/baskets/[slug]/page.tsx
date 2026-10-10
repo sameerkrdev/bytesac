@@ -1,10 +1,9 @@
 import { BASKET_CATEGORY_LABEL, BASKET_STATUS_LABEL, REVIEW_FREQUENCY_LABEL, SECTOR_LABEL } from "@repo/app-core/basket-status";
 import { formatBps, formatFraction } from "@repo/app-core/format";
-import { SESSION_COOKIE, publicBasketResponseSchema, type BasketStatus, type PublicBasketDetail } from "@repo/validator";
+import { publicBasketResponseSchema, type BasketStatus, type PublicBasketDetail } from "@repo/validator";
 import { AlertTriangle, PenLine, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { notFound, permanentRedirect } from "next/navigation";
 import { BasketView } from "@/components/baskets/basket-view";
 import { FileList } from "@/components/baskets/basket-files";
@@ -16,6 +15,7 @@ import { InvestButton } from "@/components/invest/invest-button";
 import { Breadcrumb } from "@/components/layout/page-layout";
 import { StatusBadge } from "@/components/status-badge";
 import { feeText } from "@/lib/fees";
+import { API_ORIGIN, apiHeaders } from "@/lib/server-api";
 import { GlassObject } from "@/components/visual/scenery";
 import { WeightDiff } from "@/components/visual/weight-diff";
 
@@ -51,10 +51,9 @@ function Index({ files }: { files: boolean }) {
 
 export default async function PublicBasketPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  // The session (when there is one) lets the API say which assets this viewer may buy.
-  const session = (await cookies()).get(SESSION_COOKIE);
-  const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/public/baskets/${encodeURIComponent(slug)}`, {
-    headers: { Accept: "application/json", ...(session ? { Cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.value)}` } : {}) }, cache: "no-store", signal: AbortSignal.timeout(5000),
+  const res = await fetch(`${API_ORIGIN}/v1/public/baskets/${encodeURIComponent(slug)}`, {
+    // The session (when there is one) lets the API say which assets this viewer may buy.
+    headers: await apiHeaders({ session: true }), cache: "no-store", signal: AbortSignal.timeout(5000),
   });
   if (res.status === 404) notFound();
   if (!res.ok) throw new Error(`GET public basket failed: ${res.status}`);

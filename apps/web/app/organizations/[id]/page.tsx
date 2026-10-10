@@ -3,6 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { API_ORIGIN, apiHeaders } from "@/lib/server-api";
 import { Monogram, ProfileHero, VerifiedBadge } from "@/components/layout/profile-hero";
 
 export const metadata: Metadata = { title: "Organization" };
@@ -12,8 +13,8 @@ const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { mont
 export default async function PublicOrganizationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) notFound();
-  const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/public/organizations/${id}`, {
-    headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(5000),
+  const res = await fetch(`${API_ORIGIN}/v1/public/organizations/${id}`, {
+    headers: await apiHeaders(), cache: "no-store", signal: AbortSignal.timeout(5000),
   });
   if (res.status === 404) notFound();
   if (!res.ok) throw new Error(`GET public organization failed: ${res.status}`);

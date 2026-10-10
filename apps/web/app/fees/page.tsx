@@ -3,6 +3,7 @@ import { Building2, Fuel, Landmark } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PLATFORM_OPERATION_LABEL, rateText } from "@/lib/fees";
+import { API_ORIGIN, apiHeaders } from "@/lib/server-api";
 import { PageHeader } from "@/components/layout/page-layout";
 
 export const metadata: Metadata = { title: "Fees" };
@@ -21,8 +22,8 @@ const FAQ = [
 ] as const;
 
 export default async function PublicFeesPage() {
-  const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/public/fees`, {
-    headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(5000),
+  const res = await fetch(`${API_ORIGIN}/v1/public/fees`, {
+    headers: await apiHeaders(), cache: "no-store", signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) throw new Error(`GET public fees failed: ${res.status}`);
   const { platform } = publicFeesSchema.parse(await res.json());

@@ -94,8 +94,3 @@ export const env = cleanEnv(process.env, {
   PREVIEW_GATE_PASSWORD: str({ default: "" }),
 });
 
-export function previewGateEnabled(): boolean {
-  return env.PREVIEW_GATE_JWT_SECRET.trim().length >= 32
-    && env.PREVIEW_GATE_EMAIL.trim().length > 0
-    && env.PREVIEW_GATE_PASSWORD.length > 0;
-}

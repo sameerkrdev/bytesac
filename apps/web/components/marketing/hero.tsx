@@ -4,6 +4,7 @@ import { ArrowRight, Check, GitCompareArrows, Wallet } from "lucide-react";
 import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import Link from "next/link";
 import { useRef } from "react";
+import { useJoinHref, useMarketing } from "@/components/layout/surface";
 import { DUR, EASE, LineReveal } from "@/components/motion/reveal";
 import { buttonVariants } from "@/components/ui/button";
 import { ExampleBasketScreen } from "@/components/visual/phone-screens";
@@ -34,6 +35,8 @@ function Chip({ children, className, delay, depth, progress }: { children: React
  */
 export function Hero() {
   const reduce = useReducedMotion();
+  const marketing = useMarketing();
+  const joinHref = useJoinHref();
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const phoneY = useTransform(scrollYProgress, [0, 1], [0, 140]);
@@ -54,7 +57,9 @@ export function Hero() {
             Discover curated baskets from verified organizations, research every decision behind them, and invest from your own wallet — approving each step yourself.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Link href="/baskets" className={buttonVariants({ size: "lg" })}>Explore baskets<ArrowRight /></Link>
+            {marketing
+              ? <a href={joinHref} className={buttonVariants({ size: "lg" })}>Join the waitlist<ArrowRight /></a>
+              : <Link href="/baskets" className={buttonVariants({ size: "lg" })}>Explore baskets<ArrowRight /></Link>}
             <Link href="/how-it-works" className={buttonVariants({ variant: "glass", size: "lg" })}>How it works</Link>
           </div>
         </motion.div>

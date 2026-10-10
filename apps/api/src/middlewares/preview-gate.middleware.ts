@@ -2,7 +2,11 @@ import createHttpError from "http-errors";
 import type { NextFunction, Request, Response } from "express";
 import { PREVIEW_GATE_COOKIE, PREVIEW_GATE_HEADER } from "@repo/validator";
 import { verifyPreviewGateToken } from "@/lib/preview-gate-token";
-import { env, previewGateEnabled } from "@/config/dotenv";
+import { env } from "@/config/dotenv";
+
+/** All three env values set: the gate is on. Lives here (not in dotenv.ts) so tests that mock `env` keep working. */
+export const previewGateEnabled = (): boolean =>
+  env.PREVIEW_GATE_JWT_SECRET.trim().length >= 32 && env.PREVIEW_GATE_EMAIL.trim().length > 0 && env.PREVIEW_GATE_PASSWORD.length > 0;
 
 const OPEN = new Set(["/health", "/v1/public/waitlist", "/v1/preview-gate/login"]);
 

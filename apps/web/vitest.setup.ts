@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
 
@@ -19,3 +19,7 @@ if (typeof window !== "undefined" && !("IntersectionObserver" in window)) {
   (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
   (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IO;
 }
+
+// Server pages read the request cookies (session, preview gate) to call the API; outside a request there are none.
+// A test that needs a session mocks next/headers itself.
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }), headers: async () => new Headers() }));

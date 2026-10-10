@@ -9,6 +9,7 @@ import { CategoryChips } from "@/components/discovery/category-chips";
 import { FiltersPanel } from "@/components/discovery/filters-panel";
 import { ResultsList } from "@/components/discovery/results-list";
 import { PageHeader } from "@/components/layout/page-layout";
+import { API_ORIGIN, serverFetch } from "@/lib/server-api";
 import { buttonVariants } from "@/components/ui/button";
 
 export const metadata: Metadata = { title: "Baskets" };
@@ -19,7 +20,7 @@ export default async function PublicBasketsPage({ searchParams }: { searchParams
   const { f, cursor } = await searchParams;
   const filters = decodeDiscoveryFilters(f); // invalid `f` is ignored
   const canonical = Object.keys(filters).length ? encodeDiscoveryFilters(filters) : undefined;
-  const client = createApiClient({ baseUrl: process.env.API_ORIGIN ?? "http://localhost:4000", transport: { kind: "cookie" } });
+  const client = createApiClient({ baseUrl: API_ORIGIN, transport: { kind: "cookie" }, fetch: serverFetch });
   const browsing = !canonical && !cursor;
   const [{ items, nextCursor }, collections] = await Promise.all([
     client.discoverBaskets({ ...filters, cursor }),

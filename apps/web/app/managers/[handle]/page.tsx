@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Monogram, ProfileHero, VerifiedBadge } from "@/components/layout/profile-hero";
+import { API_ORIGIN, apiHeaders } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
 
 export const metadata: Metadata = { title: "Manager" };
@@ -14,8 +15,8 @@ const SelfReported = () => <span className="ml-2 rounded-pill bg-surface-muted p
 
 export default async function PublicManagerPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
-  const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/public/managers/${encodeURIComponent(handle)}`, {
-    headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(5000),
+  const res = await fetch(`${API_ORIGIN}/v1/public/managers/${encodeURIComponent(handle)}`, {
+    headers: await apiHeaders(), cache: "no-store", signal: AbortSignal.timeout(5000),
   });
   if (res.status === 404) notFound();
   if (!res.ok) throw new Error(`GET public manager failed: ${res.status}`);

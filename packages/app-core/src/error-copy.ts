@@ -7,6 +7,8 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   VALIDATION_FAILED: { title: "Check your details", message: "Some information isn't valid. Review the highlighted fields.", recovery: "fix-input" },
   UNSUPPORTED_CHAIN: { title: "Unsupported network", message: "Switch your wallet to Ethereum, Base, BNB Chain, Arbitrum, Polygon or Solana.", recovery: "fix-input" },
   CHALLENGE_NOT_FOUND: { title: "Sign-in request not found", message: "Start the sign-in again.", recovery: "restart" },
+  PREVIEW_GATE_REQUIRED: { title: "Preview access needed", message: "Bytesac is in soft launch. Sign in with your team preview credentials first.", recovery: "reauthenticate" },
+  PREVIEW_GATE_DENIED: { title: "Invalid email or password", message: "Check the preview credentials and try again.", recovery: "fix-input" },
   CHALLENGE_EXPIRED: { title: "Sign-in request expired", message: "The request is valid for 5 minutes. Start again to get a new one.", recovery: "restart" },
   CHALLENGE_CONSUMED: { title: "Request already used", message: "This sign-in request was already used. Start again.", recovery: "restart" },
   CHALLENGE_IN_PROGRESS: { title: "Still verifying", message: "We're already verifying this signature. Wait a moment.", recovery: "wait" },

@@ -3,7 +3,8 @@ import type { NextFunction, Request, Response } from "express";
 import createHttpError from "http-errors";
 import { CLIENT_HEADER, MOBILE_CLIENT, PREVIEW_GATE_COOKIE, type PreviewGateLoginRequest } from "@repo/validator";
 import { issuePreviewGateToken } from "@/lib/preview-gate-token";
-import { env, previewGateEnabled } from "@/config/dotenv";
+import { env } from "@/config/dotenv";
+import { previewGateEnabled } from "@/middlewares/preview-gate.middleware";
 
 const cookieOptions = () => ({
   httpOnly: true,

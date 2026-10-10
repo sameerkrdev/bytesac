@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { safeNext } from "@/lib/surface";
 import { toDisplayError, type DisplayError } from "@/lib/errors";
 
 function PreviewAccessForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/home";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<DisplayError | null>(null);
@@ -31,7 +31,7 @@ function PreviewAccessForm() {
     setPending(true);
     try {
       await api.previewGateLogin(parsed.data);
-      router.replace(next.startsWith("/") ? next : "/home");
+      router.replace(safeNext(params.get("next")));
     } catch (err) {
       setError(toDisplayError(err));
     } finally {

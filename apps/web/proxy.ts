@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { PREVIEW_GATE_COOKIE } from "@repo/validator";
 import { verifyPreviewGateToken } from "@/lib/preview-gate-token";
+import { isMarketingPath, SURFACE_HEADER } from "@/lib/surface";
 
 const marketingHost = () => (process.env.MARKETING_HOST ?? "").trim().toLowerCase();
 const appHost = () => (process.env.APP_HOST ?? process.env.WEB_DOMAIN ?? "").trim().toLowerCase();
@@ -11,49 +12,43 @@ function hostName(req: NextRequest): string {
   return raw.split(":")[0]?.toLowerCase() ?? "";
 }
 
-function isStatic(pathname: string): boolean {
-  return pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.endsWith(".ico");
-}
+/** Build output and public files (`/visuals/…webp`, `/brand/…png`, `/favicon.ico`, `/robots.txt`): never gated or redirected. */
+const isStatic = (pathname: string) => pathname.startsWith("/_next/") || /\/[^/]+\.[a-z0-9]+$/i.test(pathname);
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (isStatic(pathname)) return NextResponse.next();
 
+  // The surface header is ours alone: drop whatever the client sent.
+  const headers = new Headers(req.headers);
+  headers.delete(SURFACE_HEADER);
   const host = hostName(req);
   const marketing = marketingHost();
   const app = appHost();
 
   if (marketing && host === marketing) {
-    if (pathname === "/" || pathname === "/waitlist") {
-      if (pathname === "/") return NextResponse.rewrite(new URL("/waitlist", req.url));
-      return NextResponse.next();
+    if (isMarketingPath(pathname)) {
+      headers.set(SURFACE_HEADER, "marketing");
+      if (pathname === "/") return NextResponse.rewrite(new URL("/waitlist", req.url), { request: { headers } });
+      return NextResponse.next({ request: { headers } });
     }
-    if (app) {
-      const dest = new URL(pathname + req.nextUrl.search, `https://${app}`);
-      return NextResponse.redirect(dest);
-    }
-    return NextResponse.redirect(new URL("/waitlist", req.url));
+    if (app) return NextResponse.redirect(new URL(pathname + req.nextUrl.search, `https://${app}`));
+    return NextResponse.redirect(new URL("/", req.url));
   }
 
   if (app && host === app) {
-    if (pathname === "/") {
-      return NextResponse.redirect(new URL("/home", req.url));
-    }
+    if (pathname === "/") return NextResponse.redirect(new URL("/home", req.url));
     const secret = previewSecret();
-    if (secret.length >= 32) {
-      const open = pathname === "/preview-access" || pathname.startsWith("/api/");
-      if (!open) {
-        const token = req.cookies.get(PREVIEW_GATE_COOKIE)?.value;
-        if (!verifyPreviewGateToken(token, secret)) {
-          const login = new URL("/preview-access", req.url);
-          login.searchParams.set("next", pathname);
-          return NextResponse.redirect(login);
-        }
+    if (secret.length >= 32 && pathname !== "/preview-access" && !pathname.startsWith("/api/")) {
+      if (!verifyPreviewGateToken(req.cookies.get(PREVIEW_GATE_COOKIE)?.value, secret)) {
+        const login = new URL("/preview-access", req.url);
+        login.searchParams.set("next", pathname + req.nextUrl.search);
+        return NextResponse.redirect(login);
       }
     }
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

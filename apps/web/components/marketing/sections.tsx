@@ -6,6 +6,8 @@ import { motion, useReducedMotion, useScroll, useTransform } from "motion/react"
 import Link from "next/link";
 import { useRef, type ReactNode } from "react";
 import { BasketCard } from "@/components/baskets/basket-card";
+import { useJoinHref, useMarketing } from "@/components/layout/surface";
+import { WaitlistForm } from "@/components/marketing/waitlist-form";
 import { LineReveal, Parallax, Reveal, Stagger } from "@/components/motion/reveal";
 import { buttonVariants } from "@/components/ui/button";
 import { AllocationLegend, AllocationRing } from "@/components/visual/allocation-ring";
@@ -276,6 +278,8 @@ export function MultiChain() {
 
 /** The manager side, briefly, with the organization model stated plainly. */
 export function ForManagers() {
+  const marketing = useMarketing();
+  const joinHref = useJoinHref();
   return (
     <section aria-labelledby="managers-title" className="py-28 md:py-40">
       <div className={cn(wrap, "grid items-center gap-16 lg:grid-cols-12")}>
@@ -285,7 +289,9 @@ export function ForManagers() {
           </SectionIntro>
           <Reveal delay={0.15} className="mt-10 flex flex-wrap gap-2">
             <Link href="/for-managers" className={buttonVariants({ variant: "secondary" })}>For organizations<ArrowRight /></Link>
-            <Link href="/managers/apply" className={buttonVariants({ variant: "ghost" })}>Apply</Link>
+            {marketing
+              ? <a href={joinHref} className={buttonVariants({ variant: "ghost" })}>Join the waitlist</a>
+              : <Link href="/managers/apply" className={buttonVariants({ variant: "ghost" })}>Apply</Link>}
           </Reveal>
         </div>
         <div className="lg:col-span-5 lg:col-start-8">
@@ -309,21 +315,29 @@ export function ForManagers() {
  */
 export function ClosingCta() {
   const reduce = useReducedMotion();
+  const marketing = useMarketing();
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end end"] });
   const skyOpacity = useTransform(scrollYProgress, [0, 0.55], [0, 1]);
   const phoneY = useTransform(scrollYProgress, [0.2, 1], ["45%", "0%"]);
   return (
-    <section ref={ref} aria-labelledby="closing-title" className="relative isolate overflow-hidden pt-28 md:pt-40">
+    <section ref={ref} id="join" aria-labelledby="closing-title" className="relative isolate scroll-mt-20 overflow-hidden pt-28 md:pt-40">
       <motion.div className="absolute inset-0 -z-10" style={reduce ? undefined : { opacity: skyOpacity }}>
         <Sky fade={false} bank="high" />
       </motion.div>
       <div className={cn(wrap, "text-center")}>
         <LineReveal id="closing-title" as="h2" inView className="type-display text-ink" lines={["Your strategy.", <span key="b" className="text-ink-muted">Your wallet. Your call.</span>]} />
-        <Reveal delay={0.2} className="mt-10 flex flex-wrap justify-center gap-2">
-          <Link href="/baskets" className={buttonVariants({ size: "lg" })}>Explore baskets<ArrowRight /></Link>
-          <Link href="/sign-in" className={buttonVariants({ variant: "glass", size: "lg" })}>Sign in with your wallet</Link>
-        </Reveal>
+        {marketing ? (
+          <Reveal delay={0.2} className="mx-auto mt-10 max-w-xl">
+            <p className="type-lede text-ink-muted">We&apos;re opening carefully. Join the waitlist and we&apos;ll write when there&apos;s something worth sharing.</p>
+            <WaitlistForm className="mt-8" />
+          </Reveal>
+        ) : (
+          <Reveal delay={0.2} className="mt-10 flex flex-wrap justify-center gap-2">
+            <Link href="/baskets" className={buttonVariants({ size: "lg" })}>Explore baskets<ArrowRight /></Link>
+            <Link href="/sign-in" className={buttonVariants({ variant: "glass", size: "lg" })}>Sign in with your wallet</Link>
+          </Reveal>
+        )}
       </div>
       <motion.div className="mx-auto mt-16 w-[min(86vw,500px)] translate-x-[-8%]" style={reduce ? undefined : { y: phoneY }}>
         <HandPhone screen={<ExampleBasketScreen />} />

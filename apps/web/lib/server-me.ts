@@ -1,13 +1,12 @@
 import "server-only";
 import { SESSION_COOKIE, meResponseSchema, type MeResponse } from "@repo/validator";
 import { cookies } from "next/headers";
+import { API_ORIGIN, apiHeaders } from "@/lib/server-api";
 
 export async function getServerMe(): Promise<MeResponse | null> {
-  const jar = await cookies();
-  const session = jar.get(SESSION_COOKIE);
-  if (!session) return null;
-  const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1/me`, {
-    headers: { Cookie: `${SESSION_COOKIE}=${encodeURIComponent(session.value)}`, Accept: "application/json" },
+  if (!(await cookies()).get(SESSION_COOKIE)) return null;
+  const res = await fetch(`${API_ORIGIN}/v1/me`, {
+    headers: await apiHeaders({ session: true }),
     cache: "no-store",
     signal: AbortSignal.timeout(5000),
   });

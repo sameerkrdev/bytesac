@@ -1,4 +1,5 @@
 import { createApiClient } from "@repo/api-client";
+import { withPreviewGate } from "./preview-gate";
 import { tokenStore } from "./token-store";
 
 const baseUrl = process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:4000";
@@ -31,5 +32,5 @@ function createSessionGuardedFetch(
 export const api = createApiClient({
   baseUrl,
   transport: { kind: "bearer", getToken: () => tokenStore.get() },
-  fetch: createSessionGuardedFetch((input, init) => globalThis.fetch(input, init), () => tokenStore.get()),
+  fetch: createSessionGuardedFetch(withPreviewGate((input, init) => globalThis.fetch(input, init)), () => tokenStore.get()),
 });

@@ -8,13 +8,19 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/logo";
 import { isCurrent, PUBLIC_NAV } from "@/components/layout/nav";
+import { useJoinHref, useMarketing } from "@/components/layout/surface";
 import { ThemeSwitch } from "@/components/layout/theme-switch";
 import { buttonVariants } from "@/components/ui/button";
+import { isMarketingPath } from "@/lib/surface";
 import { cn } from "@/lib/utils";
 
 /** Floating marketing header: transparent over the hero, a glass pill once the page scrolls. */
 export function SiteHeader() {
   const path = usePathname();
+  const marketing = useMarketing();
+  const joinHref = useJoinHref();
+  // On the apex only the waitlist and explainer pages exist; links elsewhere would bounce to the gated app host.
+  const nav = marketing ? PUBLIC_NAV.filter((n) => isMarketingPath(n.href)) : PUBLIC_NAV;
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -30,7 +36,7 @@ export function SiteHeader() {
         <Link href="/" aria-label="Bytesac home" className="flex min-h-11 items-center"><Logo size={24} /></Link>
         <nav aria-label="Primary" className="hidden flex-1 justify-center lg:flex">
           <ul className="flex items-center gap-1">
-            {PUBLIC_NAV.map((n) => (
+            {nav.map((n) => (
               <li key={n.href}>
                 <Link href={n.href} aria-current={isCurrent(path, n.href) ? "page" : undefined}
                   className={cn("inline-flex min-h-11 items-center rounded-pill px-3.5 text-sm text-ink-muted transition-colors hover:text-ink", isCurrent(path, n.href) && "text-ink")}>
@@ -41,8 +47,10 @@ export function SiteHeader() {
           </ul>
         </nav>
         <div className="ml-auto flex items-center gap-1.5 lg:ml-0">
-          <Link href="/sign-in" className={cn(buttonVariants({ variant: "ghost" }), "hidden sm:inline-flex")}>Sign in</Link>
-          <Link href="/baskets" className={cn(buttonVariants(), "hidden sm:inline-flex")}>Explore baskets</Link>
+          {marketing ? <a href={joinHref} className={cn(buttonVariants(), "hidden sm:inline-flex")}>Join the waitlist</a> : <>
+            <Link href="/sign-in" className={cn(buttonVariants({ variant: "ghost" }), "hidden sm:inline-flex")}>Sign in</Link>
+            <Link href="/baskets" className={cn(buttonVariants(), "hidden sm:inline-flex")}>Explore baskets</Link>
+          </>}
           <Dialog.Root open={open} onOpenChange={setOpen}>
             <Dialog.Trigger aria-label="Open menu" className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "lg:hidden")}><MenuIcon /></Dialog.Trigger>
             <Dialog.Portal>
@@ -55,14 +63,16 @@ export function SiteHeader() {
                 <Dialog.Title className="sr-only">Menu</Dialog.Title>
                 <nav aria-label="Menu" className="mt-6">
                   <ul className="divide-y divide-line/70">
-                    {PUBLIC_NAV.map((n) => (
+                    {nav.map((n) => (
                       <li key={n.href}><Link href={n.href} className="flex min-h-14 items-center justify-between text-2xl font-light tracking-tight text-ink">{n.label}<ArrowUpRight aria-hidden className="size-5 text-ink-faint" /></Link></li>
                     ))}
                   </ul>
                 </nav>
                 <div className="mt-8 grid gap-2">
-                  <Link href="/baskets" className={buttonVariants({ size: "lg" })}>Explore baskets</Link>
-                  <Link href="/sign-in" className={buttonVariants({ variant: "secondary", size: "lg" })}>Sign in with your wallet</Link>
+                  {marketing ? <a href={joinHref} onClick={() => setOpen(false)} className={buttonVariants({ size: "lg" })}>Join the waitlist</a> : <>
+                    <Link href="/baskets" className={buttonVariants({ size: "lg" })}>Explore baskets</Link>
+                    <Link href="/sign-in" className={buttonVariants({ variant: "secondary", size: "lg" })}>Sign in with your wallet</Link>
+                  </>}
                 </div>
               </Dialog.Popup>
             </Dialog.Portal>
@@ -81,6 +91,9 @@ const FOOTER: { title: string; links: { href: string; label: string }[] }[] = [
 
 /** Footer with an oversized cropped wordmark as the sign-off. */
 export function SiteFooter() {
+  const marketing = useMarketing();
+  // On the apex keep only links that exist there; drop columns left empty.
+  const columns = marketing ? FOOTER.map((c) => ({ ...c, links: c.links.filter((l) => isMarketingPath(l.href)) })).filter((c) => c.links.length > 0) : FOOTER;
   return (
     <footer className="relative mt-auto overflow-hidden border-t border-line bg-canvas">
       <div className="mx-auto grid max-w-7xl gap-12 px-4 pt-16 pb-10 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)] lg:px-10">
@@ -90,7 +103,7 @@ export function SiteFooter() {
           <ThemeSwitch />
           <StoreButtons size="sm" className="pt-2" />
         </div>
-        {FOOTER.map((c) => (
+        {columns.map((c) => (
           <nav key={c.title} aria-label={c.title} className="space-y-3">
             <p className="type-eyebrow text-ink-faint">{c.title}</p>
             <ul className="space-y-1">
