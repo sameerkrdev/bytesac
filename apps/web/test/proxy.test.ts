@@ -53,8 +53,9 @@ describe("proxy", () => {
 describe("safeNext", () => {
   it("keeps same-site paths", () => {
     expect(safeNext("/baskets?f=1")).toBe("/baskets?f=1");
+    expect(safeNext("/help/wallets#move")).toBe("/help/wallets#move");
   });
   it("refuses off-site and empty values", () => {
-    for (const bad of [null, "", "https://evil.com", "//evil.com", "/\\evil.com", "javascript:alert(1)"]) expect(safeNext(bad)).toBe("/home");
+    for (const bad of [null, "", "https://evil.com", "//evil.com", "/\\evil.com", "/\t/evil.com", "/\n/evil.com", "/ /evil.com", "javascript:alert(1)"]) expect(safeNext(bad)).toBe("/home");
   });
 });
