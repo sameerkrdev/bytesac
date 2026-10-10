@@ -40,7 +40,7 @@ export function csrfGuard(req: Request, _res: Response, next: NextFunction): voi
   // Public application forms are browser-only and cookie-less: require Origin unless a bearer token is present.
   const applicationForm = path.startsWith("/v1/manager-applications") && !hasBearer;
   const publicBrowserPost = !hasBearer && (
-    path === "/v1/public/waitlist"
+    path === "/v1/public/waitlist" || path === "/v1/public/waitlist/email"
     || (path === "/v1/preview-gate/login" && req.header(CLIENT_HEADER) !== MOBILE_CLIENT)
   );
   if (!hasCookie && !webAuthEntry && !challengeWithoutClient && !applicationForm && !publicBrowserPost) return next();

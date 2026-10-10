@@ -1,6 +1,6 @@
 "use client";
 
-import { waitlistJoinSchema, type WaitlistJoinResponse } from "@repo/validator";
+import { waitlistEmailJoinSchema, type WaitlistJoinResponse } from "@repo/validator";
 import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,9 @@ import { api } from "@/lib/api";
 import { toDisplayError, type DisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
-/** Join the waitlist: name and email, optional phone and country. Validated with the API's schema before sending. */
+/** Join the waitlist with an email address. Validated with the API's schema before sending. */
 export function WaitlistForm({ className }: { className?: string }) {
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [country, setCountry] = useState("");
   const [error, setError] = useState<DisplayError | null>(null);
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<WaitlistJoinResponse | null>(null);
@@ -23,14 +20,14 @@ export function WaitlistForm({ className }: { className?: string }) {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const parsed = waitlistJoinSchema.safeParse({ name, email, phone: phone.trim() || undefined, country: country.trim() || undefined });
+    const parsed = waitlistEmailJoinSchema.safeParse({ email });
     if (!parsed.success) {
       setError({ title: parsed.error.issues[0]?.message ?? "Check the form and try again." });
       return;
     }
     setPending(true);
     try {
-      setResult(await api.joinWaitlist(parsed.data));
+      setResult(await api.joinWaitlistByEmail(parsed.data));
     } catch (err) {
       setError(toDisplayError(err));
     } finally {
@@ -58,29 +55,14 @@ export function WaitlistForm({ className }: { className?: string }) {
   }
   return (
     <form onSubmit={onSubmit} aria-label="Join the waitlist" className={card} noValidate>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="wl-name">Name</Label>
-          <Input id="wl-name" name="name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required className="mt-2" />
-        </div>
-        <div>
-          <Label htmlFor="wl-email">Email</Label>
-          <Input id="wl-email" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-2" />
-        </div>
-        <div>
-          <Label htmlFor="wl-phone">Phone <span className="text-ink-faint">(optional)</span></Label>
-          <Input id="wl-phone" name="phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 0100" className="mt-2" />
-        </div>
-        <div>
-          <Label htmlFor="wl-country">Country <span className="text-ink-faint">(optional)</span></Label>
-          <Input id="wl-country" name="country" autoComplete="country" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="US" maxLength={2} aria-describedby="wl-country-hint" className="mt-2 uppercase" />
-          <p id="wl-country-hint" className="mt-1 text-xs text-ink-faint">Two-letter code, e.g. US, IN, GB.</p>
-        </div>
+      <Label htmlFor="wl-email">Email</Label>
+      <div className="mt-2 flex items-center gap-2">
+        <Input id="wl-email" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required className="h-12 min-w-0 flex-1 rounded-pill px-5" />
+        <Button type="submit" size="lg" disabled={pending} className="shrink-0">
+          {pending ? <><Loader2 className="animate-spin" aria-hidden /> Joining…</> : "Join"}
+        </Button>
       </div>
       {error && <p className="mt-4 text-sm text-danger" role="alert">{error.title}{error.message ? ` — ${error.message}` : ""}</p>}
-      <Button type="submit" size="lg" disabled={pending} className="mt-6 w-full">
-        {pending ? <><Loader2 className="animate-spin" aria-hidden /> Joining…</> : "Join the waitlist"}
-      </Button>
       <p className="mt-3 text-center text-xs text-ink-faint">One welcome email now, then only news worth sharing.</p>
     </form>
   );

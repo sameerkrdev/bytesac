@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, waitlistSignups } from "@repo/db";
 import { eq } from "drizzle-orm";
-import { joinWaitlist } from "@/modules/waitlist/waitlist.service";
+import { joinWaitlist, joinWaitlistByEmail } from "@/modules/waitlist/waitlist.service";
 import { resetDb } from "../../helpers/db";
 
 const sendWaitlistWelcomeEmail = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -46,5 +46,26 @@ describe("joinWaitlist", () => {
     expect(sendWaitlistWelcomeEmail).toHaveBeenCalledTimes(2);
     const [after] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "grace@example.com"));
     expect(after?.welcomeEmailSentAt).toBeTruthy();
+  });
+
+  it("joins by email alone with no name, phone or country", async () => {
+    sendWaitlistWelcomeEmail.mockClear();
+    const r = await joinWaitlistByEmail({ email: "Lin@Example.com" });
+    expect(r).toEqual({ ok: true, joined: true, emailSent: true });
+    expect(sendWaitlistWelcomeEmail).toHaveBeenCalledOnce();
+    expect(sendWaitlistWelcomeEmail.mock.calls[0]?.[1]).toMatchObject({ subject: "You're on the Bytesac waitlist" });
+    const [row] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "lin@example.com"));
+    expect(row?.fullName).toBeNull();
+    expect(row?.welcomeEmailSentAt).toBeTruthy();
+  });
+
+  it("keeps existing details on an email-only join", async () => {
+    await joinWaitlist({ name: "Ada", email: "ada@example.com", phone: "+1", country: "GB" });
+    sendWaitlistWelcomeEmail.mockClear();
+    const r = await joinWaitlistByEmail({ email: "ada@example.com" });
+    expect(r).toEqual({ ok: true, joined: false, emailSent: true });
+    expect(sendWaitlistWelcomeEmail).not.toHaveBeenCalled();
+    const [row] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "ada@example.com"));
+    expect(row).toMatchObject({ fullName: "Ada", phone: "+1", country: "GB" });
   });
 });

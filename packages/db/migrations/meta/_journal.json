@@ -169,6 +169,13 @@
       "when": 1792000000000,
       "tag": "0023_waitlist",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792000100000,
+      "tag": "0024_waitlist_name_optional",
+      "breakpoints": true
     }
   ]
 }

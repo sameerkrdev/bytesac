@@ -1,12 +1,12 @@
 import express from "express";
-import { waitlistJoinSchema } from "@repo/validator";
+import { waitlistEmailJoinSchema, waitlistJoinSchema } from "@repo/validator";
 import { validate } from "@/middlewares/validate.middleware";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
-import { postWaitlistJoin } from "./waitlist.controller";
+import { postWaitlistEmailJoin, postWaitlistJoin } from "./waitlist.controller";
 
 const router: express.Router = express.Router();
 
-router.post("/", async (req, res, next) => {
+const rateLimit: express.RequestHandler = async (req, _res, next) => {
   try {
     await consume(limits.waitlistIp, req.ctx.ip);
     const email = typeof (req.body as { email?: unknown })?.email === "string" ? (req.body as { email: string }).email.trim().toLowerCase() : "";
@@ -15,6 +15,9 @@ router.post("/", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-}, validate({ body: waitlistJoinSchema }), postWaitlistJoin);
+};
+
+router.post("/", rateLimit, validate({ body: waitlistJoinSchema }), postWaitlistJoin);
+router.post("/email", rateLimit, validate({ body: waitlistEmailJoinSchema }), postWaitlistEmailJoin);
 
 export default router;

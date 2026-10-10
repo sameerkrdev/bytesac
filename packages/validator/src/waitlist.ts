@@ -9,6 +9,11 @@ export const waitlistJoinSchema = z.strictObject({
 
 export type WaitlistJoinRequest = z.infer<typeof waitlistJoinSchema>;
 
+/** Email-only join, used by the web landing form. */
+export const waitlistEmailJoinSchema = waitlistJoinSchema.pick({ email: true });
+
+export type WaitlistEmailJoinRequest = z.infer<typeof waitlistEmailJoinSchema>;
+
 export const waitlistJoinResponseSchema = z.strictObject({
   ok: z.literal(true),
   joined: z.boolean(),

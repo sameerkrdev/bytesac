@@ -31,7 +31,7 @@ import {
   type TransferOwnershipRequest, type UpdateMemberVerificationRequest,
   type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MyMembership,
   waitlistJoinResponseSchema, previewGateLoginResponseSchema,
-  type WaitlistJoinRequest, type WaitlistJoinResponse, type PreviewGateLoginRequest, type PreviewGateLoginResponse,
+  type WaitlistEmailJoinRequest, type WaitlistJoinRequest, type WaitlistJoinResponse, type PreviewGateLoginRequest, type PreviewGateLoginResponse,
   type z,
 } from "@repo/validator";
 import { ApiError } from "./api-error";
@@ -117,6 +117,8 @@ export function createApiClient(options: ApiClientOptions) {
 
     joinWaitlist: (b: WaitlistJoinRequest): Promise<WaitlistJoinResponse> =>
       request("POST", "/v1/public/waitlist", waitlistJoinResponseSchema, b),
+    joinWaitlistByEmail: (b: WaitlistEmailJoinRequest): Promise<WaitlistJoinResponse> =>
+      request("POST", "/v1/public/waitlist/email", waitlistJoinResponseSchema, b),
     previewGateLogin: (b: PreviewGateLoginRequest): Promise<PreviewGateLoginResponse> =>
       request("POST", "/v1/preview-gate/login", previewGateLoginResponseSchema, b),
 

@@ -20,12 +20,13 @@ Public waitlist on `bytesac.com`; product on `app.bytesac.com` with an optional 
 | Method | Path | Auth |
 |---|---|---|
 | POST | `/v1/public/waitlist` | Public, rate-limited, CSRF Origin |
+| POST | `/v1/public/waitlist/email` | Email-only join used by the web landing form; same limits and guards |
 | POST | `/v1/preview-gate/login` | Public when gate enabled |
 | POST | `/v1/preview-gate/logout` | Public |
 
 ## Data
 
-`app.waitlist_signups` — unique email (case-insensitive), name, optional phone/country, `welcome_email_sent_at`.
+`app.waitlist_signups` — unique email (case-insensitive), optional name/phone/country (name nullable since 0024; email-only joins keep any existing details, and the welcome email greets "there"), `welcome_email_sent_at`.
 
 ## Out of scope
 

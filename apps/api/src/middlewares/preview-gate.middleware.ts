@@ -8,7 +8,7 @@ import { env } from "@/config/dotenv";
 export const previewGateEnabled = (): boolean =>
   env.PREVIEW_GATE_JWT_SECRET.trim().length >= 32 && env.PREVIEW_GATE_EMAIL.trim().length > 0 && env.PREVIEW_GATE_PASSWORD.length > 0;
 
-const OPEN = new Set(["/health", "/v1/public/waitlist", "/v1/preview-gate/login"]);
+const OPEN = new Set(["/health", "/v1/public/waitlist", "/v1/public/waitlist/email", "/v1/preview-gate/login"]);
 
 function normalizePath(path: string): string {
   const lower = path.toLowerCase();

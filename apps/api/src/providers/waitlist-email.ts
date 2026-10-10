@@ -12,10 +12,11 @@ const POINTS: [string, string][] = [
   ["Updates need your consent", "When a manager publishes a new version, you review it and apply or skip. Nothing changes without your signature."],
 ];
 
-/** Welcome email in the Bytesac theme (light tokens inline, dark tokens for clients that honour prefers-color-scheme). Table layout for Outlook. */
-export function waitlistWelcomeEmail(name: string): { subject: string; html: string; text: string } {
-  const first = name.trim().split(/\s+/)[0] || "there";
-  const subject = `${first}, you're on the Bytesac waitlist`;
+/** Welcome email in the Bytesac theme (light tokens inline, dark tokens for clients that honour prefers-color-scheme). Table layout for Outlook. Greets "there" without a name. */
+export function waitlistWelcomeEmail(name: string | null): { subject: string; html: string; text: string } {
+  const given = name?.trim().split(/\s+/)[0] ?? "";
+  const first = given || "there";
+  const subject = given ? `${given}, you're on the Bytesac waitlist` : "You're on the Bytesac waitlist";
   const text = [
     `Hi ${first},`,
     "",

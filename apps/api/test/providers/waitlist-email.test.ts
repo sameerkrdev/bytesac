@@ -19,6 +19,13 @@ describe("waitlistWelcomeEmail", () => {
     expect(html).toContain(themes.dark.surface);
   });
 
+  it("greets without a name", () => {
+    const mail = waitlistWelcomeEmail(null);
+    expect(mail.subject).toBe("You're on the Bytesac waitlist");
+    expect(mail.text).toContain("Hi there,");
+    expect(mail.html).toContain("Hi there,");
+  });
+
   it("escapes the name", () => {
     const { html } = waitlistWelcomeEmail("<script>x</script> Doe");
     expect(html).not.toContain("<script>x");

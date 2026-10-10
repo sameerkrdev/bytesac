@@ -6,7 +6,7 @@ const app = pgSchema("app");
 export const waitlistSignups = app.table("waitlist_signups", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull(),
-  fullName: text("full_name").notNull(),
+  fullName: text("full_name"),
   phone: text("phone"),
   country: char("country", { length: 2 }),
   welcomeEmailSentAt: timestamp("welcome_email_sent_at", { withTimezone: true }),
