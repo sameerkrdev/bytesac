@@ -17,7 +17,7 @@ describe("joinWaitlist", () => {
   it("inserts, sends welcome email once, and marks welcomeEmailSentAt", async () => {
     sendWaitlistWelcomeEmail.mockClear();
     const r = await joinWaitlist({ name: "Ada Lovelace", email: "ada@example.com", country: "GB" });
-    expect(r).toEqual({ ok: true, joined: true });
+    expect(r).toEqual({ ok: true, joined: true, emailSent: true });
     expect(sendWaitlistWelcomeEmail).toHaveBeenCalledOnce();
     const [row] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "ada@example.com"));
     expect(row?.welcomeEmailSentAt).toBeTruthy();
@@ -28,10 +28,23 @@ describe("joinWaitlist", () => {
     await joinWaitlist({ name: "Ada", email: "ada@example.com" });
     sendWaitlistWelcomeEmail.mockClear();
     const r = await joinWaitlist({ name: "Ada Updated", email: "Ada@Example.com", phone: "+1" });
-    expect(r).toEqual({ ok: true, joined: false });
+    expect(r).toEqual({ ok: true, joined: false, emailSent: true });
     expect(sendWaitlistWelcomeEmail).not.toHaveBeenCalled();
     const [row] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "ada@example.com"));
     expect(row?.fullName).toBe("Ada Updated");
     expect(row?.phone).toBe("+1");
+  });
+  it("keeps the signup when the email fails and sends it on the next join", async () => {
+    sendWaitlistWelcomeEmail.mockClear();
+    sendWaitlistWelcomeEmail.mockRejectedValueOnce(new Error("resend down"));
+    const first = await joinWaitlist({ name: "Grace", email: "grace@example.com" });
+    expect(first).toEqual({ ok: true, joined: true, emailSent: false });
+    const [row] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "grace@example.com"));
+    expect(row?.welcomeEmailSentAt).toBeNull();
+    const second = await joinWaitlist({ name: "Grace", email: "grace@example.com" });
+    expect(second).toEqual({ ok: true, joined: false, emailSent: true });
+    expect(sendWaitlistWelcomeEmail).toHaveBeenCalledTimes(2);
+    const [after] = await db.select().from(waitlistSignups).where(eq(waitlistSignups.email, "grace@example.com"));
+    expect(after?.welcomeEmailSentAt).toBeTruthy();
   });
 });

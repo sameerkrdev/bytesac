@@ -27,6 +27,7 @@
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@repo/db": "workspace:*",
+    "@repo/design-tokens": "workspace:*",
     "@repo/logger": "workspace:*",
     "@repo/validator": "workspace:*",
     "@scure/btc-signer": "2.4.1",

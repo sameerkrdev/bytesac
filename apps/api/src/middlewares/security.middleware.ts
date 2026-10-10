@@ -41,7 +41,7 @@ export function csrfGuard(req: Request, _res: Response, next: NextFunction): voi
   const applicationForm = path.startsWith("/v1/manager-applications") && !hasBearer;
   const publicBrowserPost = !hasBearer && (
     path === "/v1/public/waitlist"
-    || path === "/v1/preview-gate/login"
+    || (path === "/v1/preview-gate/login" && req.header(CLIENT_HEADER) !== MOBILE_CLIENT)
   );
   if (!hasCookie && !webAuthEntry && !challengeWithoutClient && !applicationForm && !publicBrowserPost) return next();
   const origin = req.header("origin");

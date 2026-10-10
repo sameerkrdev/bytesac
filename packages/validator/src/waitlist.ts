@@ -12,6 +12,8 @@ export type WaitlistJoinRequest = z.infer<typeof waitlistJoinSchema>;
 export const waitlistJoinResponseSchema = z.strictObject({
   ok: z.literal(true),
   joined: z.boolean(),
+  /** False when the welcome email could not be sent; it is retried on the next join with the same email. */
+  emailSent: z.boolean(),
 });
 
 export type WaitlistJoinResponse = z.infer<typeof waitlistJoinResponseSchema>;

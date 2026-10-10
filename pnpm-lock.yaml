@@ -45,6 +45,9 @@ importers:
       '@repo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@repo/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@repo/logger':
         specifier: workspace:*
         version: link:../../packages/logger
