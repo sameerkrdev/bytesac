@@ -5,7 +5,9 @@ import { logger } from "@repo/logger";
 import { env } from "@/config/dotenv";
 import { errorHandler, notFoundHandler } from "@/middlewares/error-handler.middleware";
 import { requestContext } from "@/middlewares/request-context.middleware";
+import { previewGateGuard } from "@/middlewares/preview-gate.middleware";
 import { csrfGuard, noCors, rejectDualAuth } from "@/middlewares/security.middleware";
+import previewGateRouter from "@/modules/preview-gate/preview-gate.route";
 import assetsRouter from "@/modules/assets/assets.route";
 import authRouter from "@/modules/auth/auth.route";
 import basketsRouter from "@/modules/baskets/baskets.route";
@@ -35,8 +37,10 @@ app.use(morgan(':method :path :status :response-time ms :res[content-length] ":u
 app.use(express.json({ limit: "32kb" }));
 app.use(cookieParser());
 app.use(noCors, rejectDualAuth, csrfGuard);
+app.use(previewGateGuard);
 
 app.use("/health", healthRouter);
+app.use("/v1/preview-gate", previewGateRouter);
 app.use("/v1/auth", authRouter);
 app.use("/v1/manager-applications", managerApplicationsRouter);
 app.use("/v1/me/contacts", contactsRouter);

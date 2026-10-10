@@ -30,6 +30,8 @@ import {
   type DecideMemberVerificationRequest, type ListMemberReviewQuery, type ListMemberReviewResponse, type MemberReviewDetail, type MemberVerificationView,
   type TransferOwnershipRequest, type UpdateMemberVerificationRequest,
   type ChangeRoleRequest, type InviteMemberRequest, type ListInvitationsResponse, type ListMembersResponse, type MembershipProfileRequest, type MyMembership,
+  waitlistJoinResponseSchema, previewGateLoginResponseSchema,
+  type WaitlistJoinRequest, type WaitlistJoinResponse, type PreviewGateLoginRequest, type PreviewGateLoginResponse,
   type z,
 } from "@repo/validator";
 import { ApiError } from "./api-error";
@@ -112,6 +114,11 @@ export function createApiClient(options: ApiClientOptions) {
     getPreferences: (): Promise<NotificationPreferences> => request("GET", "/v1/me/notification-preferences", notificationPreferencesSchema),
     updatePreferences: (b: UpdateNotificationPreferences): Promise<NotificationPreferences> =>
       request("PATCH", "/v1/me/notification-preferences", notificationPreferencesSchema, b),
+
+    joinWaitlist: (b: WaitlistJoinRequest): Promise<WaitlistJoinResponse> =>
+      request("POST", "/v1/public/waitlist", waitlistJoinResponseSchema, b),
+    previewGateLogin: (b: PreviewGateLoginRequest): Promise<PreviewGateLoginResponse> =>
+      request("POST", "/v1/preview-gate/login", previewGateLoginResponseSchema, b),
 
     createApplication: (b: CreateApplicationRequest): Promise<CreateApplicationResponse> =>
       request("POST", "/v1/manager-applications", createApplicationResponseSchema, b),

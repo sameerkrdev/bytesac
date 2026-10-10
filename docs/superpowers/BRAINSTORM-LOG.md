@@ -184,6 +184,17 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 | 13 | Assign chains when linking | Tick chains, one approval (rec.) · one approval per chain | **Tick chains**; also at sign-up; Polygon linkable | Challenge carries `chains` |
 | 14 | Data model | Row per chain (rec.) · addresses + assignments · family default + overrides | **Row per chain** | `replaced` status; one active row per chain |
 
+## Spec 20 — Waitlist, apex domain, soft-launch gate (2026-10-10)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | Apex vs app hosting | One Next on :3000, host routing (rec.) · separate :3001 waitlist · static apex | **One Next** | nginx → same web container; middleware by Host |
+| 2 | Gate scope | Whole app host (rec.) · auth paths only · UI-only middleware | **Whole app host** | Apex public; API enforces gate cookie for app-origin requests |
+| 3 | Duplicate waitlist email | Upsert, no resend (rec.) · upsert+resend · 409 reject | **Upsert, no resend** | Idempotent join; welcome email only on first insert |
+| 4 | Gate credentials | Env single pair + JWT secret (rec.) · multi hash · DB | **Env single pair** | 7-day HttpOnly cookie on app domain |
+| 5 | Waitlist From | sameer@bytesac.com + WAITLIST_EMAIL_FROM (rec.) · mail subdomain · global EMAIL_FROM | **sameer@bytesac.com** | Keep EMAIL_FROM for OTP/ops |
+| 6 | app.bytesac.com `/` | Redirect /home or /sign-in (rec.) · keep marketing · redirect apex | **Redirect /home or /sign-in** | Marketing/waitlist on apex only |
+
 ## Roadmap decisions
 
 - 2026-10-02: rebalance (Spec 9) before fees (Spec 10); then RWAs (Spec 11).
