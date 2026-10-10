@@ -1,0 +1,644 @@
+<title>Bytesac Deck Storyboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a storyboard wall. Each row = one 16:9 slide mock (left) + its brief (right); stacks on phones.
+   Page chrome follows the viewer's theme; slide mocks keep the deck's own colours (they depict the slides). */
+:root{
+  --canvas:#F6F8FB; --surface:#FFFFFF; --muted:#F0F3F8; --line:#E2E7EF; --line-strong:#CBD3DF;
+  --ink:#0F1E3A; --ink-muted:#56627A; --ink-faint:#68728A; --accent:#3D63D9; --accent-soft:#E8EEFC;
+  --warn:#8A5A00; --warn-soft:#FFF3D6;
+  /* deck tokens: fixed, the slides themselves */
+  --s-canvas:#F6F8FB; --s-surface:#FFFFFF; --s-line:#E2E7EF; --s-ink:#0F1E3A; --s-muted:#56627A; --s-accent:#3D63D9;
+  --s-accent-soft:#E8EEFC; --s-navy:#1C2B4A; --s-sky1:#DCE8F7; --s-sky2:#EEF4FB; --s-sky3:#C9DAF1;
+  --s-night:#070D18; --s-night-surface:#0E1726; --s-night-line:#1E2A3F; --s-night-ink:#EAF0F8; --s-night-muted:#9AA7BC; --s-night-accent:#8AA6FF;
+  --d1:#1C2B4A; --d2:#3D63D9; --d3:#7C98E6; --d4:#B6C7F0; --ok:#1F7A4D;
+  --f-display:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(0.22,1,0.36,1);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --canvas:#070D18; --surface:#0E1726; --muted:#131E31; --line:#1E2A3F; --line-strong:#2C3A52;
+  --ink:#EAF0F8; --ink-muted:#9AA7BC; --ink-faint:#8390A6; --accent:#8AA6FF; --accent-soft:rgba(138,166,255,.14);
+  --warn:#F2C46B; --warn-soft:rgba(242,196,107,.12); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#070D18; --surface:#0E1726; --muted:#131E31; --line:#1E2A3F; --line-strong:#2C3A52;
+  --ink:#EAF0F8; --ink-muted:#9AA7BC; --ink-faint:#8390A6; --accent:#8AA6FF; --accent-soft:rgba(138,166,255,.14);
+  --warn:#F2C46B; --warn-soft:rgba(242,196,107,.12); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font-family:var(--f-display);font-size:15px;line-height:1.55;
+  padding-inline:clamp(16px,4vw,48px);padding-block:40px 80px;font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px;margin-inline:auto;display:grid;gap:56px}
+h1,h2,h3{font-weight:300;letter-spacing:-.028em;text-wrap:balance;margin:0}
+h1{font-size:clamp(32px,5vw,56px);line-height:1.05}
+h2{font-size:clamp(22px,3vw,32px);line-height:1.15}
+h3{font-size:17px;font-weight:500;letter-spacing:-.01em}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.intro{display:grid;gap:18px}
+.lede{font-size:clamp(16px,1.6vw,19px);color:var(--ink-muted)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.fact{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:6px;align-content:start}
+.fact b{font-size:28px;font-weight:300;letter-spacing:-.03em}
+.fact span{color:var(--ink-muted);font-size:13.5px}
+.alert{background:var(--warn-soft);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:grid;gap:6px}
+.alert .eyebrow{color:var(--warn)}
+.table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
+tr:last-child td{border-bottom:0}
+.timeline{display:flex;height:34px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.timeline div{display:grid;place-items:center;font-family:var(--f-mono);font-size:11px;color:var(--ink);background:var(--accent-soft);border-right:1px solid var(--surface);min-width:0}
+.timeline div:nth-child(even){background:var(--muted)}
+.legend-row{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
+
+/* storyboard rows */
+.board{display:grid;gap:40px}
+.row{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:28px;align-items:start;padding-top:28px;border-top:1px solid var(--line)}
+@media (max-width:860px){.row{grid-template-columns:1fr}}
+.brief{display:grid;gap:14px;min-width:0}
+.brief .num{font-family:var(--f-mono);font-size:12px;color:var(--accent)}
+.brief dl{display:grid;grid-template-columns:92px 1fr;gap:8px 14px;margin:0;font-size:14px}
+.brief dt{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);padding-top:3px}
+.brief dd{margin:0;color:var(--ink);min-width:0}
+.brief dd ul{margin:0;padding-left:18px}
+.say{font-style:italic;color:var(--ink-muted)}
+.need{display:inline-block;font-family:var(--f-mono);font-size:10.5px;padding:1px 7px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+
+/* ---------- slide mock ---------- */
+.slide{container-type:inline-size;aspect-ratio:16/9;max-width:100%;border-radius:14px;overflow:hidden;position:relative;
+  background:var(--s-canvas);color:var(--s-ink);border:1px solid var(--line-strong);box-shadow:0 18px 40px -24px rgba(15,30,58,.45)}
+.sl{position:absolute;inset:0;padding:5cqw 5.5cqw;display:flex;flex-direction:column;gap:2cqw}
+.s-eyebrow{font-family:var(--f-mono);font-size:1.25cqw;letter-spacing:.14em;text-transform:uppercase;color:var(--s-muted)}
+.s-title{font-size:3.9cqw;font-weight:300;letter-spacing:-.035em;line-height:1.05;max-width:70cqw}
+.s-sub{font-size:1.65cqw;color:var(--s-muted);line-height:1.4;max-width:60cqw}
+.s-small{font-size:1.3cqw;color:var(--s-muted);line-height:1.35}
+.s-card{background:var(--s-surface);border:1px solid var(--s-line);border-radius:1.4cqw;padding:1.6cqw}
+.chip{display:inline-flex;align-items:center;gap:.6cqw;font-size:1.25cqw;padding:.6cqw 1.2cqw;border-radius:99px;background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.9);color:var(--s-ink)}
+.pg{position:absolute;right:2.2cqw;bottom:1.8cqw;font-family:var(--f-mono);font-size:1.1cqw;color:var(--s-muted)}
+.mark{display:inline-grid;gap:.35cqw;width:3.2cqw}
+.mark i{display:block;height:1.35cqw;border-radius:.45cqw;background:var(--s-accent)}
+.mark i+i{background:var(--s-ink)}
+.brandline{display:flex;align-items:center;gap:1cqw;font-size:1.9cqw;font-weight:500;letter-spacing:-.02em}
+.sky{background:radial-gradient(120% 90% at 80% 10%,var(--s-sky2) 0%,var(--s-sky1) 45%,var(--s-sky3) 100%)}
+.night{background:var(--s-night);color:var(--s-night-ink)}
+.night .s-eyebrow,.night .s-sub,.night .s-small{color:var(--s-night-muted)}
+.night .s-card{background:var(--s-night-surface);border-color:var(--s-night-line)}
+.phone{position:absolute;right:7cqw;bottom:-6cqw;width:20cqw;aspect-ratio:9/19;border-radius:3.4cqw;background:var(--s-ink);padding:1cqw;box-shadow:0 3cqw 5cqw -2cqw rgba(15,30,58,.5)}
+.phone .scr{height:100%;border-radius:2.6cqw;background:var(--s-surface);padding:2.2cqw 1.6cqw;display:grid;gap:1.1cqw;align-content:start}
+.bar{height:1cqw;border-radius:99px;background:var(--s-line)}
+.ring{width:9cqw;aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--d1) 0 40%,var(--d2) 0 65%,var(--d3) 0 85%,var(--d4) 0);margin:1cqw auto;position:relative}
+.ring::after{content:"";position:absolute;inset:22%;border-radius:50%;background:var(--s-surface)}
+.cols{display:grid;gap:1.6cqw;flex:1;min-height:0}
+.big{font-size:4.2cqw;font-weight:300;letter-spacing:-.04em;line-height:1}
+.svgc{width:100%;height:auto;display:block}
+.svgc text{font-family:var(--f-mono);font-size:7px;fill:var(--s-muted)}
+.svgc .grid{stroke:var(--s-line);stroke-width:.6}
+.svgc .ln{fill:none;stroke:var(--s-accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.svgc .ar{fill:var(--s-accent-soft)}
+.svgc .bars rect{fill:var(--d2)}
+.svgc .bars rect:last-child{fill:var(--d1)}
+.svgc .band{fill:var(--s-accent-soft)}
+.svgc .tgt{stroke:var(--s-navy);stroke-width:.8;stroke-dasharray:3 3}
+.svgc .dot{fill:var(--s-accent)}
+.svgc .warn{fill:#C2410C}
+.svgc .lbl{fill:var(--s-ink);font-size:8px}
+.mx{width:100%;border-collapse:collapse;min-width:0;font-size:1.25cqw}
+.mx th,.mx td{padding:.55cqw .8cqw;border-bottom:1px solid var(--s-line);text-align:center;font-family:var(--f-display);text-transform:none;letter-spacing:0;color:var(--s-ink)}
+.mx th{font-size:1.1cqw;color:var(--s-muted);font-weight:500}
+.mx td:first-child,.mx th:first-child{text-align:left}
+.mx .y{color:var(--ok);font-weight:600}.mx .n{color:#B4BCC9}.mx .p{color:#B7791F}
+.mx tr.us td{background:var(--s-accent-soft);font-weight:600}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:1.2cqw;position:relative}
+.step{display:grid;gap:.8cqw;align-content:start}
+.step .shot{aspect-ratio:3/4;border-radius:1cqw;background:var(--s-surface);border:1px solid var(--s-line);padding:1cqw;display:grid;gap:.7cqw;align-content:start}
+.step b{font-size:1.5cqw;font-weight:500}
+.rail{height:.35cqw;border-radius:99px;background:linear-gradient(90deg,var(--s-accent) 62%,var(--s-line) 62%)}
+.shield{display:grid;gap:.55cqw}
+.shield div{font-size:1.15cqw;padding:.6cqw 1cqw;border-radius:.8cqw;background:var(--s-surface);border:1px solid var(--s-line)}
+.shield div:nth-child(odd){background:var(--s-accent-soft)}
+.journey{display:flex;flex-wrap:wrap;gap:.6cqw;align-items:center}
+.journey span{font-size:1.2cqw;padding:.55cqw 1cqw;border-radius:99px;background:var(--s-surface);border:1px solid var(--s-line)}
+.journey em{font-style:normal;color:var(--s-muted);font-size:1.2cqw}
+.flow{display:flex;gap:.8cqw;align-items:center;flex-wrap:wrap}
+.flow span{font-size:1.2cqw;padding:.6cqw 1.1cqw;border-radius:.8cqw;background:var(--s-surface);border:1px solid var(--s-line)}
+.flow .hub{background:var(--s-navy);color:#fff;border-color:var(--s-navy)}
+.flow em{font-style:normal;color:var(--s-muted);font-size:1.3cqw}
+.orbit{position:relative;width:24cqw;aspect-ratio:1;margin:auto}
+.orbit .core{position:absolute;inset:34%;border-radius:50%;background:var(--s-navy);color:#fff;display:grid;place-items:center;text-align:center;font-size:1.25cqw;line-height:1.2}
+.orbit .o{position:absolute;width:6cqw;margin:-1.4cqw 0 0 -3cqw;text-align:center;font-size:1.1cqw;padding:.45cqw 0;border-radius:99px;background:var(--s-surface);border:1px solid var(--s-line)}
+.orbit::before{content:"";position:absolute;inset:6%;border-radius:50%;border:1px dashed var(--s-line)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:.8cqw}
+.tile{font-size:1.15cqw;padding:.7cqw 1cqw;border-radius:.8cqw;border:1px solid var(--s-line);background:var(--s-surface);display:flex;justify-content:space-between;gap:.6cqw}
+.tile i{font-style:normal;font-family:var(--f-mono);font-size:.95cqw;color:var(--ok)}
+.tile.next{background:transparent;border-style:dashed;color:var(--s-muted)}
+.tile.next i{color:var(--s-muted)}
+.arch{display:flex;align-items:stretch;gap:1cqw}
+.arch div{flex:1;font-size:1.15cqw;padding:1.1cqw;border-radius:1cqw;border:1px solid var(--s-night-line);background:var(--s-night-surface);display:grid;gap:.4cqw;align-content:start}
+.arch b{font-weight:500;font-size:1.3cqw;color:var(--s-night-ink)}
+.arch div.sol{border-color:var(--s-night-accent)}
+.wheel{width:15cqw;aspect-ratio:1;border-radius:50%;border:.35cqw solid var(--s-accent);position:relative;margin:auto}
+.wheel span{position:absolute;font-size:1.1cqw;background:var(--s-surface);padding:.3cqw .7cqw;border-radius:99px;border:1px solid var(--s-line);white-space:nowrap;transform:translate(-50%,-50%)}
+.face{display:grid;gap:.5cqw;justify-items:center;text-align:center}
+.face i{display:block;width:6cqw;aspect-ratio:1;border-radius:50%;background:var(--s-line)}
+.face b{font-size:1.25cqw;font-weight:500}
+.ph{font-family:var(--f-mono);font-size:1cqw;color:#B7791F}
+.rm{display:grid;grid-template-columns:repeat(3,1fr);gap:1cqw}
+.rm div{font-size:1.1cqw;line-height:1.35;padding:1cqw;border-radius:1cqw;background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.9)}
+.rm b{display:block;font-family:var(--f-mono);font-size:1cqw;letter-spacing:.1em;text-transform:uppercase;color:var(--s-accent);margin-bottom:.4cqw}
+
+/* appendix + sources */
+.apx{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.apx div{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:6px;align-content:start}
+.apx b{font-family:var(--f-mono);font-size:12px;color:var(--accent)}
+.apx span{font-size:14px;color:var(--ink-muted)}
+.sources{columns:2 320px;column-gap:28px;font-size:13.5px;color:var(--ink-muted);padding-left:18px;margin:0}
+.sources li{break-inside:avoid;margin-bottom:6px}
+.needs{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;padding:0;margin:0;list-style:none}
+.needs li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14px}
+.needs li b{display:block;font-weight:500}
+@media (prefers-reduced-motion:no-preference){
+  .slide{transition:transform .32s var(--ease),box-shadow .32s var(--ease)}
+  .slide:hover{transform:translateY(-3px);box-shadow:0 26px 50px -26px rgba(15,30,58,.55)}
+}
+</style>
+
+<div class="wrap">
+
+<header class="intro">
+  <div class="eyebrow">Bytesac · pitch deck storyboard · plan only · 10 Oct 2026</div>
+  <h1>12 slides, 6 appendix, one story</h1>
+  <p class="lede">A storyboard for the investor and Solana hackathon deck: what each slide says, how it looks, how it moves, and the line spoken over it. Numbers are sourced and dated; boxes marked <span class="need">NEED</span> wait on the team.</p>
+  <div class="facts">
+    <div class="fact"><b>2–3 min</b><span>Colosseum presentation video, the first thing judges watch. A voiceover on slides is fine.</span></div>
+    <div class="fact"><b>≤3 min</b><span>Separate technical demo: architecture, Solana integration, on-chain logic. This is the appendix.</span></div>
+    <div class="fact"><b>12–15 s</b><span>Average attention per slide; investors spend about 2–4 min on a whole deck.</span></div>
+    <div class="fact"><b>~10 slides</b><span>Highest completion rate (32% vs 22% average). 12 main slides keeps us near it while covering every topic.</span></div>
+  </div>
+  <div class="alert">
+    <div class="eyebrow">Check the event</div>
+    <p>Colosseum <b>Frontier</b> ran 6 Apr – 11 May 2026 and is closed. The live Colosseum event is <b>Crypto World's Fair</b>, 14 Sep – <b>12 Oct 2026</b>. Pick the target before recording; the plan works for either.</p>
+  </div>
+</header>
+
+<section class="intro">
+  <div class="eyebrow">Three cuts from one master deck</div>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Cut</th><th>Slides</th><th>Length</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td>Pitch video</td><td>1–12, team on camera at start and end</td><td>≈2:44</td><td>Colosseum presentation video, accelerator application</td></tr>
+      <tr><td>Tech demo video</td><td>A1–A4 + live product recording</td><td>≤3:00</td><td>Colosseum demo video</td></tr>
+      <tr><td>Investor deck</td><td>1–12 + A1–A6</td><td>read-ahead or meeting</td><td>VC send-ahead, interview Q&amp;A</td></tr>
+    </tbody>
+  </table></div>
+  <div class="eyebrow">Pitch video timing (seconds per slide)</div>
+  <div class="timeline" aria-label="Seconds per slide in the pitch video">
+    <div style="flex:14">1·14</div><div style="flex:14">2·14</div><div style="flex:14">3·14</div><div style="flex:12">4·12</div><div style="flex:14">5·14</div><div style="flex:16">6·16</div><div style="flex:16">7·16</div><div style="flex:12">8·12</div><div style="flex:14">9·14</div><div style="flex:14">10·14</div><div style="flex:12">11·12</div><div style="flex:12">12·12</div>
+  </div>
+  <div class="legend-row"><span>0:00</span><span>problem → solution → proof → ask</span><span>2:44</span></div>
+</section>
+
+<section class="board">
+  <div class="eyebrow">Main deck</div>
+
+  <!-- 1 -->
+  <article class="row" id="s1">
+    <div class="slide sky"><div class="sl">
+      <div class="brandline"><span class="mark"><i></i><i></i></span>Bytesac</div>
+      <div style="margin-top:3cqw" class="s-title">Expert-managed portfolios.<br>Held in your own wallet.</div>
+      <div class="s-sub">Vetted fund managers build multi-chain baskets of crypto and tokenized assets. You invest in USDC on Solana, approve every move, and keep the assets.</div>
+      <div style="display:flex;gap:.8cqw;flex-wrap:wrap;margin-top:auto;max-width:56cqw"><span class="chip">Self-custody</span><span class="chip">Verified managers</span><span class="chip">7 chains</span><span class="chip">USDC on Solana</span></div>
+      <div class="phone"><div class="scr"><div class="s-eyebrow" style="font-size:.9cqw">Basket</div><div class="bar" style="width:70%"></div><div class="ring" style="width:10cqw"></div><div class="bar"></div><div class="bar" style="width:60%"></div></div></div>
+      <span class="pg">01</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">01 · Cover</span><h2>Name the promise in one line</h2>
+      <dl>
+        <dt>Job</dt><dd>Say what Bytesac is before anything else, and introduce the team for 5 s (Colosseum wants the team up front).</dd>
+        <dt>Visual</dt><dd>Sky atmosphere (a bookend, used only on 1 and 12), the two-slab mark, one phone with the real basket screen.</dd>
+        <dt>Motion</dt><dd>Sky fades in, headline rises line by line (120 ms apart), phone rises and sharpens, chips stagger in last.</dd>
+        <dt>Say</dt><dd class="say">"We're [names]. Bytesac lets anyone invest with a verified fund manager across every major chain, without ever handing over their wallet."</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 2 -->
+  <article class="row" id="s2">
+    <div class="slide"><div class="sl">
+      <div class="s-eyebrow">The problem</div>
+      <div class="s-title">Three walls between people and a good portfolio</div>
+      <div class="cols" style="grid-template-columns:repeat(3,1fr);margin-top:1cqw">
+        <div class="s-card" style="display:grid;gap:1cqw;align-content:start"><div class="big">62%</div><b style="font-size:1.6cqw;font-weight:500">Doing it yourself is fragmented</b><div class="s-small">of crypto users juggle 2+ wallets; Solana alone lists 3,000+ RWA assets.</div></div>
+        <div class="s-card" style="display:grid;gap:1cqw;align-content:start"><div class="big">$17B</div><b style="font-size:1.6cqw;font-weight:500">Trusting an expert is risky</b><div class="s-small">in crypto scam proceeds in 2025; impersonation scams up 1,400%. Following an expert today means giving up custody.</div></div>
+        <div class="s-card" style="display:grid;gap:1cqw;align-content:start"><div class="big">24/7</div><b style="font-size:1.6cqw;font-weight:500">Staying on target is a chore</b><div class="s-small">Prices drift the mix around the clock. Rebalancing across chains means many swaps, bridges and gas tokens.</div></div>
+      </div>
+      <div class="s-small" style="font-size:1cqw">Reown/Nansen 2025 · Solana Foundation Sep 2026 · Chainalysis 2026</div>
+      <span class="pg">02</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">02 · Problem</span><h2>Make the pain concrete with one number each</h2>
+      <dl>
+        <dt>Job</dt><dd>Show that the hard parts are building, trusting and maintaining a portfolio, and that each is getting worse.</dd>
+        <dt>Visual</dt><dd>Three columns, one big figure each, a small illustration above (wallet sprawl, broken lock, drifting ring).</dd>
+        <dt>Motion</dt><dd>Columns stagger in 80 ms apart; figures count up once.</dd>
+        <dt>Say</dt><dd class="say">"Building a portfolio across chains is a mess, trusting someone to do it for you has cost people billions, and keeping it balanced never stops."</dd>
+        <dt>Check</dt><dd>Re-verify the $17B and 62% against the primary reports before recording.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 3 -->
+  <article class="row" id="s3">
+    <div class="slide"><div class="sl" style="gap:1.4cqw">
+      <div class="s-eyebrow">Today's options</div>
+      <div class="s-title" style="font-size:3.4cqw">Every option makes you give something up</div>
+      <table class="mx">
+        <thead><tr><th></th><th>Assets in your wallet</th><th>Vetted managers</th><th>You approve changes</th><th>Multi-chain + BTC</th><th>Stocks, gold, RWAs</th></tr></thead>
+        <tbody>
+          <tr><td>smallcase (India)</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">○</td><td class="n">○</td></tr>
+          <tr><td>eToro copy / Smart Portfolios</td><td class="n">○</td><td class="p">◐</td><td class="n">○</td><td class="n">○</td><td class="p">◐</td></tr>
+          <tr><td>Symmetry baskets</td><td class="p">◐</td><td class="n">○</td><td class="n">○</td><td class="n">○</td><td class="p">◐</td></tr>
+          <tr><td>Glider</td><td class="y">●</td><td class="n">○</td><td class="n">○</td><td class="p">◐</td><td class="y">●</td></tr>
+          <tr><td>Vaults (Enzyme, Chamber, Kamino)</td><td class="n">○</td><td class="p">◐</td><td class="n">○</td><td class="n">○</td><td class="p">◐</td></tr>
+          <tr><td>xStocks / Ondo / Robinhood</td><td class="y">●</td><td class="n">○</td><td class="n">○</td><td class="p">◐</td><td class="y">●</td></tr>
+          <tr class="us"><td>Bytesac</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td></tr>
+        </tbody>
+      </table>
+      <div class="s-small" style="font-size:1cqw">● yes ◐ partly ○ no · details and sources in appendix A6</div>
+      <span class="pg">03</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">03 · Current solutions and their cons</span><h2>One matrix, Bytesac row last</h2>
+      <dl>
+        <dt>Job</dt><dd>Show the gap: nobody combines self-custody, accountable managers, consent and multi-chain RWAs.</dd>
+        <dt>Cons</dt><dd><ul>
+          <li>smallcase proves the model (10M+ investors, SEBI-registered managers) but is Indian equities only.</li>
+          <li>eToro is custodial; "Popular Investors" are users who meet thresholds.</li>
+          <li>Symmetry gives you a basket token, not the assets; anyone can create one; Solana only.</li>
+          <li>Glider: self-built portfolios, automation on delegated permissions, no accountable manager.</li>
+          <li>Vaults pool custody under a manager or curator.</li>
+          <li>Tokenized-stock venues sell single assets, no portfolio.</li>
+        </ul></dd>
+        <dt>Motion</dt><dd>Competitor rows fade in, then the Bytesac row slides up and its dots fill left to right.</dd>
+        <dt>Say</dt><dd class="say">"Today you choose: custody or convenience, an expert or your own keys. Bytesac is the first to give you all of it."</dd>
+        <dt>Check</dt><dd>Verify smallcase rebalance consent and Glider chain list before publishing the dots.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 4 -->
+  <article class="row" id="s4">
+    <div class="slide night"><div class="sl">
+      <div class="s-eyebrow">The solution</div>
+      <div class="s-title" style="max-width:80cqw">Verified managers publish the strategy. You run it in your own wallet.</div>
+      <div class="cols" style="grid-template-columns:1fr auto 1fr;align-items:center;margin-top:1cqw">
+        <div style="display:grid;gap:1.4cqw">
+          <div class="s-card"><b style="font-size:1.5cqw;font-weight:500">Your keys, your assets</b><div class="s-small">Bytesac never holds your keys or your funds.</div></div>
+          <div class="s-card"><b style="font-size:1.5cqw;font-weight:500">Strategy is not execution</b><div class="s-small">A manager update is a proposal. Nothing moves without your signature.</div></div>
+        </div>
+        <div class="ring" style="width:14cqw;background:conic-gradient(#EAF0F8 0 40%,#8AA6FF 0 65%,#4A6BD8 0 85%,#2C3A52 0)"></div>
+        <div style="display:grid;gap:1.4cqw">
+          <div class="s-card"><b style="font-size:1.5cqw;font-weight:500">Verified, accountable managers</b><div class="s-small">Screened, organization-verified, every version reviewed.</div></div>
+          <div class="s-card"><b style="font-size:1.5cqw;font-weight:500">Proof over promises</b><div class="s-small">Holdings from chain evidence. Every fee shown before you sign.</div></div>
+        </div>
+      </div>
+      <span class="pg">04</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">04 · Our solution and core values</span><h2>The four values are the product rules</h2>
+      <dl>
+        <dt>Job</dt><dd>One sentence for what Bytesac is, four values that are real product rules (ADR-013, D-024/D-028, ADR-007..011, D-075).</dd>
+        <dt>Visual</dt><dd>Dark island slide (the self-custody look from the website); the allocation ring as the single object.</dd>
+        <dt>Motion</dt><dd>Morph: slide 1's phone screen ring grows into this ring; values fade in clockwise.</dd>
+        <dt>Say</dt><dd class="say">"Managers decide the strategy. You hold the assets and sign every change. We verify the managers and show you everything before you sign."</dd>
+        <dt>Rule</dt><dd>Say "never holds your keys or funds", not "never touches a transaction" (Bytesac co-signs Solana legs as fee payer).</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 5 -->
+  <article class="row" id="s5">
+    <div class="slide"><div class="sl">
+      <div class="s-eyebrow">For investors</div>
+      <div class="s-title" style="font-size:3.4cqw">From discovery to owning the assets in five steps</div>
+      <div class="rail"></div>
+      <div class="steps">
+        <div class="step"><div class="shot"><div class="bar" style="width:80%"></div><div class="bar"></div><div class="bar" style="width:55%"></div></div><b>Discover</b><span class="s-small">Filters, AI search, simulated performance, manager profile</span></div>
+        <div class="step"><div class="shot"><div class="big" style="font-size:2.6cqw">$500</div><div class="bar"></div><div class="bar" style="width:70%"></div></div><b>Invest</b><span class="s-small">USDC amount, every leg and fee previewed</span></div>
+        <div class="step"><div class="shot"><div class="bar" style="background:var(--s-accent);width:60%"></div><div class="bar"></div><div class="bar" style="width:40%"></div></div><b>Sign</b><span class="s-small">One leg at a time in your own wallet</span></div>
+        <div class="step"><div class="shot"><div class="ring" style="width:7cqw;margin:0 auto"></div></div><b>Own</b><span class="s-small">Assets land in your wallets on each chain</span></div>
+        <div class="step"><div class="shot"><div class="bar" style="width:50%"></div><div class="bar" style="background:var(--s-accent-soft)"></div><div class="bar"></div></div><b>Stay or leave</b><span class="s-small">Apply or skip updates; sell or leave anytime</span></div>
+      </div>
+      <span class="pg">05</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">05 · User flow and features</span><h2>Real screens, not mock-ups</h2>
+      <dl>
+        <dt>Job</dt><dd>Show the investor journey end to end, and that it already exists on web and mobile.</dd>
+        <dt>Visual</dt><dd>Five real UI crops (web mock-API personas or mobile screens), a progress rail on top.</dd>
+        <dt>Features</dt><dd>AI search · plan preview with every fee · per-leg tracking · drift alerts by inbox, email, push · eligibility checks · no lock-in.</dd>
+        <dt>Motion</dt><dd>Rail fills step by step; each screenshot swaps in as the rail reaches it.</dd>
+        <dt>Say</dt><dd class="say">"Pick a basket, enter USDC, approve each step in your wallet. The assets arrive in your own wallets on every chain, and you can leave whenever you want."</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 6 -->
+  <article class="row" id="s6">
+    <div class="slide"><div class="sl">
+      <div class="s-eyebrow">For fund managers</div>
+      <div class="s-title" style="font-size:3.3cqw">Managers steer the strategy. They never touch your money.</div>
+      <div class="cols" style="grid-template-columns:1.1fr 1fr">
+        <div style="display:grid;gap:1.4cqw;align-content:start">
+          <div class="journey"><span>Apply</span><em>→</em><span>Screening</span><em>→</em><span>Wallet proven</span><em>→</em><span>Org verified</span><em>→</em><span>Build basket</span><em>→</em><span>Ops review</span><em>→</em><span>Publish</span><em>→</em><span>Earn</span></div>
+          <div class="s-card" style="display:grid;gap:.6cqw"><b style="font-size:1.4cqw;font-weight:500">Workspace</b><div class="s-small">Team roles and custom roles · versioned baskets with rationale · adoption counts per version (never individuals) · earnings paid to a verified Solana payout wallet</div></div>
+        </div>
+        <div class="shield">
+          <div>Ops screening of every application</div>
+          <div>Wallet proven by signature before any rights</div>
+          <div>Organization documents verified per jurisdiction</div>
+          <div>Admins and managers pass their own ID review</div>
+          <div>Only ops-approved assets can be picked</div>
+          <div>Each version frozen, hashed, reviewed</div>
+          <div>Fee caps and mandatory disclosures</div>
+          <div>Badge only while verification is active</div>
+        </div>
+      </div>
+      <span class="pg">06</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">06 · Manager flow, management and legitimacy</span><h2>Trust is a stack of real controls</h2>
+      <dl>
+        <dt>Job</dt><dd>Answer "how do we know managers and their decisions are legit?" with controls that exist in the product.</dd>
+        <dt>Detail</dt><dd>Application states and screening (ADR-007), org verification and payout wallet proof (ADR-008), member verification (ADR-009), asset registry (ADR-010), version review, fee caps 0–100 bps, disclosures, rationale and diff (ADR-011). State machines in A4.</dd>
+        <dt>Motion</dt><dd>Journey draws left to right; the shield builds layer by layer from the bottom.</dd>
+        <dt>Say</dt><dd class="say">"Managers are screened, verified and reviewed on every change. They publish a target with a written reason; they can't move a single dollar of yours."</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 7 -->
+  <article class="row" id="s7">
+    <div class="slide"><div class="sl" style="gap:1.2cqw">
+      <div class="s-eyebrow">Rebalancing and drift</div>
+      <div class="s-title" style="font-size:3.2cqw">When the mix drifts or the manager updates, you decide</div>
+      <div class="cols" style="grid-template-columns:1.2fr 1fr;align-items:center">
+        <svg class="svgc" viewBox="0 0 320 170" role="img" aria-label="Illustrative drift chart: one asset weight drifts from a 25 percent target past the 30 percent band, then returns after a rebalance">
+          <rect class="band" x="36" y="45.5" width="272" height="63"/>
+          <line class="grid" x1="36" y1="140" x2="308" y2="140"/>
+          <line class="tgt" x1="36" y1="77" x2="308" y2="77"/>
+          <text x="30" y="80" text-anchor="end">25%</text><text x="30" y="48" text-anchor="end">30%</text><text x="30" y="111" text-anchor="end">20%</text>
+          <polyline class="ln" points="36,77 81.3,71.96 126.7,64.4 172,55.58 217.3,39.83 262.7,75.74 308,73.85"/>
+          <circle class="warn" cx="217.3" cy="39.83" r="3.5"/>
+          <line class="tgt" x1="240" y1="20" x2="240" y2="140"/>
+          <text class="lbl" x="196" y="30">Drifted</text>
+          <text x="244" y="134">Rebalance</text>
+          <text x="36" y="156">Illustrative data · drift band ±5% (default 500 bps)</text>
+        </svg>
+        <div style="display:grid;gap:1cqw">
+          <div class="flow"><span>Reconcile from chain</span><em>→</em><span>Plan</span></div>
+          <div class="flow"><span>Sell</span><em>→</em><span class="hub">USDC on Solana</span><em>→</em><span>Buy</span></div>
+          <div class="s-small">Buys are sized to what the sells actually returned. Trades under 50 bps or $5 are skipped. Each leg is tracked to settled, failed or unknown and never blindly retried.</div>
+          <div style="display:flex;gap:.6cqw;flex-wrap:wrap"><span class="chip" style="background:var(--s-accent-soft)">Apply</span><span class="chip" style="background:var(--s-surface)">Skip</span><span class="chip" style="background:var(--s-surface)">Keep custom</span></div>
+        </div>
+      </div>
+      <span class="pg">07</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">07 · Investment flow, drift and rebalancing</span><h2>User view on the left, engine on the right</h2>
+      <dl>
+        <dt>User</dt><dd>Drifted position shows "Rebalance to target" or "Keep custom". A new manager version shows the rationale, the diff and a plan; the holder applies or skips. Skipped versions are never replayed.</dd>
+        <dt>Engine</dt><dd>Reconcile → thresholds (50 bps / $5) → sells to USDC on Solana → buys scaled to real proceeds → basket cash for leftovers → shortfall repair (Buy back / Sync). Deeper in A3.</dd>
+        <dt>Motion</dt><dd>The drift line draws, crosses the band, "Drifted" pops; then the sell → USDC → buy chips light in sequence.</dd>
+        <dt>Say</dt><dd class="say">"When prices drift or your manager publishes an update, you see why, what changes and what it costs. One tap to apply, one to skip."</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 8 -->
+  <article class="row" id="s8">
+    <div class="slide"><div class="sl">
+      <div class="s-eyebrow">Multi-chain and asset classes</div>
+      <div class="s-title" style="font-size:3.3cqw">One USDC entry. Seven chains. Many asset classes.</div>
+      <div class="cols" style="grid-template-columns:1fr 1.15fr;align-items:center">
+        <div class="orbit">
+          <div class="core">USDC<br>on Solana</div>
+          <span class="o" style="left:50%;top:6%">Ethereum</span><span class="o" style="left:90%;top:32%">Base</span><span class="o" style="left:84%;top:78%">BNB</span>
+          <span class="o" style="left:50%;top:96%">Arbitrum</span><span class="o" style="left:14%;top:78%">Polygon</span><span class="o" style="left:10%;top:32%">Bitcoin</span>
+        </div>
+        <div style="display:grid;gap:1cqw">
+          <div class="s-eyebrow">Live in release 1</div>
+          <div class="tiles"><div class="tile">Crypto<i>LIVE</i></div><div class="tile">Stablecoins<i>LIVE</i></div><div class="tile">Tokenized stocks and ETFs<i>LIVE</i></div><div class="tile">Tokenized gold<i>LIVE</i></div></div>
+          <div class="s-eyebrow">Next</div>
+          <div class="tiles"><div class="tile next">Treasury funds (permissioned)<i>NEXT</i></div><div class="tile next">US and global stocks<i>NEXT</i></div><div class="tile next">Commodities, indices, FX<i>NEXT</i></div><div class="tile next">Deposits, pre-IPO<i>NEXT</i></div></div>
+        </div>
+      </div>
+      <span class="pg">08</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">08 · Multi-chain, RWAs, ETFs, equity, commodities</span><h2>Show what is live and what is next, separately</h2>
+      <dl>
+        <dt>Live</dt><dd>Crypto, stablecoins and permissionless tokenized RWAs traded on chain (e.g. xStocks, Ondo Global Markets, tokenized gold), each checked per user for eligibility. Native BTC included.</dd>
+        <dt>Next</dt><dd>Permissioned RWAs and issuer subscription/redemption after a KYC vendor; conventional stocks and ETFs need a new custody decision; deposits, pre-IPO, commodities, indices, currencies (FUTURE-PLANS).</dd>
+        <dt>Motion</dt><dd>Chain chips orbit in toward the Solana hub; only shipped tiles get the green LIVE tag.</dd>
+        <dt>Say</dt><dd class="say">"You fund in USDC on Solana. A basket can hold Bitcoin, Ethereum assets, tokenized Nvidia or gold, and each lands in your own wallet."</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 9 -->
+  <article class="row" id="s9">
+    <div class="slide night"><div class="sl">
+      <div class="s-eyebrow">Under the hood</div>
+      <div class="s-title" style="font-size:3.3cqw">Solana is the settlement layer for every move</div>
+      <div class="arch">
+        <div><b>Apps</b><span>Web (Next.js) · Mobile (Expo)</span></div>
+        <div><b>Bytesac core</b><span>API + worker · plans, legs, ledger, eligibility</span></div>
+        <div><b>Providers</b><span>LI.FI routes · Alchemy RPC · CoinMarketCap</span></div>
+        <div class="sol"><b>Your wallets</b><span>Solana hub + 6 chains</span></div>
+      </div>
+      <div class="cols" style="grid-template-columns:repeat(4,1fr)">
+        <div class="s-card"><b style="font-size:1.35cqw;font-weight:500">USDC on Solana</b><div class="s-small">single entry and rebalance hub</div></div>
+        <div class="s-card"><b style="font-size:1.35cqw;font-weight:500">Sign-In with Solana</b><div class="s-small">wallet is identity, not spending rights</div></div>
+        <div class="s-card"><b style="font-size:1.35cqw;font-weight:500">Fee payer co-sign</b><div class="s-small">only byte-identical, quoted transactions</div></div>
+        <div class="s-card"><b style="font-size:1.35cqw;font-weight:500">One fee transaction</b><div class="s-small">network, manager and platform paid in USDC</div></div>
+      </div>
+      <div class="s-small" style="font-size:1.05cqw">Solana: $17.5B stablecoins · 13.07M stablecoin wallets · 1M+ tokenized-stock holders (Sep 2026) · 47% of on-chain RWA trades (Allium, 12 mo to Aug 2026)</div>
+      <span class="pg">09</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">09 · Architecture and why Solana</span><h2>Answer the judges' Solana question in 14 seconds</h2>
+      <dl>
+        <dt>Job</dt><dd>A simple strip for the pitch; the full diagram and leg state machine live in A1 and A2 for the demo video.</dd>
+        <dt>Motion</dt><dd>A data dot runs along the strip from app to wallets; the Solana card pulses once.</dd>
+        <dt>Say</dt><dd class="say">"Everything settles through USDC on Solana: sign-in, fees, and every rebalance. Solana's speed and cost are what make approving every move practical."</dd>
+        <dt>Caveat</dt><dd>Don't call it gasless: release 1 still needs a little SOL in the wallet (SOL_REQUIRED). Say "network costs paid in USDC".</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 10 -->
+  <article class="row" id="s10">
+    <div class="slide"><div class="sl" style="gap:1.2cqw">
+      <div class="s-eyebrow">Market</div>
+      <div class="s-title" style="font-size:3.2cqw">Tokenized assets are compounding, on Solana fastest</div>
+      <div class="cols" style="grid-template-columns:1fr 1fr 0.8fr">
+        <div class="s-card" style="padding:1.2cqw">
+          <div class="s-small">Tokenized RWAs, distributed value ($B)</div>
+          <svg class="svgc" viewBox="0 0 320 170" role="img" aria-label="Tokenized real-world assets grew from about 21 billion dollars in January 2026 to 39.0 billion on 9 October 2026">
+            <line class="grid" x1="36" y1="140" x2="308" y2="140"/><line class="grid" x1="36" y1="98" x2="308" y2="98"/><line class="grid" x1="36" y1="56" x2="308" y2="56"/><line class="grid" x1="36" y1="14" x2="308" y2="14"/>
+            <text x="30" y="143" text-anchor="end">0</text><text x="30" y="101" text-anchor="end">15</text><text x="30" y="59" text-anchor="end">30</text><text x="30" y="17" text-anchor="end">45</text>
+            <polygon class="ar" points="36,140 36,81.2 122.1,63 254.8,32.76 308,30.8 308,140"/>
+            <polyline class="ln" points="36,81.2 122.1,63 254.8,32.76 308,30.8"/>
+            <circle class="dot" cx="36" cy="81.2" r="3"/><circle class="dot" cx="122.1" cy="63" r="3"/><circle class="dot" cx="254.8" cy="32.76" r="3"/><circle class="dot" cx="308" cy="30.8" r="3.5"/>
+            <text class="lbl" x="304" y="24" text-anchor="end">39.0</text><text class="lbl" x="40" y="75">~21</text>
+            <text x="36" y="156">Jan</text><text x="122" y="156" text-anchor="middle">Mar</text><text x="255" y="156" text-anchor="middle">Aug</text><text x="308" y="156" text-anchor="end">9 Oct</text>
+          </svg>
+        </div>
+        <div class="s-card" style="padding:1.2cqw">
+          <div class="s-small">RWA value on Solana ($B)</div>
+          <svg class="svgc" viewBox="0 0 320 170" role="img" aria-label="Solana RWA value grew from about 0.87 billion dollars at the end of 2025 to 4.6 billion on 23 September 2026">
+            <line class="grid" x1="36" y1="140" x2="308" y2="140"/><line class="grid" x1="36" y1="77" x2="308" y2="77"/><line class="grid" x1="36" y1="14" x2="308" y2="14"/>
+            <text x="30" y="143" text-anchor="end">0</text><text x="30" y="80" text-anchor="end">2.5</text><text x="30" y="17" text-anchor="end">5</text>
+            <g class="bars"><rect x="50" y="118.1" width="40" height="21.9"/><rect x="118" y="61.9" width="40" height="78.1"/><rect x="186" y="33.4" width="40" height="106.6"/><rect x="254" y="24.1" width="40" height="115.9"/></g>
+            <text class="lbl" x="70" y="113" text-anchor="middle">0.87</text><text class="lbl" x="138" y="57" text-anchor="middle">3.1</text><text class="lbl" x="206" y="28" text-anchor="middle">4.23</text><text class="lbl" x="274" y="19" text-anchor="middle">4.6</text>
+            <text x="70" y="156" text-anchor="middle">Dec '25</text><text x="138" y="156" text-anchor="middle">Jun</text><text x="206" y="156" text-anchor="middle">5 Sep</text><text x="274" y="156" text-anchor="middle">23 Sep</text>
+          </svg>
+        </div>
+        <div style="display:grid;gap:.8cqw;align-content:start">
+          <div class="s-card" style="padding:1cqw"><div class="big" style="font-size:2.6cqw">10M+</div><div class="s-small">smallcase investors in manager-led baskets</div></div>
+          <div class="s-card" style="padding:1cqw"><div class="big" style="font-size:2.6cqw">3.81M</div><div class="s-small">eToro funded accounts; copy trading at a record</div></div>
+          <div class="s-card" style="padding:1cqw"><div class="big" style="font-size:2.6cqw">13.07M</div><div class="s-small">stablecoin wallets on Solana (our SAM)</div></div>
+        </div>
+      </div>
+      <div class="s-small" style="font-size:1cqw">rwa.xyz via KuCoin, Investax, Cryptobriefing · Solana Foundation · smallcase.com · eToro Q4 2025 · end-2025 Solana figure from secondary reports</div>
+      <span class="pg">10</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">10 · Market growth</span><h2>Two charts and the proof people want managed baskets</h2>
+      <dl>
+        <dt>Data</dt><dd>RWAs ~$21B (Jan) → ~$27.5B (end Q1) → $38.3B (mid-Aug) → $39.0B (9 Oct 2026). Solana RWAs ~$0.87B → $3.1B → $4.23B → $4.6B (23 Sep 2026), about 5x in nine months.</dd>
+        <dt>Sizing</dt><dd>Bottom-up: SAM = 13.07M Solana stablecoin wallets; SOM = wallets reached × conversion × average invested × fee rate. <span class="need">NEED</span> team assumptions and fee rates (platform fee rates are still open, D-087).</dd>
+        <dt>Forecasts</dt><dd>Show only as a labelled range ($3T to $16T by 2030 depending on the source), never as fact.</dd>
+        <dt>Motion</dt><dd>The line draws left to right, bars grow in order, 39.0 counts up.</dd>
+        <dt>Say</dt><dd class="say">"Tokenized assets nearly doubled this year and grew five times on Solana. Millions already pay for manager-led baskets off chain. We bring that model on chain."</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 11 -->
+  <article class="row" id="s11">
+    <div class="slide"><div class="sl">
+      <div class="s-eyebrow">Business model and traction</div>
+      <div class="s-title" style="font-size:3.3cqw">Revenue on every operation. Managers paid on chain.</div>
+      <div class="cols" style="grid-template-columns:1fr 1fr 1fr;align-items:center">
+        <div class="s-card" style="display:grid;gap:.8cqw"><b style="font-size:1.45cqw;font-weight:500">How we earn</b><div class="s-small">Platform fee per invest, rebalance, repair and sell. Managers earn entry and rebalance fees (capped at 1%) straight to their payout wallet, in the same Solana transaction.</div></div>
+        <div class="wheel">
+          <span style="left:50%;top:0">Managers</span><span style="left:100%;top:50%">Audiences</span><span style="left:50%;top:100%">Investors</span><span style="left:0;top:50%">Fees + data</span>
+        </div>
+        <div class="s-card" style="display:grid;gap:.8cqw"><b style="font-size:1.45cqw;font-weight:500">Traction</b><div class="s-small">Built end to end on web and mobile: invest, rebalance, drift repair, fees, RWA eligibility.</div><div class="ph">NEED · waitlist · manager LOIs · interviews · pilot</div></div>
+      </div>
+      <span class="pg">11</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">11 · Business model, go-to-market, traction</span><h2>The slide judges weigh right after the team</h2>
+      <dl>
+        <dt>Model</dt><dd>Live in code: platform fee per operation type; manager entry and rebalance fees to a verified payout wallet (ADR-016). Later: management-fee collection, subscriptions, take rate on manager fees.</dd>
+        <dt>GTM</dt><dd>Flywheel: verified managers bring audiences → investors → fees and adoption data → more managers. <span class="need">NEED</span> named launch managers and channels (Superteam, Colosseum, wallet partners).</dd>
+        <dt>Traction</dt><dd>True today: product built, mainnet pilot pending. <span class="need">NEED</span> any demand validation; Colosseum asks for it explicitly.</dd>
+        <dt>Motion</dt><dd>Flywheel rotates once; traction figures count up.</dd>
+        <dt>Say</dt><dd class="say">"We earn a small fee on each operation; managers get paid instantly on Solana. [Traction line.]"</dd>
+      </dl>
+    </div>
+  </article>
+
+  <!-- 12 -->
+  <article class="row" id="s12">
+    <div class="slide sky"><div class="sl">
+      <div class="s-eyebrow">Team, roadmap, ask</div>
+      <div class="cols" style="grid-template-columns:0.9fr 1.3fr;align-items:start">
+        <div style="display:grid;gap:1.6cqw">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.4cqw">
+            <div class="face"><i></i><b>Name</b><span class="s-small">Role · proof line</span></div>
+            <div class="face"><i></i><b>Name</b><span class="s-small">Role · proof line</span></div>
+          </div>
+          <div class="s-card" style="background:rgba(255,255,255,.75)"><b style="font-size:1.5cqw;font-weight:500">Raising <span class="ph">NEED amount</span></b><div class="s-small">Security audit · legal and RWA licensing · launch managers · KYC vendor · team</div></div>
+        </div>
+        <div style="display:grid;gap:1.4cqw">
+          <div class="rm">
+            <div><b>Now</b>Mainnet pilot with small amounts on web and Android</div>
+            <div><b>Next</b>Multi-wallet per chain · KYC and permissioned RWAs · mobile push · one-tap repair</div>
+            <div><b>Later</b>Stocks, ETFs, commodities, deposits, pre-IPO · more settlement currencies · subscriptions</div>
+          </div>
+          <div class="brandline" style="margin-top:1cqw"><span class="mark"><i></i><i></i></span>Bytesac</div>
+          <div class="s-sub">Expert-managed portfolios. Held in your own wallet.</div>
+        </div>
+      </div>
+      <span class="pg">12</span>
+    </div></div>
+    <div class="brief">
+      <span class="num">12 · Team, future plans, ask</span><h2>Close on people, plan and a number</h2>
+      <dl>
+        <dt>Team</dt><dd><span class="need">NEED</span> photo, name, role and one proof line each (what you shipped, finance or crypto background), plus why you for this problem.</dd>
+        <dt>Roadmap</dt><dd>From FUTURE-PLANS and D-120/D-121; detailed version in A5.</dd>
+        <dt>Ask</dt><dd><span class="need">NEED</span> amount, instrument, 18-month milestones, use of funds.</dd>
+        <dt>Motion</dt><dd>Mirror of slide 1: sky returns, roadmap columns stagger, logo settles last.</dd>
+        <dt>Say</dt><dd class="say">"We've built it. Next is a mainnet pilot with our first managers. We're raising [amount] to get there. Thank you."</dd>
+      </dl>
+    </div>
+  </article>
+</section>
+
+<section class="intro">
+  <div class="eyebrow">Appendix · demo video and investor Q&amp;A</div>
+  <h2>Six slides that carry the technical depth</h2>
+  <div class="apx">
+    <div><b>A1 · Architecture</b><span>Next.js web, Expo mobile, Express API modular monolith, BullMQ worker, Postgres (Supabase), Redis, R2; LI.FI, Alchemy, CoinMarketCap, Gemini, Resend, Twilio and FCM behind adapters.</span></div>
+    <div><b>A2 · Solana integration</b><span>SIWS → plan → one fee transaction with several USDC transfers → 60 s quote per leg → wallet signs → fee payer co-signs only byte-identical messages → tracking → ledger from chain evidence.</span></div>
+    <div><b>A3 · Rebalance engine</b><span>Reconcile; separate version, backing, allocation and execution states; thresholds; sells → USDC hub → scaled buys; basket cash; shortfall repair with Buy back or Sync.</span></div>
+    <div><b>A4 · Manager verification</b><span>State machines for application, organization, membership and basket version; who can approve what; audit trail.</span></div>
+    <div><b>A5 · Eligibility and roadmap</b><span>Self-declared country and investor status, geo signal, RWAs denied until rules exist, never force-sold; legal review still open. Full roadmap.</span></div>
+    <div><b>A6 · Competitors and sources</b><span>Full matrix with one-line cons and every number on the deck with its date and link.</span></div>
+  </div>
+</section>
+
+<section class="intro">
+  <div class="eyebrow">Needed from the team before building</div>
+  <ul class="needs">
+    <li><b>Target event and date</b>Crypto World's Fair (12 Oct) or a later event</li>
+    <li><b>Format</b>PowerPoint with Morph transitions, or the Slides artifact exported to .pptx / PDF</li>
+    <li><b>Team</b>Photos, roles, one proof line each</li>
+    <li><b>Traction</b>Waitlist, manager LOIs, user interviews, pilot numbers</li>
+    <li><b>Go-to-market</b>Named launch managers and channels</li>
+    <li><b>Ask</b>Amount, instrument, milestones, use of funds</li>
+    <li><b>Fee rates</b>Whether slide 11 shows numbers (D-087 is open)</li>
+    <li><b>SOM assumptions</b>Reach, conversion, average invested</li>
+  </ul>
+</section>
+
+<section class="intro">
+  <div class="eyebrow">Sources (retrieved 10 Oct 2026)</div>
+  <ol class="sources">
+    <li><a href="https://colosseum.com/hackathon">Colosseum hackathon page</a>: Crypto World's Fair dates, criteria, video requirements; Frontier listed as past.</li>
+    <li><a href="https://blog.colosseum.com/perfecting-your-hackathon-submission/">Colosseum: perfecting your hackathon submission</a></li>
+    <li><a href="https://incrypted.com/en/the-colosseum-frontier-hackathon-has-officially-kicked-off/">Incrypted: Frontier kick-off</a> (6 Apr – 11 May 2026)</li>
+    <li><a href="https://www.storydoc.com/blog/pitch-deck-statistics">Storydoc pitch deck statistics</a>; <a href="https://hummingdeck.com/blog/pitch-deck-benchmarks-2026">HummingDeck benchmarks 2026</a>; <a href="https://techcrunch.com/?p=1167693">TechCrunch on DocSend</a></li>
+    <li><a href="https://www.kucoin.com/blog/rwa-tokenization-2026-liquidity-regulation">KuCoin citing rwa.xyz, 9 Oct 2026</a> ($39.02B distributed)</li>
+    <li><a href="https://investax.io/blog/q1-2026-real-world-asset-tokenization-market-report">Investax Q1 2026 RWA report</a></li>
+    <li><a href="https://cryptobriefing.com/tokenized-stocks-rwa-market-cap-share/">Cryptobriefing: tokenized stocks share</a> ($38.29B mid-Aug)</li>
+    <li><a href="https://solana.com/news/solana-ecosystem-roundup-september-2026">Solana Foundation September 2026 roundup</a></li>
+    <li><a href="https://cryptobriefing.com/solana-rwa-ecosystem-surpasses-3-billion/">Cryptobriefing: Solana RWA passes $3B</a>; <a href="https://memeburn.com/solana-rwa-ecosystem-2026-why-trading-matters-more/">Memeburn: $4.23B on 5 Sep</a></li>
+    <li><a href="https://www.hokanews.com/2026/09/solana-rwa-ecosystem-reaches-record-46.html">Hokanews citing Allium</a> (47% of on-chain RWA trades)</li>
+    <li><a href="https://www.fastbull.com/brokersview/news/chainalysis-2026-report-crypto-scam-loss-estimated-at-17b-in-2025-impersonation-fraud-soars-1400-319993">Chainalysis 2026 report via FastBull</a></li>
+    <li><a href="https://in.benzinga.com/markets/cryptocurrency/25/05/45128841/crypto-wallet-fragmentation-grows-62-of-users-manage-multiple-wallets-report-says">Reown/Nansen wallet fragmentation via Benzinga</a></li>
+    <li><a href="https://www.smallcase.com/">smallcase.com</a>; <a href="https://www.aol.com/finance/etoro-etor-q4-2025-earnings-174942622.html">eToro Q4 2025 call</a>; <a href="https://www.nasdaq.com/articles/etoro-group-q1-earnings-call-highlights">eToro Q1 2026 highlights</a></li>
+    <li><a href="https://symmetry.fi/">symmetry.fi</a>; <a href="https://blog.glider.fi/onchain-stocks-live-on-glider-with-ondo-finance/">Glider: stocks via Ondo</a>; <a href="https://blog.glider.fi/glider-vs-aqumon/">Glider fees</a>; <a href="https://www.zerodev.app/blogs/blog-zerodev-glider">ZeroDev on Glider</a></li>
+    <li><a href="https://solana.com/news/ondo-global-markets-tokenized-stocks-etfs-solana">Ondo Global Markets on Solana</a>; <a href="https://solana.com/news/case-study-xstocks">xStocks case study</a></li>
+    <li><a href="https://messari.io/report/state-of-solana-q1-2026">Messari State of Solana Q1 2026</a></li>
+  </ol>
+</section>
+
+</div>
