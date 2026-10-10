@@ -1,6 +1,6 @@
 # Bytesac pitch deck — research and plan
 
-Status: **plan only, no deck built yet** (2026-10-10). Visual storyboard: `docs/pitch/storyboard.html`.
+Status: deck built (2026-10-11): `docs/pitch/Bytesac-Pitch-Deck.pptx`, 12 main + 6 appendix slides, real product screenshots (demo data), native charts, Morph transitions and fade-in builds; `[Name]`, `[amount]` and the traction box still need team input. Visual storyboard: `docs/pitch/storyboard.html`.
 Audience: pre-seed investors and Solana / Colosseum hackathon judges. One master deck, three cuts (§2).
 
 Product truth for every slide comes from `docs/` (ADR-013 custody, ADR-014/015 execution and rebalancing, ADR-007..009 manager
