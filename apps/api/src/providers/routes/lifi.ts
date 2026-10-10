@@ -134,6 +134,12 @@ export function minOutAccepted(quotedMin: bigint, estimatedOut: bigint, slippage
   const [ppm, unit] = [expected / 1_000_000n, 10n ** BigInt(Math.max(0, Math.min(decimals, 18) - 8))];
   return quotedMin + (ppm > unit ? ppm : unit) >= expected;
 }
+
+/** Two successive LI.FI `toAmountMin` values for the same trade can differ by the same rounding band (D-073 vs a fresh quote). */
+export function minOutHolds(plannedMin: bigint, quotedMin: bigint, decimals = 0): boolean {
+  const [ppm, unit] = [plannedMin / 1_000_000n, 10n ** BigInt(Math.max(0, Math.min(decimals, 18) - 8))];
+  return quotedMin + (ppm > unit ? ppm : unit) >= plannedMin;
+}
 const PSBT_HEX_MAGIC = "70736274ff";
 const QUOTE_TTL_MS = 60_000;
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { redis } from "@/middlewares/rate-limit.middleware";
-import { lifi } from "@/providers/routes/lifi";
+import { lifi, minOutHolds } from "@/providers/routes/lifi";
 import { selectRouteProvider } from "@/providers/routes";
 import { USDC_MINT } from "../helpers/execution";
 
@@ -142,5 +142,15 @@ describe("provider selection", () => {
   it("matches the registry provider name against ROUTE_PROVIDER_ORDER", () => {
     expect(selectRouteProvider(["LI.FI"])?.id).toBe("lifi");
     expect(selectRouteProvider(["Jupiter"])).toBeUndefined();
+  });
+});
+
+describe("minOutHolds (D-073)", () => {
+  it("allows LI.FI rounding within max(1 ppm, 10^(decimals-8)) and refuses a real drop", () => {
+    const planned = 1_517_000_000_000_000n; // ~0.001517 ETH (18 decimals); unit band is 1e10
+    expect(minOutHolds(planned, planned - 1n, 18)).toBe(true);
+    expect(minOutHolds(planned, planned - 10_000_000_000n, 18)).toBe(true);
+    expect(minOutHolds(planned, planned - 10_000_000_001n, 18)).toBe(false);
+    expect(minOutHolds(planned, planned - planned / 100n, 18)).toBe(false); // 1% worse
   });
 });

@@ -5,6 +5,7 @@ import { db, instrumentDeployments, instruments, operationLegs, operations, oper
 import { USDC_DECIMALS, USDC_SOLANA_MINT, minOut, scaleBuys, type AssetChain, type LegQuoteResponse } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { expectedBtcTx, psbtInputs } from "@/providers/bitcoin";
+import { minOutHolds } from "@/providers/routes/lifi";
 import { buildFeeTransfer, describeUnsigned, solanaBalance, sponsorExposure } from "@/providers/solana-tx";
 import { quoteSponsorable } from "./plan.service";
 import { platformAddress, reserveGas, sendGasDrop } from "./gas.service";
@@ -136,10 +137,12 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     svmSponsor: leg.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,
     deny: await routeDenyList(leg.toChain, addressOn(addresses, leg.toChain)),
   });
-  // The plan's minimum is what the user agreed to: a fresh quote that returns less means the price moved, and a new plan (and consent) is needed.
-  // A recovery has no plan to renew: the user signs this quote, bounded by the operation's slippage (the adapter checks it), and its minimum replaces the estimate's.
+  // The plan's minimum is what the user agreed to: a fresh quote that returns less (beyond LI.FI's known toAmountMin rounding band) means the price
+  // moved, and a new plan (and consent) is needed. A recovery has no plan to renew: the user signs this quote, bounded by the operation's slippage.
   if (leg.recoveryOf) await db.update(operationLegs).set({ minOut: q.minOut.toString() }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "PLANNED")));
-  else if (leg.minOut !== null && q.minOut < BigInt(leg.minOut)) throw createHttpError(409, "The price moved since the plan was made. Plan again.", { code: "PRICE_MOVED", details: { plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() } });
+  else if (leg.minOut !== null && !minOutHolds(BigInt(leg.minOut), q.minOut, to ? to.decimals : USDC_DECIMALS)) {
+    throw createHttpError(409, "The price moved since the plan was made. Plan again.", { code: "PRICE_MOVED", details: { plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() } });
+  }
   const base = { routeSummary: { ...(leg.routeSummary ?? {}), tool: q.toolSummary, routeFees: q.routeFees, priceImpact: q.priceImpact } };
   if (q.transaction.kind === "solana") {
     const exposure = sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent

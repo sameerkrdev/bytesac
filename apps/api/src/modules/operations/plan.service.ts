@@ -173,34 +173,35 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   const addresses = await userAddresses(db, ctx.userId);
   if ((await freeUsdcMicro(db, ctx.userId, await solanaBalance(addressOn(addresses, "solana"), USDC_SOLANA_MINT))) < amount) throw createHttpError(409, "Your Solana wallet doesn't hold enough USDC (basket cash is not available for new investments).", { code: "INSUFFICIENT_BALANCE" });
 
-  // Provisional split (no fee) to estimate gas, then the real split with the network fee taken out of the amount.
+  // Provisional split (no fee) only to size the network fee; then quote again at the fee-adjusted share. Linear scaling of toAmountMin from a
+  // larger provisional size overstates the floor when routes have fixed fees (common on ETH bridges), which made every step-2 quote PRICE_MOVED.
   const weights = inv.constituents.map((c) => ({ deploymentId: c.deployment.id, bps: c.weightBps }));
   const provisional = splitInvestment(amount, 0n, weights);
-  const quotes = await Promise.all(inv.constituents.map((c, n) => planQuote({
+  const feeQuotes = await Promise.all(inv.constituents.map((c, n) => planQuote({
     fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: c.deployment.chain, toToken: c.deployment.address, toDecimals: c.deployment.decimals, amount: provisional[n]!.amountMicro, slippageBps: body.slippageBps, addresses,
   })));
-  const costs = await Promise.all(quotes.map((q, n) => legCost(q, inv.constituents[n]!.deployment.chain, inv.constituents[n]!.deployment.address, addressOn(addresses, "solana"))));
+  const feeCosts = await Promise.all(feeQuotes.map((q, n) => legCost(q, inv.constituents[n]!.deployment.chain, inv.constituents[n]!.deployment.address, addressOn(addresses, "solana"))));
   const price = await usdcPrice();
   const fees = await planFees(db, {
-    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...costs.map((c) => c.usd)], price), operation: "invest", platformBaseMicro: amount, usdcPrice: price, solPriceUsd: quotes.find((q) => q.nativePriceUsd)?.nativePriceUsd,
+    networkMicro: networkFeeMicro([FEE_LEG_GAS_USD, ...feeCosts.map((c) => c.usd)], price), operation: "invest", platformBaseMicro: amount, usdcPrice: price, solPriceUsd: feeQuotes.find((q) => q.nativePriceUsd)?.nativePriceUsd,
     manager: { kind: "manager_entry", fee: (version?.fees as BasketFees | undefined)?.entry, baseMicro: amount }, organizationId: version?.organizationId ?? null, basketId: body.basketId,
   });
   if (amount - fees.totalMicro <= 0n) throw invalidAmount("The amount doesn't cover the fees.");
   const shares = splitInvestment(amount, fees.totalMicro, weights);
   if (shares.some((s) => s.amountMicro <= 0n)) throw invalidAmount("The amount doesn't cover the fees.");
 
+  const quotes = await Promise.all(inv.constituents.map((c, n) => planQuote({
+    fromChain: "solana", fromToken: USDC_SOLANA_MINT, toChain: c.deployment.chain, toToken: c.deployment.address, toDecimals: c.deployment.decimals, amount: shares[n]!.amountMicro, slippageBps: body.slippageBps, addresses,
+  })));
+  const costs = await Promise.all(quotes.map((q, n) => legCost(q, inv.constituents[n]!.deployment.chain, inv.constituents[n]!.deployment.address, addressOn(addresses, "solana"))));
+
   const legs: LegDraft[] = [{ kind: "network_fee", fromChain: "solana", fromDeploymentId: null, toChain: "solana", toDeploymentId: null, amountIn: fees.totalMicro, minOut: null, routeSummary: null, expectedTx: reservedExpectedTx({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports }), gasPayer: "platform_fee_payer" }];
   let solanaGas = SOLANA_FEE_TRANSFER_LAMPORTS + fees.rentLamports;
   inv.constituents.forEach((c, n) => {
-    // Scale the plan quote to the fee-adjusted share. Store LI.FI's own toAmountMin (not slippageFloor(estimatedOut)): D-073 compares
-    // the fresh quote's toAmountMin to this, and LI.FI's minimum often sits a hair under toAmount×(1−slippage) (minOutAccepted / ADR-017).
-    const scale = shares[n]!.amountMicro;
-    const base = provisional[n]!.amountMicro;
-    const estimatedOut = (quotes[n]!.estimatedOut * scale) / base;
     solanaGas += costs[n]!.lamports;
     legs.push({
       kind: c.deployment.chain === "solana" ? "swap" : "cross_chain", fromChain: "solana", fromDeploymentId: null, toChain: c.deployment.chain, toDeploymentId: c.deployment.id,
-      amountIn: scale, minOut: (quotes[n]!.minOut * scale) / base, routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: reservedExpectedTx(costs[n]!), gasPayer: "platform_fee_payer",
+      amountIn: shares[n]!.amountMicro, minOut: quotes[n]!.minOut, routeSummary: { tool: quotes[n]!.toolSummary, estimatedOut: quotes[n]!.estimatedOut.toString(), symbol: c.symbol, decimals: c.deployment.decimals, routeFees: quotes[n]!.routeFees, priceImpact: quotes[n]!.priceImpact }, expectedTx: reservedExpectedTx(costs[n]!), gasPayer: "platform_fee_payer",
       decision: decisionOf(inv.rwaDecisions, c.instrumentId, "acquire"),
     });
   });
