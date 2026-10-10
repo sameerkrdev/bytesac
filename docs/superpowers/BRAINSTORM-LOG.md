@@ -195,6 +195,12 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 | 5 | Waitlist From | sameer@bytesac.com + WAITLIST_EMAIL_FROM (rec.) · mail subdomain · global EMAIL_FROM | **sameer@bytesac.com** | Keep EMAIL_FROM for OTP/ops |
 | 6 | app.bytesac.com `/` | Redirect /home or /sign-in (rec.) · keep marketing · redirect apex | **Redirect /home or /sign-in** | Marketing/waitlist on apex only |
 
+## Wallet-rewritten Solana fee tx (`TX_MISMATCH`) (2026-10-11)
+
+| # | Question | Options | User's answer | Result |
+|---|---|---|---|---|
+| 1 | How to unblock Phantom rewriting the fee transaction | Add CU to our fee tx (rec.) · accept wallet CU-only extras · user pays fee-leg gas · wallet settings only | **Explain 1 and 2**, then **option 1 now** and write the problem plus option 2 (and 3) into FUTURE-PLANS | Fee transfer gets LI.FI-shaped compute budget; byte-identical co-sign unchanged; option 2/3 in FUTURE-PLANS |
+
 ## Roadmap decisions
 
 - 2026-10-02: rebalance (Spec 9) before fees (Spec 10); then RWAs (Spec 11).

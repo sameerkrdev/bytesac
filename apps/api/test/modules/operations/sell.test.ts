@@ -60,7 +60,7 @@ describe("sell plan", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ kind: "sell_to_usdc", status: "PLANNED", sellPercent: 50, amountUsdc: null });
     expect(res.body.legs.map((l: { kind: string; fromChain: string; amountIn: string; gasPayer: string }) => [l.kind, l.fromChain, l.amountIn, l.gasPayer])).toEqual([
-      ["network_fee", "solana", "182400", "platform_fee_payer"],
+      ["network_fee", "solana", "186000", "platform_fee_payer"],
       ["swap", "solana", "2000000000", "platform_fee_payer"],
       ["cross_chain", "ethereum", "500000000000000000", "platform_gas_drop"], // wallet (0.5) < ledger x 50% (1.0)
       ["cross_chain", "bitcoin", "50000000", "user_btc_inputs"],
@@ -69,7 +69,7 @@ describe("sell plan", () => {
     expect(res.body.legs[0]).toMatchObject({ sequence: 1, kind: "network_fee" });
     expect(res.body.legs.every((l: { toChain: string }) => l.toChain === "solana")).toBe(true);
     const usage = await adminSql<{ chain: string; amount_native: string }[]>`SELECT chain, amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} ORDER BY chain`;
-    expect(Object.fromEntries(usage.map((u) => [u.chain, u.amount_native]))).toEqual({ solana: String(10_000 + 10_000), ethereum: "150000000000000" });
+    expect(Object.fromEntries(usage.map((u) => [u.chain, u.amount_native]))).toEqual({ solana: String(32_402 + 10_000), ethereum: "150000000000000" });
   });
 
   it("skips deployments the wallet no longer holds and refuses when nothing is left", async () => {

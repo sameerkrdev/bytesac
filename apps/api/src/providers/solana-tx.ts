@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
 import createHttpError from "http-errors";
-import { Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "@/config/dotenv";
 
@@ -30,29 +30,40 @@ export const ata = (owner: PublicKey, mint: PublicKey) => PublicKey.findProgramA
 export const tokenAccountMissing = (owner: string, mint: string): Promise<boolean> => connection.getAccountInfo(ata(new PublicKey(owner), new PublicKey(mint)), "confirmed").then((info) => !info, () => true);
 
 /**
- * The fee leg: one USDC TransferChecked per recorded fee from the user's token account to each recipient's (network, manager, platform, in that order),
- * fee payer = platform (which also creates a recipient token account that is missing). Server-built, so the planner knows every byte.
+ * The fee leg: compute-budget (same CU limit/price as live LI.FI Solana quotes, so wallets that inject those skip rewriting), then one USDC
+ * TransferChecked per recorded fee from the user's token account to each recipient's (network, manager, platform, in that order). Fee payer =
+ * platform (which also creates a recipient token account that is missing). Server-built, so the planner knows every byte. Co-sign is still byte-identical.
  */
+const FEE_LEG_CU_LIMIT = 1_400_000;
+const FEE_LEG_CU_PRICE_MICRO = 16_001n;
+const FEE_LEG_PRIORITY_LAMPORTS = (FEE_LEG_CU_PRICE_MICRO * BigInt(FEE_LEG_CU_LIMIT) + 999_999n) / 1_000_000n;
+/** Two signatures plus the fee-leg priority fee. Token-account rent is added by the planner per missing recipient ATA. */
+export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n + FEE_LEG_PRIORITY_LAMPORTS;
+
 export async function buildFeeTransfer(i: { owner: string; transfers: { recipient: string; amountMicro: bigint }[] }): Promise<{ serializedBase64: string; messageHash: string }> {
   const [payer, owner, mint] = [feePayer().publicKey, new PublicKey(i.owner), new PublicKey(USDC_SOLANA_MINT)];
   const from = ata(owner, mint);
-  const instructions = i.transfers.flatMap((t) => {
-    const recipient = new PublicKey(t.recipient);
-    const to = ata(recipient, mint);
-    const amount = Buffer.alloc(10);
-    amount[0] = 12; // TransferChecked
-    amount.writeBigUInt64LE(t.amountMicro, 1);
-    amount[9] = USDC_DECIMALS;
-    return [
-      new TransactionInstruction({ programId: ATA_PROGRAM, data: Buffer.from([1]), keys: [ // CreateIdempotent
-        { pubkey: payer, isSigner: true, isWritable: true }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: recipient, isSigner: false, isWritable: false },
-        { pubkey: mint, isSigner: false, isWritable: false }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      ] }),
-      new TransactionInstruction({ programId: TOKEN_PROGRAM, data: amount, keys: [
-        { pubkey: from, isSigner: false, isWritable: true }, { pubkey: mint, isSigner: false, isWritable: false }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: owner, isSigner: true, isWritable: false },
-      ] }),
-    ];
-  });
+  const instructions = [
+    ComputeBudgetProgram.setComputeUnitLimit({ units: FEE_LEG_CU_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: FEE_LEG_CU_PRICE_MICRO }),
+    ...i.transfers.flatMap((t) => {
+      const recipient = new PublicKey(t.recipient);
+      const to = ata(recipient, mint);
+      const amount = Buffer.alloc(10);
+      amount[0] = 12; // TransferChecked
+      amount.writeBigUInt64LE(t.amountMicro, 1);
+      amount[9] = USDC_DECIMALS;
+      return [
+        new TransactionInstruction({ programId: ATA_PROGRAM, data: Buffer.from([1]), keys: [ // CreateIdempotent
+          { pubkey: payer, isSigner: true, isWritable: true }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: recipient, isSigner: false, isWritable: false },
+          { pubkey: mint, isSigner: false, isWritable: false }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
+        ] }),
+        new TransactionInstruction({ programId: TOKEN_PROGRAM, data: amount, keys: [
+          { pubkey: from, isSigner: false, isWritable: true }, { pubkey: mint, isSigner: false, isWritable: false }, { pubkey: to, isSigner: false, isWritable: true }, { pubkey: owner, isSigner: true, isWritable: false },
+        ] }),
+      ];
+    }),
+  ];
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
   const message = new TransactionMessage({ payerKey: payer, recentBlockhash: blockhash, instructions }).compileToV0Message();
   return describeUnsigned(Buffer.from(new VersionedTransaction(message).serialize()).toString("base64"));

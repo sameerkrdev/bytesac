@@ -48,19 +48,19 @@ describe("invest plan", () => {
     const res = await invest(user.h, basket.basketId);
     expect(res.status).toBe(201);
     const op = res.body;
-    expect(op).toMatchObject({ kind: "invest", status: "PLANNED", amountUsdc: "500000000", networkFeeUsdc: "182400", slippageBps: 100 });
-    // fee = (0.002 + 3 x 0.05) USD x 1.2 = 0.1824 USDC; deployable 499.8176 USDC split 50/30/20
+    expect(op).toMatchObject({ kind: "invest", status: "PLANNED", amountUsdc: "500000000", networkFeeUsdc: "186000", slippageBps: 100 });
+    // fee = (0.005 + 3 x 0.05) USD x 1.2 = 0.186 USDC; deployable 499.814 USDC split 50/30/20
     expect(op.legs.map((l: { kind: string; toChain: string; amountIn: string }) => [l.kind, l.toChain, l.amountIn])).toEqual([
-      ["network_fee", "solana", "182400"], ["swap", "solana", "249908800"], ["cross_chain", "ethereum", "149945280"], ["cross_chain", "bitcoin", "99963520"],
+      ["network_fee", "solana", "186000"], ["swap", "solana", "249907000"], ["cross_chain", "ethereum", "149944200"], ["cross_chain", "bitcoin", "99962800"],
     ]);
     expect(op.legs.every((l: { status: string; gasPayer: string }) => l.status === "PLANNED" && l.gasPayer === "platform_fee_payer")).toBe(true);
-    expect(BigInt(op.legs[1].minOut)).toBe((249_908_800n * 9900n) / 10_000n);
+    expect(BigInt(op.legs[1].minOut)).toBe((249_907_000n * 9900n) / 10_000n);
     expect(chain.quotes.every((q) => q.fromChain === "solana" && q.svmSponsor)).toBe(true);
     expect(chain.quotes.map((q) => q.toAddress)).toContain(user.btcAddress);
     const [usage] = await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} AND chain = 'solana'`;
-    // fee transfer 10,000 + 3 legs x (2 signatures x 5,000): the decoded fee-payer exposure, not LI.FI's smaller 5,000 figure
-    expect(BigInt(usage!.amount_native)).toBe(10_000n + 3n * 10_000n);
-    expect((await adminSql<{ gas_reserved: Record<string, string> }[]>`SELECT gas_reserved FROM app.operations`)[0]!.gas_reserved).toEqual({ solana: "40000" });
+    // fee transfer 32,402 (2 signatures + CU priority) + 3 legs x (2 signatures x 5,000): the decoded fee-payer exposure, not LI.FI's smaller 5,000 figure
+    expect(BigInt(usage!.amount_native)).toBe(32_402n + 3n * 10_000n);
+    expect((await adminSql<{ gas_reserved: Record<string, string> }[]>`SELECT gas_reserved FROM app.operations`)[0]!.gas_reserved).toEqual({ solana: "62402" });
     expect(await adminSql`SELECT 1 FROM app.audit_events WHERE action = 'operation.planned'`).toHaveLength(1);
   });
 
@@ -169,7 +169,7 @@ describe("quote and submit a Solana leg", () => {
     await adminSql`UPDATE app.operation_legs SET status = 'PENDING_CHAIN' WHERE id = ${feeLeg.id}`;
     const q = await quote(user.h, op.id, solLeg.id);
     expect(q.status).toBe(200);
-    expect(q.body).toMatchObject({ estimatedOut: "249908800", minOut: "247409712", approval: null, gasDrop: null });
+    expect(q.body).toMatchObject({ estimatedOut: "249907000", minOut: "247407930", approval: null, gasDrop: null });
     expect(chain.quotes.at(-1)).toMatchObject({ fromChain: "solana", toChain: "solana", toAddress: user.solanaAddress });
     expect(chain.quotes.at(-1)!.svmSponsor).toBeTruthy();
   });
@@ -313,7 +313,7 @@ describe("review fixes", () => {
     const { user, basket } = await arrange();
     for (const key of ["key-back0001", "key-back0002", "key-back0003", "key-back0004"]) {
       const op = (await invest(user.h, basket.basketId, { idempotencyKey: key })).body;
-      expect(await usage()).toBe(40_000n);
+      expect(await usage()).toBe(62_402n);
       expect((await cancel(user.h, op.id)).body.status).toBe("CANCELLED");
       expect(await usage()).toBe(0n);
     }
@@ -325,7 +325,7 @@ describe("review fixes", () => {
     const op = (await invest(user.h, basket.basketId)).body;
     await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;
     expect((await invest(user.h, basket.basketId, { idempotencyKey: "key-after001" })).status).toBe(201);
-    expect(await usage()).toBe(40_000n); // only the new plan's
+    expect(await usage()).toBe(62_402n); // only the new plan's
   });
 
   it("I6/D6: a fresh quote below the plan's minimum is a 409 PRICE_MOVED and nothing is stored; a better one passes", async () => {
@@ -379,7 +379,7 @@ describe("review fixes", () => {
     const { expireStalePlans } = await import("@/modules/portfolio/tracking.service");
     const { user, basket } = await arrange();
     const op = (await invest(user.h, basket.basketId)).body;
-    expect(await usage()).toBe(40_000n);
+    expect(await usage()).toBe(62_402n);
     await expireStalePlans(); // not expired yet
     expect((await opRow(op.id)).status).toBe("PLANNED");
     await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;

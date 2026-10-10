@@ -13,8 +13,10 @@ import { getPrices } from "@/modules/assets/pricing.service";
 import type { AssetChain } from "@repo/validator";
 import { bitcoinBalance } from "@/providers/bitcoin";
 import { evmBalance } from "@/providers/evm-rpc";
-import { solanaBalance } from "@/providers/solana-tx";
+import { solanaBalance, SOLANA_FEE_TRANSFER_LAMPORTS } from "@/providers/solana-tx";
 import { type Addresses, addressOn } from "@/modules/auth/wallets.service";
+
+export { SOLANA_FEE_TRANSFER_LAMPORTS };
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
 
@@ -24,10 +26,8 @@ export type Leg = typeof operationLegs.$inferSelect;
 
 export const PLAN_TTL = "30 minutes";
 
-export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n;
-
-/** ponytail: a flat estimate for the network-fee transfer's own cost (one signature, no priority fee). */
-export const FEE_LEG_GAS_USD = 0.002;
+/** ponytail: a flat estimate for the network-fee transfer's own cost (two signatures plus the fee-leg priority fee). */
+export const FEE_LEG_GAS_USD = 0.005;
 
 /** Investing needs a verified email and phone. */
 export async function assertVerifiedContacts(userId: string): Promise<void> {

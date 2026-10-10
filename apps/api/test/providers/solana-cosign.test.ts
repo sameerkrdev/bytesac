@@ -1,10 +1,10 @@
 import { createPublicKey, verify } from "node:crypto";
-import { Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "@/config/dotenv";
-import { buildFeeTransfer, connection, cosign, describeUnsigned, feePayer, sendSolana, solanaFinality, sponsorExposure } from "@/providers/solana-tx";
+import { buildFeeTransfer, connection, cosign, describeUnsigned, feePayer, sendSolana, solanaFinality, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS } from "@/providers/solana-tx";
 
 const BLOCKHASH = bs58.encode(Buffer.alloc(32, 7));
 const user = Keypair.generate();
@@ -125,11 +125,16 @@ describe("network fee transfer", () => {
     const keys = tx.message.staticAccountKeys.map((k) => k.toBase58());
     expect(keys).toContain(user.publicKey.toBase58());
     expect(keys).toContain(USDC_SOLANA_MINT);
-    const transfer = tx.message.compiledInstructions.at(-1)!;
+    const ixs = tx.message.compiledInstructions;
+    expect(tx.message.staticAccountKeys[ixs[0]!.programIdIndex]!.equals(ComputeBudgetProgram.programId)).toBe(true);
+    expect(Buffer.from(ixs[0]!.data)[0]).toBe(2); // SetComputeUnitLimit
+    expect(Buffer.from(ixs[1]!.data)[0]).toBe(3); // SetComputeUnitPrice
+    const transfer = ixs.at(-1)!;
     const data = Buffer.from(transfer.data);
     expect([data[0], data.readBigUInt64LE(1), data[9]]).toEqual([12, 123_456n, 6]);
     // The user is the owner (a required signer) of the transfer; the fee payer signs nothing the user did not see.
     expect(keys[transfer.accountKeyIndexes[3]!]).toBe(user.publicKey.toBase58());
+    expect(sponsorExposure(built.serializedBase64)).toEqual({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS });
   });
 });
 
