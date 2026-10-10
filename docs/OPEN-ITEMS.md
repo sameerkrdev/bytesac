@@ -2,6 +2,10 @@
 
 Consolidated list of everything still open after Spec 14 (2026-10-03). This is the single home for open work: `docs/superpowers/HANDOFF.md` points here and keeps no lists of its own. Sources: the decision register (`OPEN` statuses), the Spec 8–12 reviews and earlier handoff notes. Future product scope lives in `docs/domains/FUTURE-PLANS.md`, not here. Tick items as they are closed and rewrite the affected docs in place.
 
+## 0. Release gate
+
+- [ ] RELEASE GATE (per-chain addresses, D-120): old clients parse `/me` strictly. `polygon` chain rows (created by `ops:backfill-polygon`) and the `replaced` address status make old app builds fail with "Malformed response". Before running the backfill in production, or after any public mobile release, ship clients built from this branch first (or make the client schemas tolerate unknown enum values). Deploy order: `drizzle-kit migrate`, API deploy, clients, then `ops:backfill-polygon`.
+
 ## 1. Accounts, keys and credentials (user actions)
 
 - [ ] Reown project ID (web + mobile).

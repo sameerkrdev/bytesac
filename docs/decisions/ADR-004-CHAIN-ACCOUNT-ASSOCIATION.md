@@ -10,13 +10,13 @@ One active investment wallet per user holds chain accounts. An EVM key controls 
 
 ## Decision
 The verification method decides scope.
-- `eoa_ecdsa`: the signature ECDSA-recovers to the address. This proves the key, including for EIP-7702-delegated EOAs (recovery, not `getCode`, is the test), and registers all supported EVM chains (Ethereum, Base, BNB Chain, Arbitrum) from one proof.
+- `eoa_ecdsa`: the signature ECDSA-recovers to the address. This proves the key, including for EIP-7702-delegated EOAs (recovery, not `getCode`, is the test), and registers all supported EVM chains (Ethereum, Base, BNB Chain, Arbitrum) from one proof (superseded by ADR-021: per chain, only the chains the user ticks are linked).
 - `erc1271`: deployed contract wallet verified through `isValidSignature` on the challenge chain; registers only that chain.
 - `erc6492`: undeployed wallet verified through the ERC-6492 wrapper on the challenge chain; registers only that chain.
 - `ed25519`: Solana; registers `solana`.
 - An RPC transport failure during ERC-1271/6492 verification is `VERIFIER_UNAVAILABLE` (fail-closed, retryable); only a definitive revert or non-magic result is an invalid signature.
 - Cross-family additions happen only through an explicit logged-in "Add chain account" with a fresh signature and the same session. The operation serializes per wallet with a row lock, so two sessions cannot link two addresses in one family.
-- Refusals: address owned by another user (any status) is `ADDRESS_ALREADY_LINKED`; a different address in a family the user already has is `CHAIN_FAMILY_ALREADY_LINKED`; a disabled address cannot sign in or be linked elsewhere. A logged-out sign-in with an unknown address always creates a new user.
+- Refusals: address owned by another user (any status) is `ADDRESS_ALREADY_LINKED`; a different address in a family the user already has is `CHAIN_FAMILY_ALREADY_LINKED` (superseded by ADR-021: per chain, only Bitcoin keeps one address per family); a disabled address cannot sign in or be linked elsewhere. A logged-out sign-in with an unknown address always creates a new user.
 - Evidence stored per address row: `verification_method`, `verified_on_chain`, `verification_challenge_id`. Challenges referenced as evidence are excluded from retention purge.
 
 ## Alternatives considered

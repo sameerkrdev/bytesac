@@ -42,7 +42,7 @@ ADR-013 decided self-custody, user-signed plans of legs and USDC-on-Solana fundi
 
 ### 5. Bitcoin (D-032, D-033)
 
-- Native BTC is supported (constituents must be `native` deployments on `bitcoin`). Bitcoin addresses are **linked after sign-in** (`POST /v1/me/chain-accounts/bitcoin/challenge` and `/verify`, purpose `add_chain_account`, one address per user, not linked elsewhere, session rotation, audit). Bitcoin is **never a sign-in method**: the auth input schemas use `signInChainSchema`, which excludes it.
+- Native BTC is supported (constituents must be `native` deployments on `bitcoin`). Bitcoin addresses are **linked after sign-in** (`POST /v1/me/chain-accounts/bitcoin/challenge` and `/verify`, purpose `add_chain_account`, one address per user (Bitcoin only), not linked elsewhere, session rotation, audit). Bitcoin is **never a sign-in method**: the auth input schemas use `signInChainSchema`, which excludes it.
 - Proof: BIP-322 "simple". The server builds the standard's `to_spend`/`to_sign` virtual transactions, returns the unsigned `to_sign` PSBT with the challenge, the wallet only calls `signPSBT`, and the server verifies the witness for P2WPKH, P2TR and P2SH-P2WPKH (verified against the BIP's official test vectors). Wallets whose `signPSBT` cannot sign it fall back to a BIP-137 message signature (legacy, P2SH-P2WPKH, P2WPKH), because Reown's `signMessage` ignores the BIP-322 protocol parameter.
 
 ### 6. Tracking, finality and reconciliation (D-070)

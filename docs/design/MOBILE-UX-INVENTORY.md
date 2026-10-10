@@ -55,7 +55,7 @@ bottom sheets, sticky bottom actions, swipe between sections, haptics on confirm
 | 30 | Performance | Not available yet — say so; no invented chart | Investor | Note in 27 | — | P2 | Future valuation snapshots | n/a ("Performance history isn't available yet" note) |
 | 31 | Activity | Operations with steps and explorer links | Investor | Stack screen | Filter by kind | P1 | Portfolio history | redesigned (`activity`) |
 | 32 | Transaction detail | One operation | Investor | Stack screen | Explorer deep links | P1 | Operation API | redesigned |
-| 33 | Wallet | Linked addresses per family | Investor | Profile section | Copy address | P1 | Me API | redesigned |
+| 33 | Wallet | Linked addresses per chain | Investor | Profile section | Copy address | P1 | Me API | redesigned |
 | 34 | Wallet / network management | Add chain account; Bitcoin → web | Investor | Sheet | Hand-off for Bitcoin | P1 | AppKit RN | redesigned (web hand-off for Bitcoin) |
 | — | Position detail | Three layers: target / allocation / verified | Investor | Stack screen from a position | Segmented control between layers | P0 | Portfolio API | redesigned (`position/[id]`; Target / Allocation / Verified switch) |
 | — | Sell / leave / close | Exit actions | Investor | Sheet with confirmation | Slider for % sell | P1 | Sell plan API | redesigned (percent tiles; leave/close on the position screen) |

@@ -41,6 +41,8 @@ The verification method decides scope (D-033, ADR-004):
 | Address belongs to another user | `ADDRESS_ALREADY_LINKED` |
 | Address is disabled or was moved to another wallet | `ADDRESS_DISABLED` |
 | Chain already has an address (explicit `chains`) | `CHAIN_ALREADY_LINKED` |
+| Chain's wallet was disabled by support and a different address is being linked there | `CHAIN_ALREADY_LINKED` ("This chain's wallet was disabled by support. Contact support."); a replaced row does not block. Legacy sign-in without `chains` skips such a chain |
+| Adding an EOA or ed25519 address that is active in another account on any chain of its family | `ADDRESS_ALREADY_LINKED` |
 | Bitcoin: a different address in the family | `CHAIN_FAMILY_ALREADY_LINKED` |
 | Move while the chain holds assets, units or an open operation | `CHAIN_NOT_EMPTY` |
 | Move while a balance cannot be read | 503, nothing changes |
