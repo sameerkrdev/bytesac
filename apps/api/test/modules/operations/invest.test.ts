@@ -328,19 +328,16 @@ describe("review fixes", () => {
     expect(await usage()).toBe(62_402n); // only the new plan's
   });
 
-  it("I6/D6: a fresh quote below the plan's minimum is a 409 PRICE_MOVED and nothing is stored; a better one passes", async () => {
+  it("I6/D6: a fresh quote below the plan's minimum is accepted while D-073 is waived (pilot); the stored floor drops to the fresh minimum", async () => {
     const { user, op, feeLeg, solLeg, chain } = await ready();
     await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${feeLeg.id}`;
+    const plannedMin = BigInt(op.legs[1].minOut);
     chain.quoteOut = { numerator: 99n, denominator: 100n }; // 1% worse
     const res = await quote(user.h, op.id, solLeg.id);
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe("PRICE_MOVED");
-    expect((await legs(op.id))[1]!.built_message_hash).toBeNull();
-    chain.quoteOut = { numerator: 101n, denominator: 100n };
-    const better = await quote(user.h, op.id, solLeg.id);
-    expect(better.status).toBe(200);
-    expect(BigInt(better.body.minOut)).toBeGreaterThan(BigInt(op.legs[1].minOut)); // the user is shown the fresh figures
-    expect((await legs(op.id))[1]!.min_out).toBe(op.legs[1].minOut); // the plan's own minimum is not loosened by quoting
+    expect(res.status).toBe(200);
+    expect(BigInt(res.body.minOut)).toBeLessThan(plannedMin);
+    expect((await legs(op.id))[1]!.min_out).toBe(res.body.minOut);
+    expect((await legs(op.id))[1]!.built_message_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("I4: a provider transaction in which the fee payer would pay for anything but fees and token-account rent is refused at quote time", async () => {

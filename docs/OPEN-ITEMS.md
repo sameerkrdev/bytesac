@@ -104,6 +104,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] `mobile#check-types` fixed with a scoped type assertion in `apps/mobile/src/lib/appkit.tsx` (duplicate `@wagmi/core` 2.22.1 peer variants: typescript 6/7, use-sync-external-store 1.4/1.7, zod 3/4); proper peer dedupe open.
 
 **Spec 10.1**
+- [ ] Re-enable D-073 `PRICE_MOVED` (hard refuse when fresh `toAmountMin` is below the plan floor) before public launch; waived for pilot 2026-10-11 so fee-settled invests are not stuck.
 - [ ] Releasing unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
 - [ ] Recovery legs use the fresh quote's minimum (no `PRICE_MOVED`); a duplicate route deny returns 400 `VALIDATION_FAILED`, not 409; the LI.FI transfers lookup is a form on `/ops/routing` (operation and leg ids) because the web has no leg resolve view.
 - [ ] Mobile Leg fixtures may need the new leg fields (`mobile#check-types` already fails on `main`); `lifiVerification` `flagged` is never produced.
