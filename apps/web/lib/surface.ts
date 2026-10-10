@@ -1,6 +1,6 @@
 /**
- * The apex (marketing) host serves the waitlist and the static explainer pages only; every other path goes to the app
- * host. Shared by `proxy.ts` (routing) and the marketing chrome (which links only to these).
+ * The apex (marketing) host serves the waitlist and the static explainer pages only; every other page path goes to the
+ * app host (`/api/*` and static files stay on the apex). Shared by `proxy.ts` and the marketing chrome.
  */
 export const MARKETING_PATHS = ["/waitlist", "/how-it-works", "/self-custody", "/for-managers", "/help"] as const;
 

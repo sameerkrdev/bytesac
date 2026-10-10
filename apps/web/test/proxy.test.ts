@@ -30,6 +30,10 @@ describe("proxy", () => {
     expect(proxy(req("https://bytesac.com/baskets?f=x")).headers.get("location")).toBe("https://app.bytesac.com/baskets?f=x");
   });
 
+  it("keeps apex /api on the marketing host for the same-origin rewrite", () => {
+    expect(proxy(req("https://bytesac.com/api/v1/public/waitlist")).headers.get("location")).toBeNull();
+  });
+
   it("never gates or redirects public files", () => {
     for (const path of ["/visuals/sky/clouds-1600.webp", "/brand/bytesac-logo.png", "/favicon.ico"]) {
       expect(proxy(req(`https://bytesac.com${path}`)).headers.get("location")).toBeNull();

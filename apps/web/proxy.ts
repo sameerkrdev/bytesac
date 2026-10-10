@@ -32,6 +32,8 @@ export function proxy(req: NextRequest) {
       if (pathname === "/") return NextResponse.rewrite(new URL("/waitlist", req.url), { request: { headers } });
       return NextResponse.next({ request: { headers } });
     }
+    // Same-origin /api rewrite must stay on the apex (waitlist join); redirecting would cross-origin and fail CORS.
+    if (pathname.startsWith("/api/")) return NextResponse.next({ request: { headers } });
     if (app) return NextResponse.redirect(new URL(pathname + req.nextUrl.search, `https://${app}`));
     return NextResponse.redirect(new URL("/", req.url));
   }
