@@ -84,6 +84,21 @@ User direction: fewer signing rounds — **(1) fee + all Solana swaps in one**, 
 
 Needs: ADR-014 amendment (leg groups / claim-before-send per group), planner groups, client signer loop, failure rules (if tx 2 of 3 Solana fails after tx 1 landed → `PARTIAL`), gas reservation for the group, and tests. Do not implement until specified.
 
+### Fewer approvals and faster landing — later options (2026-10-11)
+
+User decision 2026-10-11: after Spec 22 P1b, the only next step is raising `K_SIGN_ALL` / `K_SIGN_AND_SEND` from the P0 wallet-lab results (no design change). The options below are recorded and not approved.
+
+- **Jito bundles for sign-only wallets.** Fee plus up to 4 buys sent as one bundle: they land in order in one block, or not at all.
+  - Gain: removes the fee-confirmation wait.
+  - Cost: a small user-paid tip instruction in our fee transfer (~0.00001–0.0001 SOL); at most 5 transactions per bundle; a fallback to the normal path when no Jito validator leads.
+  - Needs: its own spec and real-key tests.
+- **MetaMask fee inside the sign-and-send batch.** One approval instead of two.
+  - Risk: the wallet's send order is not guaranteed, so a buy can land while the fee fails. That share stays uncovered and is charged in the next group or the next operation.
+- **One-time spending limits / session keys.** EVM: ERC-7715 permissions over EIP-7702 (MetaMask). Solana: a smart wallet with spending limits. The user approves a bounded, revocable limit once, and the platform executes within it.
+  - Gain: zero popups per operation.
+  - Cost: changes D-024 / ADR-013 (the user signs every transaction). The platform still never holds funds but gains bounded spending power, so it needs an ADR, legal review and wallet-support checks (thin on Solana today).
+- **Merging several swaps into one Solana transaction** (option 2 of "Batched signing by wallet family" above). Little gain now that batch signing gives one approval per chunk.
+
 ### Execution robustness (deferred from Spec 12)
 
 - **Stuck recovery legs, deeper fix (Spec 12 Q4).** Release 1 (Spec 12) stops an operation automatically when its unsent recovery leg is older than 7 days (operation `PARTIAL`, gas released, the delivered token stays in the user's wallet, user alerted). The problem underneath: a user may hold only one `PLANNED`/`IN_PROGRESS` operation, so a pending "Complete swap" blocks every other invest, sell or rebalance until it is signed, stopped or auto-stopped. Deeper fix: (1) replace the per-user lock with **per-asset reservations** so a pending recovery only blocks operations that touch the same deployments or the same basket cash, and unrelated baskets stay usable; (2) reminders through the inbox, email and push at 24 h and 72 h before the auto-stop; (3) after an auto-stop, offer a one-click "Recover now" plan later (a new operation that swaps the delivered token to the original target, with its own network fee — see the separate `recover` operation entry above); (4) let the user choose at failure time between "complete now", "keep the delivered token" (close as `PARTIAL` immediately) and "remind me"; (5) ops view of stuck recoveries. Needs a concurrency review because two operations could then spend the same wallet balance; reservations must be enforced in the planner and at quote time.
