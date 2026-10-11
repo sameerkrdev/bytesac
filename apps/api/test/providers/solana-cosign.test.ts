@@ -1,10 +1,10 @@
 import { createPublicKey, verify } from "node:crypto";
-import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { AddressLookupTableAccount, ComputeBudgetProgram, Keypair, MessageV0, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "@/config/dotenv";
-import { ata, blockhashUsable, buildFeeTransfer, connection, cosign, describeUnsigned, FEE_TRANSFER_USER_LAMPORTS, feePayer, sendSolana, solanaCost, solanaFinality, solanaNeed, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS, verifyUserSigned } from "@/providers/solana-tx";
+import { ata, blockhashUsable, buildFeeTransfer, connection, cosign, describeUnsigned, FEE_TRANSFER_USER_LAMPORTS, feePayer, landedMatchesPrepared, sendSolana, solanaCost, solanaFinality, solanaNeed, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS, verifyUserSigned } from "@/providers/solana-tx";
 
 const BLOCKHASH = bs58.encode(Buffer.alloc(32, 7));
 const user = Keypair.generate();
@@ -315,5 +315,31 @@ describe("finality", () => {
     expect(await solanaFinality("a")).toBe("pending"); // without a blockhash nothing can expire
     status.mockResolvedValue({ context: { slot: 1 }, value: { slot: 1, confirmations: null, err: null, confirmationStatus: "finalized" } });
     expect(await solanaFinality("a", BLOCKHASH)).toBe("finalized"); // landed before it expired
+  });
+});
+
+describe("proof of a landed transaction (sign-and-send)", () => {
+  // A LI.FI-style v0 transaction that reads two accounts through an address lookup table.
+  const table = new AddressLookupTableAccount({ key: Keypair.generate().publicKey, state: { deactivationSlot: 2n ** 64n - 1n, lastExtendedSlot: 0, lastExtendedSlotStartIndex: 0, addresses: [recipient, Keypair.generate().publicKey] } });
+  const prepared = new VersionedTransaction(new TransactionMessage({
+    payerKey: user.publicKey, recentBlockhash: BLOCKHASH,
+    instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }), new TransactionInstruction({ programId: SystemProgram.programId, data: Buffer.from([1]), keys: [{ pubkey: user.publicKey, isSigner: true, isWritable: true }, { pubkey: recipient, isSigner: false, isWritable: true }, { pubkey: table.state.addresses[1]!, isSigner: false, isWritable: false }] })],
+  }).compileToV0Message([table]));
+  /** The message as web3.js builds it from a getTransaction response: each lookup lists readonlyIndexes before writableIndexes. */
+  const asRpc = (change: (l: { writableIndexes: number[]; readonlyIndexes: number[] }) => void = () => undefined) => {
+    const m = prepared.message;
+    const addressTableLookups = m.addressTableLookups.map((l) => { const shaped = { accountKey: l.accountKey, readonlyIndexes: [...l.readonlyIndexes], writableIndexes: [...l.writableIndexes] }; change(shaped); return shaped; });
+    return { slot: 1, meta: null, transaction: { signatures: [], message: new MessageV0({ header: m.header, staticAccountKeys: m.staticAccountKeys, recentBlockhash: m.recentBlockhash, compiledInstructions: m.compiledInstructions, addressTableLookups }) } } as never;
+  };
+
+  it("accepts our transaction as the RPC returns it, with lookup tables (live P1b run: every buy was falsely TX_MISMATCH_AFTER_SEND)", async () => {
+    expect(prepared.message.addressTableLookups).toHaveLength(1);
+    vi.spyOn(connection, "getTransaction").mockResolvedValue(asRpc());
+    expect(await landedMatchesPrepared("sig", b64(prepared), user.publicKey.toBase58())).toBe(true);
+  });
+
+  it("still refuses a different lookup index", async () => {
+    vi.spyOn(connection, "getTransaction").mockResolvedValue(asRpc((l) => { l.readonlyIndexes = [0]; }));
+    expect(await landedMatchesPrepared("sig", b64(prepared), user.publicKey.toBase58())).toBe(false);
   });
 });

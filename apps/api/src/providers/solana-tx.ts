@@ -188,10 +188,16 @@ function nonComputeCore(tx: VersionedTransaction): { program: string; accounts: 
     }));
 }
 
+/** Same lookup tables, indexes in the same order. Compared field by field: a message built from an RPC response lists the fields in another order than a deserialized one. */
+const sameLookups = (a: VersionedTransaction["message"]["addressTableLookups"], b: VersionedTransaction["message"]["addressTableLookups"]): boolean => {
+  const same = (x: number[], y: number[]) => x.length === y.length && x.every((v, i) => v === y[i]);
+  return a.length === b.length && a.every((l, i) => l.accountKey.equals(b[i]!.accountKey) && same(l.writableIndexes, b[i]!.writableIndexes) && same(l.readonlyIndexes, b[i]!.readonlyIndexes));
+};
+
 /** True when the wallet message differs from the prepared one only in ComputeBudget instructions (or their values). */
 export function sameExceptComputeBudget(prepared: VersionedTransaction, signed: VersionedTransaction): boolean {
   if (prepared.message.recentBlockhash !== signed.message.recentBlockhash) return false;
-  if (JSON.stringify(prepared.message.addressTableLookups) !== JSON.stringify(signed.message.addressTableLookups)) return false;
+  if (!sameLookups(prepared.message.addressTableLookups, signed.message.addressTableLookups)) return false;
   const pKeys = prepared.message.staticAccountKeys;
   const sKeys = signed.message.staticAccountKeys;
   // CU data rewrite keeps the account key list identical: compare compiled non-CU wire form (works with address lookups).
