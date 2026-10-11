@@ -212,6 +212,9 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 | 11 | Mobile per-leg Solana gas (D-041 untested on device) | keep sponsored until P4 (rec.) · user-paid everywhere in P1 | **User-paid everywhere in P1** | B-21 confirmed; device check added to OPEN-ITEMS with P1 |
 | 12 | Auto-stop window for an operation needing action | invest 24 h / rebalance 7 d (rec.) · 7 d all · 24 h all | **Invest 24 h, rebalance 7 d** | B-08: 24 h invest and repair, 7 d rebalance and sell |
 | — | Spec review (pasted) | — | estimate-first review, `sendBy` 20 s rule, Stop banners, wallet telemetry, S1 wording | Applied in spec commit `4713f0f` |
+| 13 | Spec 22 approval | approve · changes | **Approved**; every DEFAULT row incl. B-16 approved as written | Spec status APPROVED |
+| 14 | Send timing (user + reviewer) | clock only · real blockhash check | **Also `isBlockhashValid` with a small margin before each send; P0 measures 12-tx signing time; tune `sendBy`/K from P0 and telemetry** | `sendBy` gates submit and fee wait; each buy gated by `isBlockhashValid` + 20-block margin; P0 lab times 12-tx batches and LI.FI blockhash lifetime |
+| 15 | Next step | write P0 + P1 plans | **Write P0 (wallet lab) and P1 (first investment) plans** | `plans/2026-10-11-spec22-p0-wallet-lab.md`, `plans/2026-10-11-spec22-p1-first-investment.md` |
 
 ## Roadmap decisions
 
