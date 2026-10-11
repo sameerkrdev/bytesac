@@ -364,7 +364,7 @@ Platform wallets hold **platform funds only**. They are not user custody.
 
 | Wallet | Pays | Floor (warning) |
 |---|---|---|
-| Solana fee payer | Sponsored tx fees + one-time treasury token-account rent | 0.5 SOL |
+| Solana fee payer (legacy, ADR-023) | Fees of legs planned before Spec 22 only; new Solana legs are paid by the user in SOL | 0.5 SOL |
 | EVM gas wallet | One gas drop per EVM leg | 0.01 ETH, 0.05 BNB, 10 POL (per chain) |
 | Gas treasury | Receives network fees in USDC on Solana | n/a |
 | Revenue treasury | Receives platform fees in USDC on Solana | n/a |

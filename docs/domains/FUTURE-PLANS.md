@@ -61,17 +61,15 @@ Phantom, Solflare and similar wallets often **rewrite** a versioned transaction 
 
 **Shipped (option 2, 2026-10-11):** co-sign accepts a wallet message that differs **only** in ComputeBudget instructions when the quote stored `expectedTx.preparedBase64`. Fee payer must stay the platform; `sponsorExposure` still caps priority fee; every non-CU instruction must match the prepared message. Applies to fee legs and LI.FI Solana legs. Still `TX_MISMATCH` if the fee payer, a transfer, or any non-CU instruction changed.
 
-**Deferred — user pays the fee-leg gas (option 3).** Build the fee transfer with the user’s Solana address as fee payer (no platform co-sign on that leg). Avoids the rewrite because the wallet is the payer it expects to be. The user needs a little SOL (`SOL_REQUIRED`); conflicts with “platform sponsors all Solana legs” (D-068) unless scoped to the fee leg only.
-
-Do not implement option 3 until separately approved.
+**Shipped (option 3, Spec 22 P1, ADR-023):** every Solana leg, the fee transfer included, is built with the user’s Solana address as fee payer and paid in SOL (`SOL_REQUIRED` without enough SOL). The wallet is the payer it expects, so the fee-payer rewrite no longer arises; a ComputeBudget-only rewrite is still accepted. The platform fee payer remains only for legs planned before Spec 22 until P4.
 
 ### Batched signing by wallet family (proposed 2026-10-11)
 
-**Now specified** in `docs/superpowers/specs/2026-10-11-batched-signing-direct-routes-design.md` (Spec 22, pending review): signing groups, user-paid Solana gas, fee per group, direct-route rebalances. This entry and "Direct sell-to-buy pairing" are removed when that spec is built.
+**Built for invest on Solana** (Spec 22 P1, ADR-023): signing groups, user-paid Solana gas and fee per group; round 1 below (the fee plus every Solana swap in one approval) and the UX-batch shape (option 1 below) are done for the website. **Still specified, not built** in `docs/superpowers/specs/2026-10-11-batched-signing-direct-routes-design.md`: groups for sells, repairs and rebalances (P2), EVM batching with `wallet_sendCalls` and direct sell-to-buy pairing (P2, P3), continuation operations (P3), retiring the fee payer (P4). Also future: the fee riding in an EVM batch (B-16, rejected for now because the manager payout wallet is a Solana address) and a true multi-swap merge into one transaction.
 
 User direction: fewer signing rounds — **(1) fee + all Solana swaps in one**, **(2) all EVM in one**, **(3) all BTC in one** — instead of one sign per leg (ADR-014 today).
 
-**Important for invest:** buying ETH/xStocks from USDC on Solana is still a **Solana-source** LI.FI transaction (platform `svmSponsor`). The user does not sign with MetaMask on invest for those buys. EVM wallet signing applies to **sells/rebalances that spend an EVM asset**. So the useful grouping is by **source wallet family**, not by destination ticker:
+**Important for invest:** buying ETH/xStocks from USDC on Solana is still a **Solana-source** LI.FI transaction (paid in SOL by the user, ADR-023). The user does not sign with MetaMask on invest for those buys. EVM wallet signing applies to **sells/rebalances that spend an EVM asset**. So the useful grouping is by **source wallet family**, not by destination ticker:
 
 | Round | What is signed | Typical invest | Typical sell |
 |---|---|---|---|

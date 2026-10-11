@@ -23,7 +23,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 
 ## 2. Platform wallets and treasury (user actions)
 
-- [ ] Fund the Solana fee payer, the EVM gas wallet per chain and the gas treasury.
+- [ ] Fund the EVM gas wallet per chain and the gas treasury (and the Solana fee payer only while legs planned before Spec 22 remain, until P4; new Solana legs are paid by the user in SOL, ADR-023).
 - [ ] Revenue treasury address (`REVENUE_TREASURY_SOLANA_ADDRESS`) and its USDC token account.
 - [ ] Move platform keys (fee payer, EVM gas wallet) to a KMS.
 - [ ] Review gas caps (0.02 SOL per user per day may be too low once token-account rent is counted; per-chain EVM caps assume fixed prices) and add an env or table override.
@@ -31,6 +31,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 ## 3. Compliance and legal
 
 - [ ] Legal review of the self-custody model, the network fee, manager fees paid directly by users to organizations and the platform fee, per launch jurisdiction.
+- [ ] Legal and fees review of per-group charging (D-090, ADR-023) against the published "charged up front, not refunded" wording: a user who stops after a first batch has paid only that batch's fees.
 - [ ] Fee caps (D-058: percent ≤ 100 bps, fixed ≤ 1% of the minimum) and final disclosure wording.
 - [ ] Simulated-performance label and fee assumptions (D-064).
 - [ ] Notification, email and invitation copy (placeholder today).
@@ -57,7 +58,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [x] LI.FI keyless live check, 2026-10-03 (`docs/engineering/INTEGRATION-AUDIT.md`): `toAddress` echo (case-insensitive for `0x`); `svmSponsor` on Solana quote legs (v0 base64 transaction, payer at index 0, 2 signatures, ComputeBudget 1.4M / 16001); deny encoding (repeated query parameters on quote, body arrays on routes; unknown keys give 400 code 1011); `maxPriceImpact` honored (`routes: []` with a reason); no-SOL and price-impact shapes; Mayan keys `mayan`, `mayanMCTP`, `mayanFastMCTP`; `advanced/routes` without `fromAddress` for Solana; analytics keyless access, seconds timestamps, cursor pagination (default limit 10, now `limit=100`); token flag is `verificationStatus`.
 - [ ] LI.FI still open with a real key: Bitcoin PSBT encoding and output shape (needs a UTXO-holding address), the code 1001 shape, `NOT_PROCESSABLE_REFUND_NEEDED`, a `FAILED` status with a receiving transaction, `svmSponsor` on non-quote leg types, and the `toAmountMin` tolerance (max(1 ppm, 10^(decimals-8))) against real quotes.
 - [ ] Alchemy Bitcoin `/address`, `/tx/{txid}` and `POST /sendtx/` response shapes: blocked until the UTXO add-on is on the key (every REST call answered 401 on 2026-10-03; Core JSON-RPC `getrawtransaction` works, no balance without the add-on).
-- [ ] Phantom and Solflare device check: co-sign accepts ComputeBudget-only wallet rewrites (2026-10-11, ADR-014); still `TX_MISMATCH` if the fee payer or any non-CU instruction changes. If a wallet still fails, see `docs/domains/FUTURE-PLANS.md` option 3 (user pays fee-leg gas).
+- [ ] Phantom and Solflare device check: a user-signed Solana transaction that differs only in ComputeBudget (wallet priority-fee padding) is accepted, on the batch and per-leg paths and on legacy co-signed legs (ADR-014, ADR-023); still `TX_MISMATCH` if the fee payer or any non-CU instruction changes.
 - [ ] Reown Bitcoin `signPSBT` of the BIP-322 virtual transaction (Xverse, Leather, Unisat, OKX).
 - [ ] CoinMarketCap `/v2/cryptocurrency/quotes/latest` shape with a real key (not run in Spec 14: no key); real token metadata (decimals, symbol) for one token per chain.
 - [x] Alchemy `getTokenSupply` on Solana (USDC decimals 6; non-mint, missing and garbage accounts give -32602), EVM `balanceOf`, `getCode`, null receipt, historical balance and Multicall3 (present on Base, BNB, Polygon): verified live 2026-10-03.
@@ -84,6 +85,8 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Review all new public copy (landing, `/how-it-works`, `/self-custody`, `/for-managers`, footer) with legal; placeholders are marked `[Placeholder … pending review]`.
 - [ ] Replace the redrawn SVG mark (`components/brand/logo.tsx`) with the official logo vector; `public/logo.png` is a usage sheet, not a single mark.
 - [ ] Real wallet sign-in and one small real investment on the redesigned flow (only mock-API runs so far).
+- [ ] Spec 22 P1 (user action, mainnet, tiny amounts): invest with a real Phantom and Solflare on the website through the batched flow (one `signAllTransactions` approval, then a wallet that cannot sign a batch for the one-by-one downgrade), check the SOL line against the real cost, a `SOL_REQUIRED` top-up, Stop and Continue after a stopped chunk, and `group.quoted` telemetry (wallet name, tier). The Playwright spec `apps/web/e2e/invest-batched.spec.ts` has no wallet extension and has not been run yet; run it against `pnpm --filter web dev` and `pnpm --filter web mock-api`.
+- [ ] Mobile device check (iOS and Android, D-041) of invest with user-paid SOL: AppKit RN signs a user-paid Solana transaction that has the user as fee payer (B-21); the per-leg endpoints now refuse an operation that has groups ("Continue this investment on the website").
 - [ ] Lighthouse / LCP on `/` with a production build (the hero sky plate and hand cut-out are priority images).
 - [ ] Reown dashboard: enable Multi Wallet (Pro plan). Web multi-wallet needs it; without it web falls back to one connection per namespace.
 - [ ] Per-chain addresses: after applying migration 0022 on each environment, run `pnpm --filter api ops:backfill-polygon` once (idempotent; gives Polygon to wallets with an EOA EVM address).
@@ -105,7 +108,14 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] `mobile#check-types` fixed with a scoped type assertion in `apps/mobile/src/lib/appkit.tsx` (duplicate `@wagmi/core` 2.22.1 peer variants: typescript 6/7, use-sync-external-store 1.4/1.7, zod 3/4); proper peer dedupe open.
 
 **Spec 10.1**
-- [ ] Re-enable D-073 `PRICE_MOVED` (hard refuse when fresh `toAmountMin` is below the plan floor) before public launch; waived for pilot 2026-10-11 so fee-settled invests are not stuck.
+- [ ] Re-enable D-073 `PRICE_MOVED` (hard refuse when fresh `toAmountMin` is below the plan floor) before public launch; waived for pilot 2026-10-11 so fee-settled invests are not stuck. The website already holds the wallet behind "Accept new prices" when a fresh minimum is lower (ADR-023).
+
+**Spec 22 P1 (ADR-023)**
+- [ ] Tune `K_SIGN_ALL` (12) and `GROUP_SEND_WINDOW_MS` (40 s) from the P0 wallet lab results and production telemetry (`group.quoted`, `group.expired`, `QUOTE_STALE` releases): is a user allowed more than 60 s in the wallet for a big chunk, and how many wallets get the one-popup flow.
+- [ ] Retire the Solana fee payer (P4): after no `platform_fee_payer` leg is open, remove `svmSponsor`, `sponsorExposure`, co-signing, `quoteSponsorable`, the Solana caps and reservations, `SOLANA_FEE_PAYER_SECRET` and `SOLANA_FEE_TRANSFER_LAMPORTS`.
+- [ ] Per-leg submit (`submit.service`): `verifyUserSigned` throws a raw deserialization error for garbage bytes, so the per-leg endpoint answers 500 where the group path answers `TX_MISMATCH`; map it to `TX_MISMATCH` there too.
+- [ ] Group edge cases: a replay of `requestGroup` for a group that is no longer `QUOTED` is 409 (it does not return the old transactions); a later chunk's USDC check uses the finalized balance, which may still include USDC an earlier chunk's buys have not spent (caught at preflight, which releases every claim); a replay does not repeat the per-leg errors of legs left out of a group.
+- [ ] Groups are invest-only: sell, repair and rebalance still sign leg by leg and end `PARTIAL` or `FAILED` on a failed leg (P2, P3: direct-route planner, EVM `wallet_sendCalls`, continuation operations, 7-day auto-stop); "Revoke approval" in the needs-action panel waits for the EVM groups.
 - [ ] Releasing unspent gas after a stop credits the operation's creation-day sponsor row (a stop after UTC midnight credits the old day); a same-chain recovery has no LI.FI status, so the "no second recovery" guard is only reachable on the cross-chain path.
 - [ ] Recovery legs use the fresh quote's minimum (no `PRICE_MOVED`); a duplicate route deny returns 400 `VALIDATION_FAILED`, not 409; the LI.FI transfers lookup is a form on `/ops/routing` (operation and leg ids) because the web has no leg resolve view.
 - [ ] Mobile Leg fixtures may need the new leg fields (`mobile#check-types` already fails on `main`); `lifiVerification` `flagged` is never produced.
