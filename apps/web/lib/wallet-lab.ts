@@ -27,8 +27,22 @@ export type LabResult = {
   popupsReported: number | null;
   compare?: ReturnType<typeof compareSigned>;
   sent?: { ok: number; expired: number; failed: number };
-  evm?: { capabilities: unknown; receipts: number; distinctTxTo: number; revertedCall: "stopped" | "continued" | "n/a" };
+  evm?: { capabilities: unknown; receipts: number; distinctTxTo: number; atomic: boolean | null; statusCode: number | null; revertedCall: ReturnType<typeof revertVerdict> };
+  /** Why a run did not end ok: EIP-1193/5792 code plus the first characters of the message, addresses scrubbed. */
+  detail?: string;
 };
+
+/** Exports must carry no addresses (EVM hex or Solana base58); wallet-controlled text such as capabilities and error messages is untrusted. */
+export const scrubAddresses = (text: string) => text.replace(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/g, "<addr>");
+
+/**
+ * Whether call 3 ran after call 2 reverted, from the EIP-5792 call status: 500 = all reverted, 600 = partial revert. An atomic batch is all or nothing;
+ * a non-atomic one `continued` only when a receipt exists for every call.
+ */
+export function revertVerdict(s: { statusCode: number; atomic: boolean; receipts: number; calls: number }): "all_reverted" | "continued" | "stopped" | "n/a" {
+  if (s.statusCode < 500) return "n/a";
+  return s.atomic ? "all_reverted" : s.statusCode === 600 && s.receipts >= s.calls ? "continued" : "stopped";
+}
 
 /** `n` memo-only transactions paid by the user: harmless, 5000 lamports each if the user chooses to send them. */
 export function buildMemoBatch(i: { payer: PublicKey; blockhash: string; n: number; runId: string }): VersionedTransaction[] {
@@ -44,31 +58,51 @@ const memoOf = (tx: VersionedTransaction) => {
   const memo = tx.message.compiledInstructions.find((ix) => tx.message.staticAccountKeys[ix.programIdIndex]!.equals(MEMO_PROGRAM_ID));
   return memo ? Buffer.from(memo.data).toString() : null;
 };
+/** Same version, payer, blockhash and instructions apart from ComputeBudget: a blockhash or version change is not a ComputeBudget-only rewrite. */
 const sameWithoutComputeBudget = (a: VersionedTransaction, b: VersionedTransaction) => {
-  const strip = (tx: VersionedTransaction) => JSON.stringify([tx.message.staticAccountKeys[0]!.toBase58(), instructionsOf(tx).filter((ix) => ix.program !== COMPUTE_BUDGET_PROGRAM_ID)]);
+  const strip = (tx: VersionedTransaction) => JSON.stringify([tx.message.version, tx.message.staticAccountKeys[0]!.toBase58(), tx.message.recentBlockhash, instructionsOf(tx).filter((ix) => ix.program !== COMPUTE_BUDGET_PROGRAM_ID)]);
   return strip(a) === strip(b);
 };
 
-/** What the wallet handed back versus what we sent: count, order (by memo text), rewritten messages, and whether the rewrite is only ComputeBudget. */
+/**
+ * What the wallet handed back versus what we sent. Each returned transaction is matched to its sent twin by memo text, so a pure reorder is `inOrder: false`
+ * but not a rewrite. `onlyComputeBudget` is false when the blockhash or version changed (`blockhashChanged` says so); `unsigned` counts returns without a fee-payer signature.
+ */
 export function compareSigned(sent: VersionedTransaction[], got: VersionedTransaction[]) {
-  const differing = got.flatMap((tx, k) => (sent[k] && !Buffer.from(sent[k].message.serialize()).equals(Buffer.from(tx.message.serialize())) ? [[sent[k], tx] as const] : []));
+  const pairs = got.map((tx) => [sent.find((s) => memoOf(s) === memoOf(tx)), tx] as const);
+  const differing = pairs.filter(([s, tx]) => !s || !Buffer.from(s.message.serialize()).equals(Buffer.from(tx.message.serialize())));
   return {
     count: got.length,
     expected: sent.length,
     inOrder: got.every((tx, k) => memoOf(tx) === (sent[k] ? memoOf(sent[k]) : null)),
     rewritten: differing.length,
-    onlyComputeBudget: differing.every(([a, b]) => sameWithoutComputeBudget(a, b)),
-    feePayerChanged: got.some((tx, k) => !!sent[k] && !tx.message.staticAccountKeys[0]!.equals(sent[k].message.staticAccountKeys[0]!)),
+    onlyComputeBudget: differing.every(([s, tx]) => !!s && sameWithoutComputeBudget(s, tx)),
+    blockhashChanged: differing.some(([s, tx]) => !!s && s.message.recentBlockhash !== tx.message.recentBlockhash),
+    feePayerChanged: pairs.some(([s, tx]) => !!s && !tx.message.staticAccountKeys[0]!.equals(s.message.staticAccountKeys[0]!)),
+    unsigned: got.filter((tx) => !tx.signatures[0]?.some((b) => b !== 0)).length,
   };
 }
 
-/** Separates a user "no" from a wallet that lacks the method, so neither is reported as a crash. */
-export function classifyWalletError(err: unknown): "rejected" | "unsupported" | "error" {
+const errorParts = (err: unknown) => {
   const e = (typeof err === "object" && err !== null ? err : {}) as { code?: unknown; message?: unknown };
-  const message = typeof err === "string" ? err : typeof e.message === "string" ? e.message : "";
-  if (e.code === 4001 || /reject|denied|cancel/i.test(message)) return "rejected";
-  if (e.code === 4200 || e.code === -32601 || e.code === 4100 || /not supported|unsupported|not implemented|not a function/i.test(message)) return "unsupported";
+  return { code: e.code, message: typeof err === "string" ? err : typeof e.message === "string" ? e.message : "" };
+};
+
+/**
+ * Separates a user "no" from a wallet that lacks the method, so neither is reported as a crash. EIP-5792 5700, 5710 and 5760 (unsupported capability,
+ * chain, atomicity) are `unsupported`; 5740 (bundle too large) stays `error` and its code is kept by `failureDetail`, which is how the batch ceiling is read.
+ */
+export function classifyWalletError(err: unknown): "rejected" | "unsupported" | "error" {
+  const { code, message } = errorParts(err);
+  if (code === 4001 || /reject|denied|cancel/i.test(message)) return "rejected";
+  if (code === 4200 || code === -32601 || code === 4100 || code === 5700 || code === 5710 || code === 5760 || /not supported|unsupported|not implemented|not a function|does not support|method not found/i.test(message)) return "unsupported";
   return "error";
+}
+
+/** The code and the start of the message, addresses scrubbed: what a failed row exports so a size limit (5740) or a timeout is readable. */
+export function failureDetail(err: unknown): string {
+  const { code, message } = errorParts(err);
+  return scrubAddresses(`${typeof code === "number" || typeof code === "string" ? `${code} ` : ""}${message}`.trim()).slice(0, 120);
 }
 
 /** Once one blockhash is stale every later transaction is expired too (the same rule as P1). `builtAt` and `now` are for display only. */

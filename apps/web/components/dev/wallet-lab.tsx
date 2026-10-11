@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Callout, Eyebrow, Tile } from "@/components/ui/kit";
 import { appKit } from "@/lib/appkit";
-import { buildMemoBatch, classifyWalletError, compareSigned, LAB_BATCH_SIZES, sendPlan, standardWalletFeatures, USDC_BY_CHAIN, type LabResult } from "@/lib/wallet-lab";
+import { buildMemoBatch, classifyWalletError, compareSigned, failureDetail, LAB_BATCH_SIZES, revertVerdict, scrubAddresses, sendPlan, standardWalletFeatures, USDC_BY_CHAIN, type LabResult } from "@/lib/wallet-lab";
 
 /** Dev-only (Spec 22 P0): measures how each wallet handles batched signing. It builds harmless transactions and sends nothing unless a button says so. */
 
@@ -55,9 +55,9 @@ export function WalletLab() {
       const extra = await run();
       setRows((prev) => [...prev, { ...head, msToReturn: null, popupsReported: null, ...extra, outcome: "ok" }]);
     } catch (err) {
-      const outcome = classifyWalletError(err);
-      setNote(`${outcome}: ${err instanceof Error ? err.message : String(err)}`);
-      setRows((prev) => [...prev, { ...head, outcome, msToReturn: null, popupsReported: null }]);
+      const [outcome, detail] = [classifyWalletError(err), failureDetail(err)];
+      setNote(`${outcome}: ${detail}`);
+      setRows((prev) => [...prev, { ...head, outcome, detail, msToReturn: null, popupsReported: null }]);
     } finally {
       setBusy(false);
     }
@@ -94,15 +94,16 @@ export function WalletLab() {
       const valid = await Promise.all(last.signed.map(async (tx) => (await connection.isBlockhashValid(tx.message.recentBlockhash, { commitment: "confirmed" })).value));
       const plan = sendPlan({ builtAt: last.builtAt, now: Date.now(), valid });
       const sent = { ok: 0, expired: 0, failed: 0 };
+      let lastError = "";
       for (const [k, tx] of last.signed.entries()) {
         if (plan[k] === "expired") { sent.expired++; continue; }
-        try { await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 0 }); sent.ok++; } catch { sent.failed++; }
+        try { await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 0 }); sent.ok++; } catch (err) { sent.failed++; lastError = failureDetail(err); }
       }
       patch(last.row, { sent });
-      setNote(`Sent ${Math.round((Date.now() - last.builtAt) / 1000)} s after building: ${sent.ok} ok, ${sent.expired} expired, ${sent.failed} failed.`);
+      setNote(`Sent ${Math.round((Date.now() - last.builtAt) / 1000)} s after building: ${sent.ok} accepted by the RPC (not necessarily landed), ${sent.expired} expired, ${sent.failed} failed${lastError ? ` (${lastError})` : ""}.`);
       setLast(null);
     } catch (err) {
-      setNote(`error: ${err instanceof Error ? err.message : String(err)}`);
+      setNote(`error: ${failureDetail(err)}`);
     } finally {
       setBusy(false);
     }
@@ -119,7 +120,7 @@ export function WalletLab() {
       if (kind === "capabilities") throw err;
       capabilities = { error: classifyWalletError(err) };
     }
-    if (kind === "capabilities") return { evm: { capabilities, receipts: 0, distinctTxTo: 0, revertedCall: "n/a" } };
+    if (kind === "capabilities") return { evm: { capabilities, receipts: 0, distinctTxTo: 0, atomic: null, statusCode: null, revertedCall: "n/a" } };
     const self = { to: account, value: 0n, data: "0x" } as const;
     const calls: { to: `0x${string}`; value?: bigint; data: `0x${string}` }[] = kind === "revert" ? [self, { to: USDC_BY_CHAIN[chain], data: "0xdeadbeef" }, self] : Array.from({ length: n }, () => self);
     const t0 = performance.now();
@@ -129,11 +130,11 @@ export function WalletLab() {
     const receipts = status.receipts ?? [];
     const txs = await Promise.all(receipts.map((r) => getTransaction(config, { hash: r.transactionHash, chainId })));
     const selfTo = txs.filter((t) => t.to?.toLowerCase() === account.toLowerCase()).length;
-    setNote(`status ${status.status}; receipts ${receipts.map((r) => r.status).join(",") || "none"}; ${selfTo} of ${txs.length} transactions are sent to your own address (EIP-7702 style).`);
-    return { msToReturn, evm: { capabilities, receipts: receipts.length, distinctTxTo: new Set(txs.map((t) => t.to?.toLowerCase())).size, revertedCall: kind === "revert" ? (receipts.length >= calls.length ? "continued" : "stopped") : "n/a" } };
+    setNote(`status ${status.status} (${status.statusCode}, ${status.atomic ? "atomic" : "not atomic"}); receipts ${receipts.map((r) => r.status).join(",") || "none"}; ${selfTo} of ${txs.length} transactions are sent to your own address (EIP-7702 style).`);
+    return { msToReturn, evm: { capabilities, receipts: receipts.length, distinctTxTo: new Set(txs.map((t) => t.to?.toLowerCase())).size, atomic: status.atomic, statusCode: status.statusCode, revertedCall: kind === "revert" ? revertVerdict({ statusCode: status.statusCode, atomic: status.atomic, receipts: receipts.length, calls: calls.length }) : "n/a" } };
   });
 
-  const copyJson = () => navigator.clipboard.writeText(JSON.stringify(rows, null, 2)).then(() => setNote("Copied."), () => setNote("Clipboard blocked; select the table instead."));
+  const copyJson = () => navigator.clipboard.writeText(scrubAddresses(JSON.stringify(rows, null, 2))).then(() => setNote("Copied."), () => setNote("Clipboard blocked; select the table instead."));
   const lastRow = rows.at(-1);
 
   return (
@@ -147,6 +148,7 @@ export function WalletLab() {
         <Eyebrow as="h2">Connected wallets</Eyebrow>
         <Button onClick={() => open()}>Connect or switch wallet</Button>
         <p className="text-sm text-ink-muted">Solana: {sol.isConnected ? solName : "not connected"} · EVM: {evm.isConnected ? evmName : "not connected"}</p>
+        <label className="block text-sm font-medium text-ink"><input type="checkbox" checked={sendEnabled} onChange={(e) => setSendEnabled(e.target.checked)} /> Allow anything that broadcasts (off by default: sign-and-send, send signed, EVM calls)</label>
         <ul className="text-sm text-ink-muted">
           {std.map((w, k) => <li key={`${w.name}-${k}`}><b>{w.name}</b>: {w.features.join(", ")}</li>)}
           {std.length === 0 && <li>No Wallet Standard wallets announced.</li>}
@@ -162,21 +164,18 @@ export function WalletLab() {
 
       <Tile className="space-y-3">
         <Eyebrow as="h2">Solana</Eyebrow>
-        <p className="text-sm text-ink-muted">Memo-only transactions, you as fee payer. Signing is free. Sending costs {n} × 0.000005 SOL.</p>
+        <p className="text-sm text-ink-muted">Memo-only transactions, you as fee payer. Signing is free. Sending costs at least {n} × 0.000005 SOL (more if the wallet adds a priority fee).</p>
         <div className="flex flex-wrap gap-2">
           <Button disabled={busy} onClick={() => runSolana("sign_all")}>Sign all</Button>
           <Button disabled={busy} variant="secondary" onClick={() => runSolana("single")}>Sign one by one</Button>
-          <Button disabled={busy} variant="secondary" onClick={() => runSolana("sign_and_send")}>Sign and send (Wallet Standard), sends now: {n} × 0.000005 SOL</Button>
+          <Button disabled={busy || !sendEnabled} variant="secondary" onClick={() => runSolana("sign_and_send")}>Sign and send (Wallet Standard), sends now: at least {n} × 0.000005 SOL; rejecting mid-batch leaves earlier ones sent</Button>
         </div>
         {lastRow?.family === "solana" && (
           <label className="block text-sm">How many popups did you see?{" "}
             <input type="number" min={0} className="w-20 rounded border border-line-strong bg-surface px-2 py-1" value={lastRow.popupsReported ?? ""} onChange={(e) => patch(rows.length - 1, { popupsReported: e.target.value === "" ? null : Number(e.target.value) })} />
           </label>
         )}
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm"><input type="checkbox" checked={sendEnabled} onChange={(e) => setSendEnabled(e.target.checked)} /> Allow sending the signed batch</label>
-          <Button disabled={busy || !sendEnabled || !last} variant="destructive" onClick={sendSigned}>Send signed ({last?.signed.length ?? 0} × 0.000005 SOL)</Button>
-        </div>
+        <Button disabled={busy || !sendEnabled || !last} variant="destructive" onClick={sendSigned}>Send signed (at least {last?.signed.length ?? 0} × 0.000005 SOL)</Button>
       </Tile>
 
       <Tile className="space-y-3">
@@ -185,11 +184,11 @@ export function WalletLab() {
           {Object.keys(EVM_CHAINS).map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
         {chain === "ethereum" && <Callout tone="warning">Ethereum gas is expensive; prefer Base, Arbitrum or Polygon.</Callout>}
-        <p className="text-sm text-ink-muted">Zero-value self-calls: {n} calls on {chain}, gas from your wallet.</p>
+        <p className="text-sm text-ink-muted">Zero-value self-calls: up to {n} calls on {chain}, gas from your wallet. Sends are off on Ethereum (capabilities only).</p>
         <div className="flex flex-wrap gap-2">
           <Button disabled={busy} variant="secondary" onClick={() => runEvm("capabilities")}>Capabilities</Button>
-          <Button disabled={busy} onClick={() => runEvm("calls")}>Send {n} self-calls</Button>
-          <Button disabled={busy} variant="secondary" onClick={() => runEvm("revert")}>Send with a reverting call (3 calls)</Button>
+          <Button disabled={busy || !sendEnabled || chain === "ethereum"} onClick={() => runEvm("calls")}>Send {n} self-calls</Button>
+          <Button disabled={busy || !sendEnabled || chain === "ethereum"} variant="secondary" onClick={() => runEvm("revert")}>Send with a reverting call (3 calls)</Button>
         </div>
       </Tile>
 
@@ -204,14 +203,14 @@ export function WalletLab() {
               {rows.map((r, k) => (
                 <tr key={k}>
                   <td>{r.wallet}</td><td>{r.mode}</td><td>{r.chain}</td><td>{r.n}</td><td>{r.outcome}</td><td>{r.msToReturn ?? "-"}</td><td>{r.popupsReported ?? "-"}</td>
-                  <td>{[r.compare && `${r.compare.count}/${r.compare.expected} back, ${r.compare.inOrder ? "in order" : "reordered"}, ${r.compare.rewritten} rewritten${r.compare.rewritten && r.compare.onlyComputeBudget ? " (ComputeBudget only)" : ""}${r.compare.feePayerChanged ? ", FEE PAYER CHANGED" : ""}`, r.sent && `sent ${r.sent.ok} ok / ${r.sent.expired} expired / ${r.sent.failed} failed`, r.evm && `${r.evm.receipts} receipts, ${r.evm.distinctTxTo} distinct to, revert: ${r.evm.revertedCall}`].filter(Boolean).join("; ")}</td>
+                  <td>{[r.compare && `${r.compare.count}/${r.compare.expected} back, ${r.compare.inOrder ? "in order" : "reordered"}, ${r.compare.rewritten} rewritten${r.compare.rewritten && r.compare.onlyComputeBudget ? " (ComputeBudget only)" : ""}${r.compare.blockhashChanged ? ", BLOCKHASH CHANGED" : ""}${r.compare.feePayerChanged ? ", FEE PAYER CHANGED" : ""}${r.compare.unsigned ? `, ${r.compare.unsigned} UNSIGNED` : ""}`, r.sent && `sent ${r.sent.ok} ok / ${r.sent.expired} expired / ${r.sent.failed} failed`, r.evm && `${r.evm.receipts} receipts, ${r.evm.distinctTxTo} distinct to, ${r.evm.atomic === null ? "" : r.evm.atomic ? "atomic, " : "not atomic, "}revert: ${r.evm.revertedCall}`, r.detail].filter(Boolean).join("; ")}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <Button variant="secondary" disabled={rows.length === 0} onClick={copyJson}>Copy JSON</Button>
-        <p className="text-sm text-ink-muted">No addresses are included. Paste into INTEGRATION-AUDIT.md §Batch signing (P0).</p>
+        <p className="text-sm text-ink-muted">Addresses are scrubbed from the copy. Paste into INTEGRATION-AUDIT.md §Batch signing (P0).</p>
       </Tile>
     </main>
   );
