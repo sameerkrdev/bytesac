@@ -454,3 +454,117 @@ describe("solanaConfirmed", () => {
     expect(vi.mocked(connection.getSignatureStatuses).mock.calls.length).toBeGreaterThanOrEqual(4);
   });
 });
+
+/** The ComputeBudget limit and price (micro-lamports) a transaction requests. */
+const budget = (serializedBase64: string) => {
+  const message = VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64")).message;
+  const keys = message.staticAccountKeys;
+  const data = message.compiledInstructions.filter((ix) => keys[ix.programIdIndex]!.equals(ComputeBudgetProgram.programId)).map((ix) => Buffer.from(ix.data));
+  return { limit: data.find((d) => d[0] === 2)!.readUInt32LE(1), price: Number(data.find((d) => d[0] === 3)!.readBigUInt64LE(1)) };
+};
+
+describe("the fee transfer's compute budget (spec 22 B-24)", () => {
+  it("requests 200 000 units at the 75th percentile of the non-zero recent fees; the SOL requirement follows the price", async () => {
+    const { user, op } = await arrange();
+    const fees = (values: number[]) => vi.mocked(connection.getRecentPrioritizationFees).mockResolvedValue(values.map((prioritizationFee, slot) => ({ slot, prioritizationFee })));
+
+    const floor = await groupReq(user.h, op.id, { idempotencyKey: "grp-floor0000" });
+    expect(budget(floor.body.transactions[0].serializedBase64)).toEqual({ limit: 200_000, price: 16_001 }); // no data: the floor
+    expect(vi.mocked(connection.getRecentPrioritizationFees).mock.calls[0]![0]).toEqual({ lockedWritableAccounts: [expect.objectContaining({})] });
+    const base = BigInt(floor.body.solRequiredLamports);
+
+    fees([0, 5_000, 20_000, 40_000, 90_000]);
+    const p75 = await groupReq(user.h, op.id, { idempotencyKey: "grp-p750000" });
+    expect(budget(p75.body.transactions[0].serializedBase64)).toEqual({ limit: 200_000, price: 40_000 });
+    expect(BigInt(p75.body.solRequiredLamports) - base).toBe(8_000n - 3_201n); // ceil(price x 200 000 / 1e6) per price
+
+    vi.mocked(connection.getRecentPrioritizationFees).mockRejectedValue(new Error("rpc down"));
+    expect(budget((await groupReq(user.h, op.id, { idempotencyKey: "grp-rpcdown0" })).body.transactions[0].serializedBase64).price).toBe(16_001);
+
+    fees([9_000_000]);
+    const clamped = await groupReq(user.h, op.id, { idempotencyKey: "grp-clamp000" });
+    expect(budget(clamped.body.transactions[0].serializedBase64).price).toBe(2_500_000);
+    expect(BigInt(clamped.body.solRequiredLamports) - base).toBe(500_000n - 3_201n); // at most 0.0005 SOL
+  });
+});
+
+describe("sending (spec 22 B-25)", () => {
+  it("sends with preflight on and no maxRetries, so the RPC rebroadcasts until the blockhash expires", async () => {
+    const { user, wallet, op, group } = await quoted();
+    expect((await submit(user.h, op.id, group.groupId, signAll(group.transactions, wallet))).status).toBe(200);
+    expect(sends()).toHaveLength(5);
+    for (const [, options] of sends()) expect(options).toStrictEqual({ skipPreflight: false });
+  });
+
+  it("re-sends the fee's identical bytes every 2 s while it waits for the fee to confirm, then sends each buy once", async () => {
+    const { user, wallet, op, group } = await quoted();
+    vi.mocked(connection.getSignatureStatuses).mockImplementation(async (sigs) => ({
+      context: { slot: 1 }, value: sigs.map(() => (sends().length < 3 ? null : { slot: 1, confirmations: null, err: null, confirmationStatus: "confirmed" as const })),
+    }));
+    expect((await submit(user.h, op.id, group.groupId, signAll(group.transactions, wallet))).status).toBe(200);
+    expect(sends()).toHaveLength(3 + 4); // the fee once, twice more while waiting, then the four buys
+    const raws = sends().map(([raw]) => Buffer.from(raw as Uint8Array).toString("base64"));
+    expect(new Set(raws.slice(0, 3)).size).toBe(1);
+    expect(new Set(raws).size).toBe(5);
+    const after = await legs(op.id);
+    expect(after.every((l) => l.status === "SUBMITTED")).toBe(true);
+  }, 30_000);
+});
+
+describe("the next group waits for the previous fee to be confirmed (spec 22 B-26)", () => {
+  it("answers 409 fee_confirming while the fee is unseen, a plain 409 when it failed on chain, and forms the group once it is confirmed", async () => {
+    const { user, wallet, chain, op } = await arrange({ legs: 14 });
+    const first = (await groupReq(user.h, op.id)).body;
+    const feeSig = (await submit(user.h, op.id, first.groupId, signAll(first.transactions, wallet))).body.legs.find((l: { kind: string }) => l.kind === "network_fee").sourceTx;
+
+    chain.signatureStatus.set(feeSig, "none");
+    const waiting = await groupReq(user.h, op.id, { idempotencyKey: "grp-bbbbbbbb" });
+    expect(waiting.status).toBe(409);
+    expect(waiting.body.error).toMatchObject({ code: "OPERATION_IN_PROGRESS", details: { reason: "fee_confirming" } });
+
+    chain.signatureStatus.set(feeSig, "failed");
+    const failed = await groupReq(user.h, op.id, { idempotencyKey: "grp-cccccccc" });
+    expect(failed.status).toBe(409);
+    expect(failed.body.error.code).toBe("OPERATION_IN_PROGRESS");
+    expect(failed.body.error.details).toBeUndefined();
+
+    chain.signatureStatus.set(feeSig, "confirmed");
+    const next = await groupReq(user.h, op.id, { idempotencyKey: "grp-dddddddd" });
+    expect(next.status).toBe(200); // the fee leg is still SUBMITTED (the tracker has not settled it)
+    expect((await legs(op.id)).find((l) => l.id === first.transactions[0].legId)!.status).toBe("SUBMITTED");
+  });
+
+  it("an unknown fee blocks without a reason", async () => {
+    const { user, op } = await quoted();
+    await adminSql`UPDATE app.operation_legs SET status = 'UNKNOWN', source_tx = 'sig-u' WHERE id = ${op.legs[0].id}`;
+    const res = await groupReq(user.h, op.id, { idempotencyKey: "grp-bbbbbbbb" });
+    expect(res.status).toBe(409);
+    expect(res.body.error.details).toBeUndefined();
+  });
+});
+
+describe("the fee coverage rule (spec 22 Review Focus 1)", () => {
+  it("the next group after a confirmed fee does not re-charge the legs it covers, before the tracker has set feeCoveredBy", async () => {
+    const { user, wallet, op } = await arrange();
+    const first = (await groupReq(user.h, op.id, { tier: "single" })).body;
+    expect(first.transactions.map((t: Tx) => t.kind)).toEqual(["fee"]);
+    const sub = await submit(user.h, op.id, first.groupId, signAll(first.transactions, wallet));
+    expect(sub.status).toBe(200);
+    expect((await legs(op.id)).every((l) => l.fee_covered_by === null)).toBe(true);
+
+    const second = (await groupReq(user.h, op.id, { tier: "single", idempotencyKey: "grp-bbbbbbbb" })).body;
+    expect(second.transactions.map((t: Tx) => t.kind)).toEqual(["asset"]);
+    const third = (await groupReq(user.h, op.id, { tier: "single", idempotencyKey: "grp-cccccccc" })).body;
+    expect(third.transactions.map((t: Tx) => t.kind)).toEqual(["asset"]);
+    expect((await groupRows(op.id)).map((g) => g.fee_leg_id === null)).toEqual([false, true, true]);
+  });
+
+  it("a fee that failed covers nothing: the legs are charged again", async () => {
+    const { user, wallet, op } = await arrange();
+    const first = (await groupReq(user.h, op.id, { tier: "single" })).body;
+    await submit(user.h, op.id, first.groupId, signAll(first.transactions, wallet));
+    await adminSql`UPDATE app.operation_legs SET status = 'FAILED' WHERE id = ${first.transactions[0].legId}`;
+    const again = (await groupReq(user.h, op.id, { tier: "single", idempotencyKey: "grp-bbbbbbbb" })).body;
+    expect(again.transactions.map((t: Tx) => t.kind)).toEqual(["fee"]);
+  });
+});

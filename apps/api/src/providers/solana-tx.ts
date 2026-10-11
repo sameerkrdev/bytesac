@@ -39,6 +39,10 @@ export const tokenAccountMissing = (owner: string, mint: string): Promise<boolea
  */
 const FEE_LEG_CU_LIMIT = 1_400_000;
 const FEE_LEG_CU_PRICE_MICRO = 16_001n;
+/** The user-paid fee transfer (one signature, a few token instructions) needs far less than the platform-paid one: right-sized so it is cheap to prioritise (spec 22 B-24). */
+export const USER_FEE_CU_LIMIT = 200_000;
+const USER_FEE_PRICE_MIN_MICRO = 16_001n;
+const USER_FEE_PRICE_MAX_MICRO = 2_500_000n;
 const FEE_LEG_PRIORITY_LAMPORTS = (FEE_LEG_CU_PRICE_MICRO * BigInt(FEE_LEG_CU_LIMIT) + 999_999n) / 1_000_000n;
 /** Two signatures plus the fee-leg priority fee. Token-account rent is added by the planner per missing recipient ATA. */
 export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n + FEE_LEG_PRIORITY_LAMPORTS;
@@ -49,9 +53,15 @@ export async function buildFeeTransfer(i: { owner: string; payer: "user" | "plat
   const [owner, mint] = [new PublicKey(i.owner), new PublicKey(USDC_SOLANA_MINT)];
   const payer = i.payer === "user" ? owner : feePayer().publicKey;
   const from = ata(owner, mint);
+  // User-paid: the 75th percentile of the non-zero recent fees paid by transactions locking the user's USDC account, clamped; an RPC error or no data gives the floor (B-24).
+  const recent = i.payer === "user"
+    ? (await connection.getRecentPrioritizationFees({ lockedWritableAccounts: [from] }).catch(() => [])).map((f) => f.prioritizationFee).filter((f) => f > 0).sort((a, b) => a - b)
+    : [];
+  const p75 = BigInt(recent[Math.floor((recent.length - 1) * 0.75)] ?? 0);
+  const price = i.payer === "platform" ? FEE_LEG_CU_PRICE_MICRO : p75 < USER_FEE_PRICE_MIN_MICRO ? USER_FEE_PRICE_MIN_MICRO : p75 > USER_FEE_PRICE_MAX_MICRO ? USER_FEE_PRICE_MAX_MICRO : p75;
   const instructions = [
-    ComputeBudgetProgram.setComputeUnitLimit({ units: FEE_LEG_CU_LIMIT }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: FEE_LEG_CU_PRICE_MICRO }),
+    ComputeBudgetProgram.setComputeUnitLimit({ units: i.payer === "user" ? USER_FEE_CU_LIMIT : FEE_LEG_CU_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: price }),
     ...i.transfers.flatMap((t) => {
       const recipient = new PublicKey(t.recipient);
       const to = ata(recipient, mint);
@@ -176,7 +186,7 @@ function nonComputeCore(tx: VersionedTransaction): { program: string; accounts: 
 }
 
 /** True when the wallet message differs from the prepared one only in ComputeBudget instructions (or their values). */
-function sameExceptComputeBudget(prepared: VersionedTransaction, signed: VersionedTransaction): boolean {
+export function sameExceptComputeBudget(prepared: VersionedTransaction, signed: VersionedTransaction): boolean {
   if (prepared.message.recentBlockhash !== signed.message.recentBlockhash) return false;
   if (JSON.stringify(prepared.message.addressTableLookups) !== JSON.stringify(signed.message.addressTableLookups)) return false;
   const pKeys = prepared.message.staticAccountKeys;
@@ -239,17 +249,25 @@ export async function blockhashUsable(recentBlockhash: string, quoteBlockHeight:
   return valid.value && height <= quoteBlockHeight + BLOCKHASH_LIFETIME_BLOCKS - BLOCKHASH_MARGIN_BLOCKS;
 }
 
-/** One attempt, never retried. A `SendTransactionError` is a definitive refusal; any other failure leaves the outcome unknown. */
-export const sendSolana = (raw: Uint8Array): Promise<string> => connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 0 });
+/** One send call, never retried by this server; the RPC rebroadcasts until the blockhash expires (spec 22 B-25). A `SendTransactionError` is a definitive refusal; any other failure leaves the outcome unknown. */
+export const sendSolana = (raw: Uint8Array): Promise<string> => connection.sendRawTransaction(raw, { skipPreflight: false });
 
-/** True once `signature` is confirmed or finalized without error; false when it failed or `waitMs` passes first (always asks at least once). Polls every 500 ms. */
-export async function solanaConfirmed(signature: string, waitMs: number): Promise<boolean> {
+/**
+ * True once `signature` is confirmed or finalized without error; false when it failed or `waitMs` passes first (always asks at least once). Polls every 500 ms.
+ * With `raw` (the identical signed bytes) it re-sends them every 2 s while it waits; never re-signed or rebuilt, send errors ignored (B-25).
+ */
+export async function solanaConfirmed(signature: string, waitMs: number, raw?: Uint8Array): Promise<boolean> {
   const until = Date.now() + waitMs;
+  let resentAt = Date.now();
   for (;;) {
     const status = (await connection.getSignatureStatuses([signature])).value[0];
     if (status?.err) return false;
     if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return true;
     if (Date.now() >= until) return false;
+    if (raw && Date.now() - resentAt >= 2_000) {
+      resentAt = Date.now();
+      sendSolana(raw).catch(() => {});
+    }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }

@@ -1,8 +1,9 @@
 import createHttpError from "http-errors";
 import { SendTransactionError } from "@solana/web3.js";
-import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
-import { db, isUniqueViolation, operationFees, operationGroups, operationLegs, operations } from "@repo/db";
-import { GROUP_SEND_WINDOW_MS, K_SIGN_ALL, SOL_BUFFER_LAMPORTS, USDC_SOLANA_MINT, approvalsEstimate, type GroupRequest, type GroupResponse, type GroupSubmit, type OperationView } from "@repo/validator";
+import bs58 from "bs58";
+import { and, asc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
+import { db, isUniqueViolation, operationFees, operationGroups, operationLegs, operations, type Tx } from "@repo/db";
+import { GROUP_SEND_WINDOW_MS, K_SIGN_ALL, K_SIGN_AND_SEND, SOL_BUFFER_LAMPORTS, USDC_SOLANA_MINT, approvalsEstimate, type GroupRequest, type GroupResponse, type GroupSent, type GroupSubmit, type OperationView } from "@repo/validator";
 import { logger } from "@repo/logger";
 import { enqueue } from "@/config/queues";
 import { blockhashUsable, buildFeeTransfer, connection, sendSolana, solanaBalance, solanaNeed, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
@@ -13,7 +14,15 @@ import { assertLegAllowed, assertOperable, quoteAssetLeg } from "./quote.service
 import { markSubmitted } from "./submit.service";
 
 const IN_FLIGHT = ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"] as const;
-const inProgress = () => createHttpError(409, "A transaction of this investment is still being confirmed. Wait for it to finish.", { code: "OPERATION_IN_PROGRESS" });
+/** `fee_confirming`: the previous fee transaction is on its way and not confirmed yet; the web retries (spec 22 B-26). */
+const inProgress = (reason?: "fee_confirming") => createHttpError(409, "A transaction of this investment is still being confirmed. Wait for it to finish.", { code: "OPERATION_IN_PROGRESS", ...(reason ? { details: { reason } } : {}) });
+const groupExpired = () => createHttpError(409, "These quotes expired. Get new quotes.", { code: "GROUP_EXPIRED" });
+/** The group's send window ended: it is EXPIRED and its legs leave it, or no later group could take them. Under the operation lock. */
+async function expireGroup(tx: Tx, groupId: string, tier: string, walletName: string | null): Promise<void> {
+  const expired = await tx.update(operationGroups).set({ status: "EXPIRED", updatedAt: sql`now()` }).where(and(eq(operationGroups.id, groupId), eq(operationGroups.status, "QUOTED"))).returning({ id: operationGroups.id });
+  if (expired.length) await tx.update(operationLegs).set({ groupId: null, updatedAt: sql`now()` }).where(and(eq(operationLegs.groupId, groupId), eq(operationLegs.status, "PLANNED")));
+  logger.info("group.expired", { tier, walletName });
+}
 const hasShare = (l: Pick<Leg, "feeShare">) => Object.values(l.feeShare ?? {}).some((v) => BigInt(v) > 0n);
 const preparedOf = (l: Pick<Leg, "expectedTx">) => (l.expectedTx as { preparedBase64: string }).preparedBase64;
 /** What a leg's fresh group quote stored in its route summary (see `requestGroup`), for the response and its idempotent replay. */
@@ -32,15 +41,22 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   const addresses = await userAddresses(db, ctx.userId);
   const owner = addressOn(addresses, "solana");
 
+  // B-26: the next group waits for the previous fee transaction to be confirmed on chain, not settled. Read before the lock; a fee that is not in this map blocks without a reason.
+  const feeLegs = await db.select({ id: operationLegs.id, sourceTx: operationLegs.sourceTx }).from(operationLegs)
+    .where(and(eq(operationLegs.operationId, opId), eq(operationLegs.kind, "network_fee"), inArray(operationLegs.status, ["SUBMITTED", "PENDING_CHAIN"]), isNotNull(operationLegs.sourceTx)));
+  const statuses = feeLegs.length ? (await connection.getSignatureStatuses(feeLegs.map((l) => l.sourceTx!), { searchTransactionHistory: true }).catch(() => null))?.value ?? [] : [];
+  const feeState = new Map(feeLegs.map((l, n) => [l.id, statuses[n]?.err ? "failed" : statuses[n]?.confirmationStatus === "confirmed" || statuses[n]?.confirmationStatus === "finalized" ? "confirmed" : "pending"] as const));
+
   const prep = await db.transaction(async (tx) => {
     const op = await lockOperation(tx, opId);
     if (op.status !== "PLANNED" && op.status !== "IN_PROGRESS") throw invalidTransition(`This operation is ${op.status.toLowerCase()}.`);
     const groups = await tx.select().from(operationGroups).where(eq(operationGroups.operationId, opId));
     const same = groups.find((g) => g.idempotencyKey === body.idempotencyKey);
-    if (same) return { replay: same, op, take: [] as Leg[], feeOnly: null };
+    if (same) return { replay: same, op, take: [] as Leg[], feeOnly: null, covering: new Set<string>() };
     const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, opId)).orderBy(asc(operationLegs.sequence));
     if (!groups.length && legs.some((l) => l.status !== "PLANNED")) throw invalidTransition("This investment is being signed one transaction at a time.");
-    if (legs.some((l) => l.kind === "network_fee" && (IN_FLIGHT as readonly string[]).includes(l.status))) throw inProgress();
+    const blocking = legs.filter((l) => l.kind === "network_fee" && (IN_FLIGHT as readonly string[]).includes(l.status) && feeState.get(l.id) !== "confirmed");
+    if (blocking.length) throw inProgress(blocking.every((l) => feeState.get(l.id) === "pending") ? "fee_confirming" : undefined);
     // A claimed group whose legs are all past the claim (a send that ended) no longer holds the chain's one open slot.
     await tx.update(operationGroups).set({ status: "SENT", updatedAt: sql`now()` })
       .where(and(eq(operationGroups.operationId, opId), eq(operationGroups.status, "CLAIMED"), notExists(db.select().from(operationLegs).where(and(eq(operationLegs.groupId, operationGroups.id), eq(operationLegs.status, "SUBMITTING"))))));
@@ -49,16 +65,22 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
     const candidates = legs.filter((l) => l.kind !== "network_fee" && l.status === "PLANNED" && l.fromChain === "solana" && !l.recoveryOf);
     if (!candidates.length) throw invalidTransition("Nothing is left to sign.");
     if (candidates.some((l) => l.gasPayer === "platform_fee_payer")) throw invalidTransition("This plan was made before user-paid gas. Plan again.");
-    const uncovered = candidates.filter((l) => !l.feeCoveredBy && hasShare(l));
-    // `single`: the fee transaction alone first (it charges every uncovered leg), then one leg per group; otherwise a chunk plus its fee.
-    const feeOnly = body.tier === "single" && uncovered.length > 0;
-    return { replay: null, op, take: feeOnly ? [] : candidates.slice(0, body.tier === "single" ? 1 : K_SIGN_ALL - (uncovered.length ? 1 : 0)), feeOnly: feeOnly ? uncovered : null };
+    // A leg is covered once a fee that lists it is on its way (not PLANNED, not FAILED); waiting for SETTLED would charge it twice now that groups proceed at `confirmed`.
+    const covering = new Set(legs.filter((l) => l.kind === "network_fee" && l.status !== "PLANNED" && l.status !== "FAILED").flatMap((l) => ((l.routeSummary?.covers ?? []) as string[])));
+    const isUncovered = (l: Leg) => !l.feeCoveredBy && !covering.has(l.id) && hasShare(l);
+    const uncovered = candidates.filter(isUncovered);
+    // `single`: the fee transaction alone first (it charges every uncovered leg), then one leg per group. `sign_and_send`: the fee alone first for the next K legs, then those legs
+    // with no fee (the wallet signs and sends the fee as its own approval, B-27). `sign_all`: a chunk plus its fee.
+    const window = body.tier === "sign_and_send" ? candidates.slice(0, K_SIGN_AND_SEND) : candidates;
+    const feeFor = body.tier === "single" ? uncovered : body.tier === "sign_and_send" ? window.filter(isUncovered) : [];
+    const take = feeFor.length ? [] : window.slice(0, body.tier === "single" ? 1 : body.tier === "sign_and_send" ? K_SIGN_AND_SEND : K_SIGN_ALL - (uncovered.length ? 1 : 0));
+    return { replay: null, op, take, feeOnly: feeFor.length ? feeFor : null, covering };
   });
   if (prep.replay) {
     if (prep.replay.status !== "QUOTED") throw invalidTransition(`This batch is ${prep.replay.status.toLowerCase()}.`);
     return groupView(prep.replay, [], owner);
   }
-  const { op, take, feeOnly } = prep;
+  const { op, take, feeOnly, covering } = prep;
 
   // Height first: a blockhash fetched by the quotes below is at least this fresh, so the send gate only errs towards releasing early.
   const quoteBlockHeight = await connection.getBlockHeight("confirmed");
@@ -75,7 +97,7 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   if (take.length && !quoted.length) throw (settled.find((r) => r.status === "rejected") as PromiseRejectedResult).reason;
 
   // The fee transaction charges the uncovered shares of the legs that were quoted (or, fee-only, of every leg it covers), in network, manager, platform order.
-  const charged = (feeOnly ?? quoted.map((q) => q.leg)).filter((l) => !l.feeCoveredBy);
+  const charged = (feeOnly ?? quoted.map((q) => q.leg)).filter((l) => !l.feeCoveredBy && !covering.has(l.id));
   const sums = new Map<string, bigint>();
   for (const leg of charged) for (const [kind, v] of Object.entries(leg.feeShare ?? {})) sums.set(kind, (sums.get(kind) ?? 0n) + BigInt(v));
   const rows = await db.select({ kind: operationFees.kind, recipient: operationFees.recipientAddress }).from(operationFees).where(eq(operationFees.operationId, op.id))
@@ -181,14 +203,11 @@ export async function submitGroup(ctx: OpCtx, opId: string, groupId: string, bod
 
   if (group.status !== "QUOTED") throw invalidTransition(`This batch is ${group.status.toLowerCase()}.`);
   if (group.sendBy <= new Date()) {
-    // The legs leave the expired group with it, or no later group could take them.
     await db.transaction(async (tx) => {
       await lockOperation(tx, op.id);
-      const expired = await tx.update(operationGroups).set({ status: "EXPIRED", updatedAt: sql`now()` }).where(and(eq(operationGroups.id, group.id), eq(operationGroups.status, "QUOTED"))).returning({ id: operationGroups.id });
-      if (expired.length) await tx.update(operationLegs).set({ groupId: null, updatedAt: sql`now()` }).where(and(eq(operationLegs.groupId, group.id), eq(operationLegs.status, "PLANNED")));
+      await expireGroup(tx, group.id, group.tier, group.walletName);
     });
-    logger.info("group.expired", { tier: group.tier, walletName: group.walletName });
-    throw createHttpError(409, "These quotes expired. Get new quotes.", { code: "GROUP_EXPIRED" });
+    throw groupExpired();
   }
   // Exactly the group's legs, each once (mapped by legId: the wallet may return them in any order).
   const mismatch = () => createHttpError(409, "The signed batch doesn't match the prepared one.", { code: "TX_MISMATCH" });
@@ -264,7 +283,7 @@ export async function submitGroup(ctx: OpCtx, opId: string, groupId: string, bod
     }
     await done(fee);
     const waitMs = Math.max(0, Math.min(30_000, group.sendBy.getTime() - Date.now()));
-    if (!(s.r === "sent" && (await solanaConfirmed(verified.get(fee.id)!.signature, waitMs)))) {
+    if (!(s.r === "sent" && (await solanaConfirmed(verified.get(fee.id)!.signature, waitMs, verified.get(fee.id)!.raw)))) {
       await release(assets.map((l) => l.id), "FEE_UNCONFIRMED");
       return finish();
     }
@@ -282,4 +301,102 @@ export async function submitGroup(ctx: OpCtx, opId: string, groupId: string, bod
     await done(l);
   }
   return finish();
+}
+
+/** A signature as the wallet returns it: base58 of exactly 64 bytes. */
+const isSignature = (value: string): boolean => {
+  try {
+    return bs58.decode(value).length === 64;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Sign-and-send step 1 (spec 22 section 6.4, B-27): CLAIMS the group's legs before the wallet signs and sends anything (claim before send): each goes PLANNED to
+ * SUBMITTING with no signature, the group to CLAIMED. A claim after `sendBy` expires the group. Under the operation lock, so of two concurrent claims one wins.
+ */
+export async function claimGroup(ctx: OpCtx, opId: string, groupId: string): Promise<OperationView> {
+  const [op] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
+  if (!op) throw notFound();
+  const expired = await db.transaction(async (tx) => {
+    const locked = await lockOperation(tx, op.id);
+    if (locked.status !== "PLANNED" && locked.status !== "IN_PROGRESS") throw invalidTransition(`This operation is ${locked.status.toLowerCase()}.`);
+    const [group] = await tx.select().from(operationGroups).where(and(eq(operationGroups.id, groupId), eq(operationGroups.operationId, op.id)));
+    if (!group) throw notFound();
+    if (group.tier !== "sign_and_send" || group.status !== "QUOTED") throw invalidTransition(`This batch is ${group.tier === "sign_and_send" ? group.status.toLowerCase() : "not sign-and-send"}.`);
+    if (group.sendBy <= new Date()) {
+      await expireGroup(tx, group.id, group.tier, group.walletName);
+      return true;
+    }
+    const legs = await tx.select().from(operationLegs).where(eq(operationLegs.groupId, group.id)).orderBy(asc(operationLegs.sequence));
+    if (!legs.length || legs.some((l) => l.status !== "PLANNED" || !l.builtMessageHash)) throw invalidTransition("This batch changed. Get new quotes.");
+    await tx.update(operationGroups).set({ status: "CLAIMED", updatedAt: sql`now()` }).where(eq(operationGroups.id, group.id));
+    for (const l of legs) {
+      const fresh = (l.routeSummary?.quoted as Quoted | undefined)?.minOut; // what the user is about to sign against; below the plan's floor only when they accepted the new prices
+      const lowered = fresh !== undefined && l.minOut !== null && BigInt(fresh) < BigInt(l.minOut);
+      await setLegStatus(tx, ctx, l, "SUBMITTING", { sourceTx: null, submittedAt: sql`now()` as unknown as Date, ...(lowered ? { minOut: fresh } : {}) });
+    }
+    await tx.update(operations).set({ needsActionSince: null }).where(eq(operations.id, op.id));
+    return false;
+  });
+  if (expired) throw groupExpired();
+  return getOperation(ctx, op.id);
+}
+
+/**
+ * Sign-and-send step 2: records the signatures the wallet returned. Each must belong to a claimed leg of this group that has none yet, appear once, and decode
+ * to 64 bytes; otherwise nothing is recorded. A subset is allowed: the legs left without a signature stay claimed for the sweep (never released here, the wallet
+ * may have sent them). The group is SENT once every leg has its signature. The recorded legs are then SUBMITTED and tracked from chain evidence.
+ */
+export async function sentGroup(ctx: OpCtx, opId: string, groupId: string, body: GroupSent): Promise<OperationView> {
+  const [op] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
+  if (!op) throw notFound();
+  if (body.signatures.some((s) => !isSignature(s.signature))) throw createHttpError(400, "A signature is not valid.", { code: "VALIDATION_FAILED" });
+  try {
+    await db.transaction(async (tx) => {
+      await lockOperation(tx, op.id);
+      const [group] = await tx.select().from(operationGroups).where(and(eq(operationGroups.id, groupId), eq(operationGroups.operationId, op.id)));
+      if (!group) throw notFound();
+      if (group.tier !== "sign_and_send" || group.status !== "CLAIMED") throw invalidTransition(`This batch is ${group.status.toLowerCase()}.`);
+      const legs = await tx.select().from(operationLegs).where(eq(operationLegs.groupId, group.id));
+      const open = new Set(legs.filter((l) => l.status === "SUBMITTING" && !l.sourceTx).map((l) => l.id));
+      const { signatures } = body;
+      if (new Set(signatures.map((s) => s.legId)).size !== signatures.length || new Set(signatures.map((s) => s.signature)).size !== signatures.length || signatures.some((s) => !open.has(s.legId))) {
+        throw createHttpError(409, "The signatures don't match the claimed batch.", { code: "TX_MISMATCH" });
+      }
+      for (const s of signatures) await tx.update(operationLegs).set({ sourceTx: s.signature, updatedAt: sql`now()` }).where(and(eq(operationLegs.id, s.legId), eq(operationLegs.status, "SUBMITTING"), isNull(operationLegs.sourceTx)));
+      if (signatures.length === open.size) await tx.update(operationGroups).set({ status: "SENT", updatedAt: sql`now()` }).where(eq(operationGroups.id, group.id));
+    });
+  } catch (err) {
+    if (isUniqueViolation(err, "operation_legs_source_tx")) throw invalidTransition("That transaction is already recorded for another leg.");
+    throw err;
+  }
+  for (const s of body.signatures) {
+    await markSubmitted(ctx, op.id, s.legId);
+    await enqueue("track-leg", { legId: s.legId });
+  }
+  return getOperation(ctx, op.id);
+}
+
+/**
+ * Sign-and-send: the wallet clearly refused (the user rejected the popup). Legs claimed without a signature go back to PLANNED with their bytes cleared; legs that
+ * have a signature are never touched. A group that is not CLAIMED has nothing to release (a repeat answers the same view).
+ */
+export async function releaseGroup(ctx: OpCtx, opId: string, groupId: string): Promise<OperationView> {
+  const [op] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
+  if (!op) throw notFound();
+  await db.transaction(async (tx) => {
+    await lockOperation(tx, op.id);
+    const [group] = await tx.select().from(operationGroups).where(and(eq(operationGroups.id, groupId), eq(operationGroups.operationId, op.id)));
+    if (!group) throw notFound();
+    if (group.status !== "CLAIMED") return;
+    const legs = await tx.select().from(operationLegs).where(eq(operationLegs.groupId, group.id));
+    for (const l of legs.filter((x) => x.status === "SUBMITTING" && !x.sourceTx)) {
+      const { preparedBase64: _p, signedBase64: _s, recentBlockhash: _r, ...rest } = (l.expectedTx ?? {}) as Record<string, unknown>;
+      await setLegStatus(tx, ctx, l, "PLANNED", { submittedAt: null, builtMessageHash: null, quoteExpiresAt: null, groupId: null, expectedTx: rest, lastError: "WALLET_REJECTED" });
+    }
+    await tx.update(operationGroups).set({ status: legs.some((l) => l.sourceTx) ? "SENT" : "RELEASED", updatedAt: sql`now()` }).where(eq(operationGroups.id, group.id));
+  });
+  return getOperation(ctx, op.id);
 }

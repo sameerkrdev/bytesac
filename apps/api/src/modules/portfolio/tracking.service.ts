@@ -1,4 +1,5 @@
 import createHttpError from "http-errors";
+import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFeeCharges, operationFees, operationGroups, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
@@ -6,7 +7,7 @@ import { CONFIRMATIONS, INVEST_AUTO_STOP_HOURS, USDC_DECIMALS, USDC_SOLANA_MINT,
 import { bitcoinTx } from "@/providers/bitcoin";
 import { evmNativeReceived, evmReceipt } from "@/providers/evm-rpc";
 import { routeProviderById } from "@/providers/routes";
-import { solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
+import { connection, sameExceptComputeBudget, solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
 import { enqueue } from "@/config/queues";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, releaseQuotedGroups, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
@@ -143,14 +144,89 @@ async function markStaleUnknown(legId: string): Promise<void> {
   });
 }
 
+/** The landed transaction as a comparable message, or null when the RPC does not show it. */
+async function landedTx(signature: string): Promise<VersionedTransaction | null> {
+  const landed = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+  return landed ? new VersionedTransaction(landed.transaction.message) : null;
+}
+
+const preparedOf = (leg: Pick<Leg, "expectedTx">): VersionedTransaction | null => {
+  const base64 = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
+  return base64 ? VersionedTransaction.deserialize(Buffer.from(base64, "base64")) : null;
+};
+
+/**
+ * Sign-and-send claims the wallet never reported a signature for (spec 22 section 6.4, step 4): looks the owner's recent signatures up and matches each landed
+ * message to the claimed leg's prepared one (ComputeBudget differences allowed). A match records the signature and tracks the leg; none, with the blockhash
+ * expired, can never land: FAILED / NOT_LANDED. Nothing is resent and nothing is rebuilt. Every claim is handled on its own.
+ */
+async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<void> {
+  const owner = new PublicKey(addressOn(await userAddresses(db, userId), "solana"));
+  const recent = await connection.getSignaturesForAddress(owner, { limit: 50 }, "confirmed");
+  const landed = new Map<string, VersionedTransaction | null>(); // one lookup per signature, however many claims
+  const taken = new Set<string>();
+  for (const leg of claims) {
+    try {
+      const prepared = preparedOf(leg);
+      if (!prepared) continue;
+      const since = (leg.submittedAt ?? leg.updatedAt).getTime() - 10_000; // block times are coarse: a little before the claim still counts
+      let found: string | null = null;
+      for (const { signature, blockTime } of recent) {
+        if (taken.has(signature) || (blockTime ?? Infinity) * 1000 < since) continue;
+        if (!landed.has(signature)) landed.set(signature, await landedTx(signature));
+        const tx = landed.get(signature);
+        if (tx && sameExceptComputeBudget(prepared, tx)) { found = signature; break; }
+      }
+      if (!found && (await connection.isBlockhashValid(prepared.message.recentBlockhash, { commitment: "confirmed" })).value) continue; // it may still land
+      if (found) taken.add(found);
+      const recorded = await db.transaction(async (tx) => {
+        await lockOperation(tx, leg.operationId);
+        const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, leg.id));
+        if (current!.status !== "SUBMITTING" || current!.sourceTx) return false; // resolved meanwhile (a late /sent)
+        if (found) await tx.update(operationLegs).set({ sourceTx: found, expectedTx: { ...(current!.expectedTx ?? {}), recentBlockhash: prepared.message.recentBlockhash }, updatedAt: sql`now()` }).where(eq(operationLegs.id, leg.id));
+        else {
+          await setLegStatus(tx, null, current!, "FAILED", { failureReason: "NOT_LANDED" });
+          await refreshOperationStatus(tx, null, leg.operationId);
+        }
+        return !!found;
+      });
+      if (recorded) {
+        await markSubmitted(null, leg.operationId, leg.id);
+        await enqueue("track-leg", { legId: leg.id });
+      }
+    } catch (err) {
+      logger.warn("sweep: could not resolve a claim without a signature", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+}
+
+/** After the fact (sign-and-send): the wallet built the transaction, so once it landed its message is compared with the prepared one. A difference beyond ComputeBudget is an alert (audit + error log); tracking goes on from chain evidence. */
+async function checkLandedMessage(op: Op, leg: Leg): Promise<void> {
+  try {
+    const prepared = preparedOf(leg);
+    const [group] = leg.groupId ? await db.select({ tier: operationGroups.tier }).from(operationGroups).where(eq(operationGroups.id, leg.groupId)) : [];
+    if (group?.tier !== "sign_and_send" || !prepared) return;
+    const landed = await landedTx(leg.sourceTx!);
+    if (!landed || sameExceptComputeBudget(prepared, landed)) return;
+    logger.error("a sign-and-send transaction landed with a message that is not the prepared one", { legId: leg.id, operationId: op.id });
+    await db.transaction((tx) => writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "leg.tx_mismatch_after_send", entityType: "operation_leg", entityId: leg.id, requestId: `track-${leg.id}`, metadata: { operationId: op.id } }));
+  } catch (err) {
+    logger.warn("could not compare a landed transaction with its prepared one", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
+  }
+}
+
 /**
  * Liveness sweep (every 5 minutes). Legs claimed (SUBMITTING) but never confirmed as sent, for example after a crash between the claim and the send,
- * are handed to the tracker. A SUBMITTED or PENDING_CHAIN leg past the 30-minute window whose tracking job is gone (a queue outage, a flushed Redis) is
+ * are handed to the tracker; sign-and-send claims without a signature are resolved from the chain (`resolveUnsignedClaims`). A SUBMITTED or PENDING_CHAIN leg past the 30-minute window whose tracking job is gone (a queue outage, a flushed Redis) is
  * checked right here in recheck mode, which makes it UNKNOWN (so the user can stop and ops can resolve it) and restarts the recheck chain.
  */
 export async function trackStaleClaims(): Promise<void> {
-  const claimed = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
-  for (const l of claimed) await enqueue("track-leg", { legId: l.id }).catch((err) => logger.warn("sweep: could not enqueue a claimed leg", { legId: l.id, errMessage: err instanceof Error ? err.message : "unknown" }));
+  const claimed = await db.select({ leg: operationLegs, userId: operations.userId }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId))
+    .where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
+  for (const { leg } of claimed.filter((c) => c.leg.sourceTx)) await enqueue("track-leg", { legId: leg.id }).catch((err) => logger.warn("sweep: could not enqueue a claimed leg", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" }));
+  const unsigned = new Map<string, Leg[]>();
+  for (const { leg, userId } of claimed.filter((c) => !c.leg.sourceTx)) unsigned.set(userId, [...(unsigned.get(userId) ?? []), leg]);
+  for (const [userId, legs] of unsigned) await resolveUnsignedClaims(userId, legs).catch((err) => logger.warn("sweep: could not look up a wallet's recent signatures", { userId, errMessage: err instanceof Error ? err.message : "unknown" }));
   const stuck = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(inArray(operationLegs.status, ["SUBMITTED", "PENDING_CHAIN"]), sql`${operationLegs.submittedAt} < now() - interval '35 minutes'`));
   for (const l of stuck) await trackLeg(l.id, 1).catch((err) => logger.warn("sweep: recheck of a stuck leg failed", { legId: l.id, errMessage: err instanceof Error ? err.message : "unknown" }));
 }
@@ -266,6 +342,7 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
 
   const recentBlockhash = (leg.expectedTx as { recentBlockhash?: string } | null)?.recentBlockhash;
   const source = await finality(leg.fromChain, sourceTx, recentBlockhash);
+  if (leg.status === "SUBMITTED" && (source === "finalized" || source === "failed") && leg.fromChain === "solana") await checkLandedMessage(op, leg);
   if (source === "failed") return fail("The source transaction failed.");
   if (source === "expired") return fail("The transaction never landed and its blockhash expired, so it can no longer execute.");
   if (source === "pending") return notFinal();

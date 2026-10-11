@@ -118,11 +118,14 @@ export const legSubmitSchema = z.strictObject({
 }).refine((b) => [b.signedTx, b.txHash, b.signedPsbt].filter((x) => x !== undefined).length === 1, { message: "Send exactly one of signedTx, txHash, signedPsbt." });
 export type LegSubmit = z.infer<typeof legSubmitSchema>;
 
-export const groupRequestSchema = z.strictObject({ chain: z.literal("solana"), tier: z.enum(["sign_all", "single"]), walletName: z.string().trim().min(1).max(64).optional(), idempotencyKey });
+export const groupRequestSchema = z.strictObject({ chain: z.literal("solana"), tier: z.enum(["sign_all", "sign_and_send", "single"]), walletName: z.string().trim().min(1).max(64).optional(), idempotencyKey });
 export type GroupRequest = z.infer<typeof groupRequestSchema>;
 /** 1644 is the base64 length of 1232 bytes; the server still checks the decoded length. */
 export const groupSubmitSchema = z.strictObject({ signed: z.array(z.strictObject({ legId: z.uuid(), signedTx: z.string().min(4).max(1644) })).min(1).max(K_SIGN_ALL) });
 export type GroupSubmit = z.infer<typeof groupSubmitSchema>;
+/** What the wallet returned from sign-and-send: one base58 signature per leg (86 to 88 characters for 64 bytes); the server also checks that it decodes to 64 bytes. */
+export const groupSentSchema = z.strictObject({ signatures: z.array(z.strictObject({ legId: z.uuid(), signature: z.string().min(80).max(90) })).min(1).max(K_SIGN_AND_SEND) });
+export type GroupSent = z.infer<typeof groupSentSchema>;
 // No default here: a Continue that names no slippage keeps the operation's own (`slippage` would reset it to the default).
 export const continueRequestSchema = z.strictObject({ idempotencyKey, slippageBps: z.number().int().min(1).max(SLIPPAGE_MAX_BPS).optional(), skipLegIds: z.array(z.uuid()).max(100).optional(), scaleToAvailable: z.boolean().optional() });
 export type ContinueRequest = z.infer<typeof continueRequestSchema>;
