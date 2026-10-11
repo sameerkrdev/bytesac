@@ -17,7 +17,7 @@
 
 | # | Criterion |
 |---|---|
-| S1 | First investment with a sign-only-batch Solana wallet (Phantom, Solflare, Coinbase, Bitget, …): **1 approval** per chunk of K transactions (K from P0). Today it is one approval per leg plus the fee. |
+| S1 | First investment with a sign-only-batch Solana wallet (Phantom, Solflare, Coinbase, Bitget, …): **1 approval per chunk**. A chunk holds K transactions (K from P0); when fees are charged, that is the fee plus K − 1 buys (§5.2). Today it is one approval per leg plus the fee. |
 | S2 | Rebalance: popups = 1 Solana + 1 per EVM chain sold on (with `wallet_sendCalls`) + 1 if BTC is sold (+1 Solana only when a hub fallback leg exists). What the user buys adds no popups. |
 | S3 | Every failure leaves the money in a known place (§8.1), and the user can **Continue**, **Raise slippage**, **Skip an asset** or **Stop**. An unknown outcome is never resent. |
 | S4 | The fee is charged per signing group, only on the legs that group sends. An unsent group is never charged. |
@@ -55,7 +55,7 @@ On 2026-10-11 the user answered "a" to the five open recommendations:
 | B-05 | **No LI.FI integrator fee.** We keep our own server-built fee transaction (D-089), so a LI.FI transaction is never edited. | USER |
 | B-06 | **Fee per group.** Every asset leg gets a fee share at plan time (§6.3). A Solana group's fee transfer charges the uncovered shares of its own legs, and the first Solana group also charges the shares of the plan's EVM and Bitcoin legs, whose gas drop needs a settled fee. A group never sent is never charged. Once sent, a fee is not refunded. This rewrites D-090. Legal review is open (§15). | USER |
 | B-07 | **Sign-and-send batch** (wallet broadcasts; for example MetaMask Solana) is a fallback tier. The fee is its own approval first, then the chunk. The server claims before signing and releases on rejection. **Built only if P0 finds a target wallet that cannot sign-only batch.** Otherwise that wallet uses the per-leg tier. | DEFAULT |
-| B-08 | **Failures do not close the operation.** An invest or rebalance with a failed or unsent leg stays `IN_PROGRESS`, with "Needs action": Continue, Raise slippage, Skip asset, Stop. The 5-minute sweep **auto-stops it after 7 days** without progress and notifies the user, extending D-109. | USER |
+| B-08 | **Failures do not close the operation.** An invest or rebalance with a failed or unsent leg stays `IN_PROGRESS`, with "Needs action": Continue, Raise slippage, Skip asset, Stop. The 5-minute sweep **auto-stops it** without progress and notifies the user, extending D-109: after **24 h** for invest and repair (the leftover is plain USDC), after **7 days** for rebalance and sell (confirmed 2026-10-11). | USER |
 | B-09 | **Continue always re-quotes** and rechecks the USDC and SOL balances. Old signed bytes are never reused. If the USDC was spent in the meantime, the user can **invest what's available** (remaining legs scaled down) or stop. | USER |
 | B-10 | **Rebalance by direct routes:** each sell is routed straight to a buy in one LI.FI transaction, signed up front. The hub (D-076) is a fallback per pair. This rewrites D-076. | USER |
 | B-11 | **Pair planner rules** (§7.1): same-chain pairs first, then greedy matching by value, at most `sells + buys − 1` legs, and legs under the D-077 minimum merged into the largest leg of the same sell. | DEFAULT |
@@ -68,7 +68,7 @@ On 2026-10-11 the user answered "a" to the five open recommendations:
 | B-18 | **Continue waives manager and platform fees** for legs already covered (invest) and for the continuation operation (rebalance), recorded as `waivedReason: "continuation"`. The **network fee still applies to new EVM gas drops** (cost recovery). After Stop, D-090 applies: a new plan pays its own fees. | DEFAULT |
 | B-19 | **Repair outcome chooser:** the repair page shows the figures for Buy back (cost), Sync (no transaction, new weights) and Sync then Fix drift (the resulting drift and its trades). A cash shortfall offers Sync only. | DEFAULT |
 | B-20 | **Sync recomputes allocation and drift** in the same request and returns them per affected position. The web then shows Fix drift or Keep custom, or "Still aligned". No transaction and no ledger trade entry. | DEFAULT |
-| B-21 | **Website only.** The web uses group endpoints. Mobile keeps the per-leg endpoints, which stay supported; mobile Solana legs become user-paid under B-03. | USER |
+| B-21 | **Website only.** The web uses group endpoints. Mobile keeps the per-leg endpoints, which stay supported. Mobile Solana legs also become user-paid in P1 under B-03 (confirmed 2026-10-11, knowing mobile Solana signing is not yet device-tested, D-041). A device check of mobile invest with user-paid SOL goes into OPEN-ITEMS with P1. | USER |
 | B-22 | **Sell fee placement** stays as in D-071: first from free USDC, otherwise last from the proceeds for Solana-only sells (one extra Solana popup after the sells settle, charging only the shares of legs that settled). A sell with EVM legs and no free USDC is refused, as today. | DEFAULT |
 | B-23 | **Token-account rent is paid by the user** as fee payer: missing destination accounts, and fee-recipient accounts that do not exist yet. It is counted in the SOL requirement. | DEFAULT |
 
@@ -164,8 +164,11 @@ need = Σ per Solana tx (5 000 × signatures + ceil(cuLimit × cuPriceMicroLampo
 3. **Recheck balances.**
    - USDC: `≥ group fee + Σ group leg amounts`. The first group of an invest checks the whole amount, as today.
    - SOL: `≥ need`.
-4. **Respond.** Ordered transactions `[fee?, leg1..legN]` with each leg's estimate, minimum, route fees and impact. The web shows them and the user confirms once ("Approve 13 transactions in your wallet"). Quotes expire after 60 s; an expired group is 409 `GROUP_EXPIRED`, and the client gets a new group.
-5. **Sign.** The wallet signs everything. The client posts `POST /operations/:id/groups/:gid/submit { signed: [{ legId, signedTx }] }`.
+4. **Respond.** Ordered transactions `[fee?, leg1..legN]` with each leg's estimate, minimum, route fees and impact, plus `sendBy = quotedAt + 40 s`, stored on the group. A Solana blockhash lives about 60 s from the quote, so `sendBy` leaves at least 20 s to send.
+5. **Sign, with no second review screen.** The detailed review happens earlier, on the plan's estimates (§11). Pressing **Confirm** requests the group and opens the wallet straight away.
+   - **Prices updated strip.** The web shows the fresh figures in a compact strip with a visible countdown to `sendBy`.
+   - **Price moved.** If any leg's fresh minimum is below the plan's stored minimum (possible while the D-073 waiver is on), the wallet does **not** open by itself. The strip asks for an explicit **Accept new prices** tap first.
+   - **Submit.** After the wallet signs everything, the client posts `POST /operations/:id/groups/:gid/submit { signed: [{ legId, signedTx }] }`. A submit that arrives after `sendBy` is 409 `GROUP_EXPIRED`: nothing is claimed, and the client gets a new group, which means one more popup.
 6. **Verify everything before claiming anything.** For each transaction:
    - The message is byte-identical to the quote, or differs only in ComputeBudget against `preparedBase64` (today's rule).
    - The fee payer at index 0 is the user's Solana address.
@@ -173,10 +176,10 @@ need = Σ per Solana tx (5 000 × signatures + ceil(cuLimit × cuPriceMicroLampo
 
    Any mismatch is 409 `TX_MISMATCH`: nothing is claimed and nothing is sent.
 7. **Claim.** One transaction under the lock moves every leg to `SUBMITTING` with its signature (claim before send, D-071). A leg that changed is refused for the whole group.
-8. **Send the fee.** The fee transaction is sent with `maxRetries: 0` and preflight on, then the server waits for `confirmed` for up to 30 s.
+8. **Send the fee.** The fee transaction is sent with `maxRetries: 0` and preflight on, then the server waits for `confirmed`, for at most `min(30 s, sendBy − now)`.
    - **Refused:** every claim is released (`PLANNED`, bytes cleared) and the response is 503 `ROUTE_UNAVAILABLE`.
-   - **Not confirmed in 30 s:** the fee leg is `SUBMITTED` and tracked. The asset legs are released unsent, and Continue waits for the fee leg to resolve.
-9. **Send the asset legs** in order, without waiting for each to confirm:
+   - **Not confirmed in time:** the fee leg is `SUBMITTED` and tracked. The asset legs are released unsent, and Continue waits for the fee leg to resolve.
+9. **Send the asset legs** in order, without waiting for each to confirm. A leg is sent only while `now < sendBy`. Once `sendBy` passes, the leg and every later one are released unsent (`lastError: "QUOTE_STALE"`) and return to Continue, instead of being sent with a blockhash about to expire. Within that window:
    - A preflight refusal (`SendTransactionError`) **stops**: that leg and every later one are released to `PLANNED` with bytes cleared, and the refusal is stored as the leg's `lastError`.
    - An unknown send outcome becomes `SUBMITTED` (tracked, never resent), and sending goes on.
 10. **Respond.** The operation view comes back. `track-leg` is enqueued per sent leg. The client polls the operation for "Sending 7 of 12 … confirmed 5". Remaining chunks repeat from step 1, with no fee when every share is covered.
@@ -308,7 +311,7 @@ Today's per-leg flow, with user-paid gas: `POST /legs/:legId/quote`, then `signT
   - Stays `IN_PROGRESS` with `needsAction: true` while a leg is `PLANNED` with no open group, or `FAILED` with a reason the user can continue from.
 - **Ends `PARTIAL` or `FAILED`** only through:
   - **Stop:** `PARTIAL` if any asset leg settled, else `FAILED`.
-  - **Auto-stop** (B-08: no leg submitted, quoted or resolved for 7 days, audit `operation.auto_stopped`, notice "We stopped your unfinished investment; $X USDC is still in your wallet").
+  - **Auto-stop** (B-08: no leg submitted, quoted or resolved for 24 h (invest, repair) or 7 days (rebalance, sell), audit `operation.auto_stopped`, notice "We stopped your unfinished investment; $X USDC is still in your wallet").
   - **Every remaining leg skipped.**
 - `CANCELLED` stays "before any submission".
 - The one-open-operation-per-user rule is unchanged, so an operation needing action blocks new plans until Continue or Stop. The web shows it on every invest and sell entry point.
@@ -348,7 +351,7 @@ Today's per-leg flow, with user-paid gas: `POST /legs/:legId/quote`, then `signT
 
 | Change | Detail |
 |---|---|
-| `operation_groups` (new) | `id`, `operation_id` FK, `chain` (`asset_chain`), `tier` (enum `sign_all`, `sign_and_send`, `single`, `evm_calls`, `evm_single`, `psbt`), `status` (enum `QUOTED`, `CLAIMED`, `SENT`, `EXPIRED`, `RELEASED`), `fee_leg_id` FK null, `expires_at`, `idempotency_key`, `created_at`, `updated_at`. Unique `(operation_id, idempotency_key)`. Partial unique index: one `QUOTED`/`CLAIMED` group per `(operation_id, chain)`. |
+| `operation_groups` (new) | `id`, `operation_id` FK, `chain` (`asset_chain`), `tier` (enum `sign_all`, `sign_and_send`, `single`, `evm_calls`, `evm_single`, `psbt`), `status` (enum `QUOTED`, `CLAIMED`, `SENT`, `EXPIRED`, `RELEASED`), `fee_leg_id` FK null, `expires_at`, `send_by` (quote time + 40 s), `wallet_name` text null (at most 64 characters, client-reported, telemetry only), `idempotency_key`, `created_at`, `updated_at`. Unique `(operation_id, idempotency_key)`. Partial unique index: one `QUOTED`/`CLAIMED` group per `(operation_id, chain)`. |
 | `operation_legs` | + `group_id` FK null (latest group that quoted it), + `fee_share` jsonb `{ network?, manager_entry?, manager_rebalance?, platform? }` micro strings, + `fee_covered_by` FK → `operation_legs` null, + `retry_of` FK unique null, + `last_error` text null. Pair legs need no column: both deployments are set, and the planner (not a constraint) keeps them to rebalances. |
 | `gas_payer` enum | + `user_solana`. |
 | `operations` | + `continuation_of` FK unique null, + `needs_action_since` timestamptz null (auto-stop clock). |
@@ -364,7 +367,7 @@ Backfill: none. Existing operations keep their legs. A `platform_fee_payer` leg 
 | Method and path | Purpose | Notes |
 |---|---|---|
 | `POST /v1/operations/invest`, `/sell`, `/rebalance`, `/repair` | Plan | + `tier` hint in the body (optional); response + `approvalsEstimate`, `solRequiredLamports`, per-leg `feeShare`. Rebalance plans use §7.1. |
-| `POST /v1/operations/:id/groups` | Form and quote the next group for a chain | Body `{ chain, tier, idempotencyKey }`. Response `{ groupId, status: "quoted" \| "waiting_fee" \| "gas_pending", expiresAt, transactions[], legs[] (estimatedOut, minOut, routeFees, priceImpact, error?), approvalsEstimate }`. |
+| `POST /v1/operations/:id/groups` | Form and quote the next group for a chain | Body `{ chain, tier, walletName?, idempotencyKey }`. Response `{ groupId, status: "quoted" \| "waiting_fee" \| "gas_pending", expiresAt, sendBy, priceMoved, transactions[], legs[] (estimatedOut, minOut, routeFees, priceImpact, error?), approvalsEstimate }`. |
 | `POST /v1/operations/:id/groups/:gid/submit` | Verify, claim and send (sign-only, PSBT) or verify after the fact (EVM) | Body `{ signed: [{ legId, signedTx }] }`, `{ txHashes: string[] }` or `{ signedPsbt }`. |
 | `POST /v1/operations/:id/groups/:gid/claim`, `/sent`, `/release` | Sign-and-send (B-07) | Only if built. |
 | `POST /v1/operations/:id/continue` | §8.3, §8.4 | Idempotent per key. Returns the operation (or the continuation operation). |
@@ -386,18 +389,21 @@ Backfill: none. Existing operations keep their legs. A `platform_fee_payer` leg 
 
 - **`@repo/app-core`:**
   - `Signer` gains optional `signSolanaAll(txs)`, `signAndSendSolanaAll(txs)` and `sendEvmCalls({ chainId, calls })`. Mobile does not implement them, so it stays on the per-leg flow.
-  - A new `group-signer.ts` reducer and runner, next to `leg-signer.ts`: `idle → quoting → waitingFee | gasPending → review → signing → sending → tracking → done | needsAction | failed`, with tier downgrade on "method not supported".
+  - A new `group-signer.ts` reducer and runner, next to `leg-signer.ts`: `idle → quoting → waitingFee | gasPending → (priceMoved →) signing → sending → tracking → done | needsAction | failed`, with tier downgrade on "method not supported". There is no review state between quote and wallet (§6.2 step 5).
 - **`apps/web/lib/wallet`:**
   - Solana batch through the Reown Solana provider's `signAllTransactions`.
   - EVM through wagmi `sendCalls`, `waitForCallsStatus` and `getCapabilities` (installed `wagmi` 2.19.5; confirm against wagmi docs).
-- **Review screen:**
+- **Review screen (plan estimates, before Confirm).** The user reads the details here at their own pace: no quote is open yet, so nothing can expire. Confirm then requests the group and opens the wallet (§6.2 step 5). Contents:
   - "About N wallet approvals".
   - A SOL line ("Network fees: about 0.004 SOL, paid by you in SOL").
   - Per-leg estimate, minimum, route fees and impact.
   - Fee lines "charged per batch; batches you never send aren't charged".
   - For groups above 10 legs, a checkbox "I've checked the minimum amounts" (§15 Q6).
+- **Prices updated strip:** the fresh figures per leg, compact, with a countdown to `sendBy`. When a fresh minimum is below the plan's, it holds an **Accept new prices** button and the wallet waits for it.
+- **Stop is prominent everywhere.** While an operation needs action, every invest, sell, rebalance and repair entry point shows a banner: "Finish or stop your open <investment>", with **Continue** and **Stop**. A new plan is blocked until then (one open operation per user).
+- **Wallet telemetry.** At Confirm, the client sends `walletName` (the Reown wallet info name, at most 64 characters) and the detected tier per chain with the group request. The server stores both on `operation_groups` and logs `group.quoted { walletName, chain, tier, legs, approvals }`. No addresses are sent or logged. A tier downgrade shows as the next group's lower tier. This tells us how many users get the 1-popup flow and whether B-07 is worth building.
 - **Progress panel:** groups with "Sending 7 of 12", per-leg status, and confirmations.
-- **Needs-action panel:** the failed leg's reason, plus Continue, Raise slippage (to at most 3%), Skip `<asset>`, Stop, Invest what's available, and Revoke approval. "Continue is free for 7 days; stopping keeps fees already paid."
+- **Needs-action panel:** the failed leg's reason, plus Continue, Raise slippage (to at most 3%), Skip `<asset>`, Stop, Invest what's available, and Revoke approval. "Continue is free until <auto-stop time>; stopping keeps fees already paid." The time shown is the auto-stop deadline (24 h or 7 days, B-08).
 - **Errors:**
   - `SOL_REQUIRED` with the exact shortfall.
   - `INSUFFICIENT_BALANCE` with the USDC needed.
@@ -446,6 +452,11 @@ API (Vitest; LI.FI, RPC and wallets mocked):
   - Fee not confirmed releases the asset legs.
   - Stop after the first definitive refusal: unsent legs go to `PLANNED` with bytes cleared.
   - Unknown goes to `SUBMITTED`, never resent, and sending continues.
+  - A submit after `sendBy` gives `GROUP_EXPIRED` and claims nothing.
+  - The fee wait is capped at `sendBy`.
+  - Legs left when `sendBy` passes are released as `QUOTE_STALE`.
+  - `priceMoved` is set when a fresh minimum is below the plan's.
+  - `walletName` and tier are stored and logged, with no address in the log.
 - **Submit, sign-and-send (if built):**
   - Claim before sign, release on reject.
   - Signature lookup on an ambiguous error and in the sweep.
@@ -466,7 +477,7 @@ API (Vitest; LI.FI, RPC and wallets mocked):
   - Refused while a leg is in flight.
   - Rebalance continuation planned from current holdings.
   - Refused after a newer version.
-  - Auto-stop after 7 days, with its notice.
+  - Auto-stop after 24 h (invest, repair) and after 7 days (rebalance, sell), with its notice.
 - **Ledger:**
   - Pair leg debit and credit from chain evidence only.
   - Hub cash entries.
@@ -502,7 +513,7 @@ E2E (`apps/web/e2e`, mocked API):
 | Phase | Scope | Size |
 |---|---|---|
 | **P0 – wallet test** | A dev-only page `/dev/wallet-batch` (behind an env flag, never in production builds) that asks the connected wallet to sign batches of 2/5/10/20/30 memo-only Solana transactions (`sign_all`, and `sign_and_send` where offered) and EVM `wallet_sendCalls` of N zero-value self-calls, then records the following per wallet: popup count, rewritten bytes, max batch, order on sign-and-send, behaviour on a reverting call. The **user** runs it on mainnet with their own tiny amounts (Phantom, Solflare, Backpack, MetaMask Solana, Coinbase, Bitget, OKX, Trust via WalletConnect; EVM: MetaMask, Coinbase, Rabby, Phantom EVM, Trust, OKX on the 5 chains). LI.FI with a real key: Solana quotes without `svmSponsor`, ERC-20→Solana token and Solana token→BTC direct routes. **Output:** the tier matrix, K per tier, and whether B-07 is needed. | 2–3 days |
-| **P1 – first investment** | §5, §6 (groups, fee shares and charges, SOL requirement, user-paid Solana gas on every flow incl. per-leg), §8.2–§8.3 for invest, §9 migration, §10 group and continue endpoints, §11 invest UI. | ~2 weeks |
+| **P1 – first investment** | §5, §6 (groups, fee shares and charges, SOL requirement, user-paid Solana gas on every flow incl. per-leg), §8.2–§8.3 for invest, §9 migration, §10 group and continue endpoints, §11 invest UI (estimate-first review, prices-updated strip, `sendBy` rule, Stop banners, wallet telemetry). | ~2 weeks |
 | **P2 – sell, exit, repair** | §7.3, §7.4, §7.5, §7.6 on groups; EVM group gas drop; Continue for sells and repair; B-19, B-20. | ~1 week |
 | **P3 – rebalance and drift fix** | §7.1, §7.2, §8.4: direct-route planner, pair legs and ledger, `wallet_sendCalls`, hub fallback, continuation operations. | ~3 weeks |
 | **P4 – cleanup** | Retire the Solana fee payer (B-04) once no open operation uses it; docs, ADRs, register, OPEN-ITEMS, HANDOFF. | ~3 days |
@@ -534,7 +545,7 @@ Each phase is its own plan → execute → review → merge cycle (HANDOFF §4).
 5. LI.FI rate limits for parallel quoting (12 quotes per group, ×chains).
 6. Blind-signing risk: a wallet shows N transactions, so our screen must carry the totals and minimums. Is the checkbox above 10 legs right?
 7. ERC-4337 smart wallets (Coinbase Smart Wallet) under `wallet_sendCalls`: tracked by chain evidence only (§7.5) until P0 shows their receipt shape.
-8. An operation needing action blocks new plans for up to 7 days (B-08). Per-asset reservations stay in FUTURE-PLANS.
+8. An operation needing action blocks new plans for up to 24 h (invest, repair) or 7 days (rebalance, sell) (B-08). Stop banners on every entry point (§11) soften this. Per-asset reservations stay in FUTURE-PLANS.
 
 ## Sources
 
