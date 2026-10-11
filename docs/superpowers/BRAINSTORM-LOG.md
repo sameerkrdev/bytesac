@@ -209,6 +209,9 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 | 8 | Fee when Solana wallet lacks USDC | error "add $X USDC" (rec.) · route a sell through the hub (+1 popup) | **a** | `INSUFFICIENT_BALANCE` with `usdcRequiredMicro` (B-15) |
 | 9 | Fee in an EVM batch when no Solana sells | yes (rec.) · no | **a** | Not adopted in the spec: conflicts with D-085 (Solana payout wallet) and fee-before-drop; B-16 marked for confirmation |
 | 10 | Next step | write full design doc (rec.) · log only · other | **a** | Spec `2026-10-11-batched-signing-direct-routes-design.md` (Spec 22) written for review |
+| 11 | Mobile per-leg Solana gas (D-041 untested on device) | keep sponsored until P4 (rec.) · user-paid everywhere in P1 | **User-paid everywhere in P1** | B-21 confirmed; device check added to OPEN-ITEMS with P1 |
+| 12 | Auto-stop window for an operation needing action | invest 24 h / rebalance 7 d (rec.) · 7 d all · 24 h all | **Invest 24 h, rebalance 7 d** | B-08: 24 h invest and repair, 7 d rebalance and sell |
+| — | Spec review (pasted) | — | estimate-first review, `sendBy` 20 s rule, Stop banners, wallet telemetry, S1 wording | Applied in spec commit `4713f0f` |
 
 ## Roadmap decisions
 
