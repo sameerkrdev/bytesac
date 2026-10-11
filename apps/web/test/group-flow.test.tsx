@@ -6,13 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buyLeg, feeLeg, ID, operation, renderApp } from "./invest-fixtures";
 
 const api = {
-  investPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn(), requestGroup: vi.fn(), submitGroup: vi.fn(), continueOperation: vi.fn(), getPortfolio: vi.fn(), getInvestability: vi.fn(),
+  investPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn(), quoteLeg: vi.fn(), requestGroup: vi.fn(), submitGroup: vi.fn(), continueOperation: vi.fn(), getPortfolio: vi.fn(), getInvestability: vi.fn(),
 };
 vi.mock("@/lib/api", () => ({
   api: {
     investPlan: (b: unknown) => api.investPlan(b), cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id),
     requestGroup: (id: string, b: unknown) => api.requestGroup(id, b), submitGroup: (id: string, g: string, b: unknown) => api.submitGroup(id, g, b),
-    continueOperation: (id: string, b: unknown) => api.continueOperation(id, b), getPortfolio: () => api.getPortfolio(), getInvestability: (s: string) => api.getInvestability(s),
+    quoteLeg: (o: string, l: string) => api.quoteLeg(o, l), continueOperation: (id: string, b: unknown) => api.continueOperation(id, b), getPortfolio: () => api.getPortfolio(), getInvestability: (s: string) => api.getInvestability(s),
   },
 }));
 const wallet = vi.hoisted(() => ({ signSolana: vi.fn(), signSolanaAll: vi.fn(), walletName: "Phantom", connectionKey: "a" }));
@@ -133,6 +133,62 @@ describe("batched invest signing", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Get new quotes" }));
     await waitFor(() => expect(api.requestGroup).toHaveBeenCalledTimes(2));
     expect(api.submitGroup).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("chunks", () => {
+  it("requests the second group only after the first group's fee settled, and shows no failure or needs-action panel in between (review I1)", async () => {
+    const buy2 = (o: Parameters<typeof buyLeg>[0] = {}) => buyLeg({ id: ID(12), sequence: 3, ...o });
+    let phase: "start" | "sent" | "settled" | "done" = "start";
+    const view = () => ({
+      start: plan({ legs: [feeLeg({ gasPayer: "user_solana" }), buyLeg({ gasPayer: "user_solana" }), buy2({ gasPayer: "user_solana" })] }),
+      sent: plan({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xFee" }), buyLeg({ status: "SUBMITTED", sourceTx: "5xBuy" }), buy2()] }),
+      // the first chunk settled meanwhile: the server marks the investment as waiting for the user while a leg is still PLANNED
+      settled: plan({ status: "IN_PROGRESS", needsAction: true, needsActionSince: "2026-10-11T10:00:00.000Z", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "SETTLED" }), buy2()] }),
+      done: plan({ status: "COMPLETED", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "SETTLED" }), buy2({ status: "SETTLED" })] }),
+    })[phase];
+    api.getOperation.mockImplementation(async () => view());
+    const phaseAtSecondRequest: string[] = [];
+    api.requestGroup
+      .mockResolvedValueOnce(group({ transactions: [{ legId: ID(10), kind: "fee", serializedBase64: "fee-tx" }, { legId: ID(11), kind: "asset", serializedBase64: "buy-tx" }] }))
+      .mockImplementationOnce(async () => {
+        phaseAtSecondRequest.push(phase);
+        return group({ groupId: ID(51), transactions: [{ legId: ID(12), kind: "asset", serializedBase64: "buy2-tx" }], legs: [] });
+      });
+    api.submitGroup
+      .mockImplementationOnce(async () => { phase = "sent"; setTimeout(() => { phase = "settled"; }, 1_500); return view(); })
+      .mockImplementationOnce(async () => { phase = "done"; return view(); });
+    renderApp(<GroupProgress operationId={plan().id} autoStart />);
+    await waitFor(() => expect(api.submitGroup).toHaveBeenCalledTimes(1));
+    expect(api.requestGroup).toHaveBeenCalledTimes(1); // the fee is still in flight: nothing is requested, nothing fails
+    expect(screen.queryByRole("alert")).toBeNull();
+    await waitFor(() => expect(api.submitGroup).toHaveBeenCalledTimes(2), { timeout: 10_000 });
+    expect(phaseAtSecondRequest).toEqual(["settled"]);
+    expect(api.requestGroup).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("Some steps didn't go through")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  }, 20_000);
+
+  it("stops driving when a leg of the chunk it sent was released, so the user decides (Continue or Stop)", async () => {
+    api.getOperation.mockResolvedValue(plan());
+    api.requestGroup.mockResolvedValue(group({ transactions: [{ legId: ID(11), kind: "asset", serializedBase64: "buy-tx" }], legs: [] }));
+    api.submitGroup.mockResolvedValue(plan({ status: "IN_PROGRESS", needsAction: true, needsActionSince: "2026-10-11T10:00:00.000Z", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "PLANNED", lastError: "QUOTE_STALE" })] }));
+    renderApp(<GroupProgress operationId={plan().id} autoStart />);
+    expect(await screen.findByText("Some steps didn't go through")).toBeInTheDocument();
+    expect(api.requestGroup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("recovery on a grouped investment", () => {
+  it("offers Complete swap for the recovery leg, which quotes that leg only (review I7)", async () => {
+    const failed = buyLeg({ status: "FAILED", failureReason: "DESTINATION_SWAP_FAILED", recoveryToken: { chain: "ethereum", address: "0xdd", decimals: 6, symbol: "USDC", amount: "299000000" } });
+    const recovery = buyLeg({ id: ID(13), sequence: 4, kind: "swap", status: "PLANNED", recoveryOf: failed.id, fromChain: "ethereum", gasPayer: "platform_gas_drop" });
+    api.getOperation.mockResolvedValue(plan({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SETTLED" }), failed, buyLeg({ id: ID(12), sequence: 3, status: "PLANNED" }), recovery] }));
+    api.quoteLeg.mockRejectedValue(new ApiError("VALIDATION_FAILED", 400, "stop here"));
+    renderApp(<GroupProgress operationId={plan().id} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Complete swap" }));
+    expect(api.quoteLeg).toHaveBeenCalledWith(plan().id, ID(13));
+    expect(screen.queryByRole("button", { name: /Review step/ })).toBeNull();
   });
 });
 

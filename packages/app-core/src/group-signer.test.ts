@@ -86,12 +86,14 @@ describe("runGroup", () => {
     expect(a.submitGroup).toHaveBeenCalledTimes(1);
   });
 
-  it("downgrades to one signature per transaction when the wallet cannot sign all", async () => {
+  it("downgrades to one signature per transaction when the wallet cannot sign all, and asks for a fresh group at tier single (review I5)", async () => {
     const a = api(), t = trace(), o = opts();
     const s = signer({ signSolanaAll: vi.fn().mockRejectedValue(new Error("signAllTransactions is not supported")) });
     await runGroup(a, s, "O1", t.dispatch, o);
     expect(o.onDowngrade).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(a.requestGroup).mock.calls.map(([, b]) => b.tier)).toEqual(["sign_all", "single"]);
     expect(s.signSolana).toHaveBeenCalledTimes(3);
+    expect(a.submitGroup).toHaveBeenCalledTimes(1);
     expect(a.submitGroup).toHaveBeenCalledWith("O1", "G1", { signed: [{ legId: "F", signedTx: "one:tx-fee" }, { legId: "A", signedTx: "one:tx-a" }, { legId: "B", signedTx: "one:tx-b" }] });
     expect(run(t.events).kind).toBe("done");
   });
@@ -101,10 +103,12 @@ describe("runGroup", () => {
     await runGroup(a, s, "O1", trace().dispatch, opts({ tier: "single" }));
     expect(s.signSolanaAll).not.toHaveBeenCalled();
     expect(s.signSolana).toHaveBeenCalledTimes(3);
-    const bare = signer({ signSolanaAll: undefined }), o = opts();
-    await runGroup(api(), bare, "O1", trace().dispatch, o);
+    const bare = signer({ signSolanaAll: undefined }), o = opts(), b = api();
+    await runGroup(b, bare, "O1", trace().dispatch, o);
     expect(bare.signSolana).toHaveBeenCalledTimes(3);
     expect(o.onDowngrade).toHaveBeenCalledTimes(1);
+    expect(b.requestGroup).toHaveBeenCalledTimes(1); // known before the quote: the first group is already a single-tier one
+    expect(b.requestGroup).toHaveBeenCalledWith("O1", expect.objectContaining({ tier: "single" }));
   });
 
   it("a rejected popup does not downgrade and ends failed", async () => {

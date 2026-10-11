@@ -36,7 +36,7 @@ export function NeedsAction({ op, busy, onContinued, onStopped }: { op: Operatio
   });
   const stop = useMutation({ mutationFn: () => api.cancelOperation(op.id), onSuccess: onStopped });
   const replaced = new Set(op.legs.map((l) => l.retryOf));
-  const open = op.legs.filter((l) => l.kind !== "network_fee" && !replaced.has(l.id) && !l.recoveryToken && (l.status === "PLANNED" || (l.status === "FAILED" && l.failureReason !== "SKIPPED")));
+  const open = op.legs.filter((l) => l.kind !== "network_fee" && !l.recoveryOf && !replaced.has(l.id) && !l.recoveryToken && (l.status === "PLANNED" || (l.status === "FAILED" && l.failureReason !== "SKIPPED")));
   const waiting = busy || op.legs.some((l) => LEG_IN_FLIGHT.includes(l.status));
   const pending = next.isPending || stop.isPending;
   const error = next.error ?? stop.error;

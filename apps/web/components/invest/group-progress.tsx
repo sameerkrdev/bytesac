@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { FeeLines } from "@/components/invest/fee-lines";
-import { LegRow, toSigner } from "@/components/invest/leg-progress";
+import { LegProgress, LegRow, toSigner } from "@/components/invest/leg-progress";
 import { NeedsAction } from "@/components/invest/needs-action";
 import { useMe } from "@/components/me-context";
 import { StatusBadge } from "@/components/status-badge";
@@ -56,7 +56,7 @@ function PricesStrip({ group, op, onDecide }: { group: GroupResponse; op: Operat
         <div className="space-y-2">
           <p className="text-warning">Some minimums are lower than in your plan. Check them before you sign.</p>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => onDecide(true)}>Accept new prices</Button>
+            <Button disabled={expired} onClick={() => onDecide(true)}>Accept new prices</Button>
             <Button variant="secondary" onClick={() => onDecide(false)}>Not now</Button>
           </div>
         </div>
@@ -86,6 +86,8 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
   const [running, setRunning] = useState(false);
   const decision = useRef<((accept: boolean) => void) | null>(null);
   const started = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const op = useQuery({
     queryKey: ["operation", operationId], queryFn: () => api.getOperation(operationId),
     refetchInterval: (q) => (running || q.state.data?.legs.some((l) => LEG_IN_FLIGHT.includes(l.status)) ? 3000 : false),
@@ -93,22 +95,38 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
   const setOp = (o: OperationView) => { qc.setQueryData(["operation", operationId], o); void qc.invalidateQueries({ queryKey: ["portfolio"] }); };
   const stop = useMutation({ mutationFn: () => api.cancelOperation(operationId), onSuccess: setOp });
 
-  /** Groups until nothing is left to sign, the user must decide (needs action), or a chunk fails. */
+  /**
+   * Groups until nothing is left to sign or something this drive sent failed (the server then waits for Continue or Stop). The next chunk is requested only once
+   * the previous chunk's fee has settled: the server refuses a group while a fee is in flight, so the website waits (never retries the request).
+   */
   const drive = async () => {
     setRunning(true);
     let now = tier;
     const leftOut = new Set<string>();
-    const track = (e: GroupSignerEvent) => { dispatch(e); if (e.type === "quoted") e.group.legs.filter((l) => l.error).forEach((l) => leftOut.add(l.legId)); };
+    const signed = new Set<string>();
+    const track = (e: GroupSignerEvent) => {
+      dispatch(e);
+      if (e.type !== "quoted") return;
+      e.group.legs.filter((l) => l.error).forEach((l) => leftOut.add(l.legId));
+      e.group.transactions.filter((t) => t.kind === "asset").forEach((t) => signed.add(t.legId));
+    };
     try {
       for (;;) {
-        const o = await runGroup(api, toSigner(wallet), operationId, track, {
+        let o = await runGroup(api, toSigner(wallet), operationId, track, {
           tier: now, walletName: wallet.walletName,
           acceptNewPrices: () => new Promise<boolean>((resolve) => { decision.current = resolve; }),
           onDowngrade: () => { now = "single"; setTier("single"); },
         });
         if (!o) return;
+        while (alive.current && o.legs.some((l) => l.kind === "network_fee" && LEG_IN_FLIGHT.includes(l.status))) {
+          setOp(o);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          o = await api.getOperation(operationId);
+        }
         setOp(o);
-        if (o.needsAction || o.status !== "IN_PROGRESS" || !o.legs.some((l) => l.kind !== "network_fee" && l.status === "PLANNED" && !leftOut.has(l.id))) return;
+        const broke = o.legs.some((l) => signed.has(l.id) && (l.status === "FAILED" || (l.status === "PLANNED" && !!l.lastError)));
+        const more = o.legs.some((l) => l.kind !== "network_fee" && !l.recoveryOf && l.status === "PLANNED" && !leftOut.has(l.id));
+        if (!alive.current || o.status !== "IN_PROGRESS" || o.legs.some((l) => l.kind === "network_fee" && l.status === "UNKNOWN") || broke || !more) return;
       }
     } finally {
       setRunning(false);
@@ -129,7 +147,8 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
   const confirmed = assets.filter((l) => l.status === "SETTLED").length;
   const inFlight = o.legs.some((l) => LEG_IN_FLIGHT.includes(l.status));
   const live = o.status === "PLANNED" || o.status === "IN_PROGRESS";
-  const left = assets.some((l) => l.status === "PLANNED");
+  const left = assets.some((l) => l.status === "PLANNED" && !l.recoveryOf);
+  const recovery = o.legs.find((l) => l.recoveryOf && l.status === "PLANNED");
   const failure = state.kind === "failed" ? failureCopy(state) : null;
   const busy = running || state.kind === "quoting" || state.kind === "sending";
 
@@ -154,7 +173,8 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
       {stop.error && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{toDisplayError(stop.error).title}</p><p className="text-ink-muted">{toDisplayError(stop.error).message}</p></div>}
 
       {live && inFlight && !busy && <p role="status" className="text-sm text-ink-muted">Waiting for the network to confirm. This page updates by itself.</p>}
-      {live && o.needsAction && <NeedsAction op={o} busy={busy} onContinued={(next) => { setOp(next); void drive(); }} onStopped={setOp} />}
+      {live && o.needsAction && !running && <NeedsAction op={o} busy={busy} onContinued={(next) => { setOp(next); void drive(); }} onStopped={setOp} />}
+      {live && recovery && !busy && !inFlight && <LegProgress operationId={o.id} legId={recovery.id} />}
       {live && !o.needsAction && !busy && !inFlight && (
         <div className="flex flex-wrap gap-3">
           {left && <Button onClick={() => void drive()}>{state.kind === "failed" ? (state.code === "GROUP_EXPIRED" ? "Get new quotes" : "Try again") : "Confirm and sign"}</Button>}

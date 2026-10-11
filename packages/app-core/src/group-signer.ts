@@ -59,34 +59,37 @@ export type GroupSignerApi = {
 const UNSUPPORTED = /not supported|unsupported|not implemented|not a function/i;
 
 /**
- * One chunk: quote, (accept new prices), wallet, submit. Tier `single` signs one transaction per popup; `sign_all` one popup for the whole batch,
- * falling back to one per transaction when the wallet says it cannot (`onDowngrade`). A cancelled popup never downgrades. Returns null when the user
- * declined new prices or the chunk failed (the state says why); nothing here resends a submitted group.
+ * One chunk: quote, (accept new prices), wallet, submit. Tier `single` signs one transaction per popup (the server then forms groups of one leg, so the 40 s
+ * window holds); `sign_all` one popup for the whole batch. A wallet that cannot sign a batch downgrades (`onDowngrade`) to `single` BEFORE the quote when that is
+ * known, else a fresh `single` group is requested (the batch it was shown is too big to sign one by one). A cancelled popup never downgrades. Returns null when
+ * the user declined new prices or the chunk failed (the state says why); nothing here resends a submitted group.
  */
 export async function runGroup(
   api: GroupSignerApi, signer: Signer, opId: string, dispatch: (e: GroupSignerEvent) => void,
   opts: { tier: "sign_all" | "single"; walletName?: string; acceptNewPrices(g: GroupResponse): Promise<boolean>; onDowngrade(): void },
 ): Promise<OperationView | null> {
   try {
+    let tier = opts.tier;
+    if (tier === "sign_all" && !signer.signSolanaAll) { opts.onDowngrade(); tier = "single"; }
     dispatch({ type: "quoteRequested" });
-    const group = await api.requestGroup(opId, { chain: "solana", tier: opts.tier, walletName: opts.walletName, idempotencyKey: crypto.randomUUID() });
+    const group = await api.requestGroup(opId, { chain: "solana", tier, walletName: opts.walletName, idempotencyKey: crypto.randomUUID() });
     dispatch({ type: "quoted", group });
     if (group.priceMoved) {
       if (!(await opts.acceptNewPrices(group))) { dispatch({ type: "reset" }); return null; }
       dispatch({ type: "accepted" });
     }
     const txs = group.transactions.map((t) => t.serializedBase64);
-    const signEach = async () => { const out: string[] = []; for (const t of txs) out.push(await signer.signSolana(t)); return out; };
     let signed: string[];
-    if (opts.tier === "single") signed = await signEach();
-    else if (!signer.signSolanaAll) { opts.onDowngrade(); signed = await signEach(); }
-    else {
+    if (tier === "single") {
+      signed = [];
+      for (const t of txs) signed.push(await signer.signSolana(t));
+    } else {
       try {
-        signed = await signer.signSolanaAll(txs);
+        signed = await signer.signSolanaAll!(txs);
       } catch (err) {
         if (err instanceof WalletRejectedError || !UNSUPPORTED.test(err instanceof Error ? err.message : "")) throw err;
         opts.onDowngrade();
-        signed = await signEach();
+        return runGroup(api, signer, opId, dispatch, { ...opts, tier: "single" }); // the quoted batch is dropped by the next quote
       }
     }
     dispatch({ type: "signed" });
