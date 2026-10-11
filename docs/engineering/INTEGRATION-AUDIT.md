@@ -463,3 +463,23 @@ Docs checked (2026-10-03): https://docs.expo.dev/versions/v57.0.0/sdk/securestor
 ## Verification
 
 Per-task checks (api, web and mobile tests, lint, check-types, web build) were run by the audit tasks and are green; the full-repository gate and `expo export` result is recorded with the merge.
+
+## Batch signing (Spec 22 P0)
+
+Filled in by the user from `/dev/wallet-lab` (JSON pasted below each table) and `scripts/p0-lifi-check.ts`. Decides K per tier, `sendBy` (40 s default) and whether B-07 is built.
+
+| Wallet | sign_all (n max) | ms for 12 | popups for 12 | rewrites | sign_and_send batch | single | Notes |
+|---|---|---|---|---|---|---|---|
+
+| Wallet | Chain | getCapabilities | sendCalls n | receipts / distinct `to` | revert behaviour | Notes |
+|---|---|---|---|---|---|---|
+
+| LI.FI check | Result |
+|---|---|
+| User fee payer quote (swap) | |
+| User fee payer quote (cross-chain) | |
+| Pre-signed by LI.FI? | |
+| Blockhash lifetime after quote (s), swap / cross-chain | |
+| ERC-20 → Solana token direct | |
+| Solana token → BTC direct | |
+| 12 parallel estimates (ms, 429s) | |

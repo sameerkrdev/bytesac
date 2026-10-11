@@ -19,6 +19,8 @@ pnpm --filter api dev
 pnpm --filter api dev:worker                # BullMQ worker: price snapshots, performance, search index, embeddings (second terminal)
 ```
 
+Scripts: `pnpm --filter api exec tsx --env-file-if-exists=.env scripts/p0-lifi-check.ts <solanaAddress> <evmAddress>` is the read-only Spec 22 P0 LI.FI check (user-fee-payer Solana quotes, blockhash lifetime, direct routes, 12 parallel estimates; needs `LIFI_API_KEY`; never signs or sends).
+
 Provider keys (`ALCHEMY_API_KEY`, `RESEND_API_KEY`, `TWILIO_*`) are required by `src/config/dotenv.ts`; placeholders are fine locally unless you exercise those paths. `ALCHEMY_API_KEY` also builds the Alchemy Solana endpoint (`https://solana-mainnet.g.alchemy.com/v2/<key>`) used to verify SPL mints. `COINMARKETCAP_API_KEY` is optional: when empty, market prices are reported as unavailable and everything else works.
 
 ## Supabase setup

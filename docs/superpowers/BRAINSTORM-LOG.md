@@ -201,6 +201,20 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 |---|---|---|---|---|
 | 1 | How to unblock Phantom rewriting the fee transaction | Add CU to our fee tx (rec.) · accept wallet CU-only extras · user pays fee-leg gas · wallet settings only | **Explain 1 and 2**, then **option 1 now** and write the problem plus option 2 (and 3) into FUTURE-PLANS | Fee transfer gets LI.FI-shaped compute budget; option 2/3 logged in FUTURE-PLANS |
 | 2 | Option 1 still `TX_MISMATCH` after deploy | Ship option 2 · option 3 · keep failing | **still same issue** (option 1 insufficient) | Option 2 shipped: co-sign accepts ComputeBudget-only wallet rewrites against stored `preparedBase64` |
+| 3 | Fewer signing rounds | fee+Solana / all EVM / all BTC · keep per-leg · true merge only | **fee + all Solana swap in one, then all EVM in one, then BTC in one** | Logged in FUTURE-PLANS (batched signing by wallet family); not built; invest EVM buys are still Solana-source signs |
+| 4 | Ground rules for batching | — | **website only; user pays gas; assets never leave the user's wallets; no SOL top-up (`SOL_REQUIRED` with exact shortfall at plan and group quote); no LI.FI integrator fee; old hub/per-leg decisions may be set aside** | Own fee transaction kept; sign-only batch main path, sign-and-send fallback |
+| 5 | Fee when a user stops partway | keep fee on the uninvested part · fee per chunk (rec.) | **a** (accept recommendations) | Fee per signing group (B-06) |
+| 6 | Rebalance routing | direct routes, hub only as fallback (rec.) · keep hub | **a** | Direct-route planner (B-10) |
+| 7 | EVM gas for sells | user pays (A) · keep platform gas drop (B, rec.) | **a** | One drop per EVM group (B-14) |
+| 8 | Fee when Solana wallet lacks USDC | error "add $X USDC" (rec.) · route a sell through the hub (+1 popup) | **a** | `INSUFFICIENT_BALANCE` with `usdcRequiredMicro` (B-15) |
+| 9 | Fee in an EVM batch when no Solana sells | yes (rec.) · no | **a** | Not adopted in the spec: conflicts with D-085 (Solana payout wallet) and fee-before-drop; B-16 marked for confirmation |
+| 10 | Next step | write full design doc (rec.) · log only · other | **a** | Spec `2026-10-11-batched-signing-direct-routes-design.md` (Spec 22) written for review |
+| 11 | Mobile per-leg Solana gas (D-041 untested on device) | keep sponsored until P4 (rec.) · user-paid everywhere in P1 | **User-paid everywhere in P1** | B-21 confirmed; device check added to OPEN-ITEMS with P1 |
+| 12 | Auto-stop window for an operation needing action | invest 24 h / rebalance 7 d (rec.) · 7 d all · 24 h all | **Invest 24 h, rebalance 7 d** | B-08: 24 h invest and repair, 7 d rebalance and sell |
+| — | Spec review (pasted) | — | estimate-first review, `sendBy` 20 s rule, Stop banners, wallet telemetry, S1 wording | Applied in spec commit `4713f0f` |
+| 13 | Spec 22 approval | approve · changes | **Approved**; every DEFAULT row incl. B-16 approved as written | Spec status APPROVED |
+| 14 | Send timing (user + reviewer) | clock only · real blockhash check | **Also `isBlockhashValid` with a small margin before each send; P0 measures 12-tx signing time; tune `sendBy`/K from P0 and telemetry** | `sendBy` gates submit and fee wait; each buy gated by `isBlockhashValid` + 20-block margin; P0 lab times 12-tx batches and LI.FI blockhash lifetime |
+| 15 | Next step | write P0 + P1 plans | **Write P0 (wallet lab) and P1 (first investment) plans** | `plans/2026-10-11-spec22-p0-wallet-lab.md`, `plans/2026-10-11-spec22-p1-first-investment.md` |
 
 ## Roadmap decisions
 
