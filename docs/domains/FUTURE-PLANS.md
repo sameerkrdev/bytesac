@@ -65,6 +65,27 @@ Phantom, Solflare and similar wallets often **rewrite** a versioned transaction 
 
 Do not implement option 3 until separately approved.
 
+### Batched signing by wallet family (proposed 2026-10-11)
+
+**Now specified** in `docs/superpowers/specs/2026-10-11-batched-signing-direct-routes-design.md` (Spec 22, pending review): signing groups, user-paid Solana gas, fee per group, direct-route rebalances. This entry and "Direct sell-to-buy pairing" are removed when that spec is built.
+
+User direction: fewer signing rounds — **(1) fee + all Solana swaps in one**, **(2) all EVM in one**, **(3) all BTC in one** — instead of one sign per leg (ADR-014 today).
+
+**Important for invest:** buying ETH/xStocks from USDC on Solana is still a **Solana-source** LI.FI transaction (platform `svmSponsor`). The user does not sign with MetaMask on invest for those buys. EVM wallet signing applies to **sells/rebalances that spend an EVM asset**. So the useful grouping is by **source wallet family**, not by destination ticker:
+
+| Round | What is signed | Typical invest | Typical sell |
+|---|---|---|---|
+| 1 Solana | Fee transfers + every Solana-source leg (Solana swaps and Solana→EVM/BTC bridge starts) | One Solana session | Solana sells + fee (placement-dependent) |
+| 2 EVM | Every EVM-source leg | Usually none on invest | One session per chain still if legs span Ethereum/Base/… (one EVM tx cannot span chains) |
+| 3 Bitcoin | Every Bitcoin-source PSBT | Usually none on invest | BTC sell PSBT |
+
+**Two implementation shapes (pick in a later ADR):**
+
+1. **UX batch (recommended first):** keep one LI.FI/server tx per leg (size/CU/ALT safe, partial failure clear), but the client quotes and asks the wallet to sign **every Solana tx in one continuous step** (“Approve 3 Solana transactions”), then the same for EVM, then BTC. Same custody model; less wizard friction.
+2. **True merge:** pack fee + Solana-destination swaps into **one** VersionedTransaction when they fit under sponsor caps (≤24 instructions, ≤64 static accounts, priority ≤0.001 SOL). LI.FI does not return a merged multi-swap; we would rebuild or use a multi-ix builder. Solana→EVM bridge txs stay separate txs (still Solana-signed). Same-chain EVM multicall is optional later; cross-chain EVM cannot merge.
+
+Needs: ADR-014 amendment (leg groups / claim-before-send per group), planner groups, client signer loop, failure rules (if tx 2 of 3 Solana fails after tx 1 landed → `PARTIAL`), gas reservation for the group, and tests. Do not implement until specified.
+
 ### Execution robustness (deferred from Spec 12)
 
 - **Stuck recovery legs, deeper fix (Spec 12 Q4).** Release 1 (Spec 12) stops an operation automatically when its unsent recovery leg is older than 7 days (operation `PARTIAL`, gas released, the delivered token stays in the user's wallet, user alerted). The problem underneath: a user may hold only one `PLANNED`/`IN_PROGRESS` operation, so a pending "Complete swap" blocks every other invest, sell or rebalance until it is signed, stopped or auto-stopped. Deeper fix: (1) replace the per-user lock with **per-asset reservations** so a pending recovery only blocks operations that touch the same deployments or the same basket cash, and unrelated baskets stay usable; (2) reminders through the inbox, email and push at 24 h and 72 h before the auto-stop; (3) after an auto-stop, offer a one-click "Recover now" plan later (a new operation that swaps the delivered token to the original target, with its own network fee — see the separate `recover` operation entry above); (4) let the user choose at failure time between "complete now", "keep the delivered token" (close as `PARTIAL` immediately) and "remind me"; (5) ops view of stuck recoveries. Needs a concurrency review because two operations could then spend the same wallet balance; reservations must be enforced in the planner and at quote time.
