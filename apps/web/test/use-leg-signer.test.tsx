@@ -9,6 +9,7 @@ vi.mock("wagmi", () => ({
   useSwitchChain: () => ({ switchChainAsync: wallet.switchChain }),
   useSendTransaction: () => ({ sendTransactionAsync: wallet.send }),
 }));
+vi.mock("@reown/appkit/react", () => ({ useWalletInfo: () => ({ walletInfo: { name: "Phantom" } }) }));
 vi.mock("wagmi/actions", () => ({ waitForTransactionReceipt: wallet.receipt, getAccount: () => wallet.account() }));
 vi.mock("@/lib/wallet/use-wallet-for-chain", () => ({ same: (a: string, b: string) => a.toLowerCase() === b.toLowerCase(), useWalletForChain: () => ({ ensure: wallet.ensure, connectionKey: "" }) }));
 import { useLegSigner } from "@/lib/wallet/use-leg-signer";
@@ -46,6 +47,22 @@ describe("useLegSigner non-EVM signing after ensure() switches wallet", () => {
     expect(stale.signTransaction).not.toHaveBeenCalled();
     expect(wallet.provider).toHaveBeenCalledWith("solana");
     expect(wallet.address).toHaveBeenCalledWith("solana");
+  });
+  it("Solana: signs a whole batch with one wallet call, in order, and reports the wallet name", async () => {
+    const stale = { signAllTransactions: vi.fn() }, switched = { signAllTransactions: vi.fn(async (ts: unknown[]) => ts) };
+    switching("solana", SOL, stale, switched);
+    const { result } = renderHook(() => useLegSigner(meNon));
+    await expect(result.current.signSolanaAll(["AAEC", "AAED"])).resolves.toEqual([btoa("signed"), btoa("signed")]);
+    expect(switched.signAllTransactions).toHaveBeenCalledTimes(1);
+    expect(switched.signAllTransactions.mock.calls[0]![0]).toHaveLength(2);
+    expect(stale.signAllTransactions).not.toHaveBeenCalled();
+    expect(result.current.walletName).toBe("Phantom");
+  });
+  it("Solana: a wallet without signAllTransactions throws 'not supported' (the group signer downgrades)", async () => {
+    const p = { signTransaction: vi.fn() };
+    switching("solana", SOL, p, p);
+    const { result } = renderHook(() => useLegSigner(meNon));
+    await expect(result.current.signSolanaAll(["AAEC"])).rejects.toThrow(/not supported/);
   });
   it("Solana: refuses when the switched wallet is not the linked one", async () => {
     const p = { signTransaction: vi.fn() };

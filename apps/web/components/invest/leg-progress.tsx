@@ -18,8 +18,9 @@ import { toDisplayError } from "@/lib/errors";
 import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 
 /** Adapts the web wallet hooks to the shared `Signer` (the hooks keep their own call shapes). */
-const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
+export const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
   signSolana: (b64) => w.signSolana(b64),
+  signSolanaAll: (b64s) => w.signSolanaAll(b64s),
   sendEvm: ({ approval, ...tx }) => w.sendEvm(tx, approval ?? null),
   signPsbt: (psbt, inputCount) => w.signBitcoin(psbt, inputCount),
 });

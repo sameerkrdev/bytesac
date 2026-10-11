@@ -6,6 +6,7 @@ export * from "./error-copy";
 export * from "./execution";
 export * from "./fees";
 export * from "./format";
+export * from "./group-signer";
 export * from "./leg-signer";
 export * from "./membership-status";
 export * from "./organization-status";

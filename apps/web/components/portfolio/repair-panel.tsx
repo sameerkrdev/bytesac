@@ -10,6 +10,7 @@ import { useState } from "react";
 import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
+import { OpenOperationBanner } from "@/components/invest/open-operation-banner";
 import { ErrorBox } from "@/components/portfolio/exit-dialogs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ function BuyBack({ repair, decimals }: { repair: Repair; decimals: number }) {
   const err = preview.error ?? discard.error;
   return (
     <div className="space-y-4">
+      <OpenOperationBanner exceptId={plan?.id} />
       <p className="text-sm text-ink-muted">Buy back {exact(repair.totalShortfall, decimals)} {repair.symbol} with USDC from your wallet so every basket is fully backed again. You review the cost and sign each step.</p>
       {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
         <div className="space-y-3">

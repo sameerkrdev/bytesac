@@ -12,6 +12,7 @@ import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility
 import { DiffSummary } from "@/components/baskets/version-history";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
+import { OpenOperationBanner } from "@/components/invest/open-operation-banner";
 import { ErrorBox } from "@/components/portfolio/exit-dialogs";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/kit";
@@ -68,6 +69,7 @@ export function RebalanceReview({ positionId, target }: { positionId: string; ta
       <PageHeader id="rebalance-title" title={target === "latest" ? "Review update" : "Rebalance to target"} eyebrow={p.basketName}
         breadcrumb={[{ label: "Portfolio", href: "/portfolio" }, { label: p.basketName, href: `/portfolio/${p.id}` }]}
         description={target === "latest" ? "The manager published a new version of this strategy. Nothing has changed in your wallet." : "Your holdings drifted from the version you applied. A plan moves them back to its target — only if you sign it."} />
+      <OpenOperationBanner exceptId={plan?.id} />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-8">

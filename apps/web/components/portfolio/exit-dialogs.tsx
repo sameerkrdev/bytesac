@@ -7,6 +7,7 @@ import { useId, useState } from "react";
 import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { FeeLines } from "@/components/invest/fee-lines";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
+import { OpenOperationBanner } from "@/components/invest/open-operation-banner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,7 @@ export function SellDialog({ position }: { position: Position }) {
             <DialogTitle className="text-ink">{label}</DialogTitle>
             <DialogDescription>Each asset is sold back to USDC on Solana in your own wallets. You sign every step. Never more than your wallet holds is sold.</DialogDescription>
           </DialogHeader>
+          <OpenOperationBanner exceptId={plan?.id} />
           {signing && plan ? <LegProgress operationId={plan.id} /> : plan ? (
             <div className="space-y-4">
               {plan.excluded && plan.excluded.length > 0 && (

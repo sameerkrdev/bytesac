@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { DeclarationForm } from "@/components/eligibility/declaration-form";
 import { InvestWizard } from "@/components/invest/invest-wizard";
+import { OpenOperationBanner, useOpenOperation } from "@/components/invest/open-operation-banner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
@@ -16,6 +17,7 @@ export function InvestButton({ slug, name, minimumUsdc, incrementUsdc, mode = "d
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
   const inv = useQuery({ queryKey: ["investability", slug], queryFn: () => api.getInvestability(slug), retry: false });
+  const openOperation = useOpenOperation(undefined, inv.data?.eligibility?.eligible === true);
 
   if (inv.isPending) return <Button disabled>Checking…</Button>;
   if (!inv.data) return <Button disabled>Investing is unavailable right now</Button>;
@@ -40,6 +42,14 @@ export function InvestButton({ slug, name, minimumUsdc, incrementUsdc, mode = "d
             return <li key={`${r.instrumentId ?? ""}${r.code}`}>{a ? <Link href={ROUTE[a.target]} className="inline-flex min-h-11 items-center text-ink underline underline-offset-4">{a.label}</Link> : <span className="text-ink-muted">{r.message}</span>}</li>;
           })}
         </ul>
+      </div>
+    );
+  }
+  if (openOperation) {
+    return (
+      <div className="space-y-3">
+        <Button size="lg" disabled>Invest</Button>
+        <OpenOperationBanner />
       </div>
     );
   }

@@ -64,6 +64,8 @@ export function legSignerReducer(state: LegSignerState, e: LegSignerEvent): LegS
 /** The wallet side, supplied by each app. Each method signs exactly what the server prepared. */
 export interface Signer {
   signSolana(serializedBase64: string): Promise<string>;
+  /** One wallet approval for the whole batch, in order (the web only; mobile signs one leg at a time). Throws "not supported" when the wallet cannot. */
+  signSolanaAll?(serializedBase64: string[]): Promise<string[]>;
   sendEvm(tx: { to: string; data: string; value: string; chainId: number; approval?: { token: string; spender: string; amount: string } | null }): Promise<string>;
   /** Absent when the wallet cannot sign a Bitcoin PSBT: the leg is then continued on the web. */
   signPsbt?(psbtBase64: string, inputCount: number): Promise<string>;

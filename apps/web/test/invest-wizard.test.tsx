@@ -53,7 +53,7 @@ describe("InvestWizard", () => {
     open();
     await type(slippage(), "2");
     await userEvent.click(preview());
-    expect(api.investPlan).toHaveBeenCalledWith({ basketId: "b", amountUsdc: "250", slippageBps: 200, idempotencyKey: expect.any(String) });
+    expect(api.investPlan).toHaveBeenCalledWith({ basketId: "b", amountUsdc: "250", slippageBps: 200, tier: "sign_all", idempotencyKey: expect.any(String) });
     expect(await screen.findByText("Network fee (paid to Bytesac for gas)")).toBeInTheDocument();
     expect(screen.getByText("Fees are not refunded if the operation does not complete.")).toBeInTheDocument();
     expect(screen.getByText("1. Fees")).toBeInTheDocument();
@@ -70,9 +70,9 @@ describe("InvestWizard", () => {
     </MeProvider></QueryClientProvider>);
     await userEvent.click(preview());
     expect(await screen.findByText("Your wallet can't sign on Arbitrum")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue to signing" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
     await userEvent.click(screen.getByLabelText("I understand that selling assets on Arbitrum needs another wallet."));
-    expect(screen.getByRole("button", { name: "Continue to signing" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeEnabled();
   });
 
   it("going back discards the plan so another can be made", async () => {

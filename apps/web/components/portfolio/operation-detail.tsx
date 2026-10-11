@@ -4,6 +4,7 @@ import { formatUnits, OPERATION_STATUS_LABEL } from "@repo/app-core";
 import type { OperationView } from "@repo/validator";
 import { useState } from "react";
 import { FeeLines } from "@/components/invest/fee-lines";
+import { GroupProgress, isGrouped } from "@/components/invest/group-progress";
 import { LegProgress, LegRow } from "@/components/invest/leg-progress";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -31,9 +32,9 @@ export function OperationDetail({ operation: o, open }: { operation: OperationVi
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-ink">{KIND[o.kind]}</DialogTitle>
-              <DialogDescription>Continue where you left off. You sign every step in your own wallets.</DialogDescription>
+              <DialogDescription>Continue where you left off. You approve in your own wallets.</DialogDescription>
             </DialogHeader>
-            <LegProgress operationId={o.id} />
+            {isGrouped(o) ? <GroupProgress operationId={o.id} /> : <LegProgress operationId={o.id} />}
           </DialogContent>
         </Dialog>
       )}

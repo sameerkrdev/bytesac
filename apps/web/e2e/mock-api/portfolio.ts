@@ -44,9 +44,10 @@ function op(n: number, kind: OperationView["kind"], status: OperationView["statu
 /** A planned investment: the fee step, then one swap or cross-chain buy per asset, all funded from USDC on Solana. */
 export function investPlan(seed: (typeof BASKETS)[number], amountUsdc: string, slippageBps: number): OperationView {
   const amount = Number(amountUsdc);
-  const fee = 0.42 + amount * (seed.entryBps / 10_000);
+  // Spec 22: the user pays Solana gas in SOL, so the network fee is 0 and the fee step carries the manager fee only (none when it is 0).
+  const fee = amount * (seed.entryBps / 10_000);
   const spend = amount - fee;
-  const legs = [leg(1, { kind: "network_fee", status: "PLANNED", amountIn: String(Math.round(fee * 1e6)), priceImpact: null, sourceTx: null, provider: null })];
+  const legs = fee > 0 ? [leg(1, { kind: "network_fee", status: "PLANNED", amountIn: String(Math.round(fee * 1e6)), priceImpact: null, sourceTx: null, provider: null, gasPayer: "user_solana" })] : [];
   seed.weights.forEach(([k, bps], i) => {
     const a = ASSETS[k]!;
     const chain = a.chains[0]!;
@@ -54,19 +55,19 @@ export function investPlan(seed: (typeof BASKETS)[number], amountUsdc: string, s
     const out = usd / Number(a.price);
     const decimals = DEC[k] ?? (chain === "solana" ? 9 : 18);
     const raw = (n: number) => BigInt(Math.round(n * 10 ** Math.min(decimals, 9))).toString() + "0".repeat(Math.max(0, decimals - 9));
-    legs.push(leg(i + 2, {
+    legs.push(leg(legs.length + 1, {
       kind: chain === "solana" ? "swap" : "cross_chain", status: "PLANNED", fromChain: "solana", toChain: chain as "solana", toDeploymentId: dep(k, chain),
       amountIn: String(Math.round(usd * 1e6)), minOut: raw(out * (1 - slippageBps / 10_000)), sourceTx: null,
       routeSummary: { tool: "LI.FI", symbol: a.symbol, decimals, estimatedOut: raw(out) },
-      gasPayer: chain === "solana" ? "platform_fee_payer" : chain === "bitcoin" ? null : "platform_gas_drop", priceImpact: 0.0008 + i * 0.0004,
+      gasPayer: chain === "solana" ? "user_solana" : chain === "bitcoin" ? null : "platform_gas_drop", priceImpact: 0.0008 + i * 0.0004,
       routeFees: [{ name: "LI.FI", amountUsd: usd * 0.0025, included: true }],
     }));
   });
   return {
     id: uuid(0x700 + Math.floor(amount)), kind: "invest", status: "PLANNED", basketId: basketIdOf(seed.slug), positionId: null, amountUsdc, sellPercent: null, slippageBps,
-    networkFeeUsdc: "0.42", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), createdAt: new Date().toISOString(), legs, needsAction: false, needsActionSince: null, groups: [], approvalsEstimate: null, solRequiredLamports: null, charged: [],
+    networkFeeUsdc: "0", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), createdAt: new Date().toISOString(), legs, needsAction: false, needsActionSince: null, groups: [], approvalsEstimate: 1, solRequiredLamports: "5200000", charged: [],
     fees: [
-      { kind: "network", amountMicro: "420000", recipientLabel: "Bytesac (gas)", waivedReason: null },
+      { kind: "network", amountMicro: "0", recipientLabel: "Bytesac (gas)", waivedReason: null },
       { kind: "manager_entry", amountMicro: String(Math.round(amount * seed.entryBps * 100)), recipientLabel: "Meridian Research Partners", waivedReason: null },
       { kind: "platform", amountMicro: "0", recipientLabel: "Bytesac", waivedReason: null },
     ],

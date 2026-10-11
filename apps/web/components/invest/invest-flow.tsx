@@ -9,7 +9,9 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { DeclarationForm, isDeclarationRequired } from "@/components/eligibility/declaration-form";
 import { FeeLines } from "@/components/invest/fee-lines";
-import { LegProgress, LegRow } from "@/components/invest/leg-progress";
+import { GroupProgress, PlanEstimates } from "@/components/invest/group-progress";
+import { LegRow } from "@/components/invest/leg-progress";
+import { OpenOperationBanner } from "@/components/invest/open-operation-banner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Callout } from "@/components/ui/kit";
 import { AllocationBar, colorAt } from "@/components/visual/allocation-ring";
@@ -70,17 +72,19 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
   const [understood, setUnderstood] = useState(false);
   const uncovered = useUncoveredChains(plan);
   const [chainAck, setChainAck] = useState(false);
+  const [minsChecked, setMinsChecked] = useState(false);
 
   const bps = Math.round(Number(slippage) * 100);
   const problem = investAmountProblem(amount, v.minimumInvestmentUsdc, v.minimumIncrementUsdc);
   const slippageProblem = Number.isFinite(bps) && bps >= 1 && bps <= SLIPPAGE_MAX_BPS ? null : `Slippage must be between 0.01% and ${SLIPPAGE_MAX_BPS / 100}%.`;
-  const preview = useMutation({ mutationFn: () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, idempotencyKey: key }), onSuccess: (p) => { setPlan(p); setUnderstood(false); } });
+  const preview = useMutation({ mutationFn: () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, tier: "sign_all", idempotencyKey: key }), onSuccess: (p) => { setPlan(p); setUnderstood(false); setMinsChecked(false); } });
   const discard = useMutation({ mutationFn: (id: string) => api.cancelOperation(id), onSettled: () => setPlan(null) });
   const err = preview.error ?? discard.error;
   const at = signing ? 2 : plan ? 1 : 0;
   const amountNum = Number(amount) || 0;
   const fees = plan ? feeLines(plan.fees) : null;
   const feeMicro = plan ? plan.fees.filter((f) => f.waivedReason === null).reduce((t, f) => t + Number(f.amountMicro), 0) : 0;
+  const manyLegs = (plan?.legs.filter((l) => l.kind !== "network_fee").length ?? 0) > 10;
   const min = Number(v.minimumInvestmentUsdc ?? 0);
   const quick = min > 0 ? [min, min * 2, min * 5, min * 10] : [];
   const change = (fn: () => void) => { fn(); setKey(crypto.randomUUID()); };
@@ -90,27 +94,29 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
       <div className="order-1 min-w-0 lg:order-none lg:pt-2"><div className="lg:sticky lg:top-28"><Stepper at={at} /></div></div>
 
       <div className="order-3 min-w-0 space-y-8 lg:order-none">
+        <OpenOperationBanner exceptId={plan?.id} />
         {signing && plan ? (
           <section aria-labelledby="sign-title" className="space-y-6">
             <div className="space-y-2">
-              <h2 id="sign-title" className="type-title text-ink">Authorize each step</h2>
-              <p className="text-ink-muted">For every step you get a fresh quote first, then approve exactly that transaction in your wallet. You can stop between steps.</p>
+              <h2 id="sign-title" className="type-title text-ink">Approve in your wallet</h2>
+              <p className="text-ink-muted">You get fresh prices first, then your wallet opens with the transactions for this batch. If something does not go through, you can continue or stop.</p>
             </div>
-            <div className="rounded-card border border-line bg-surface p-5 sm:p-6"><LegProgress operationId={plan.id} /></div>
+            <div className="rounded-card border border-line bg-surface p-5 sm:p-6"><GroupProgress operationId={plan.id} autoStart /></div>
             <Link href="/portfolio" className={buttonVariants({ variant: "secondary" })}>Go to portfolio</Link>
           </section>
         ) : plan ? (
           <section aria-labelledby="review-title" className="space-y-8">
             <div className="space-y-2">
               <h2 id="review-title" className="type-title text-ink">Review the plan</h2>
-              <p className="text-ink-muted">This is everything that will happen. Nothing is sent until you approve each step in your wallet.</p>
+              <p className="text-ink-muted">This is everything that will happen. Nothing is sent until you approve it in your wallet, and these figures are estimates until you confirm.</p>
             </div>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-4">
               <div className="bg-surface p-4"><dt className="text-xs text-ink-muted">You pay</dt><dd className="mt-1 type-figure text-2xl text-ink">{amount} <span className="text-sm text-ink-muted">USDC</span></dd></div>
               <div className="bg-surface p-4"><dt className="text-xs text-ink-muted">Fees</dt><dd className="mt-1 type-figure text-2xl text-ink">{(feeMicro / 1e6).toFixed(2)} <span className="text-sm text-ink-muted">USDC</span></dd></div>
               <div className="bg-surface p-4"><dt className="text-xs text-ink-muted">Invested in assets</dt><dd className="mt-1 type-figure text-2xl text-ink">≈{Math.max(0, amountNum - feeMicro / 1e6).toFixed(2)} <span className="text-sm text-ink-muted">USDC</span></dd></div>
-              <div className="bg-surface p-4"><dt className="text-xs text-ink-muted">Signatures</dt><dd className="mt-1 type-figure text-2xl text-ink">{plan.legs.length}</dd></div>
+              <div className="bg-surface p-4"><dt className="text-xs text-ink-muted">Transactions</dt><dd className="mt-1 type-figure text-2xl text-ink">{plan.legs.length}</dd></div>
             </dl>
+            <PlanEstimates plan={plan} />
             <p className="text-xs text-ink-muted">Route costs (DEX, bridge) are inside each step&apos;s estimate; every step has a guaranteed minimum and is re-quoted when you sign it.</p>
             <div className="space-y-3">
               <h3 className="type-eyebrow text-ink-faint">What you will sign</h3>
@@ -119,16 +125,22 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
             <div className="space-y-3">
               <h3 className="type-eyebrow text-ink-faint">Steps, in order</h3>
               <ol className="space-y-3">{plan.legs.map((l) => <LegRow key={l.id} leg={l} buying showStatus={false} />)}</ol>
-              <p className="text-sm text-ink-muted">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you sign each step.</p>
+              <p className="text-sm text-ink-muted">Outputs are estimates; each step is protected by a minimum you will receive ({slippage}% slippage). Prices are re-quoted when you confirm, and you see the new figures before your wallet opens.</p>
             </div>
             <div className="rounded-card border border-line bg-surface p-5"><FeeLines fees={plan.fees} /></div>
             <ChainCoverageNotice plan={plan} acknowledged={chainAck} onAcknowledge={setChainAck} />
+            {manyLegs && (
+              <label className="flex cursor-pointer gap-3 rounded-tile border border-line bg-surface-muted p-4 text-sm text-ink">
+                <input type="checkbox" className="mt-0.5 size-4 accent-[var(--c-primary)]" checked={minsChecked} onChange={(e) => setMinsChecked(e.target.checked)} />
+                <span>I&apos;ve checked the minimum amounts</span>
+              </label>
+            )}
             <label className="flex cursor-pointer gap-3 rounded-tile border border-line bg-surface-muted p-4 text-sm text-ink">
               <input type="checkbox" className="mt-0.5 size-4 accent-[var(--c-primary)]" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
-              <span>I&apos;ll sign each step in my own wallet. If the operation doesn&apos;t complete, fees already paid are not refunded and what settled stays in my wallet.</span>
+              <span>I&apos;ll approve these transactions in my own wallet. If the investment doesn&apos;t complete, fees already paid are not refunded and what settled stays in my wallet.</span>
             </label>
             <div className="flex flex-wrap gap-2">
-              <Button size="lg" disabled={!understood || (uncovered.length > 0 && !chainAck)} onClick={() => setSigning(true)}><PenLine aria-hidden />Continue to signing</Button>
+              <Button size="lg" disabled={!understood || (manyLegs && !minsChecked) || (uncovered.length > 0 && !chainAck)} onClick={() => setSigning(true)}><PenLine aria-hidden />Confirm</Button>
               <Button variant="secondary" size="lg" disabled={discard.isPending} onClick={() => discard.mutate(plan.id)}>Back</Button>
             </div>
           </section>
@@ -197,7 +209,7 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
             <div className="flex justify-between gap-3"><dt className="text-ink-muted">Amount</dt><dd className="text-ink tabular-nums">{amount || "—"} USDC</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-ink-muted">Slippage</dt><dd className="text-ink">{slippage}%</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-ink-muted">Fees</dt><dd className="text-ink">{fees ? fees.total : "Shown in the preview"}</dd></div>
-            {plan && <div className="flex justify-between gap-3"><dt className="text-ink-muted">Steps to sign</dt><dd className="text-ink">{plan.legs.length}</dd></div>}
+            {plan && <div className="flex justify-between gap-3"><dt className="text-ink-muted">Transactions</dt><dd className="text-ink">{plan.legs.length}</dd></div>}
           </dl>
           <Callout tone="neutral" icon={<ShieldCheck />} title="Your wallet, your signature">The assets settle in your own wallets. Bytesac never holds your keys or funds.</Callout>
           <Link href={`/baskets/${slug}`} className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink"><ArrowLeft aria-hidden className="size-3.5" />Back to research</Link>

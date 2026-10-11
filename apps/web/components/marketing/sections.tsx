@@ -199,7 +199,7 @@ export function SelfCustody() {
             ))}
           </Stagger>
           <Reveal className="mt-10 max-w-3xl text-sm text-ink-faint">
-            Bytesac never holds your private keys or your funds. To keep fees simple it may pay network gas for some steps and co-sign Solana transactions as fee payer — only for the exact transaction you reviewed, and you are charged for that gas as a listed fee.{" "}
+            Bytesac never holds your private keys or your funds. To keep fees simple it may pay EVM gas for some steps, charged back as a listed fee. You pay Solana network fees yourself, in SOL.{" "}
             <Link href="/self-custody" className="text-ink underline-offset-4 hover:underline">What you sign, and what we sign</Link>
           </Reveal>
         </div>
