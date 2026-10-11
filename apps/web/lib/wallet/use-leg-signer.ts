@@ -10,9 +10,19 @@ import { encodeFunctionData, erc20Abi } from "viem";
 import { useConfig, useSendTransaction, useSwitchChain } from "wagmi";
 import { getAccount, waitForTransactionReceipt } from "wagmi/actions";
 import { appKit } from "@/lib/appkit";
+import { standardWallets } from "@/lib/wallet/standard-wallets";
 import { same, useWalletForChain } from "@/lib/wallet/use-wallet-for-chain";
 
-const fromBase64 = (b64: string) => VersionedTransaction.deserialize(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+/**
+ * Wallets whose own popups cost one approval per transaction when asked to sign a batch, but only two when they sign AND send it (spec 22 B-27). The name is
+ * the Reown `walletInfo.name`; another wallet joins once telemetry shows it benefits.
+ */
+export const SIGN_AND_SEND_WALLETS = ["MetaMask"] as const;
+const SIGN_AND_SEND = "solana:signAndSendTransaction";
+type SignAndSendFeature = { signAndSendTransaction(...inputs: { account: { address: string }; chain: string; transaction: Uint8Array }[]): Promise<{ signature: Uint8Array }[]> };
+
+const bytesOf = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+const fromBase64 = (b64: string) => VersionedTransaction.deserialize(bytesOf(b64));
 const toBase64 = (tx: VersionedTransaction) => btoa(String.fromCharCode(...tx.serialize()));
 
 /**
@@ -43,6 +53,9 @@ export function useLegSigner(me: MeResponse | undefined) {
     return provider;
   };
 
+  /** The connected wallet as Wallet Standard sees it (short wait: wallets register when the page loads). */
+  const standard = async () => walletName ? (await standardWallets(50)).find((w) => w.name === walletName) : undefined;
+
   const guard = async <T,>(run: () => Promise<T>): Promise<T> => {
     try {
       return await run();
@@ -54,6 +67,9 @@ export function useLegSigner(me: MeResponse | undefined) {
   return {
     connectionKey,
     walletName,
+    /** `sign_and_send` for a listed wallet that exposes the Wallet Standard feature, else `sign_all` (which downgrades to `single` when the wallet cannot sign a batch). */
+    chooseTier: async (): Promise<"sign_and_send" | "sign_all"> =>
+      (SIGN_AND_SEND_WALLETS as readonly string[]).includes(walletName ?? "") && !!(await standard())?.features[SIGN_AND_SEND] ? "sign_and_send" : "sign_all",
     signSolana: (serializedBase64: string) => guard(async () => toBase64(await (await solana()).signTransaction(fromBase64(serializedBase64)))),
 
     /** One approval for a whole signing group, in order. A wallet or provider without `signAllTransactions` throws "not supported", which the group signer treats as a downgrade. */
@@ -61,6 +77,17 @@ export function useLegSigner(me: MeResponse | undefined) {
       const provider = await solana();
       if (typeof provider.signAllTransactions !== "function") throw new Error("signAllTransactions is not supported by this wallet");
       return (await provider.signAllTransactions(serializedBase64.map(fromBase64))).map(toBase64);
+    }),
+
+    /** The wallet signs and broadcasts the batch (two approvals on MetaMask); returns the raw 64-byte signatures in input order, which app-core encodes. */
+    signAndSendSolanaAll: (serializedBase64: string[]) => guard(async () => {
+      await solana(); // selects the linked wallet and checks the address
+      const wallet = await standard();
+      const account = wallet?.accounts.find((a) => a.address === linked("solana"));
+      const feature = wallet?.features[SIGN_AND_SEND] as SignAndSendFeature | undefined;
+      if (!account || !feature) throw new WrongWalletError("Solana wallet");
+      const outputs = await feature.signAndSendTransaction(...serializedBase64.map((t) => ({ account, chain: "solana:mainnet", transaction: bytesOf(t) })));
+      return outputs.map((o) => o.signature);
     }),
 
     /** Optional exact-amount ERC-20 approval first (mined before the main transaction), then the LI.FI transaction. Returns the main transaction hash. */

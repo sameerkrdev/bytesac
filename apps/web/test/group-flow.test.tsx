@@ -1,4 +1,5 @@
 import { ApiError } from "@repo/api-client";
+import { WalletRejectedError } from "@repo/app-core";
 import type { GroupResponse, Investability, PublicBasketDetail } from "@repo/validator";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,16 +7,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buyLeg, feeLeg, ID, operation, renderApp } from "./invest-fixtures";
 
 const api = {
-  investPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn(), quoteLeg: vi.fn(), requestGroup: vi.fn(), submitGroup: vi.fn(), continueOperation: vi.fn(), getPortfolio: vi.fn(), getInvestability: vi.fn(),
+  investPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn(), quoteLeg: vi.fn(), requestGroup: vi.fn(), submitGroup: vi.fn(), claimGroup: vi.fn(), sentGroup: vi.fn(), releaseGroup: vi.fn(), continueOperation: vi.fn(), getPortfolio: vi.fn(), getInvestability: vi.fn(),
 };
 vi.mock("@/lib/api", () => ({
   api: {
     investPlan: (b: unknown) => api.investPlan(b), cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id),
     requestGroup: (id: string, b: unknown) => api.requestGroup(id, b), submitGroup: (id: string, g: string, b: unknown) => api.submitGroup(id, g, b),
+    claimGroup: (id: string, g: string) => api.claimGroup(id, g), sentGroup: (id: string, g: string, b: unknown) => api.sentGroup(id, g, b), releaseGroup: (id: string, g: string) => api.releaseGroup(id, g),
     quoteLeg: (o: string, l: string) => api.quoteLeg(o, l), continueOperation: (id: string, b: unknown) => api.continueOperation(id, b), getPortfolio: () => api.getPortfolio(), getInvestability: (s: string) => api.getInvestability(s),
   },
 }));
-const wallet = vi.hoisted(() => ({ signSolana: vi.fn(), signSolanaAll: vi.fn(), walletName: "Phantom", connectionKey: "a" }));
+const wallet = vi.hoisted(() => ({ signSolana: vi.fn(), signSolanaAll: vi.fn(), signAndSendSolanaAll: vi.fn(), chooseTier: vi.fn(), walletName: "Phantom", connectionKey: "a" }));
 vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => wallet }));
 vi.mock("@reown/appkit/react", () => ({ useAppKit: () => ({ open: vi.fn() }), useAppKitState: () => ({ open: false }) }));
 import { InvestButton } from "@/components/invest/invest-button";
@@ -53,6 +55,11 @@ beforeEach(() => {
   api.requestGroup.mockResolvedValue(group());
   api.submitGroup.mockResolvedValue(sent());
   wallet.signSolanaAll.mockImplementation(async (txs: string[]) => txs.map((t) => `signed-${t}`));
+  wallet.chooseTier.mockResolvedValue("sign_all");
+  wallet.walletName = "Phantom";
+  api.claimGroup.mockResolvedValue(plan({ status: "IN_PROGRESS" }));
+  api.sentGroup.mockResolvedValue(sent());
+  api.releaseGroup.mockResolvedValue(plan());
 });
 
 describe("batched invest review", () => {
@@ -137,34 +144,22 @@ describe("batched invest signing", () => {
 });
 
 describe("chunks", () => {
-  it("requests the second group only after the first group's fee settled, and shows no failure or needs-action panel in between (review I1)", async () => {
+  it("requests the second group right after the first; while the fee is confirming it shows Confirming fee… and retries, with no failure panel (review I1, B-26)", async () => {
     const buy2 = (o: Parameters<typeof buyLeg>[0] = {}) => buyLeg({ id: ID(12), sequence: 3, ...o });
-    let phase: "start" | "sent" | "settled" | "done" = "start";
-    const view = () => ({
-      start: plan({ legs: [feeLeg({ gasPayer: "user_solana" }), buyLeg({ gasPayer: "user_solana" }), buy2({ gasPayer: "user_solana" })] }),
-      sent: plan({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xFee" }), buyLeg({ status: "SUBMITTED", sourceTx: "5xBuy" }), buy2()] }),
-      // the first chunk settled meanwhile: the server marks the investment as waiting for the user while a leg is still PLANNED
-      settled: plan({ status: "IN_PROGRESS", needsAction: true, needsActionSince: "2026-10-11T10:00:00.000Z", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "SETTLED" }), buy2()] }),
-      done: plan({ status: "COMPLETED", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "SETTLED" }), buy2({ status: "SETTLED" })] }),
-    })[phase];
-    api.getOperation.mockImplementation(async () => view());
-    const phaseAtSecondRequest: string[] = [];
+    const firstSent = plan({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xFee" }), buyLeg({ status: "SUBMITTED", sourceTx: "5xBuy" }), buy2()] });
+    api.getOperation.mockResolvedValue(firstSent);
     api.requestGroup
-      .mockResolvedValueOnce(group({ transactions: [{ legId: ID(10), kind: "fee", serializedBase64: "fee-tx" }, { legId: ID(11), kind: "asset", serializedBase64: "buy-tx" }] }))
-      .mockImplementationOnce(async () => {
-        phaseAtSecondRequest.push(phase);
-        return group({ groupId: ID(51), transactions: [{ legId: ID(12), kind: "asset", serializedBase64: "buy2-tx" }], legs: [] });
-      });
-    api.submitGroup
-      .mockImplementationOnce(async () => { phase = "sent"; setTimeout(() => { phase = "settled"; }, 1_500); return view(); })
-      .mockImplementationOnce(async () => { phase = "done"; return view(); });
+      .mockResolvedValueOnce(group())
+      .mockRejectedValueOnce(new ApiError("OPERATION_IN_PROGRESS", 409, "busy", undefined, { reason: "fee_confirming" }))
+      .mockResolvedValueOnce(group({ groupId: ID(51), transactions: [{ legId: ID(12), kind: "asset", serializedBase64: "buy2-tx" }], legs: [] }));
+    api.submitGroup.mockResolvedValueOnce(firstSent).mockResolvedValueOnce(plan({ status: "COMPLETED", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "SETTLED" }), buy2({ status: "SETTLED" })] }));
     renderApp(<GroupProgress operationId={plan().id} autoStart />);
-    await waitFor(() => expect(api.submitGroup).toHaveBeenCalledTimes(1));
-    expect(api.requestGroup).toHaveBeenCalledTimes(1); // the fee is still in flight: nothing is requested, nothing fails
+    expect(await screen.findByText("Confirming fee…", {}, { timeout: 3_000 })).toBeInTheDocument(); // the second request was refused: the fee is not confirmed yet
     expect(screen.queryByRole("alert")).toBeNull();
-    await waitFor(() => expect(api.submitGroup).toHaveBeenCalledTimes(2), { timeout: 10_000 });
-    expect(phaseAtSecondRequest).toEqual(["settled"]);
-    expect(api.requestGroup).toHaveBeenCalledTimes(2);
+    expect(api.submitGroup).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(api.submitGroup).toHaveBeenCalledTimes(2), { timeout: 5_000 });
+    expect(api.requestGroup).toHaveBeenCalledTimes(3);
+    expect(screen.queryByText("Confirming fee…")).toBeNull();
     expect(screen.queryByText("Some steps didn't go through")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
   }, 20_000);
@@ -176,6 +171,66 @@ describe("chunks", () => {
     renderApp(<GroupProgress operationId={plan().id} autoStart />);
     expect(await screen.findByText("Some steps didn't go through")).toBeInTheDocument();
     expect(api.requestGroup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MetaMask sign and send", () => {
+  const sig = (n: number) => new Uint8Array(64).fill(n);
+  const B58 = expect.stringMatching(/^[1-9A-HJ-NP-Za-km-z]{80,90}$/); // app-core encodes the raw 64 bytes
+  const feeGroup = () => group({ transactions: [{ legId: ID(10), kind: "fee", serializedBase64: "fee-tx" }], legs: [] });
+  const assetGroup = () => group({ groupId: ID(51), transactions: [{ legId: ID(11), kind: "asset", serializedBase64: "buy-tx" }] });
+
+  it("uses tier sign_and_send: two wallet calls for one fee group and one asset group, each claimed first and reported after", async () => {
+    wallet.walletName = "MetaMask";
+    wallet.chooseTier.mockResolvedValue("sign_and_send");
+    wallet.signAndSendSolanaAll.mockResolvedValueOnce([sig(1)]).mockResolvedValueOnce([sig(2)]);
+    const afterFee = plan({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTED", sourceTx: "5xFee" }), buyLeg()] });
+    api.getOperation.mockResolvedValue(afterFee);
+    api.requestGroup.mockResolvedValueOnce(feeGroup()).mockResolvedValueOnce(assetGroup());
+    api.sentGroup.mockResolvedValueOnce(afterFee).mockResolvedValueOnce(plan({ status: "COMPLETED", legs: [feeLeg({ status: "SETTLED" }), buyLeg({ status: "SETTLED" })] }));
+    flow();
+    await confirmPlan();
+    await waitFor(() => expect(api.sentGroup).toHaveBeenCalledTimes(2));
+    expect(api.requestGroup.mock.calls.map(([, b]) => b)).toEqual([
+      { chain: "solana", tier: "sign_and_send", walletName: "MetaMask", idempotencyKey: expect.any(String) },
+      { chain: "solana", tier: "sign_and_send", walletName: "MetaMask", idempotencyKey: expect.any(String) },
+    ]);
+    expect(wallet.signAndSendSolanaAll.mock.calls).toEqual([[["fee-tx"]], [["buy-tx"]]]);
+    expect(api.claimGroup.mock.calls.map(([, g]) => g)).toEqual([ID(50), ID(51)]);
+    expect(api.sentGroup).toHaveBeenNthCalledWith(1, plan().id, ID(50), { signatures: [{ legId: ID(10), signature: B58 }] });
+    expect(api.sentGroup).toHaveBeenNthCalledWith(2, plan().id, ID(51), { signatures: [{ legId: ID(11), signature: B58 }] });
+    expect(api.claimGroup.mock.invocationCallOrder[0]).toBeLessThan(wallet.signAndSendSolanaAll.mock.invocationCallOrder[0]!);
+    expect(api.submitGroup).not.toHaveBeenCalled();
+    expect(wallet.signSolanaAll).not.toHaveBeenCalled();
+  });
+
+  it("a cancelled popup releases the group and says so; another error says to wait and never releases", async () => {
+    wallet.walletName = "MetaMask";
+    wallet.chooseTier.mockResolvedValue("sign_and_send");
+    wallet.signAndSendSolanaAll.mockRejectedValueOnce(new WalletRejectedError());
+    const view = plan({ legs: [feeLeg({ status: "SUBMITTING" }), buyLeg()] });
+    api.getOperation.mockResolvedValue(plan());
+    api.requestGroup.mockResolvedValue(feeGroup());
+    flow();
+    await confirmPlan();
+    await waitFor(() => expect(api.releaseGroup).toHaveBeenCalledWith(plan().id, ID(50)));
+    expect(await screen.findByText("Signature cancelled")).toBeInTheDocument();
+    expect(api.requestGroup).toHaveBeenCalledTimes(1);
+    wallet.signAndSendSolanaAll.mockRejectedValueOnce(new Error("socket closed"));
+    api.getOperation.mockResolvedValue(view);
+    api.releaseGroup.mockClear();
+    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Confirming with the network — don't sign again")).toBeInTheDocument();
+    expect(api.releaseGroup).not.toHaveBeenCalled();
+  });
+
+  it("Phantom keeps sign_all", async () => {
+    flow();
+    await confirmPlan();
+    await waitFor(() => expect(api.submitGroup).toHaveBeenCalled());
+    expect(api.requestGroup).toHaveBeenCalledWith(plan().id, expect.objectContaining({ tier: "sign_all", walletName: "Phantom" }));
+    expect(wallet.signAndSendSolanaAll).not.toHaveBeenCalled();
+    expect(api.claimGroup).not.toHaveBeenCalled();
   });
 });
 

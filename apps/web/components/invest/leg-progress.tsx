@@ -21,6 +21,7 @@ import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 export const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
   signSolana: (b64) => w.signSolana(b64),
   signSolanaAll: (b64s) => w.signSolanaAll(b64s),
+  signAndSendSolanaAll: (b64s) => w.signAndSendSolanaAll(b64s),
   sendEvm: ({ approval, ...tx }) => w.sendEvm(tx, approval ?? null),
   signPsbt: (psbt, inputCount) => w.signBitcoin(psbt, inputCount),
 });

@@ -110,20 +110,3 @@ export function sendPlan(i: { builtAt: number; now: number; valid: boolean[] }):
   let expired = false;
   return i.valid.map((ok) => ((expired ||= !ok) ? "expired" : "send"));
 }
-
-type RegisteredWallet = { name: string; features: Record<string, unknown> };
-
-/** Wallet Standard discovery without `@wallet-standard/app`: the register protocol of the wallet-standard repo (core/base register.ts). */
-export function standardWalletFeatures(timeoutMs = 300): Promise<{ name: string; features: string[] }[]> {
-  return new Promise((resolve) => {
-    const found: { name: string; features: string[] }[] = [];
-    const api = { register: (...wallets: RegisteredWallet[]) => { found.push(...wallets.map((w) => ({ name: w.name, features: Object.keys(w.features) }))); return () => {}; } };
-    const onRegister = (event: Event) => (event as CustomEvent<(a: typeof api) => void>).detail(api);
-    window.addEventListener("wallet-standard:register-wallet", onRegister);
-    window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: api }));
-    setTimeout(() => {
-      window.removeEventListener("wallet-standard:register-wallet", onRegister);
-      resolve(found);
-    }, timeoutMs);
-  });
-}
