@@ -565,3 +565,24 @@ Each phase is its own plan → execute → review → merge cycle (HANDOFF §4).
 - [EIP-5792 wallet list](https://www.eip5792.xyz/ecosystem/wallets), [ERC-7821](https://eips.ethereum.org/EIPS/eip-7821), [Alchemy: EIP-7702 and wallets](https://www.alchemy.com/overviews/eip-7702-metamask-and-wallets.md)
 - [LI.FI multi-step Solana with Jito bundles](https://li.fi/knowledge-hub/how-li-fi-lands-multi-step-transactions-on-solana-with-jito-bundles)
 - Installed: `@reown/appkit-adapter-solana` 1.8.24 providers expose `signAllTransactions` and single `signAndSendTransaction`; `wagmi` 2.19.5 exports `useSendCalls`, `useCapabilities`, `useWaitForCallsStatus`.
+
+## 16. Amendment — pilot findings (2026-10-11, approved by the user)
+
+The first live web run with MetaMask showed two problems:
+- The fee transaction took minutes to confirm, so every buy was released as `QUOTE_STALE`.
+- MetaMask showed one popup per transaction.
+
+**Causes:**
+- The user-paid fee transaction requested 1 400 000 compute units at a fixed 16 001 µlamports.
+- Every transaction was sent once (`maxRetries: 0`).
+- The next batch waited for the fee to reach `SETTLED`, which needs `finalized` plus the tracker's 15/30/60 s backoff.
+- MetaMask implements `signAllTransactions` as one popup per transaction; its documented batch method is sign-and-send.
+
+| ID | Decision |
+|---|---|
+| B-24 | **The user-paid fee transfer requests `USER_FEE_CU_LIMIT = 200_000` compute units.** Its price is the 75th percentile of the non-zero `getRecentPrioritizationFees({ lockedWritableAccounts: [the user's USDC account] })`, floored at 16 001 µlamports and capped at 2 500 000 µlamports (at most 0.0005 SOL). The price is counted in the SOL requirement as before. Legacy platform-paid fee legs are unchanged. |
+| B-25 | **Re-sending identical signed bytes is allowed; it is not a new transaction.** Solana transactions are sent with the RPC's default rebroadcast (no `maxRetries: 0`) until confirmed or their blockhash expires. While the server waits for the fee to confirm, it also re-sends the fee's identical bytes every 2 s. A transaction is never re-signed, rebuilt or replaced, and an unknown outcome is still never re-planned. |
+| B-26 | **The next group waits for the previous fee to be `confirmed` on chain** (signature status `confirmed` or `finalized` without error), not for `SETTLED`. While it is still unconfirmed, the response is 409 `OPERATION_IN_PROGRESS` with `details: { reason: "fee_confirming" }`, and the web retries every 1 s for up to 60 s. The first tracking backoff for every leg drops from 15 s to 5 s. |
+| B-27 | **B-07 (sign-and-send batch) is built now**, as written in §6.4. On the web, a Solana wallet in `SIGN_AND_SEND_WALLETS = ["MetaMask"]` (by Reown wallet name) that exposes the Wallet Standard `solana:signAndSendTransaction` uses tier `sign_and_send`: the fee as its own approval (wallet broadcasts; the server records the signature and waits for `confirmed`), then the asset chunk as one approval. MetaMask goes from 1 popup per transaction to **2**. The list is extended from `group.quoted` telemetry. |
+
+The fee-first, confirmed order is kept (B-02).
