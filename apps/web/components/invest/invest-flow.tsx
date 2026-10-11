@@ -12,6 +12,7 @@ import { FeeLines } from "@/components/invest/fee-lines";
 import { GroupProgress, PlanEstimates } from "@/components/invest/group-progress";
 import { LegRow } from "@/components/invest/leg-progress";
 import { OpenOperationBanner } from "@/components/invest/open-operation-banner";
+import { useMe } from "@/components/me-context";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Callout } from "@/components/ui/kit";
 import { AllocationBar, colorAt } from "@/components/visual/allocation-ring";
@@ -19,6 +20,7 @@ import { ChainBadge } from "@/components/visual/chain-badge";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 import { ChainCoverageNotice, useUncoveredChains } from "@/components/invest/chain-coverage";
 
 const STEPS = ["Amount", "Review the plan", "Authorize in your wallet", "Done"] as const;
@@ -70,6 +72,8 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
   const [plan, setPlan] = useState<OperationView | null>(null);
   const [signing, setSigning] = useState(false);
   const [understood, setUnderstood] = useState(false);
+  const { data: me } = useMe();
+  const wallet = useLegSigner(me);
   const uncovered = useUncoveredChains(plan);
   const [chainAck, setChainAck] = useState(false);
   const [minsChecked, setMinsChecked] = useState(false);
@@ -77,7 +81,7 @@ export function InvestFlow({ slug, basketId, basket }: { slug: string; basketId:
   const bps = Math.round(Number(slippage) * 100);
   const problem = investAmountProblem(amount, v.minimumInvestmentUsdc, v.minimumIncrementUsdc);
   const slippageProblem = Number.isFinite(bps) && bps >= 1 && bps <= SLIPPAGE_MAX_BPS ? null : `Slippage must be between 0.01% and ${SLIPPAGE_MAX_BPS / 100}%.`;
-  const preview = useMutation({ mutationFn: () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, tier: "sign_all", idempotencyKey: key }), onSuccess: (p) => { setPlan(p); setUnderstood(false); setMinsChecked(false); } });
+  const preview = useMutation({ mutationFn: async () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, tier: await wallet.chooseTier(), idempotencyKey: key }), onSuccess: (p) => { setPlan(p); setUnderstood(false); setMinsChecked(false); } });
   const discard = useMutation({ mutationFn: (id: string) => api.cancelOperation(id), onSettled: () => setPlan(null) });
   const err = preview.error ?? discard.error;
   const at = signing ? 2 : plan ? 1 : 0;

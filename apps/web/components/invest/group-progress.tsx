@@ -118,7 +118,12 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
           acceptNewPrices: () => new Promise<boolean>((resolve) => { decision.current = resolve; }),
           onDowngrade: () => { now = "single"; setTier("single"); },
         });
-        if (!o) return;
+        if (!o) {
+          // A failed group returns no view, and after OUTCOME_UNKNOWN the server still holds the claim (legs SUBMITTING): the fresh view shows them in flight, so
+          // the page waits instead of offering "Try again".
+          void qc.invalidateQueries({ queryKey: ["operation", operationId] });
+          return;
+        }
         setOp(o);
         const broke = o.legs.some((l) => signed.has(l.id) && (l.status === "FAILED" || (l.status === "PLANNED" && !!l.lastError)));
         const more = o.legs.some((l) => l.kind !== "network_fee" && !l.recoveryOf && l.status === "PLANNED" && !leftOut.has(l.id));

@@ -19,6 +19,9 @@ import { routeDenyList } from "@/modules/routing/routing.service";
 
 const TRACK_WINDOW_MS = 30 * 60_000;
 
+/** A blockhash lives about 150 blocks (60 to 90 s): two minutes after a wallet reported a signature, every blockhash it could have signed with has expired. */
+const WALLET_SENT_EXPIRY_GRACE_MS = 2 * 60_000;
+
 const MAX_RECHECKS = 168; // hourly, seven days
 
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -149,21 +152,40 @@ const preparedOf = (leg: Pick<Leg, "expectedTx">): VersionedTransaction | null =
   return base64 ? VersionedTransaction.deserialize(Buffer.from(base64, "base64")) : null;
 };
 
+/** The RPC's largest page of signatures, and how many pages the sweep reads for one wallet before it gives up proving that a claim never landed. */
+const SIGNATURE_PAGE = 1_000;
+const SIGNATURE_PAGES = 3;
+
 /**
- * Sign-and-send claims the wallet never reported a signature for (spec 22 section 6.4, step 4): looks the owner's recent signatures up and matches each landed
- * message to the claimed leg's prepared one (ComputeBudget differences allowed). A match records the signature and tracks the leg; none, with the blockhash
- * expired, can never land: FAILED / NOT_LANDED. Nothing is resent and nothing is rebuilt. Every claim is handled on its own.
+ * Sign-and-send claims the wallet never reported a signature for (spec 22 section 6.4, step 4): looks the owner's signatures since the claim up (paging back
+ * past it) and matches each landed message to the claimed leg's prepared one (ComputeBudget differences allowed). A match records the signature and tracks the
+ * leg. No match is FAILED / NOT_LANDED only when the blockhash had expired before the lookup AND the pages reached back past the claim; a history too long to
+ * read keeps the claim (it may have landed). Nothing is resent and nothing is rebuilt. Every claim is handled on its own.
  */
 async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<void> {
   const owner = new PublicKey(addressOn(await userAddresses(db, userId), "solana"));
-  const recent = await connection.getSignaturesForAddress(owner, { limit: 50 }, "confirmed");
+  const sinceOf = (leg: Leg) => (leg.submittedAt ?? leg.updatedAt).getTime() - 10_000; // block times are coarse: a little before the claim still counts
+  // Expiry first, then the lookup (as `solanaFinality`): a transaction that lands in between is still in the pages read below.
+  const expired = new Map<string, boolean>();
+  for (const leg of claims) {
+    const prepared = preparedOf(leg);
+    if (prepared) expired.set(leg.id, !(await connection.isBlockhashValid(prepared.message.recentBlockhash, { commitment: "confirmed" })).value);
+  }
+  const oldest = Math.min(...claims.map(sinceOf));
+  const recent: Awaited<ReturnType<typeof connection.getSignaturesForAddress>> = [];
+  let complete = false; // the pages reach back past every claim, or to the start of the wallet's history
+  for (let n = 0; n < SIGNATURE_PAGES && !complete; n++) {
+    const page = await connection.getSignaturesForAddress(owner, { limit: SIGNATURE_PAGE, before: recent.at(-1)?.signature }, "confirmed");
+    recent.push(...page);
+    complete = page.length < SIGNATURE_PAGE || (page.at(-1)!.blockTime ?? Infinity) * 1000 < oldest;
+  }
   const landed = new Map<string, VersionedTransaction | null>(); // one lookup per signature, however many claims
   const taken = new Set<string>();
   for (const leg of claims) {
     try {
       const prepared = preparedOf(leg);
       if (!prepared) continue;
-      const since = (leg.submittedAt ?? leg.updatedAt).getTime() - 10_000; // block times are coarse: a little before the claim still counts
+      const since = sinceOf(leg);
       let found: string | null = null;
       for (const { signature, blockTime } of recent) {
         if (taken.has(signature) || (blockTime ?? Infinity) * 1000 < since) continue;
@@ -171,7 +193,11 @@ async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<voi
         const tx = landed.get(signature);
         if (tx && sameExceptComputeBudget(prepared, tx)) { found = signature; break; }
       }
-      if (!found && (await connection.isBlockhashValid(prepared.message.recentBlockhash, { commitment: "confirmed" })).value) continue; // it may still land
+      if (!found && !expired.get(leg.id)) continue; // it may still land
+      if (!found && !complete) {
+        logger.warn("sweep: the wallet's history is too long to show that a claim never landed; it stays claimed", { legId: leg.id, operationId: leg.operationId });
+        continue;
+      }
       if (found) taken.add(found);
       const recorded = await db.transaction(async (tx) => {
         await lockOperation(tx, leg.operationId);
@@ -342,20 +368,21 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
     return true;
   };
 
-  const recentBlockhash = (leg.expectedTx as { recentBlockhash?: string } | null)?.recentBlockhash;
-  const source = await finality(leg.fromChain, sourceTx, recentBlockhash);
+  const { recentBlockhash, walletSentAt } = (leg.expectedTx ?? {}) as { recentBlockhash?: string; walletSentAt?: string };
+  let source = await finality(leg.fromChain, sourceTx, recentBlockhash);
+  // A wallet that signed and sent (sign-and-send) may have used a newer blockhash than the prepared one: that copy fails the proof but can still move money,
+  // so the leg counts as never landed only once any blockhash fetched before the report is gone too.
+  if (source === "expired" && walletSentAt && Date.now() - Date.parse(walletSentAt) < WALLET_SENT_EXPIRY_GRACE_MS) source = "pending";
   // Every settlement of a sign-and-send leg needs the proof first (SUBMITTED, or UNKNOWN after the window); PENDING_CHAIN is only reached through it. Fails closed: no proof, no settlement.
   if ((leg.status === "SUBMITTED" || leg.status === "UNKNOWN") && (source === "finalized" || source === "failed") && leg.fromChain === "solana") {
     const proof = await proveSignAndSend(op, leg);
     if (proof === "pending") return notFinal();
     if (proof === "mismatch") {
-      // Not our transaction: nothing is settled or ledgered from it. A fee leg fails (its legs are charged again); an asset leg waits for ops (UNKNOWN, D-075).
+      // Not our transaction: nothing is settled or ledgered from it, and it waits for ops (UNKNOWN, D-075). A fee leg too: its USDC may have moved, so failing it
+      // would charge an honest user again; while it is UNKNOWN the next group is refused, so a forged signature buys nothing.
       await db.transaction(async (tx) => {
         await lockOperation(tx, op.id);
-        if (leg.kind === "network_fee") {
-          await setLegStatus(tx, null, leg, "FAILED", { failureReason: "TX_MISMATCH_AFTER_SEND" });
-          await refreshOperationStatus(tx, null, op.id);
-        } else if (leg.status === "UNKNOWN") await tx.update(operationLegs).set({ failureReason: "TX_MISMATCH_AFTER_SEND", updatedAt: sql`now()` }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "UNKNOWN")));
+        if (leg.status === "UNKNOWN") await tx.update(operationLegs).set({ failureReason: "TX_MISMATCH_AFTER_SEND", updatedAt: sql`now()` }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "UNKNOWN")));
         else await setLegStatus(tx, null, leg, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date, failureReason: "TX_MISMATCH_AFTER_SEND" });
       });
       return false;

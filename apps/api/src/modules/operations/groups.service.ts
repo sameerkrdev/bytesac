@@ -1,14 +1,15 @@
 import createHttpError from "http-errors";
-import { SendTransactionError } from "@solana/web3.js";
+import { SendTransactionError, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { and, asc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import { db, isUniqueViolation, operationFees, operationGroups, operationLegs, operations, type Tx } from "@repo/db";
 import { GROUP_SEND_WINDOW_MS, K_SIGN_ALL, K_SIGN_AND_SEND, SOL_BUFFER_LAMPORTS, USDC_SOLANA_MINT, approvalsEstimate, type GroupRequest, type GroupResponse, type GroupSent, type GroupSubmit, type OperationView } from "@repo/validator";
 import { logger } from "@repo/logger";
 import { enqueue } from "@/config/queues";
+import { writeAudit } from "@/modules/audit/audit.service";
 import { blockhashUsable, buildFeeTransfer, connection, landedMatchesPrepared, sendSolana, solanaBalance, solanaNeed, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
-import { type Leg, type OpCtx, freeUsdcMicro, getOperation, invalidTransition, lockOperation, notFound, setLegStatus } from "./operations.service";
+import { type Leg, type OpCtx, auditBase, freeUsdcMicro, getOperation, invalidTransition, lockOperation, notFound, setLegStatus, userLamports } from "./operations.service";
 import { assertSolFor } from "./plan.service";
 import { assertLegAllowed, assertOperable, quoteAssetLeg } from "./quote.service";
 import { markSubmitted } from "./submit.service";
@@ -27,6 +28,8 @@ const hasShare = (l: Pick<Leg, "feeShare">) => Object.values(l.feeShare ?? {}).s
 const preparedOf = (l: Pick<Leg, "expectedTx">) => (l.expectedTx as { preparedBase64: string }).preparedBase64;
 /** What a leg's fresh group quote stored in its route summary (see `requestGroup`), for the response and its idempotent replay. */
 type Quoted = { estimatedOut: string; minOut: string; plannedMinOut: string | null };
+/** The floor a leg had before its group was claimed: a released leg goes back to it, so the next group still asks before signing below it (D-073 waived). */
+const plannedFloor = (l: Leg) => (l.routeSummary?.quoted as Quoted | undefined)?.plannedMinOut ?? l.minOut;
 
 /**
  * Forms a signing group (spec 22 section 6.2): the next chunk of PLANNED Solana legs plus one fee transaction charging their uncovered fee shares. The legs are
@@ -113,10 +116,12 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   if (transfers.reduce((t, x) => t + x.amountMicro, 0n) !== feeMicro) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
   const feeTx = feeMicro > 0n ? await buildFeeTransfer({ owner, payer: "user", transfers }) : null;
 
-  const usdcRequired = feeMicro + quoted.reduce((t, { leg }) => t + BigInt(leg.amountIn), 0n);
+  // A fee-only group also needs the buys it pays for to be fundable: its fee is not refunded (D-090), so it is never charged for buys the wallet cannot make.
+  const funded = feeOnly ?? quoted.map((q) => q.leg);
+  const usdcRequired = feeMicro + funded.reduce((t, l) => t + BigInt(l.amountIn), 0n);
   const usdcHeld = await freeUsdcMicro(db, ctx.userId, await solanaBalance(owner, USDC_SOLANA_MINT));
   if (usdcHeld < usdcRequired) throw createHttpError(409, "Your Solana wallet doesn't hold enough USDC.", { code: "INSUFFICIENT_BALANCE", details: { usdcRequiredMicro: usdcRequired.toString(), usdcHeldMicro: usdcHeld.toString() } });
-  await assertSolFor(owner, await solanaNeed([...quoted.map((q) => q.serializedBase64), ...(feeTx ? [feeTx.serializedBase64] : [])], owner));
+  await assertSolFor(owner, (await solanaNeed([...quoted.map((q) => q.serializedBase64), ...(feeTx ? [feeTx.serializedBase64] : [])], owner)) + (feeOnly ?? []).reduce((t, l) => t + userLamports(l), 0n));
 
   let group: typeof operationGroups.$inferSelect;
   try {
@@ -257,7 +262,10 @@ export async function submitGroup(ctx: OpCtx, opId: string, groupId: string, bod
         const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, id));
         if (current!.status !== "SUBMITTING") continue;
         const { preparedBase64: _p, signedBase64: _s, recentBlockhash: _r, ...rest } = (current!.expectedTx ?? {}) as Record<string, unknown>;
-        await setLegStatus(tx, ctx, current!, "PLANNED", { sourceTx: null, submittedAt: null, builtMessageHash: null, quoteExpiresAt: null, groupId: null, expectedTx: rest, lastError: id === stoppedBy ? reason : reason === "QUOTE_STALE" ? "QUOTE_STALE" : "STOPPED" });
+        await setLegStatus(tx, ctx, current!, "PLANNED", {
+          sourceTx: null, submittedAt: null, builtMessageHash: null, quoteExpiresAt: null, groupId: null, expectedTx: rest, minOut: plannedFloor(current!),
+          lastError: id === stoppedBy ? reason : reason === "QUOTE_STALE" ? "QUOTE_STALE" : "STOPPED",
+        });
       }
       // Something was sent before the stop: the investment now waits for the user (nothing sent keeps a plain plan).
       await tx.update(operations).set({ needsActionSince: sql`coalesce(${operations.needsActionSince}, now())` }).where(and(eq(operations.id, op.id), eq(operations.status, "IN_PROGRESS")));
@@ -359,6 +367,15 @@ export async function sentGroup(ctx: OpCtx, opId: string, groupId: string, body:
   const [op] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
   if (!op) throw notFound();
   if (body.signatures.some((s) => !isSignature(s.signature))) throw createHttpError(400, "A signature is not valid.", { code: "VALIDATION_FAILED" });
+  // A signature for a claim the sweep already marked NOT_LANDED is refused below, but it may have landed after all: kept for ops (audit, never the log).
+  const late = await db.select({ id: operationLegs.id }).from(operationLegs)
+    .where(and(eq(operationLegs.operationId, op.id), eq(operationLegs.groupId, groupId), inArray(operationLegs.id, body.signatures.map((s) => s.legId)), eq(operationLegs.status, "FAILED"), eq(operationLegs.failureReason, "NOT_LANDED")));
+  if (late.length) {
+    logger.error("a wallet reported a signature for a claim the sweep marked NOT_LANDED", { operationId: op.id, legIds: late.map((l) => l.id) });
+    await db.transaction(async (tx) => {
+      for (const l of late) await writeAudit(tx, { ...auditBase(ctx, l.id), action: "leg.signature_after_not_landed", entityType: "operation_leg", entityId: l.id, metadata: { operationId: op.id, signature: body.signatures.find((s) => s.legId === l.id)!.signature } });
+    });
+  }
   try {
     await db.transaction(async (tx) => {
       await lockOperation(tx, op.id);
@@ -366,12 +383,18 @@ export async function sentGroup(ctx: OpCtx, opId: string, groupId: string, body:
       if (!group) throw notFound();
       if (group.tier !== "sign_and_send" || group.status !== "CLAIMED") throw invalidTransition(`This batch is ${group.status.toLowerCase()}.`);
       const legs = await tx.select().from(operationLegs).where(eq(operationLegs.groupId, group.id));
-      const open = new Set(legs.filter((l) => l.status === "SUBMITTING" && !l.sourceTx).map((l) => l.id));
+      const open = new Map(legs.filter((l) => l.status === "SUBMITTING" && !l.sourceTx).map((l) => [l.id, l]));
       const { signatures } = body;
       if (new Set(signatures.map((s) => s.legId)).size !== signatures.length || new Set(signatures.map((s) => s.signature)).size !== signatures.length || signatures.some((s) => !open.has(s.legId))) {
         throw createHttpError(409, "The signatures don't match the claimed batch.", { code: "TX_MISMATCH" });
       }
-      for (const s of signatures) await tx.update(operationLegs).set({ sourceTx: s.signature, updatedAt: sql`now()` }).where(and(eq(operationLegs.id, s.legId), eq(operationLegs.status, "SUBMITTING"), isNull(operationLegs.sourceTx)));
+      for (const s of signatures) {
+        const leg = open.get(s.legId)!;
+        // The proof accepts only the prepared blockhash, so a signature that never lands fails once it expires (and the wallet's own grace passed, see `trackOnce`).
+        const recentBlockhash = VersionedTransaction.deserialize(Buffer.from(preparedOf(leg), "base64")).message.recentBlockhash;
+        await tx.update(operationLegs).set({ sourceTx: s.signature, expectedTx: { ...(leg.expectedTx ?? {}), recentBlockhash, walletSentAt: new Date().toISOString() }, updatedAt: sql`now()` })
+          .where(and(eq(operationLegs.id, s.legId), eq(operationLegs.status, "SUBMITTING"), isNull(operationLegs.sourceTx)));
+      }
       if (signatures.length === open.size) await tx.update(operationGroups).set({ status: "SENT", updatedAt: sql`now()` }).where(eq(operationGroups.id, group.id));
     });
   } catch (err) {
@@ -400,7 +423,7 @@ export async function releaseGroup(ctx: OpCtx, opId: string, groupId: string): P
     const legs = await tx.select().from(operationLegs).where(eq(operationLegs.groupId, group.id));
     for (const l of legs.filter((x) => x.status === "SUBMITTING" && !x.sourceTx)) {
       const { preparedBase64: _p, signedBase64: _s, recentBlockhash: _r, ...rest } = (l.expectedTx ?? {}) as Record<string, unknown>;
-      await setLegStatus(tx, ctx, l, "PLANNED", { submittedAt: null, builtMessageHash: null, quoteExpiresAt: null, groupId: null, expectedTx: rest, lastError: "WALLET_REJECTED" });
+      await setLegStatus(tx, ctx, l, "PLANNED", { submittedAt: null, builtMessageHash: null, quoteExpiresAt: null, groupId: null, expectedTx: rest, minOut: plannedFloor(l), lastError: "WALLET_REJECTED" });
     }
     await tx.update(operationGroups).set({ status: legs.some((l) => l.sourceTx) ? "SENT" : "RELEASED", updatedAt: sql`now()` }).where(eq(operationGroups.id, group.id));
   });

@@ -224,6 +224,35 @@ describe("MetaMask sign and send", () => {
     expect(api.releaseGroup).not.toHaveBeenCalled();
   });
 
+  it("the review asks for the plan with the tier the wallet signs with, so MetaMask is told 2 approvals (review M7)", async () => {
+    wallet.walletName = "MetaMask";
+    wallet.chooseTier.mockResolvedValue("sign_and_send");
+    api.investPlan.mockResolvedValue(plan({ approvalsEstimate: 2 }));
+    flow();
+    await userEvent.click(screen.getByRole("button", { name: "Get preview" }));
+    expect(await screen.findByText("About 2 wallet approvals")).toBeInTheDocument();
+    expect(api.investPlan).toHaveBeenCalledWith(expect.objectContaining({ tier: "sign_and_send" }));
+  });
+
+  it("after a wallet error past the claim, the page reads the claimed legs and waits: no Try again (review M4)", async () => {
+    wallet.walletName = "MetaMask";
+    wallet.chooseTier.mockResolvedValue("sign_and_send");
+    wallet.signAndSendSolanaAll.mockRejectedValueOnce(new Error("socket closed"));
+    api.investPlan.mockResolvedValue(plan({ approvalsEstimate: 2 }));
+    api.requestGroup.mockResolvedValue(feeGroup());
+    const claimed = plan({ status: "IN_PROGRESS", legs: [feeLeg({ status: "SUBMITTING" }), buyLeg()] });
+    api.claimGroup.mockImplementation(async () => { api.getOperation.mockResolvedValue(claimed); return claimed; });
+    flow();
+    await userEvent.click(screen.getByRole("button", { name: "Get preview" }));
+    await screen.findByText("About 2 wallet approvals");
+    await userEvent.click(screen.getByRole("checkbox", { name: /I.ll approve these transactions/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText("Confirming with the network — don't sign again")).toBeInTheDocument();
+    expect(await screen.findByText(/Waiting for the network to confirm/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(api.releaseGroup).not.toHaveBeenCalled();
+  });
+
   it("Phantom keeps sign_all", async () => {
     flow();
     await confirmPlan();

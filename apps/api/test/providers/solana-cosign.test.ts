@@ -18,11 +18,16 @@ const b64 = (tx: VersionedTransaction) => Buffer.from(tx.serialize()).toString("
 const userSigned = (tx: VersionedTransaction) => { tx.sign([user]); return b64(tx); };
 
 let send: ReturnType<typeof vi.spyOn>;
-beforeEach(() => { send = vi.spyOn(connection, "sendRawTransaction").mockResolvedValue("SENT_SIGNATURE"); });
+beforeEach(() => {
+  send = vi.spyOn(connection, "sendRawTransaction").mockResolvedValue("SENT_SIGNATURE");
+  vi.spyOn(connection, "getRecentPrioritizationFees").mockResolvedValue([]); // no recent fees: the user's fee transfer gets the floor price
+});
+/** The user's fee transfer at the floor price (no recent fees): one signature plus 200 000 units x 16 001 µlamports. */
+const FEE_AT_FLOOR = 5_000n + (200_000n * 16_001n + 999_999n) / 1_000_000n;
 afterEach(() => vi.restoreAllMocks());
 
 describe("fee-payer co-signing", () => {
-  it("co-signs a byte-identical message once, keeps the user's signature valid and sends without retries", async () => {
+  it("co-signs a byte-identical message once, keeps the user's signature valid and sends once (the RPC rebroadcasts, B-25)", async () => {
     const tx = unsigned(feePayer().publicKey, 5_000n);
     const { messageHash } = describeUnsigned(b64(tx));
     const signed = cosign(userSigned(tx), messageHash);
@@ -32,7 +37,7 @@ describe("fee-payer co-signing", () => {
     expect(signed.recentBlockhash).toBe(BLOCKHASH);
     expect(send).toHaveBeenCalledTimes(1);
     const [raw, options] = send.mock.calls[0] as [Uint8Array, object];
-    expect(options).toEqual({ skipPreflight: false, maxRetries: 0 });
+    expect(options).toEqual({ skipPreflight: false });
     const sent = VersionedTransaction.deserialize(raw);
     const message = sent.message.serialize();
     const ed25519 = (pub: PublicKey, sig: Uint8Array) => verify(null, Buffer.from(message), createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: Buffer.from(pub.toBytes()).toString("base64url") }, format: "jwk" }), sig);
@@ -203,9 +208,17 @@ describe("user-paid transactions", () => {
     expect(tx.message.staticAccountKeys[0]!.toBase58()).toBe(owner);
     expect(tx.message.header.numRequiredSignatures).toBe(1);
     // Rent is for accounts that do not exist yet (`solanaNeed`); the cost names the account the payer funds.
-    expect(solanaCost(built.serializedBase64, owner)).toEqual({ lamports: FEE_TRANSFER_USER_LAMPORTS, funded: [ata(new PublicKey(env.GAS_TREASURY_SOLANA_ADDRESS), new PublicKey(USDC_SOLANA_MINT)).toBase58()] });
+    expect(solanaCost(built.serializedBase64, owner)).toEqual({ lamports: FEE_AT_FLOOR, funded: [ata(new PublicKey(env.GAS_TREASURY_SOLANA_ADDRESS), new PublicKey(USDC_SOLANA_MINT)).toBase58()] });
     // The same transaction funds nothing for a stranger: only the account the payer funds counts.
     expect(solanaCost(built.serializedBase64, Keypair.generate().publicKey.toBase58()).funded).toEqual([]);
+  });
+
+  it("the plan-time fee estimate is what the fee transfer costs at the price cap, so a group never needs more than the plan checked (review M2)", async () => {
+    vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
+    vi.spyOn(connection, "getRecentPrioritizationFees").mockResolvedValue([{ slot: 1, prioritizationFee: 50_000_000 }]); // far above the cap
+    const built = await buildFeeTransfer({ owner, payer: "user", transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 5n }] });
+    expect(solanaCost(built.serializedBase64, owner).lamports).toBe(FEE_TRANSFER_USER_LAMPORTS);
+    expect(FEE_TRANSFER_USER_LAMPORTS).toBe(505_000n);
   });
 
   it("solanaCost counts signatures, the priority fee (price x limit, 1.4M when no limit is set) and refuses nothing", () => {
@@ -221,12 +234,12 @@ describe("user-paid transactions", () => {
     vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
     const built = await buildFeeTransfer({ owner, payer: "user", transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 5n }] });
     const lookup = vi.spyOn(connection, "getMultipleAccountsInfo").mockResolvedValue([{ lamports: 1 } as never]);
-    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_TRANSFER_USER_LAMPORTS); // exists: no rent
+    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_AT_FLOOR); // exists: no rent
     lookup.mockResolvedValue([null]);
-    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS);
-    expect(await solanaNeed([built.serializedBase64, built.serializedBase64], owner)).toBe(2n * FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS);
+    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_AT_FLOOR + TOKEN_ACCOUNT_RENT_LAMPORTS);
+    expect(await solanaNeed([built.serializedBase64, built.serializedBase64], owner)).toBe(2n * FEE_AT_FLOOR + TOKEN_ACCOUNT_RENT_LAMPORTS);
     lookup.mockRejectedValue(new Error("rpc down"));
-    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS);
+    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_AT_FLOOR + TOKEN_ACCOUNT_RENT_LAMPORTS);
   });
 
   it("verifyUserSigned and cosign answer 409 TX_MISMATCH, not a 500, for bytes that are not a transaction", () => {

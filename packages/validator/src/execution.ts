@@ -101,7 +101,7 @@ const idempotencyKey = z.string().trim().min(8).max(128);
 const iso = z.iso.datetime({ offset: true });
 const routeFee = z.object({ name: z.string(), amountUsd: z.number(), included: z.boolean() });
 
-export const investRequestSchema = z.strictObject({ basketId: z.uuid(), amountUsdc: decimalStringSchema, slippageBps: slippage, idempotencyKey, tier: z.enum(["sign_all", "single"]).optional() });
+export const investRequestSchema = z.strictObject({ basketId: z.uuid(), amountUsdc: decimalStringSchema, slippageBps: slippage, idempotencyKey, tier: z.enum(["sign_all", "sign_and_send", "single"]).optional() });
 export type InvestRequest = z.infer<typeof investRequestSchema>;
 export const sellRequestSchema = z.strictObject({ positionId: z.uuid(), percent: z.number().int().min(1).max(100), slippageBps: slippage, idempotencyKey });
 export type SellRequest = z.infer<typeof sellRequestSchema>;

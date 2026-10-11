@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { ComputeBudgetProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "@repo/logger";
-import { connection } from "@/providers/solana-tx";
-import { trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
+import { connection, solanaFinality } from "@/providers/solana-tx";
+import { expireStalePlans, trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
+import { balanceKey } from "../../helpers/chain-mocks";
 import { adminSql, resetDb } from "../../helpers/db";
+import { USDC_MINT } from "../../helpers/execution";
 import { fakes } from "../../helpers/fakes";
 import { arrange, groupReq, groupRows, legs, opRow, post, walletSign, type H, type LegRow, type Tx, type Wallet } from "../../helpers/groups";
 
@@ -35,6 +37,17 @@ async function arrangeAssets(over: { legs?: number } = {}) {
   const group = (await groupReq(ctx.user.h, ctx.op.id, req())).body as { groupId: string; transactions: Tx[] };
   return { ...ctx, group };
 }
+
+describe("the plan's approvals estimate", () => {
+  it("a plan asked for with tier sign_and_send counts the fee and the buys as two approvals (review M7)", async () => {
+    const { user, basket, op } = await arrange();
+    expect(op.approvalsEstimate).toBe(1); // sign_all: the fee rides in the buys' popup
+    expect((await post(user.h, `/v1/operations/${op.id}/cancel`)).status).toBe(200);
+    const res = await post(user.h, "/v1/operations/invest", { basketId: basket.basketId, amountUsdc: "500", slippageBps: 100, idempotencyKey: "key-bbbbbbbb", tier: "sign_and_send" });
+    expect(res.status).toBe(201);
+    expect(res.body.approvalsEstimate).toBe(2);
+  });
+});
 
 describe("sign-and-send groups, fee first", () => {
   it("forms the fee alone, then the asset chunk, then the rest: claim and sent record signatures and track the legs", async () => {
@@ -195,6 +208,19 @@ describe("release", () => {
     expect((await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }))).status).toBe(200); // a second attempt works
   });
 
+  it("puts back the plan's floor that the claim lowered, so the next quote at the same lower price still asks first (review M1)", async () => {
+    const { user, chain, op } = await arrange();
+    await adminSql`UPDATE app.operation_legs SET fee_covered_by = ${op.legs[0].id} WHERE operation_id = ${op.id} AND kind <> 'network_fee'`;
+    const planned = (await legs(op.id)).filter((l) => l.kind !== "network_fee").map((l) => l.min_out);
+    chain.quoteOut = { numerator: 99n, denominator: 100n };
+    const group = (await groupReq(user.h, op.id, req())).body;
+    expect(group.priceMoved).toBe(true);
+    await step(user.h, op.id, group.groupId, "claim"); // the user accepted the new prices
+    expect((await step(user.h, op.id, group.groupId, "release")).status).toBe(200);
+    expect((await legs(op.id)).filter((l) => l.kind !== "network_fee").map((l) => l.min_out)).toEqual(planned);
+    expect((await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }))).body.priceMoved).toBe(true);
+  });
+
   it("changes nothing for legs that have a signature: after sent, and after a partial sent", async () => {
     const { user, wallet, op, group } = await arrangeAssets();
     await step(user.h, op.id, group.groupId, "claim");
@@ -280,6 +306,101 @@ describe("the sweep resolves a claim without signatures (Review Focus 2)", () =>
     vi.mocked(connection.getSignaturesForAddress).mockRejectedValue(new Error("rpc down"));
     await expect(trackStaleClaims()).resolves.toBeUndefined();
   });
+
+  const unrelated = (from: number, n: number, blockTime: number) => Array.from({ length: n }, (_, i) => ({ signature: `spam-${from + i}`, slot: 1, err: null, memo: null, blockTime }));
+
+  it("never marks NOT_LANDED from a history it could not read back past the claim: full pages of newer signatures keep every claim (review I1)", async () => {
+    const { op } = await claimedAndAged();
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
+    vi.mocked(connection.getSignaturesForAddress).mockImplementation((async (_owner: unknown, o?: { before?: string }) => unrelated(o?.before ? Number(o.before.slice(5)) + 1 : 0, 1_000, nowSeconds())) as never);
+    const warn = vi.spyOn(logger, "warn");
+    await trackStaleClaims();
+    expect((await legs(op.id)).filter((l) => l.kind !== "network_fee").every((l) => l.status === "SUBMITTING" && l.source_tx === null)).toBe(true);
+    expect(vi.mocked(connection.getSignaturesForAddress).mock.calls.map(([, o]) => o)).toEqual([
+      { limit: 1_000, before: undefined }, { limit: 1_000, before: "spam-999" }, { limit: 1_000, before: "spam-1999" },
+    ]);
+    expect(warn.mock.calls.filter(([m]) => String(m).includes("history is too long"))).toHaveLength(4);
+  });
+
+  it("pages back with before= to a transaction behind a full page of newer ones; once the history is read, the claims with no match are NOT_LANDED (review I1)", async () => {
+    const { group, op } = await claimedAndAged();
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    const t0 = group.transactions[0]!;
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
+    vi.mocked(connection.getSignaturesForAddress).mockResolvedValueOnce(unrelated(0, 1_000, nowSeconds()))
+      .mockResolvedValueOnce([{ signature: "sig-leg0", slot: 1, err: null, memo: null, blockTime: nowSeconds() - 120 }]);
+    vi.mocked(connection.getTransaction).mockImplementation((async (signature: string) => (signature === "sig-leg0" ? landedAs(t0.serializedBase64) : null)) as never);
+    await trackStaleClaims();
+    const rows = (await legs(op.id)).filter((l) => l.kind !== "network_fee");
+    expect(rows.find((l) => l.id === t0.legId)).toMatchObject({ status: "SUBMITTED", source_tx: "sig-leg0" });
+    expect(rows.filter((l) => l.id !== t0.legId).every((l) => l.status === "FAILED" && l.failure_reason === "NOT_LANDED")).toBe(true);
+    expect(vi.mocked(connection.getSignaturesForAddress)).toHaveBeenCalledTimes(2);
+  });
+
+  it("checks the blockhash before reading the signatures, so a transaction landing in between is found, never NOT_LANDED (review I1)", async () => {
+    const { group, op } = await claimedAndAged();
+    const order: string[] = [];
+    vi.mocked(connection.isBlockhashValid).mockImplementation((async () => { order.push("blockhash"); return { context: { slot: 1 }, value: false }; }) as never);
+    vi.mocked(connection.getSignaturesForAddress).mockImplementation((async () => { order.push("signatures"); return []; }) as never);
+    await trackStaleClaims();
+    expect(order.indexOf("signatures")).toBeGreaterThan(order.lastIndexOf("blockhash"));
+    expect((await legs(op.id)).filter((l) => group.transactions.some((t) => t.legId === l.id)).every((l) => l.failure_reason === "NOT_LANDED")).toBe(true);
+  });
+
+  it("a signature reported after the sweep marked its claim NOT_LANDED is refused and kept for ops in the audit, never in the log (review M5)", async () => {
+    const { user, wallet, op, group } = await claimedAndAged();
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
+    await trackStaleClaims();
+    const error = vi.spyOn(logger, "error");
+    const late = sentBody(group.transactions.slice(0, 1), wallet);
+    expect((await step(user.h, op.id, group.groupId, "sent", late)).status).toBe(409);
+    const audits = await adminSql<{ entity_id: string; metadata: { signature: string } }[]>`SELECT entity_id, metadata FROM app.audit_events WHERE action = 'leg.signature_after_not_landed'`;
+    expect(audits).toEqual([{ entity_id: group.transactions[0]!.legId, metadata: expect.objectContaining({ signature: late.signatures[0]!.signature, operationId: op.id }) }]);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(error.mock.calls)).not.toContain(late.signatures[0]!.signature);
+  });
+
+  it("a plan whose only claim never landed still expires and frees the user's slot (review M6)", async () => {
+    const { user, op } = await arrange();
+    const g1 = (await groupReq(user.h, op.id, req())).body as { groupId: string; transactions: Tx[] };
+    expect(kinds(g1.transactions)).toEqual(["fee"]);
+    await step(user.h, op.id, g1.groupId, "claim");
+    await adminSql`UPDATE app.operation_legs SET updated_at = now() - interval '3 minutes', submitted_at = now() - interval '3 minutes' WHERE operation_id = ${op.id}`;
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
+    await trackStaleClaims();
+    expect((await legs(op.id)).find((l) => l.id === g1.transactions[0]!.legId)).toMatchObject({ status: "FAILED", failure_reason: "NOT_LANDED" });
+    expect((await opRow(op.id)).status).toBe("PLANNED");
+    await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 second' WHERE id = ${op.id}`;
+    await expireStalePlans();
+    expect((await opRow(op.id)).status).toBe("CANCELLED");
+  });
+});
+
+describe("a fee-only group checks the buys it pays for (review I4)", () => {
+  it("refuses with INSUFFICIENT_BALANCE when the wallet holds the fee but not the buys it covers: no group, the fee leg untouched", async () => {
+    const { user, chain, op } = await arrange();
+    const rows = await legs(op.id);
+    const fee = rows.find((l) => l.kind === "network_fee")!;
+    const buys = rows.filter((l) => l.kind !== "network_fee").reduce((t, l) => t + BigInt(l.amount_in), 0n);
+    chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), BigInt(fee.amount_in) + buys / 2n);
+    const res = await groupReq(user.h, op.id, req());
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: "INSUFFICIENT_BALANCE", details: { usdcRequiredMicro: (BigInt(fee.amount_in) + buys).toString() } });
+    expect(await groupRows(op.id)).toHaveLength(0);
+    expect((await legs(op.id)).find((l) => l.id === fee.id)).toMatchObject({ status: "PLANNED", group_id: null });
+  });
+
+  it("refuses with SOL_REQUIRED when the wallet has SOL for the fee transaction but not for the buys it covers", async () => {
+    const { user, chain, op } = await arrange();
+    const forBuys = (await legs(op.id)).filter((l) => l.kind !== "network_fee").reduce((t, l) => t + BigInt((l.expected_tx as { userLamports?: string }).userLamports!), 0n);
+    // What the fee transaction alone needs (plus the buffer), as the fee-only group reports it.
+    const feeAlone = BigInt((await groupReq(user.h, op.id, req())).body.solRequiredLamports);
+    chain.balances.set(balanceKey(user.solanaAddress, null), feeAlone);
+    const short = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }));
+    expect(short.status).toBe(409);
+    expect(short.body.error).toMatchObject({ code: "SOL_REQUIRED", details: { lamportsRequired: (feeAlone + forBuys).toString(), lamportsHeld: feeAlone.toString() } });
+    expect((await groupRows(op.id)).map((g) => g.status)).toEqual(["EXPIRED"]); // the first group, replaced; no new one
+  });
 });
 
 describe("a sign-and-send transaction that landed (after-the-fact check)", () => {
@@ -360,17 +481,42 @@ describe("a reported signature must be our prepared transaction before it gates 
     expect((await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }))).body.error.code).toBe("TX_MISMATCH");
   });
 
-  it("(tracker) a mismatched fee fails: no fee charge row, the covered legs are charged again by the next fee group", async () => {
-    const { user, chain, op, fee, signature, unrelated } = await feeReported();
+  it("(tracker) a landed fee whose message differs is UNKNOWN for ops, never FAILED (its USDC may have moved): no charge row, no new fee, the next group is a plain 409 (review I2)", async () => {
+    const { user, chain, op, fee, signature } = await feeReported();
     chain.solanaFinality.set(signature, "finalized");
-    vi.mocked(connection.getTransaction).mockResolvedValue(unrelated);
+    const memo = new TransactionInstruction({ programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"), keys: [], data: Buffer.from("added by the wallet") });
+    vi.mocked(connection.getTransaction).mockResolvedValue(landedAs(fee.serializedBase64, (ix) => [...ix, memo]));
     await trackLeg(fee.legId);
-    expect(await row(fee.legId)).toEqual({ status: "FAILED", failure_reason: "TX_MISMATCH_AFTER_SEND" });
+    expect(await row(fee.legId)).toEqual({ status: "UNKNOWN", failure_reason: "TX_MISMATCH_AFTER_SEND" });
     expect(await count("operation_fee_charges")).toBe(0);
-    expect((await legs(op.id)).every((l) => l.fee_covered_by === null)).toBe(true);
+    const feeLegs = (await legs(op.id)).filter((l) => l.kind === "network_fee").length;
+    const again = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }));
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe("OPERATION_IN_PROGRESS");
+    expect(again.body.error.details).toBeUndefined(); // a stop, not "fee_confirming": the web does not retry
+    expect((await legs(op.id)).filter((l) => l.kind === "network_fee")).toHaveLength(feeLegs);
+    expect(await groupRows(op.id)).toHaveLength(1);
+    await trackLeg(fee.legId, 1); // an hourly recheck leaves it for ops
+    expect((await row(fee.legId)).status).toBe("UNKNOWN");
+  });
+
+  it("(tracker) /sent stores the prepared blockhash: a reported fee that never lands fails once it expired and two minutes passed, then a new fee group follows (review I3)", async () => {
+    const { user, chain, op, fee, signature } = await feeReported();
+    const stored = (await legs(op.id)).find((l) => l.id === fee.legId)!.expected_tx as { recentBlockhash?: string; walletSentAt?: string };
+    expect(stored.recentBlockhash).toBe(VersionedTransaction.deserialize(Buffer.from(fee.serializedBase64, "base64")).message.recentBlockhash);
+    expect(Date.parse(stored.walletSentAt!)).toBeGreaterThan(Date.now() - 60_000);
+    chain.signatureStatus.set(signature, "none");
+    chain.solanaFinality.set(signature, "expired");
+    // Within two minutes of the report a copy the wallet rebuilt with a newer blockhash could still land: not final yet (the queue retries).
+    await expect(trackLeg(fee.legId)).rejects.toThrow();
+    expect((await row(fee.legId)).status).toBe("SUBMITTED");
+    expect(vi.mocked(solanaFinality)).toHaveBeenCalledWith(signature, stored.recentBlockhash);
+    await adminSql`UPDATE app.operation_legs SET expected_tx = jsonb_set(expected_tx, '{walletSentAt}', to_jsonb(${new Date(Date.now() - 180_000).toISOString()}::text)) WHERE id = ${fee.legId}`;
+    await trackLeg(fee.legId);
+    expect((await row(fee.legId)).status).toBe("FAILED");
     const again = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }));
     expect(again.status).toBe(200);
-    expect(kinds(again.body.transactions)).toEqual(["fee"]); // the shares are uncovered again
+    expect(kinds(again.body.transactions)).toEqual(["fee"]); // the dropped fee covered nothing: its shares are charged by a new one
   });
 
   it("(tracker) fails closed: an RPC error or a transaction not yet visible leaves the fee and an asset leg pending, never settled or ledgered", async () => {

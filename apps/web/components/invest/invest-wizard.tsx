@@ -10,12 +10,14 @@ import { FeeLines } from "@/components/invest/fee-lines";
 import { GroupProgress, PlanEstimates } from "@/components/invest/group-progress";
 import { LegRow } from "@/components/invest/leg-progress";
 import { OpenOperationBanner } from "@/components/invest/open-operation-banner";
+import { useMe } from "@/components/me-context";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toDisplayError } from "@/lib/errors";
+import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 import { ChainCoverageNotice, useUncoveredChains } from "@/components/invest/chain-coverage";
 
 /** Amount, slippage, preview, then signing in batches. */
@@ -29,6 +31,8 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
   const [key, setKey] = useState(() => crypto.randomUUID());
   const [plan, setPlan] = useState<OperationView | null>(null);
   const [signing, setSigning] = useState(false);
+  const { data: me } = useMe();
+  const wallet = useLegSigner(me);
   const uncovered = useUncoveredChains(plan);
   const [chainAck, setChainAck] = useState(false);
   const [minsChecked, setMinsChecked] = useState(false);
@@ -36,7 +40,7 @@ export function InvestWizard({ basketId, name, minimumUsdc, incrementUsdc, open,
   const bps = Math.round(Number(slippage) * 100);
   const problem = investAmountProblem(amount, minimumUsdc, incrementUsdc);
   const slippageProblem = Number.isFinite(bps) && bps >= 1 && bps <= SLIPPAGE_MAX_BPS ? null : `Slippage must be between 0.01% and ${SLIPPAGE_MAX_BPS / 100}%.`;
-  const preview = useMutation({ mutationFn: () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, tier: "sign_all", idempotencyKey: key }), onSuccess: (p) => { setPlan(p); setMinsChecked(false); } });
+  const preview = useMutation({ mutationFn: async () => api.investPlan({ basketId, amountUsdc: amount, slippageBps: bps, tier: await wallet.chooseTier(), idempotencyKey: key }), onSuccess: (p) => { setPlan(p); setMinsChecked(false); } });
   const discard = useMutation({ mutationFn: (id: string) => api.cancelOperation(id), onSettled: () => setPlan(null) });
   const err = preview.error ?? discard.error;
   const manyLegs = (plan?.legs.filter((l) => l.kind !== "network_fee").length ?? 0) > 10;

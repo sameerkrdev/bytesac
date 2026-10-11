@@ -46,8 +46,11 @@ const USER_FEE_PRICE_MAX_MICRO = 2_500_000n;
 const FEE_LEG_PRIORITY_LAMPORTS = (FEE_LEG_CU_PRICE_MICRO * BigInt(FEE_LEG_CU_LIMIT) + 999_999n) / 1_000_000n;
 /** Two signatures plus the fee-leg priority fee. Token-account rent is added by the planner per missing recipient ATA. */
 export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n + FEE_LEG_PRIORITY_LAMPORTS;
-/** What the user pays for the fee transfer as fee payer: one signature plus the priority fee. Token-account rent is added per missing recipient account. */
-export const FEE_TRANSFER_USER_LAMPORTS = 5_000n + FEE_LEG_PRIORITY_LAMPORTS;
+/**
+ * The most the user pays for the fee transfer as fee payer: one signature plus the priority fee at the price cap (the plan cannot know the price the group will
+ * quote, B-24). Token-account rent is added per missing recipient account.
+ */
+export const FEE_TRANSFER_USER_LAMPORTS = 5_000n + (USER_FEE_PRICE_MAX_MICRO * BigInt(USER_FEE_CU_LIMIT) + 999_999n) / 1_000_000n;
 
 export async function buildFeeTransfer(i: { owner: string; payer: "user" | "platform"; transfers: { recipient: string; amountMicro: bigint }[] }): Promise<{ serializedBase64: string; messageHash: string }> {
   const [owner, mint] = [new PublicKey(i.owner), new PublicKey(USDC_SOLANA_MINT)];

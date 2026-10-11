@@ -201,6 +201,19 @@ describe("the plan's minimum amounts (D-073 waived: the user accepts new prices)
     expect(signed.map((l) => l.min_out)).toEqual(second.legs.map((l: { minOut: string }) => l.minOut));
     expect(signed.every((l, n) => BigInt(l.min_out!) < BigInt(plannedMin[n]!))).toBe(true);
   });
+
+  it("a buy released unsent after the user signed new prices goes back to the plan's floor, so the next group asks again (review M1)", async () => {
+    const { user, wallet, chain, op } = await arrange();
+    const plannedMin = (await legs(op.id)).filter((l) => l.kind !== "network_fee").map((l) => l.min_out);
+    chain.quoteOut = { numerator: 99n, denominator: 100n };
+    const first = (await groupReq(user.h, op.id)).body;
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false }); // the fee goes out, every buy is stale at its send
+    expect((await submit(user.h, op.id, first.groupId, signAll(first.transactions, wallet))).status).toBe(200);
+    const released = (await legs(op.id)).filter((l) => l.kind !== "network_fee");
+    expect(released.every((l) => l.status === "PLANNED" && l.last_error === "QUOTE_STALE")).toBe(true);
+    expect(released.map((l) => l.min_out)).toEqual(plannedMin);
+    expect((await groupReq(user.h, op.id, { idempotencyKey: "grp-bbbbbbbb" })).body.priceMoved).toBe(true);
+  });
 });
 
 describe("tier single (one popup per transaction)", () => {

@@ -6,7 +6,7 @@ import { feeLeg, ID, operation, position, renderApp, sellLeg } from "./invest-fi
 
 const api = { sellPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn() };
 vi.mock("@/lib/api", () => ({ api: { sellPlan: (b: unknown) => api.sellPlan(b), cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id) } }));
-vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({}) }));
+vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({ chooseTier: async () => "sign_all" }) }));
 import { EligibilityNotices } from "@/components/eligibility/notices";
 import { ResultsList } from "@/components/discovery/results-list";
 import { SellDialog } from "@/components/portfolio/exit-dialogs";
