@@ -34,6 +34,12 @@ describe("WalletMenu", () => {
     render(<WalletConnectionsProvider><WalletMenu me={me} /></WalletConnectionsProvider>);
     await userEvent.click(screen.getByRole("button", { name: "Wallets" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Reconnect Phantom" }));
-    expect(h.open).toHaveBeenCalledWith({ view: "Connect" });
+    expect(h.open).toHaveBeenCalledWith({ view: "ProfileWallets" });
+  });
+  it("Add wallet opens Reown’s add-wallet list (connects another wallet next to the current ones)", async () => {
+    render(<WalletConnectionsProvider><WalletMenu me={me} /></WalletConnectionsProvider>);
+    await userEvent.click(screen.getByRole("button", { name: "Wallets" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Add wallet" }));
+    expect(h.open).toHaveBeenCalledWith({ view: "ProfileWallets" });
   });
 });

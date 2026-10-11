@@ -5,6 +5,7 @@ import { useAppKit, useAppKitAccount, useAppKitNetwork, useAppKitProvider, useDi
 import { mainnet } from "@reown/appkit/networks";
 import { useCallback, useMemo } from "react";
 import { useSignMessage } from "wagmi";
+import { useAddWallet } from "@/lib/wallet/use-wallet-for-chain";
 import { chainFromCaip, isUserRejection, signableChainsFromCaip, WalletRejectedError, type ConnectedAccount, normalizeSolanaSignature } from "@repo/app-core";
 
 export type { ConnectedAccount };
@@ -17,6 +18,7 @@ export function useWalletConnector() {
   const { disconnect } = useDisconnect();
   const { walletProvider: solanaProvider } = useAppKitProvider<SolanaProvider>("solana");
   const { signMessageAsync } = useSignMessage();
+  const addWallet = useAddWallet();
 
   const mapped = chainFromCaip(caipNetwork?.caipNetworkId);
   const network: "supported" | "unsupported" | "none" = !isConnected || mapped === null ? "none" : mapped === "unsupported" ? "unsupported" : "supported";
@@ -52,6 +54,7 @@ export function useWalletConnector() {
     network,
     connect: async () => { await open({ view: "Connect" }); },
     chooseNetwork: async () => { await open({ view: "Networks" }); },
+    addWallet: async () => { await addWallet(); },
     disconnect: async () => { await disconnect(); },
     switchToSupported: async () => { await switchNetwork(mainnet); },
     signMessage,

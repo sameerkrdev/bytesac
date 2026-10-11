@@ -52,6 +52,7 @@ export function WalletVerification({ purpose, onVerified, expired, linkedAddress
       onConnect={() => void wallet.connect()}
       onSwitchNetwork={() => void wallet.switchToSupported()}
       onChooseNetwork={() => void wallet.chooseNetwork()}
+      onUseAnotherWallet={purpose === "sign_in" ? undefined : () => void wallet.addWallet()}
     />
   );
 }
