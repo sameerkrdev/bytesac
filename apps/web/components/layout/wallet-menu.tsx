@@ -1,11 +1,11 @@
 "use client";
 
 import { Menu } from "@base-ui/react/menu";
-import { useAppKit, useAppKitConnections, useDisconnect } from "@reown/appkit/react";
+import { useAppKit, useDisconnect } from "@reown/appkit/react";
 import { shortAddress } from "@repo/app-core";
 import { ASSET_CHAINS, type MeResponse } from "@repo/validator";
 import { Plug, Wallet } from "lucide-react";
-import { same } from "@/lib/wallet/use-wallet-for-chain";
+import { same, useWalletConnections } from "@/lib/wallet/use-wallet-for-chain";
 
 const item = "flex min-h-11 w-full cursor-default items-center gap-3 rounded-control px-3 text-sm text-ink outline-none select-none data-[highlighted]:bg-surface-muted";
 
@@ -13,10 +13,8 @@ const item = "flex min-h-11 w-full cursor-default items-center gap-3 rounded-con
 export function WalletMenu({ me }: { me: MeResponse }) {
   const { open } = useAppKit();
   const { disconnect } = useDisconnect();
-  const eip155 = useAppKitConnections("eip155").connections;
-  const solana = useAppKitConnections("solana").connections;
-  const bip122 = useAppKitConnections("bip122").connections;
-  const connections = [...eip155.map((c) => ({ c, namespace: "eip155" as const })), ...solana.map((c) => ({ c, namespace: "solana" as const })), ...bip122.map((c) => ({ c, namespace: "bip122" as const }))];
+  const families = useWalletConnections();
+  const connections = (["eip155", "solana", "bip122"] as const).flatMap((namespace) => families[namespace].connections.map((c) => ({ c, namespace })));
   const linked = me.wallet.addresses.filter((a) => a.status === "active");
   if (linked.length === 0) return null;
   const chainsOf = (address: string) => linked.filter((a) => same(a.address, address)).map((a) => ASSET_CHAINS[a.chain].label).join(", ");
