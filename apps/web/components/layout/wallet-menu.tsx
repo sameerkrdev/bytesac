@@ -1,17 +1,17 @@
 "use client";
 
 import { Menu } from "@base-ui/react/menu";
-import { useAppKit, useDisconnect } from "@reown/appkit/react";
+import { useDisconnect } from "@reown/appkit/react";
 import { shortAddress } from "@repo/app-core";
 import { ASSET_CHAINS, type MeResponse } from "@repo/validator";
-import { Plug, Wallet } from "lucide-react";
-import { same, useWalletConnections } from "@/lib/wallet/use-wallet-for-chain";
+import { Plug, Plus, Wallet } from "lucide-react";
+import { same, useAddWallet, useWalletConnections } from "@/lib/wallet/use-wallet-for-chain";
 
 const item = "flex min-h-11 w-full cursor-default items-center gap-3 rounded-control px-3 text-sm text-ink outline-none select-none data-[highlighted]:bg-surface-muted";
 
 /** Header menu of the wallets connected in this browser (Reown Multiwallet), with Reconnect for linked addresses that are not connected. */
 export function WalletMenu({ me }: { me: MeResponse }) {
-  const { open } = useAppKit();
+  const addWallet = useAddWallet();
   const { disconnect } = useDisconnect();
   const families = useWalletConnections();
   const connections = (["eip155", "solana", "bip122"] as const).flatMap((namespace) => families[namespace].connections.map((c) => ({ c, namespace })));
@@ -47,13 +47,18 @@ export function WalletMenu({ me }: { me: MeResponse }) {
                 <Menu.Separator className="my-1.5 h-px bg-line" />
                 <Menu.GroupLabel className="px-3 pt-1 pb-2 type-eyebrow text-ink-faint">Linked, not connected</Menu.GroupLabel>
                 {missing.map((a) => (
-                  <Menu.Item key={a.address} className={item} aria-label={`Reconnect ${a.walletName ?? "wallet"}`} onClick={() => void open({ view: "Connect" })}>
+                  <Menu.Item key={a.address} className={item} aria-label={`Reconnect ${a.walletName ?? "wallet"}`} onClick={() => void addWallet()}>
                     <Plug aria-hidden className="size-4 text-ink-muted" />
                     <span className="min-w-0 flex-1"><span className="block truncate">{a.walletName ?? "Wallet"}</span><span className="block text-xs text-ink-muted"><span className="font-mono">{shortAddress(a.address)}</span> · {chainsOf(a.address)}</span></span>
                   </Menu.Item>
                 ))}
               </Menu.Group>
             )}
+            <Menu.Separator className="my-1.5 h-px bg-line" />
+            <Menu.Item className={item} onClick={() => void addWallet()}>
+              <Plus aria-hidden className="size-4 text-ink-muted" />
+              Add wallet
+            </Menu.Item>
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>

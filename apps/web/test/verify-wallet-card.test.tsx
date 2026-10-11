@@ -17,6 +17,14 @@ describe("VerifyWalletCard", () => {
     expect(screen.getByText("Base")).toBeInTheDocument();
     expect(screen.getByText("0x1234…5678")).toBeInTheDocument();
   });
+  it("offers Use another wallet only when the linking flow passes it", async () => {
+    const onUseAnotherWallet = vi.fn();
+    const { rerender } = render(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...handlers} />);
+    expect(screen.queryByRole("button", { name: "Use another wallet" })).not.toBeInTheDocument();
+    rerender(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...handlers} onUseAnotherWallet={onUseAnotherWallet} />);
+    await userEvent.click(screen.getByRole("button", { name: "Use another wallet" }));
+    expect(onUseAnotherWallet).toHaveBeenCalledTimes(1);
+  });
   it("disables Sign while signing/verifying", () => {
     const onSign = vi.fn();
     const { rerender } = render(<VerifyWalletCard account={account} network="supported" state={{ step: "signing" }} {...handlers} onSign={onSign} />);
@@ -56,7 +64,7 @@ describe("VerifyWalletCard add-chain", () => {
     render(<VerifyWalletCard account={account} network="supported" state={{ step: "idle" }} {...handlers} onChooseNetwork={onChooseNetwork}
       linkedAddresses={[{ chain: "base", address: account.address }]} />);
     expect(screen.getByRole("button", { name: "Sign message" })).toBeDisabled();
-    expect(screen.getByText("This account is already linked. Choose another network or account in your wallet.")).toBeInTheDocument();
+    expect(screen.getByText("This account is already linked. Choose another network, or use another wallet.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Choose network" }));
     expect(onChooseNetwork).toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppKitAccount, useAppKitConnection, useAppKitConnections, useAppKitState, type Connection } from "@reown/appkit/react";
+import { useAppKit, useAppKitAccount, useAppKitConnection, useAppKitConnections, useAppKitState, type Connection } from "@reown/appkit/react";
 import { linkedAddressFor } from "@repo/app-core";
 import { ASSET_CHAINS, type AssetChain, type MeResponse } from "@repo/validator";
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
@@ -40,6 +40,13 @@ export function WalletConnectionsProvider({ children }: { children: ReactNode })
 }
 
 export const useWalletConnections = () => useContext(ConnectionsContext);
+
+/** Opens Reown’s "Add EVM / Solana / Bitcoin wallet" list, which connects another wallet next to the current ones (Multiwallet); without Multiwallet, the plain Connect view. */
+export function useAddWallet() {
+  const { open } = useAppKit();
+  const { multiWallet } = useAppKitState();
+  return useCallback(() => open({ view: multiWallet ? "ProfileWallets" : "Connect" }), [open, multiWallet]);
+}
 
 /**
  * D-121: make the wallet linked to `chain` the active connection; "missing" when it is not connected in this browser (the caller prompts to connect it).

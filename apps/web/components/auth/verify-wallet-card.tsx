@@ -18,6 +18,8 @@ interface Props {
   onDisconnect(): void;
   onSwitchNetwork(): void;
   onChooseNetwork?(): void;
+  /** Linking flows: connect a different wallet (e.g. MetaMask for Base after signing in with Phantom). */
+  onUseAnotherWallet?(): void;
   /** Shown when nothing is connected (e.g. mid-move, after switching wallets). */
   onConnect?(): void;
   /** D-120 chain checkboxes; when present Sign needs at least one ticked chain (signDisabled). */
@@ -124,10 +126,13 @@ export function VerifyWalletCard(p: Props) {
               </Button>
             )}
             {alreadyLinked && !err && (
-              <p className="text-sm text-ink-muted">This account is already linked. Choose another network or account in your wallet.</p>
+              <p className="text-sm text-ink-muted">This account is already linked. Choose another network, or use another wallet.</p>
             )}
             {p.onChooseNetwork && (
               <Button variant="secondary" className="min-h-11 w-full" onClick={p.onChooseNetwork}>Choose network</Button>
+            )}
+            {p.onUseAnotherWallet && (
+              <Button variant="secondary" className="min-h-11 w-full" onClick={p.onUseAnotherWallet}>Use another wallet</Button>
             )}
           </>
         ) : (
