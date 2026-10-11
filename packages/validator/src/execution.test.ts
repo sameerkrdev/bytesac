@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LEG_STATES, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
+import { K_SIGN_ALL, LEG_STATES, approvalsEstimate, feeShares, groupSubmitSchema, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
 
 describe("splitInvestment", () => {
   it("splits deployable by bps and gives the remainder to the largest weight", () => {
@@ -72,5 +72,42 @@ describe("request schemas", () => {
     expect(legSubmitSchema.safeParse({}).success).toBe(false);
     expect(legSubmitSchema.safeParse({ txHash: "0x1", signedTx: "x" }).success).toBe(false);
     expect(legSubmitSchema.safeParse({ txHash: "0x1" }).success).toBe(true);
+  });
+});
+
+describe("feeShares", () => {
+  it("splits each kind by base, remainder to the largest base, sums exactly", () => {
+    const s = feeShares({ manager_entry: 1_000_001n, platform: 10n }, [100n, 300n, 100n]);
+    expect(s.map((x) => x.manager_entry)).toEqual([200_000n, 600_001n, 200_000n]);
+    expect(s.map((x) => x.platform)).toEqual([2n, 6n, 2n]);
+    expect(s.reduce((t, x) => t + x.manager_entry!, 0n)).toBe(1_000_001n);
+  });
+  it("gives the remainder to the first largest base on ties and omits zero kinds", () => {
+    const s = feeShares({ platform: 5n, network: 0n }, [1n, 1n]);
+    expect(s).toEqual([{ platform: 3n }, { platform: 2n }]);
+  });
+  it("returns empty shares when there is no base", () => {
+    expect(feeShares({ platform: 5n }, [])).toEqual([]);
+  });
+});
+
+describe("approvalsEstimate", () => {
+  it("counts chunks of K, one slot per chunk taken by the fee when charged", () => {
+    expect(approvalsEstimate({ tier: "sign_all", solanaLegs: 4, charged: true })).toBe(1);
+    expect(approvalsEstimate({ tier: "sign_all", solanaLegs: 11, charged: true })).toBe(1);
+    expect(approvalsEstimate({ tier: "sign_all", solanaLegs: 12, charged: true })).toBe(2);
+    expect(approvalsEstimate({ tier: "sign_all", solanaLegs: 12, charged: false })).toBe(1);
+    expect(approvalsEstimate({ tier: "sign_all", solanaLegs: 50, charged: true })).toBe(5);
+    expect(approvalsEstimate({ tier: "single", solanaLegs: 50, charged: true })).toBe(51);
+    expect(approvalsEstimate({ tier: "sign_and_send", solanaLegs: 24, charged: true })).toBe(4);
+  });
+});
+
+describe("groupSubmitSchema", () => {
+  it("bounds the batch", () => {
+    const one = { legId: "0190a7b2-0000-7000-8000-000000000001", signedTx: "AA==" };
+    expect(groupSubmitSchema.safeParse({ signed: [] }).success).toBe(false);
+    expect(groupSubmitSchema.safeParse({ signed: Array(K_SIGN_ALL + 1).fill(one) }).success).toBe(false);
+    expect(groupSubmitSchema.safeParse({ signed: [one] }).success).toBe(true);
   });
 });

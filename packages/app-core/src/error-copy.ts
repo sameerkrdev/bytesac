@@ -48,6 +48,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   DECLARATION_REQUIRED: { title: "Eligibility declaration needed", message: "Tell us your country and investor status to continue with tokenized assets.", recovery: "fix-input" },
   OPERATION_IN_PROGRESS: { title: "Another operation is running", message: "Finish or cancel your current operation first.", recovery: "wait" },
   QUOTE_EXPIRED: { title: "Quote expired", message: "Get a new quote and sign again.", recovery: "retry" },
+  GROUP_EXPIRED: { title: "Took too long to sign", message: "The prices expired before signing finished. Nothing was sent. Get fresh prices and sign again.", recovery: "retry" },
   TX_MISMATCH: { title: "Transaction changed", message: "The transaction no longer matches the prepared one. Nothing was sent. Get a new quote.", recovery: "retry" },
   PSBT_MISMATCH: { title: "Transaction changed", message: "The Bitcoin transaction no longer matches the prepared one. Nothing was sent. Get a new quote.", recovery: "retry" },
   GAS_BUDGET_EXHAUSTED: { title: "Network gas budget reached", message: "Today's sponsored gas budget is used up. Try again later.", recovery: "wait" },

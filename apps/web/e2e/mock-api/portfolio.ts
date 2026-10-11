@@ -29,14 +29,14 @@ function leg(n: number, over: Partial<OperationView["legs"][number]>): Operation
   return {
     id: uuid(0x500 + n), sequence: n, kind: "swap", status: "SETTLED", fromChain: "solana", toChain: "solana", fromDeploymentId: null, toDeploymentId: null,
     amountIn: "100000000", minOut: null, amountReceived: null, provider: "LI.FI", routeSummary: null, quoteExpiresAt: null, gasPayer: "platform_fee_payer",
-    sourceTx: `5h${n}xQmock`, destinationTx: null, failureReason: null, priceImpact: 0.0012, routeFees: [], providerSubstatus: null, recoveryOf: null, recoveryToken: null, feeOnTransfer: false, ...over,
+    sourceTx: `5h${n}xQmock`, destinationTx: null, failureReason: null, priceImpact: 0.0012, routeFees: [], providerSubstatus: null, recoveryOf: null, recoveryToken: null, feeOnTransfer: false, groupId: null, feeShare: null, feeCoveredBy: null, retryOf: null, lastError: null, ...over,
   };
 }
 
 function op(n: number, kind: OperationView["kind"], status: OperationView["status"], slug: string, amount: string, at: string, legs: OperationView["legs"]): OperationView {
   return {
     id: uuid(0x400 + n), kind, status, basketId: basketId(slug), positionId: uuid(0x100 + n % 3), amountUsdc: amount, sellPercent: null, slippageBps: 100, networkFeeUsdc: "0.42",
-    expiresAt: T("2026-10-04"), createdAt: at, legs,
+    expiresAt: T("2026-10-04"), createdAt: at, legs, needsAction: false, needsActionSince: null, groups: [], approvalsEstimate: null, solRequiredLamports: null, charged: [],
     fees: [{ kind: "network", amountMicro: "420000", recipientLabel: "Bytesac (gas)", waivedReason: null }, { kind: "manager_entry", amountMicro: String(Math.round(Number(amount) * 5000)), recipientLabel: "Meridian Research Partners", waivedReason: null }, { kind: "platform", amountMicro: "0", recipientLabel: "Bytesac", waivedReason: null }],
   };
 }
@@ -64,7 +64,7 @@ export function investPlan(seed: (typeof BASKETS)[number], amountUsdc: string, s
   });
   return {
     id: uuid(0x700 + Math.floor(amount)), kind: "invest", status: "PLANNED", basketId: basketIdOf(seed.slug), positionId: null, amountUsdc, sellPercent: null, slippageBps,
-    networkFeeUsdc: "0.42", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), createdAt: new Date().toISOString(), legs,
+    networkFeeUsdc: "0.42", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(), createdAt: new Date().toISOString(), legs, needsAction: false, needsActionSince: null, groups: [], approvalsEstimate: null, solRequiredLamports: null, charged: [],
     fees: [
       { kind: "network", amountMicro: "420000", recipientLabel: "Bytesac (gas)", waivedReason: null },
       { kind: "manager_entry", amountMicro: String(Math.round(amount * seed.entryBps * 100)), recipientLabel: "Meridian Research Partners", waivedReason: null },

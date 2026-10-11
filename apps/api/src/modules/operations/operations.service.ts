@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { basketPositions, baskets, contacts, db, instrumentDeployments, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
+import { basketPositions, baskets, contacts, db, instrumentDeployments, operationFeeCharges, operationGroups, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
 import { LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, minOut, type OperationView, type WaivedReason } from "@repo/validator";
 import type { RouteFee } from "@/providers/routes/types";
 import type { RequestMeta } from "@/middlewares/request-context.middleware";
@@ -44,9 +44,16 @@ export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> 
   const flagged = new Set((await db.select({ id: instrumentDeployments.id }).from(instrumentDeployments).where(and(eq(instrumentDeployments.feeOnTransfer, true), inArray(instrumentDeployments.id, legs.flatMap((l) => [l.fromDeploymentId, l.toDeploymentId]).filter((d): d is string => !!d))))).map((d) => d.id));
   const fees = await db.select({ f: operationFees, org: orgDisplayName }).from(operationFees).leftJoin(organizations, eq(organizations.id, operationFees.organizationId))
     .where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFees.createdAt), asc(operationFees.id));
+  const groups = await db.select().from(operationGroups).where(eq(operationGroups.operationId, op.id)).orderBy(asc(operationGroups.createdAt), asc(operationGroups.id));
+  const charges = await db.select({ kind: operationFees.kind, amountMicro: operationFeeCharges.amountMicro, feeLegId: operationFeeCharges.feeLegId, settledAt: operationFeeCharges.settledAt })
+    .from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFeeCharges.createdAt), asc(operationFeeCharges.id));
   return {
     id: op.id, kind: op.kind, status: op.status, basketId: op.basketId, positionId: op.positionId, amountUsdc: op.amountUsdc, sellPercent: op.sellPercent, slippageBps: op.slippageBps,
     networkFeeUsdc: op.networkFeeUsdc, expiresAt: op.expiresAt.toISOString(), createdAt: op.createdAt.toISOString(),
+    needsAction: op.needsActionSince !== null, needsActionSince: op.needsActionSince?.toISOString() ?? null,
+    groups: groups.map((g) => ({ id: g.id, chain: g.chain, tier: g.tier, status: g.status, sendBy: g.sendBy.toISOString(), createdAt: g.createdAt.toISOString() })),
+    approvalsEstimate: op.approvalsEstimate, solRequiredLamports: op.solRequiredLamports,
+    charged: charges.map((c) => ({ kind: c.kind, amountMicro: c.amountMicro, feeLegId: c.feeLegId, settledAt: c.settledAt?.toISOString() ?? null })),
     // A pre-Spec-10 operation has no fee rows: its one fee is the network fee.
     fees: fees.length ? fees.map(({ f, org }) => ({
       kind: f.kind, amountMicro: f.amountMicro, waivedReason: f.waivedReason as WaivedReason | null,
@@ -58,6 +65,7 @@ export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> 
       id: l.id, sequence: l.sequence, kind: l.kind, status: l.status, fromChain: l.fromChain, toChain: l.toChain, fromDeploymentId: l.fromDeploymentId, toDeploymentId: l.toDeploymentId,
       amountIn: l.amountIn, minOut: l.minOut, amountReceived: l.amountReceived, provider: l.provider, routeSummary: l.routeSummary, quoteExpiresAt: l.quoteExpiresAt?.toISOString() ?? null,
       gasPayer: l.gasPayer, sourceTx: l.sourceTx, destinationTx: l.destinationTx, failureReason: l.failureReason,
+      groupId: l.groupId, feeShare: l.feeShare, feeCoveredBy: l.feeCoveredBy, retryOf: l.retryOf, lastError: l.lastError,
     })),
   };
 }
