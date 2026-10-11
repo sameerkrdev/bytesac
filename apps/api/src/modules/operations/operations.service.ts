@@ -204,6 +204,7 @@ export async function cancelIfExpired(tx: Tx, ctx: OpCtx | null, op: Op): Promis
   if (op.status !== "PLANNED" || op.expiresAt > new Date()) return false;
   const [claimed] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, op.id), ne(operationLegs.status, "PLANNED"))).limit(1);
   if (claimed) return false; // a signed transaction is being sent: the plan is not abandoned
+  await releaseQuotedGroups(tx, op.id);
   await setOperationStatus(tx, ctx, op, "CANCELLED");
   return true;
 }

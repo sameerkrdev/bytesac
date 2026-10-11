@@ -200,19 +200,22 @@ export async function stopStalledRecoveries(): Promise<void> {
 }
 
 /**
- * A batched investment that has needed the user's action (Continue or Stop) for 24 hours with nothing in flight is stopped as the user's Stop would (PARTIAL
- * once an asset leg settled, else FAILED; their USDC is in their wallet), its unsigned groups are released, it is audited and the user is told. Re-checked under
- * the operation's lock; an operation without groups (the per-leg path) is never touched.
+ * A batched investment with no progress for 24 hours and nothing in flight is stopped as the user's Stop would (PARTIAL once an asset leg settled, else FAILED;
+ * their USDC is in their wallet), its unsigned groups are released, it is audited and the user is told. Progress is the later of the last needs-action mark and the
+ * last group quoted (a wallet popup that was closed never reaches the server, and quoting clears the mark). Re-checked under the operation's lock; an operation
+ * without groups (the per-leg path) is never touched, nor is one with an unfinished recovery (that keeps its own 7-day stop).
  */
 export async function stopStalledInvests(): Promise<void> {
+  const idle = sql`greatest(${operations.needsActionSince}, (select max(g.created_at) from app.operation_groups g where g.operation_id = ${operations.id})) < now() - ${`${INVEST_AUTO_STOP_HOURS} hours`}::interval`;
   const due = await db.select({ id: operations.id }).from(operations)
-    .where(and(eq(operations.status, "IN_PROGRESS"), sql`${operations.needsActionSince} < now() - ${`${INVEST_AUTO_STOP_HOURS} hours`}::interval`, inArray(operations.id, db.select({ id: operationGroups.operationId }).from(operationGroups))));
+    .where(and(eq(operations.status, "IN_PROGRESS"), idle, inArray(operations.id, db.select({ id: operationGroups.operationId }).from(operationGroups))));
   for (const { id } of due) {
     try {
       const notificationId = await db.transaction(async (tx) => {
         const op = await lockOperation(tx, id);
         const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, id));
-        if (op.status !== "IN_PROGRESS" || !op.needsActionSince || Date.now() - op.needsActionSince.getTime() < INVEST_AUTO_STOP_HOURS * 3_600_000 || legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status))) return null;
+        const stillIdle = (await tx.select({ id: operations.id }).from(operations).where(and(eq(operations.id, id), idle))).length > 0;
+        if (op.status !== "IN_PROGRESS" || !stillIdle || legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status) || (l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED"))) return null;
         await releaseQuotedGroups(tx, id);
         await setOperationStatus(tx, null, op, stopStatus(legs));
         await writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "operation.auto_stopped", entityType: "operation", entityId: op.id, requestId: `auto-stop-${op.id}`, metadata: { reason: "needs_action_timeout" } });

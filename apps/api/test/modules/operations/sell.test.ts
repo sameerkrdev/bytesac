@@ -71,7 +71,7 @@ describe("sell plan", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ kind: "sell_to_usdc", status: "PLANNED", sellPercent: 50, amountUsdc: null });
     expect(res.body.legs.map((l: { kind: string; fromChain: string; amountIn: string; gasPayer: string }) => [l.kind, l.fromChain, l.amountIn, l.gasPayer])).toEqual([
-      ["network_fee", "solana", "120000", "user_solana"], // (0.05 + 0.05) USD of EVM and Bitcoin gas x 1.2: Solana gas is the user's
+      ["network_fee", "solana", "60000", "user_solana"], // 0.05 USD of EVM gas x 1.2: Solana gas and the Bitcoin miner fee (paid from the PSBT's inputs) are the user's
       ["swap", "solana", "2000000000", "user_solana"],
       ["cross_chain", "ethereum", "500000000000000000", "platform_gas_drop"], // wallet (0.5) < ledger x 50% (1.0)
       ["cross_chain", "bitcoin", "50000000", "user_btc_inputs"],
@@ -94,6 +94,20 @@ describe("sell plan", () => {
     const none = await sell(user.h, positionId, { idempotencyKey: "sell-bbbbbbbb" });
     expect(none.status).toBe(409);
     expect(none.body.error.code).toBe("INSUFFICIENT_BALANCE");
+  });
+
+  it("a Bitcoin-only sell charges no network fee and has no fee leg: the miner fee is the user's own (review I9)", async () => {
+    const chain = mockChains();
+    await seedPlatformWallets();
+    const basket = await seedBasket({ assets: [{ ...BTC, bps: 10_000 }] });
+    const user = await seedUser({ wallet: solanaTestWallet(), bitcoin: true });
+    const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 100_000_000n }]);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 5_000_000_000n);
+    chain.balances.set(balanceKey(user.btcAddress, null), 100_000_000n);
+    const res = await sell(user.h, positionId);
+    expect(res.status).toBe(201);
+    expect(res.body.networkFeeUsdc).toBe("0");
+    expect(res.body.legs.map((l: { kind: string; gasPayer: string }) => [l.kind, l.gasPayer])).toEqual([["cross_chain", "user_btc_inputs"]]);
   });
 
   it("an EVM sell leg waits for the gas drop, then quotes, and the hash is verified against the quote", async () => {
@@ -232,7 +246,7 @@ describe("review fixes", () => {
     const res = await sell(user.h, positionId);
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("INSUFFICIENT_BALANCE");
-    expect(res.body.error.message).toBe("Add at least $0.12 USDC on Solana to pay the network fee before selling assets on Ethereum.");
+    expect(res.body.error.message).toBe("Add at least $0.06 USDC on Solana to pay the network fee before selling assets on Ethereum.");
     expect(await adminSql`SELECT 1 FROM app.operations WHERE status = 'PLANNED'`).toHaveLength(0);
     expect(await adminSql`SELECT 1 FROM app.sponsor_usage`).toHaveLength(0);
     expect(fakes.evm.sentNative).toHaveLength(0);

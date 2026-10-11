@@ -12,7 +12,7 @@ import { adminSql, resetDb } from "../../helpers/db";
 import { fakes } from "../../helpers/fakes";
 import { balanceKey, mockChains } from "../../helpers/chain-mocks";
 import { USDC_MINT } from "../../helpers/execution";
-import { arrange, groupReq, groupRows, legs, opRow, post, quoted, sentSignatures, sends, signAll, submit, walletSign, type Tx, type Wallet } from "../../helpers/groups";
+import { addRecovery, arrange, groupReq, groupRows, legs, opRow, post, quoted, sentSignatures, sends, signAll, submit, walletSign, type Tx, type Wallet } from "../../helpers/groups";
 
 /** The logger's `info(message, meta)` calls (winston types the first overload as an object). */
 const spyInfo = () => vi.spyOn(logger, "info") as unknown as { mock: { calls: [string, Record<string, unknown>][] } };
@@ -185,6 +185,81 @@ describe("request a group", () => {
   });
 });
 
+describe("the plan's minimum amounts (D-073 waived: the user accepts new prices)", () => {
+  it("a group left unsigned does not lower the plan's floor: the next group for the same quote is still priceMoved (review I4); signing lowers it", async () => {
+    const { user, wallet, chain, op } = await arrange();
+    const plannedMin = (await legs(op.id)).filter((l) => l.kind !== "network_fee").map((l) => l.min_out);
+    chain.quoteOut = { numerator: 99n, denominator: 100n };
+    const first = (await groupReq(user.h, op.id)).body;
+    expect(first.priceMoved).toBe(true);
+    expect((await legs(op.id)).filter((l) => l.kind !== "network_fee").map((l) => l.min_out)).toEqual(plannedMin); // quoting alone changes no floor
+    const second = (await groupReq(user.h, op.id, { idempotencyKey: "grp-bbbbbbbb" })).body;
+    expect(second.priceMoved).toBe(true);
+    expect(second.legs.map((l: { plannedMinOut: string }) => l.plannedMinOut)).toEqual(plannedMin);
+    expect((await submit(user.h, op.id, second.groupId, signAll(second.transactions, wallet))).status).toBe(200);
+    const signed = (await legs(op.id)).filter((l) => l.kind !== "network_fee");
+    expect(signed.map((l) => l.min_out)).toEqual(second.legs.map((l: { minOut: string }) => l.minOut));
+    expect(signed.every((l, n) => BigInt(l.min_out!) < BigInt(plannedMin[n]!))).toBe(true);
+  });
+});
+
+describe("tier single (one popup per transaction)", () => {
+  it("forms a fee-only group charging every leg first, then one asset leg per group with no fee (review I5)", async () => {
+    const { user, wallet, chain, op } = await arrange();
+    const first = await groupReq(user.h, op.id, { tier: "single" });
+    expect(first.status).toBe(200);
+    expect(first.body.transactions.map((t: Tx) => t.kind)).toEqual(["fee"]);
+    expect(first.body.legs).toEqual([]);
+    expect(first.body.approvalsEstimate).toBe(5); // four legs and the fee
+    const rows = await legs(op.id);
+    expect(new Set(rows.find((l) => l.kind === "network_fee")!.route_summary!.covers)).toEqual(new Set(rows.filter((l) => l.kind !== "network_fee").map((l) => l.id)));
+    expect(rows.find((l) => l.kind === "network_fee")!.amount_in).toBe(op.legs[0].amountIn);
+    const feeSig = (await submit(user.h, op.id, first.body.groupId, signAll(first.body.transactions, wallet))).body.legs.find((l: { kind: string }) => l.kind === "network_fee").sourceTx;
+    chain.solanaFinality.set(feeSig, "finalized");
+    vi.spyOn(connection, "getParsedTransaction").mockResolvedValue({ blockTime: 1_800_000_000 } as never);
+    await trackLeg(first.body.transactions[0].legId);
+    const second = (await groupReq(user.h, op.id, { tier: "single", idempotencyKey: "grp-bbbbbbbb" })).body;
+    expect(second.transactions.map((t: Tx) => t.kind)).toEqual(["asset"]);
+    expect(second.approvalsEstimate).toBe(4);
+    expect((await groupRows(op.id)).map((g) => g.fee_leg_id === null)).toEqual([false, true]);
+  });
+
+  it("refuses a plan made before user-paid gas (platform fee payer legs) rather than quoting transactions that cannot be verified", async () => {
+    const { user, op } = await arrange();
+    await adminSql`UPDATE app.operation_legs SET gas_payer = 'platform_fee_payer' WHERE id = ${op.legs[1].id}`;
+    const res = await groupReq(user.h, op.id);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_TRANSITION");
+  });
+});
+
+describe("recovery on a grouped investment (review I7)", () => {
+  it("a recovery leg is quoted and submitted per leg while other legs are PLANNED; an asset leg still needs a group", async () => {
+    const { user, wallet, op } = await quoted();
+    const rows = await legs(op.id);
+    const recoveryId = await addRecovery(op.id, rows[1]!);
+    expect((await post(user.h, `/v1/operations/${op.id}/legs/${rows[2]!.id}/quote`)).status).toBe(409); // a buy is signed through its group
+    const q = await post(user.h, `/v1/operations/${op.id}/legs/${recoveryId}/quote`);
+    expect(q.status).toBe(200);
+    expect(q.body.transaction.kind).toBe("solana");
+    const res = await post(user.h, `/v1/operations/${op.id}/legs/${recoveryId}/submit`, { signedTx: walletSign(q.body.transaction.serializedBase64, wallet) });
+    expect(res.status).toBe(200);
+    expect(sends()).toHaveLength(1);
+    expect((await legs(op.id)).find((l) => l.id === recoveryId)!.status).toBe("SUBMITTED");
+    expect((await post(user.h, `/v1/operations/${op.id}/legs/${rows[2]!.id}/submit`, { signedTx: "AAAAAAAA" })).status).toBe(409);
+  });
+
+  it("waits only for nothing to be in flight: a buy that is still SUBMITTED holds the recovery back", async () => {
+    const { user, op } = await quoted();
+    const rows = await legs(op.id);
+    const recoveryId = await addRecovery(op.id, rows[1]!);
+    await adminSql`UPDATE app.operation_legs SET status = 'SUBMITTED', source_tx = 'sig-x' WHERE id = ${rows[2]!.id}`;
+    const q = await post(user.h, `/v1/operations/${op.id}/legs/${recoveryId}/quote`);
+    expect(q.status).toBe(409);
+    expect(q.body.error.code).toBe("INVALID_TRANSITION");
+  });
+});
+
 describe("submit a group", () => {
   it("sends the fee, waits for it to confirm, then the buys in order; every leg is SUBMITTED and tracked", async () => {
     const { user, wallet, op, group } = await quoted();
@@ -336,6 +411,19 @@ describe("the blockhash gate and the send window", () => {
     expect((await groupRows(op.id))[0]!.status).toBe("EXPIRED");
     expect((await legs(op.id)).every((l) => l.status === "PLANNED")).toBe(true);
     expect(info.mock.calls.some(([message]) => message === "group.expired")).toBe(true);
+  });
+
+  it("after GROUP_EXPIRED at submit, a new group request quotes the same legs (200) and reuses the plan's fee leg (review C1)", async () => {
+    const { user, wallet, op, group } = await quoted();
+    await adminSql`UPDATE app.operation_groups SET send_by = now() - interval '1 second'`;
+    expect((await submit(user.h, op.id, group.groupId, signAll(group.transactions, wallet))).body.error.code).toBe("GROUP_EXPIRED");
+    expect((await legs(op.id)).every((l) => l.group_id === null)).toBe(true); // nothing points at the expired group
+    const next = await groupReq(user.h, op.id, { idempotencyKey: "grp-bbbbbbbb" });
+    expect(next.status).toBe(200);
+    expect(next.body.transactions.map((t: Tx) => t.kind)).toEqual(["fee", "asset", "asset", "asset", "asset"]);
+    expect(next.body.transactions[0].legId).toBe(op.legs[0].id);
+    expect((await groupRows(op.id)).map((g) => g.status)).toEqual(["EXPIRED", "QUOTED"]);
+    expect((await submit(user.h, op.id, next.body.groupId, signAll(next.body.transactions, wallet))).status).toBe(200);
   });
 
   it("once claimed, running past sendBy does not stop the buys while their blockhash is valid", async () => {

@@ -50,12 +50,15 @@ export async function assertLegAllowed(ctx: OpCtx, op: Op, leg: Leg): Promise<vo
 export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise<LegQuoteResponse> {
   let { op, legs, leg } = await loadLeg(ctx, opId, legId);
   await assertOperable(ctx, op);
-  if (await hasGroups(op.id)) throw invalidTransition("Continue this investment on the website.");
+  // A grouped investment is signed through its groups; only a recovery (a separate per-leg path, D-096) is quoted on its own.
+  const grouped = await hasGroups(op.id);
+  if (grouped && !leg.recoveryOf) throw invalidTransition("Continue this investment on the website.");
   if (leg.status !== "PLANNED") throw invalidTransition("This leg was already submitted.");
   // Strictly sequential: each earlier leg is settled, except that the first asset leg may follow a network fee that is on-chain.
-  // A leg that failed with a recovery (the funds arrived as another token) does not hold the legs after it back; its recovery goes last, once every other leg is final.
+  // A leg that failed with a recovery (the funds arrived as another token) does not hold the legs after it back; its recovery goes last, once every other leg is final
+  // (on a grouped investment the legs the user has yet to decide on stay open, so it waits only for nothing to be in flight).
   if (leg.recoveryOf
-    ? legs.some((l) => l.id !== leg.id && !l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")
+    ? legs.some((l) => l.id !== leg.id && !l.recoveryOf && (grouped ? ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status) : l.status !== "SETTLED" && l.status !== "FAILED"))
     : legs.some((l) => l.sequence < leg.sequence && !(l.status === "SETTLED" || l.recoveryToken || (l.kind === "network_fee" && l.status === "PENDING_CHAIN")))) throw invalidTransition("Finish the previous leg first.");
 
   await assertLegAllowed(ctx, op, leg);
@@ -127,9 +130,9 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
 
   let gasDrop: LegQuoteResponse["gasDrop"] = null;
   if (leg.gasPayer === "platform_gas_drop") {
-    // The platform's gas follows only once the operation's network fee has settled (an EVM sell plan always puts the fee first).
-    const fee = legs.find((l) => l.kind === "network_fee");
-    if (fee?.status !== "SETTLED") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop: { status: "pending", txHash: null } };
+    // The platform's gas follows only once the operation's network fee has settled (an EVM sell plan always puts the fee first); a plan with no fee leg has none to wait for.
+    const fees = legs.filter((l) => l.kind === "network_fee");
+    if (fees.length && !fees.some((l) => l.status === "SETTLED")) return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop: { status: "pending", txHash: null } };
     // Selling the native asset: the wallet needs the amount sold plus gas.
     const planned = (leg.expectedTx ?? {}) as { gasDropNative?: string };
     gasDrop = await sendGasDrop(leg.id, leg.fromChain, addressOn(addresses, leg.fromChain), BigInt(planned.gasDropNative ?? 0), sourceToken(leg, await legDeployment(leg.fromDeploymentId)) ? 0n : BigInt(leg.amountIn));

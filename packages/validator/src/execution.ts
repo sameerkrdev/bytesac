@@ -123,7 +123,8 @@ export type GroupRequest = z.infer<typeof groupRequestSchema>;
 /** 1644 is the base64 length of 1232 bytes; the server still checks the decoded length. */
 export const groupSubmitSchema = z.strictObject({ signed: z.array(z.strictObject({ legId: z.uuid(), signedTx: z.string().min(4).max(1644) })).min(1).max(K_SIGN_ALL) });
 export type GroupSubmit = z.infer<typeof groupSubmitSchema>;
-export const continueRequestSchema = z.strictObject({ idempotencyKey, slippageBps: slippage.optional(), skipLegIds: z.array(z.uuid()).max(100).optional(), scaleToAvailable: z.boolean().optional() });
+// No default here: a Continue that names no slippage keeps the operation's own (`slippage` would reset it to the default).
+export const continueRequestSchema = z.strictObject({ idempotencyKey, slippageBps: z.number().int().min(1).max(SLIPPAGE_MAX_BPS).optional(), skipLegIds: z.array(z.uuid()).max(100).optional(), scaleToAvailable: z.boolean().optional() });
 export type ContinueRequest = z.infer<typeof continueRequestSchema>;
 
 /** Ops resolution of a leg stuck UNKNOWN: the evidence is a transaction id/hash; SETTLED asset legs also need the amount received (verified on-chain where possible). */

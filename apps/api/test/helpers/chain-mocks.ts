@@ -70,6 +70,7 @@ export function mockChains(): ChainState {
   vi.spyOn(solanaTx, "solanaFinality").mockImplementation(async (sig) => state.solanaFinality.get(sig) ?? "pending");
   vi.spyOn(solanaTx, "solanaReceived").mockImplementation(async (sig, owner) => state.solanaReceived.get(`${sig}:${owner}`) ?? null);
   vi.spyOn(solanaTx.connection, "getAccountInfo").mockImplementation(async (key) => (state.tokenAccounts.has(key.toBase58()) ? ({ lamports: 2_039_280, data: Buffer.alloc(165), owner: key, executable: false } as never) : null));
+  vi.spyOn(solanaTx.connection, "getMultipleAccountsInfo").mockImplementation(async (keys) => keys.map((key) => (state.tokenAccounts.has(key.toBase58()) ? ({ lamports: 2_039_280, data: Buffer.alloc(165), owner: key, executable: false } as never) : null)));
   vi.spyOn(solanaTx.connection, "isBlockhashValid").mockResolvedValue({ context: { slot: 1 }, value: true });
   vi.spyOn(solanaTx.connection, "getBlockHeight").mockImplementation(async () => state.blockHeight);
   vi.spyOn(solanaTx.connection, "getSignatureStatuses").mockImplementation(async (sigs) => ({ context: { slot: 1 }, value: sigs.map((sig) => {

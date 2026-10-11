@@ -13,7 +13,7 @@ import { USDC_MINT, chargeEntryFee, seedBasket, seedUser, type SeedAsset } from 
 export type H = Record<string, string>;
 export type Wallet = ReturnType<typeof solanaTestWallet>;
 export interface Tx { legId: string; kind: "fee" | "asset"; serializedBase64: string }
-export interface LegRow { id: string; sequence: number; kind: string; status: string; amount_in: string; source_tx: string | null; built_message_hash: string | null; group_id: string | null; last_error: string | null; fee_covered_by: string | null; fee_share: Record<string, string> | null; retry_of: string | null; to_deployment_id: string | null; failure_reason: string | null; route_summary: { feeCharges?: Record<string, string>; covers?: string[] } | null; expected_tx: { preparedBase64?: string } | null }
+export interface LegRow { id: string; sequence: number; kind: string; status: string; amount_in: string; min_out: string | null; source_tx: string | null; built_message_hash: string | null; group_id: string | null; last_error: string | null; fee_covered_by: string | null; fee_share: Record<string, string> | null; retry_of: string | null; to_deployment_id: string | null; failure_reason: string | null; route_summary: { feeCharges?: Record<string, string>; covers?: string[] } | null; expected_tx: { preparedBase64?: string } | null }
 
 export const spl = (n: number, bps: number): SeedAsset => ({ symbol: `T${n}`, chain: "solana", tokenStandard: "spl", bps });
 export const sends = () => vi.mocked(connection.sendRawTransaction).mock.calls;
@@ -53,3 +53,15 @@ export async function quoted(over: { legs?: number } = {}) {
   return { ...ctx, group: res.body as { groupId: string; transactions: Tx[]; legs: { legId: string; error: { code: string } | null }[]; approvalsEstimate: number; priceMoved: boolean; sendBy: string } };
 }
 
+
+/** Marks `origin` as a buy whose destination swap failed (its funds arrived as USDC) and appends the PLANNED recovery leg that swaps them; the operation is running. Returns the recovery leg's id. */
+export async function addRecovery(opId: string, origin: LegRow): Promise<string> {
+  await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${opId}`;
+  await adminSql`UPDATE app.operation_legs SET status = 'FAILED', failure_reason = 'DESTINATION_SWAP_FAILED', group_id = NULL,
+    recovery_token = ${adminSql.json({ chain: "solana", address: USDC_MINT, decimals: 6, symbol: "USDC", amount: "1000000" })} WHERE id = ${origin.id}`;
+  const [recovery] = await adminSql<{ id: string }[]>`
+    INSERT INTO app.operation_legs (id, operation_id, sequence, kind, from_chain, to_chain, to_deployment_id, amount_in, min_out, provider, gas_payer, recovery_of, route_summary, status)
+    VALUES (gen_random_uuid(), ${opId}, 99, 'swap', 'solana', 'solana', ${origin.to_deployment_id}, 1000000, 900000, 'lifi', 'user_solana', ${origin.id},
+      ${adminSql.json({ fromToken: USDC_MINT, fromSymbol: "USDC", fromDecimals: 6, symbol: "T0", decimals: 6 })}, 'PLANNED') RETURNING id`;
+  return recovery!.id;
+}

@@ -30,7 +30,7 @@ export async function markSubmitted(ctx: OpCtx | null, opId: string, legId: stri
 export async function submitLeg(ctx: OpCtx, opId: string, legId: string, body: LegSubmit): Promise<OperationView> {
   const { op, leg } = await loadLeg(ctx, opId, legId);
   await assertOperable(ctx, op);
-  if (await hasGroups(op.id)) throw invalidTransition("Continue this investment on the website.");
+  if (!leg.recoveryOf && (await hasGroups(op.id))) throw invalidTransition("Continue this investment on the website."); // a recovery is signed per leg, grouped or not
   if (leg.status !== "PLANNED") throw invalidTransition("This leg was already submitted.");
   if (!leg.quoteExpiresAt || leg.quoteExpiresAt <= new Date()) throw createHttpError(409, "The quote expired. Get a new quote and sign again.", { code: "QUOTE_EXPIRED" });
   const addresses = await userAddresses(db, ctx.userId);

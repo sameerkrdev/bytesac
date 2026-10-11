@@ -178,6 +178,19 @@ describe("recovery after a failed destination swap", () => {
     expect(await ledger()).toHaveLength(0);
   });
 
+  it("an invest with no fee leg (nothing charged) gets its EVM recovery's gas top-up without waiting for a fee (review I8)", async () => {
+    const a = await arrange();
+    await adminSql`DELETE FROM app.operation_legs WHERE operation_id = ${a.opId} AND kind = 'network_fee'`;
+    partial(a, 299_000_000n);
+    await trackLeg(a.assetId);
+    const recovery = (await legs(a.opId)).find((l) => l.recovery_of)!;
+    fakes.evm.balances.clear();
+    const first = await post(a.user.h, `/v1/operations/${a.opId}/legs/${recovery.id}/quote`);
+    expect(first.status).toBe(200);
+    expect(first.body.gasDrop).toMatchObject({ status: "pending", txHash: "0xdrop1" }); // a drop was sent, not "pending" with no hash
+    expect(fakes.evm.sentNative).toEqual([{ chain: "base", to: a.user.evmAddress, value: 10_000n }]);
+  });
+
   it("invest: the recovery is quoted with a gas top-up within the caps, signed and settled: ledger invest from what it received, operation COMPLETED", async () => {
     const a = await arrange();
     partial(a, 299_000_000n);

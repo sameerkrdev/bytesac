@@ -4,7 +4,7 @@ import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "@/config/dotenv";
-import { blockhashUsable, buildFeeTransfer, connection, cosign, describeUnsigned, FEE_TRANSFER_USER_LAMPORTS, feePayer, sendSolana, solanaCost, solanaFinality, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS, verifyUserSigned } from "@/providers/solana-tx";
+import { ata, blockhashUsable, buildFeeTransfer, connection, cosign, describeUnsigned, FEE_TRANSFER_USER_LAMPORTS, feePayer, sendSolana, solanaCost, solanaFinality, solanaNeed, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS, verifyUserSigned } from "@/providers/solana-tx";
 
 const BLOCKHASH = bs58.encode(Buffer.alloc(32, 7));
 const user = Keypair.generate();
@@ -202,18 +202,38 @@ describe("user-paid transactions", () => {
     const tx = VersionedTransaction.deserialize(Buffer.from(built.serializedBase64, "base64"));
     expect(tx.message.staticAccountKeys[0]!.toBase58()).toBe(owner);
     expect(tx.message.header.numRequiredSignatures).toBe(1);
-    expect(solanaCost(built.serializedBase64, owner)).toEqual({ lamports: FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS });
-    // The same transaction costs a stranger nothing for rent: only the account the payer funds counts.
-    expect(solanaCost(built.serializedBase64, Keypair.generate().publicKey.toBase58()).rentLamports).toBe(0n);
+    // Rent is for accounts that do not exist yet (`solanaNeed`); the cost names the account the payer funds.
+    expect(solanaCost(built.serializedBase64, owner)).toEqual({ lamports: FEE_TRANSFER_USER_LAMPORTS, funded: [ata(new PublicKey(env.GAS_TREASURY_SOLANA_ADDRESS), new PublicKey(USDC_SOLANA_MINT)).toBase58()] });
+    // The same transaction funds nothing for a stranger: only the account the payer funds counts.
+    expect(solanaCost(built.serializedBase64, Keypair.generate().publicKey.toBase58()).funded).toEqual([]);
   });
 
   it("solanaCost counts signatures, the priority fee (price x limit, 1.4M when no limit is set) and refuses nothing", () => {
     const base = solanaCost(b64(mk([transfer()])), owner);
-    expect(base).toEqual({ lamports: 5_000n, rentLamports: 0n });
+    expect(base).toEqual({ lamports: 5_000n, funded: [] });
     expect(solanaCost(b64(mk([...withBudget(200_000, 1_000_000n), transfer()])), owner).lamports).toBe(5_000n + 200_000n); // 200,000 units x 1 lamport
     expect(solanaCost(b64(mk([ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000n }), transfer()])), owner).lamports).toBe(5_000n + 1_400_000n);
     const huge = solanaCost(b64(mk([...withBudget(1_400_000, 10_000_000_000n), transfer()])), owner); // far over the platform's 1M cap: a user-paid cost, never a refusal
     expect(huge.lamports).toBe(5_000n + 14_000_000_000n);
+  });
+
+  it("solanaNeed adds rent only for funded token accounts that do not exist (an RPC error counts them missing; one account funded twice counts once)", async () => {
+    vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
+    const built = await buildFeeTransfer({ owner, payer: "user", transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 5n }] });
+    const lookup = vi.spyOn(connection, "getMultipleAccountsInfo").mockResolvedValue([{ lamports: 1 } as never]);
+    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_TRANSFER_USER_LAMPORTS); // exists: no rent
+    lookup.mockResolvedValue([null]);
+    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS);
+    expect(await solanaNeed([built.serializedBase64, built.serializedBase64], owner)).toBe(2n * FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS);
+    lookup.mockRejectedValue(new Error("rpc down"));
+    expect(await solanaNeed([built.serializedBase64], owner)).toBe(FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS);
+  });
+
+  it("verifyUserSigned and cosign answer 409 TX_MISMATCH, not a 500, for bytes that are not a transaction", () => {
+    for (const garbage of ["AAAAAAAA", "not base64 at all !!", ""]) {
+      expect(() => verifyUserSigned(garbage, { owner, storedMessageHash: "x" })).toThrow(expect.objectContaining({ status: 409, code: "TX_MISMATCH" }));
+      expect(() => cosign(garbage, "x")).toThrow(expect.objectContaining({ status: 409, code: "TX_MISMATCH" }));
+    }
   });
 
   it("verifyUserSigned accepts the user's signature on the quoted message and on a ComputeBudget-only rewrite, and returns the id and blockhash", () => {

@@ -8,7 +8,7 @@ import { routeProviderById } from "@/providers/routes";
 import { logger } from "@repo/logger";
 import { isBuildRefusal } from "@/providers/routes/lifi";
 import type { LegEstimate, LegQuote, LegQuoteInput } from "@/providers/routes/types";
-import { FEE_TRANSFER_USER_LAMPORTS, TOKEN_ACCOUNT_RENT_LAMPORTS, solanaBalance, solanaCost, sponsorExposure, tokenAccountMissing } from "@/providers/solana-tx";
+import { FEE_TRANSFER_USER_LAMPORTS, TOKEN_ACCOUNT_RENT_LAMPORTS, solanaBalance, solanaNeed, sponsorExposure, tokenAccountMissing } from "@/providers/solana-tx";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { assertWalletsCanFund, reserveGas } from "./gas.service";
 import { assertAllowed, decisionOf, evaluateFor, isRwa, recordDecisions, type DecisionDraft } from "@/modules/eligibility/eligibility.service";
@@ -85,13 +85,13 @@ export async function planQuote(i: { fromChain: AssetChain; fromToken: string | 
 }
 
 /**
- * What a Solana-source leg costs the user as fee payer, in lamports: a built transaction gives the decoded signatures, priority fee and rent it funds (or LI.FI's
- * own gas figure if higher); an estimate carries no transaction, so LI.FI's gas figure plus the token-account rent when the Solana destination account is missing.
+ * What a Solana-source leg costs the user as fee payer, in lamports: a built transaction gives the decoded signatures, priority fee and rent for the token accounts
+ * it funds that do not exist yet (or LI.FI's own gas figure if higher); an estimate carries no transaction, so LI.FI's gas figure plus the token-account rent when the Solana destination account is missing.
  * Quoting later can need more (the user's balance is rechecked then).
  */
 export async function solanaLegLamports(q: PlanQuote, toChain: AssetChain, toToken: string | null, owner: string): Promise<bigint> {
   if (q.transaction?.kind === "solana") {
-    const cost = solanaCost(q.transaction.serializedBase64, owner).lamports;
+    const cost = await solanaNeed([q.transaction.serializedBase64], owner);
     return cost > q.gasNative ? cost : q.gasNative;
   }
   return q.gasNative + (toChain === "solana" && toToken && (await tokenAccountMissing(owner, toToken)) ? TOKEN_ACCOUNT_RENT_LAMPORTS : 0n);
@@ -217,8 +217,11 @@ export async function createInvestPlan(ctx: OpCtx, body: InvestRequest): Promise
   return getOperation(ctx, id);
 }
 
-/** The platform's network fee for a plan: the gas of the legs it pays for (non-Solana sources), +20%, at least 0.01 USDC; nothing when there are none. */
-export const networkFeeUsd = (quotes: PlanQuote[], usdcPrice: string): bigint => (quotes.length ? networkFeeMicro(quotes.map((q) => q.gasEstimateUsd), usdcPrice) : 0n);
+/** The platform's network fee for a plan: the gas of the legs it pays for (EVM gas drops; Solana and Bitcoin gas is the user's own), +20%, at least 0.01 USDC; nothing when there are none. */
+export function networkFeeUsd(legs: { chain: AssetChain; quote: PlanQuote }[], usdcPrice: string): bigint {
+  const paid = legs.filter((l) => gasPayerFor(l.chain) === "platform_gas_drop");
+  return paid.length ? networkFeeMicro(paid.map((l) => l.quote.gasEstimateUsd), usdcPrice) : 0n;
+}
 
 /** A sell leg (asset to USDC on Solana); an EVM sell's planned gas drop is added to `gas`, a Solana sell's cost (`lamports`, paid by the user) is stored on the leg. Shared by sell and rebalance plans. */
 export function sellLeg(
@@ -290,8 +293,8 @@ export async function createSellPlan(ctx: OpCtx, body: SellRequest): Promise<Ope
   const marketPrices = new Map((await getPrices(sells.map((s) => s.instrumentId))).flatMap((p) => (p.kind === "market" && p.status === "ok" && !p.stale && p.value && priceToMicro(p.value) ? [[p.instrumentId, priceToMicro(p.value)!] as const] : [])));
   const [org] = await db.select({ organizationId: baskets.organizationId }).from(baskets).where(eq(baskets.id, position.basketId));
   const fees = await planFees(db, {
-    // The network fee is only the platform's gas for non-Solana sells (EVM drops, the Bitcoin estimate): the user pays Solana gas.
-    networkMicro: networkFeeUsd(quotes.filter((_, n) => sells[n]!.chain !== "solana"), price), operation: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", manager: null,
+    // The network fee is only the platform's gas for EVM drops: the user pays Solana gas and the Bitcoin miner fee (in the PSBT).
+    networkMicro: networkFeeUsd(sells.map((s, n) => ({ chain: s.chain, quote: quotes[n]! })), price), operation: position.status === "OPEN" ? "sell_to_usdc" : "sell_former", manager: null,
     platformBaseMicro: sells.every((s) => marketPrices.has(s.instrumentId)) ? sells.reduce((t, s) => t + (s.quantity * marketPrices.get(s.instrumentId)!) / 10n ** BigInt(s.decimals), 0n) : null,
     organizationId: org?.organizationId ?? null, basketId: position.basketId,
   });

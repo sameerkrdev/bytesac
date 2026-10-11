@@ -1,10 +1,11 @@
-import { VersionedTransaction } from "@solana/web3.js";
+import { PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SOL_BUFFER_LAMPORTS } from "@repo/validator";
 import { app } from "@/app";
 import { env } from "@/config/dotenv";
-import { connection, feePayer, FEE_TRANSFER_USER_LAMPORTS, TOKEN_ACCOUNT_RENT_LAMPORTS } from "@/providers/solana-tx";
+import { lifi } from "@/providers/routes/lifi";
+import { ata, connection, feePayer, FEE_TRANSFER_USER_LAMPORTS, TOKEN_ACCOUNT_RENT_LAMPORTS } from "@/providers/solana-tx";
 import { seedPlatformWallets } from "@/modules/operations/gas.service";
 import { trackLeg } from "@/modules/portfolio/tracking.service";
 import { adminSql, resetDb } from "../../helpers/db";
@@ -117,6 +118,35 @@ describe("invest plan with user-paid gas", () => {
   });
 });
 
+describe("token-account rent in the SOL requirement", () => {
+  const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+  /** LI.FI and Jupiter build `CreateIdempotent` for the destination token account into every Solana transaction, whether or not it exists. */
+  const withCreateIdempotent = (serializedBase64: string, owner: PublicKey) => {
+    const message = TransactionMessage.decompile(VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64")).message);
+    const mint = new PublicKey(USDC_MINT);
+    const key = (pubkey: PublicKey, isSigner = false, isWritable = false) => ({ pubkey, isSigner, isWritable });
+    message.instructions.push(new TransactionInstruction({ programId: ATA_PROGRAM, data: Buffer.from([1]), keys: [key(owner, true, true), key(ata(owner, mint), false, true), key(owner), key(mint), key(SystemProgram.programId), key(new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))] }));
+    return Buffer.from(new VersionedTransaction(new TransactionMessage({ payerKey: message.payerKey, recentBlockhash: message.recentBlockhash, instructions: message.instructions }).compileToV0Message()).serialize()).toString("base64");
+  };
+
+  it("a transaction that CreateIdempotent's an existing token account adds no rent; a missing one adds 2 039 280 lamports", async () => {
+    const { basket, user, chain } = await arrange({ bps: 0, assets: [{ symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 10_000 }] });
+    const original = vi.mocked(lifi.quote).getMockImplementation()!;
+    vi.mocked(lifi.quote).mockImplementation(async (i) => {
+      const q = await original(i);
+      return q.transaction.kind === "solana" ? { ...q, transaction: { kind: "solana", serializedBase64: withCreateIdempotent(q.transaction.serializedBase64, new PublicKey(i.fromAddress)) } } : q;
+    });
+    chain.tokenAccounts.add(ata(new PublicKey(user.solanaAddress), new PublicKey(USDC_MINT)).toBase58());
+    const exists = await invest(user.h, basket.basketId);
+    expect(exists.status).toBe(201);
+    expect(exists.body.solRequiredLamports).toBe((LEG_LAMPORTS + SOL_BUFFER_LAMPORTS).toString());
+    await post(user.h, `/v1/operations/${exists.body.id}/cancel`);
+    chain.tokenAccounts.clear();
+    const missing = await invest(user.h, basket.basketId, { idempotencyKey: "key-bbbbbbbb" });
+    expect(missing.body.solRequiredLamports).toBe((LEG_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS + SOL_BUFFER_LAMPORTS).toString());
+  });
+});
+
 describe("per-leg quote and submit, user-paid", () => {
   async function planned() {
     const ctx = await arrange();
@@ -134,6 +164,15 @@ describe("per-leg quote and submit, user-paid", () => {
     expect(sent.signatures).toHaveLength(1);
     expect(sent.message.staticAccountKeys[0]!.toBase58()).toBe(user.solanaAddress);
     expect(res.body.legs[0].sourceTx).toBeTruthy();
+  });
+
+  it("answers 409 TX_MISMATCH, not a 500, for bytes that are not a transaction (review M1)", async () => {
+    const { user, op, feeLeg } = await planned();
+    await quote(user.h, op.id, feeLeg.id);
+    const res = await submit(user.h, op.id, feeLeg.id, { signedTx: "AAAAAAAA" });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("TX_MISMATCH");
+    expect(sends()).toBe(0);
   });
 
   it("refuses a different fee payer or a changed transfer with TX_MISMATCH and sends nothing; a ComputeBudget-only rewrite is accepted", async () => {

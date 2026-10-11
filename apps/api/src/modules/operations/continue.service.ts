@@ -21,9 +21,9 @@ export async function continueOperation(ctx: OpCtx, opId: string, body: Continue
   await db.transaction(async (tx) => {
     const op = await lockOperation(tx, opId);
     if (op.userId !== ctx.userId) throw notFound();
+    if (op.lastContinueKey === body.idempotencyKey) return; // a replay answers the same view, even if that Continue ended the investment
     if (op.status !== "IN_PROGRESS") throw invalidTransition(`This operation is ${op.status.toLowerCase()}.`);
     if (!(await hasGroups(opId))) throw invalidTransition("Nothing to continue.");
-    if (op.lastContinueKey === body.idempotencyKey) return;
     const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, opId)).orderBy(asc(operationLegs.sequence));
     if (legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status))) throw createHttpError(409, "A transaction of this investment is still being confirmed. Wait for it to finish.", { code: "OPERATION_IN_PROGRESS" });
     await releaseQuotedGroups(tx, opId); // an unsigned batch is stale once the legs, amounts or slippage change

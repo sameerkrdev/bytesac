@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { K_SIGN_ALL, LEG_STATES, approvalsEstimate, feeShares, groupSubmitSchema, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
+import { K_SIGN_ALL, LEG_STATES, continueRequestSchema, approvalsEstimate, feeShares, groupSubmitSchema, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
 
 describe("splitInvestment", () => {
   it("splits deployable by bps and gives the remainder to the largest weight", () => {
@@ -67,6 +67,11 @@ describe("request schemas", () => {
     const base = { basketId: "0190f3a0-0000-7000-8000-000000000001", amountUsdc: "100", idempotencyKey: "key-12345" };
     expect(investRequestSchema.parse(base).slippageBps).toBe(100);
     expect(investRequestSchema.safeParse({ ...base, slippageBps: 301 }).success).toBe(false);
+  });
+  it("a Continue without slippageBps has none (it must not reset the operation's own to the default)", () => {
+    expect(continueRequestSchema.parse({ idempotencyKey: "key-12345" })).not.toHaveProperty("slippageBps");
+    expect(continueRequestSchema.parse({ idempotencyKey: "key-12345", slippageBps: 200 }).slippageBps).toBe(200);
+    expect(continueRequestSchema.safeParse({ idempotencyKey: "key-12345", slippageBps: 301 }).success).toBe(false);
   });
   it("legSubmit needs exactly one proof", () => {
     expect(legSubmitSchema.safeParse({}).success).toBe(false);

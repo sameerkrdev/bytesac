@@ -5,7 +5,7 @@ import { db, isUniqueViolation, operationFees, operationGroups, operationLegs, o
 import { GROUP_SEND_WINDOW_MS, K_SIGN_ALL, SOL_BUFFER_LAMPORTS, USDC_SOLANA_MINT, approvalsEstimate, type GroupRequest, type GroupResponse, type GroupSubmit, type OperationView } from "@repo/validator";
 import { logger } from "@repo/logger";
 import { enqueue } from "@/config/queues";
-import { blockhashUsable, buildFeeTransfer, connection, sendSolana, solanaBalance, solanaCost, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
+import { blockhashUsable, buildFeeTransfer, connection, sendSolana, solanaBalance, solanaNeed, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
 import { type Leg, type OpCtx, freeUsdcMicro, getOperation, invalidTransition, lockOperation, notFound, setLegStatus } from "./operations.service";
 import { assertSolFor } from "./plan.service";
@@ -21,7 +21,8 @@ type Quoted = { estimatedOut: string; minOut: string; plannedMinOut: string | nu
 
 /**
  * Forms a signing group (spec 22 section 6.2): the next chunk of PLANNED Solana legs plus one fee transaction charging their uncovered fee shares. The legs are
- * quoted in parallel; one that cannot be quoted is left out with its error. Nothing is signed or sent here.
+ * quoted in parallel; one that cannot be quoted is left out with its error. Tier `single` (one popup per transaction, spec 22 section 5.2) first signs one
+ * fee-only group charging the uncovered shares of every PLANNED Solana leg, then one leg per group. Nothing is signed or sent here.
  */
 export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest): Promise<GroupResponse> {
   const [op0] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
@@ -36,7 +37,7 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
     if (op.status !== "PLANNED" && op.status !== "IN_PROGRESS") throw invalidTransition(`This operation is ${op.status.toLowerCase()}.`);
     const groups = await tx.select().from(operationGroups).where(eq(operationGroups.operationId, opId));
     const same = groups.find((g) => g.idempotencyKey === body.idempotencyKey);
-    if (same) return { replay: same, op, take: [] as Leg[] };
+    if (same) return { replay: same, op, take: [] as Leg[], feeOnly: null };
     const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, opId)).orderBy(asc(operationLegs.sequence));
     if (!groups.length && legs.some((l) => l.status !== "PLANNED")) throw invalidTransition("This investment is being signed one transaction at a time.");
     if (legs.some((l) => l.kind === "network_fee" && (IN_FLIGHT as readonly string[]).includes(l.status))) throw inProgress();
@@ -47,14 +48,17 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
     if (expired.length) await tx.update(operationLegs).set({ groupId: null, updatedAt: sql`now()` }).where(and(inArray(operationLegs.groupId, expired.map((g) => g.id)), eq(operationLegs.status, "PLANNED")));
     const candidates = legs.filter((l) => l.kind !== "network_fee" && l.status === "PLANNED" && l.fromChain === "solana" && !l.recoveryOf);
     if (!candidates.length) throw invalidTransition("Nothing is left to sign.");
-    const charges = (ls: Leg[]) => ls.some((l) => !l.feeCoveredBy && hasShare(l));
-    return { replay: null, op, take: candidates.slice(0, K_SIGN_ALL - (charges(candidates) ? 1 : 0)) };
+    if (candidates.some((l) => l.gasPayer === "platform_fee_payer")) throw invalidTransition("This plan was made before user-paid gas. Plan again.");
+    const uncovered = candidates.filter((l) => !l.feeCoveredBy && hasShare(l));
+    // `single`: the fee transaction alone first (it charges every uncovered leg), then one leg per group; otherwise a chunk plus its fee.
+    const feeOnly = body.tier === "single" && uncovered.length > 0;
+    return { replay: null, op, take: feeOnly ? [] : candidates.slice(0, body.tier === "single" ? 1 : K_SIGN_ALL - (uncovered.length ? 1 : 0)), feeOnly: feeOnly ? uncovered : null };
   });
   if (prep.replay) {
     if (prep.replay.status !== "QUOTED") throw invalidTransition(`This batch is ${prep.replay.status.toLowerCase()}.`);
     return groupView(prep.replay, [], owner);
   }
-  const { op, take } = prep;
+  const { op, take, feeOnly } = prep;
 
   // Height first: a blockhash fetched by the quotes below is at least this fresh, so the send gate only errs towards releasing early.
   const quoteBlockHeight = await connection.getBlockHeight("confirmed");
@@ -68,11 +72,12 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   const errors = settled.flatMap((r, n) => (r.status === "rejected"
     ? [{ legId: take[n]!.id, error: { code: String((r.reason as { code?: string }).code ?? "ROUTE_UNAVAILABLE"), message: createHttpError.isHttpError(r.reason) ? r.reason.message : "This route is unavailable." } }]
     : []));
-  if (!quoted.length) throw (settled.find((r) => r.status === "rejected") as PromiseRejectedResult).reason;
+  if (take.length && !quoted.length) throw (settled.find((r) => r.status === "rejected") as PromiseRejectedResult).reason;
 
-  // The fee transaction charges the uncovered shares of the legs that were quoted, in network, manager, platform order.
+  // The fee transaction charges the uncovered shares of the legs that were quoted (or, fee-only, of every leg it covers), in network, manager, platform order.
+  const charged = (feeOnly ?? quoted.map((q) => q.leg)).filter((l) => !l.feeCoveredBy);
   const sums = new Map<string, bigint>();
-  for (const { leg } of quoted) if (!leg.feeCoveredBy) for (const [kind, v] of Object.entries(leg.feeShare ?? {})) sums.set(kind, (sums.get(kind) ?? 0n) + BigInt(v));
+  for (const leg of charged) for (const [kind, v] of Object.entries(leg.feeShare ?? {})) sums.set(kind, (sums.get(kind) ?? 0n) + BigInt(v));
   const rows = await db.select({ kind: operationFees.kind, recipient: operationFees.recipientAddress }).from(operationFees).where(eq(operationFees.operationId, op.id))
     .orderBy(sql`array_position(array['network','manager_entry','manager_rebalance','platform']::text[], ${operationFees.kind}::text)`);
   const transfers = rows.flatMap((r) => (sums.get(r.kind) && r.recipient ? [{ recipient: r.recipient, amountMicro: sums.get(r.kind)! }] : []));
@@ -83,7 +88,7 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   const usdcRequired = feeMicro + quoted.reduce((t, { leg }) => t + BigInt(leg.amountIn), 0n);
   const usdcHeld = await freeUsdcMicro(db, ctx.userId, await solanaBalance(owner, USDC_SOLANA_MINT));
   if (usdcHeld < usdcRequired) throw createHttpError(409, "Your Solana wallet doesn't hold enough USDC.", { code: "INSUFFICIENT_BALANCE", details: { usdcRequiredMicro: usdcRequired.toString(), usdcHeldMicro: usdcHeld.toString() } });
-  await assertSolFor(owner, [...quoted.map((q) => q.serializedBase64), ...(feeTx ? [feeTx.serializedBase64] : [])].reduce((t, b64) => t + solanaCost(b64, owner).lamports, 0n));
+  await assertSolFor(owner, await solanaNeed([...quoted.map((q) => q.serializedBase64), ...(feeTx ? [feeTx.serializedBase64] : [])], owner));
 
   let group: typeof operationGroups.$inferSelect;
   try {
@@ -92,14 +97,15 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
       if (locked.status !== "PLANNED" && locked.status !== "IN_PROGRESS") throw invalidTransition(`This operation is ${locked.status.toLowerCase()}.`);
       const now = Date.now();
       const quoteExpiresAt = new Date(now + 60_000);
-      const current = await tx.select().from(operationLegs).where(inArray(operationLegs.id, quoted.map((q) => q.leg.id)));
-      if (current.length !== quoted.length || current.some((l) => l.status !== "PLANNED" || l.groupId)) throw invalidTransition("This investment changed. Get new quotes.");
+      const ids = [...new Set([...quoted.map((q) => q.leg.id), ...charged.map((l) => l.id)])];
+      const current = await tx.select().from(operationLegs).where(inArray(operationLegs.id, ids));
+      if (current.length !== ids.length || current.some((l) => l.status !== "PLANNED" || l.groupId)) throw invalidTransition("This investment changed. Get new quotes.");
 
       // The fee leg: the plan's own (still PLANNED, in no group) when there is one, else a new one after the last leg.
       let feeLegId: string | null = null;
       if (feeTx) {
         const feeLeg = { amountIn: feeMicro.toString(), gasPayer: "user_solana" as const, builtMessageHash: feeTx.messageHash, quoteExpiresAt, updatedAt: sql`now()` as unknown as Date,
-          routeSummary: { feeCharges: Object.fromEntries([...sums].map(([k, v]) => [k, v.toString()])), covers: quoted.filter((q) => !q.leg.feeCoveredBy).map((q) => q.leg.id) } };
+          routeSummary: { feeCharges: Object.fromEntries([...sums].map(([k, v]) => [k, v.toString()])), covers: charged.map((l) => l.id) } };
         const all = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, op.id)).orderBy(asc(operationLegs.sequence));
         const plan = all.find((l) => l.kind === "network_fee" && l.status === "PLANNED" && !l.groupId);
         const expectedTx = { ...(plan?.expectedTx ?? {}), preparedBase64: feeTx.serializedBase64 };
@@ -115,7 +121,9 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
       if (feeLegId) await tx.update(operationLegs).set({ groupId: row!.id }).where(eq(operationLegs.id, feeLegId));
       for (const { leg, patch, response } of quoted) {
         const stored: Quoted = { estimatedOut: response.estimatedOut!, minOut: response.minOut!, plannedMinOut: leg.minOut };
-        const rows = await tx.update(operationLegs).set({ ...patch, routeSummary: { ...patch.routeSummary, quoted: stored }, groupId: row!.id, quoteExpiresAt, updatedAt: sql`now()` })
+        // The lowered floor (D-073 waived) is stored at the claim, not here: a group the user never signs must not hide "Accept new prices" from the next one.
+        const { minOut: _lowered, ...rest } = patch;
+        const rows = await tx.update(operationLegs).set({ ...rest, routeSummary: { ...patch.routeSummary, quoted: stored }, groupId: row!.id, quoteExpiresAt, updatedAt: sql`now()` })
           .where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "PLANNED"), isNull(operationLegs.groupId))).returning({ id: operationLegs.id });
         if (rows.length !== 1) throw invalidTransition("This investment changed. Get new quotes.");
       }
@@ -144,7 +152,7 @@ async function groupView(group: typeof operationGroups.$inferSelect, errors: { l
     groupId: group.id, status: "quoted", expiresAt: group.expiresAt.toISOString(), sendBy: group.sendBy.toISOString(),
     priceMoved: assets.some((l) => quotedOf(l).plannedMinOut !== null && BigInt(quotedOf(l).minOut) < BigInt(quotedOf(l).plannedMinOut!)),
     approvalsEstimate: approvalsEstimate({ tier: group.tier, solanaLegs: remaining, charged: !!fee }),
-    solRequiredLamports: (transactions.reduce((t, x) => t + solanaCost(x.serializedBase64, owner).lamports, 0n) + SOL_BUFFER_LAMPORTS).toString(),
+    solRequiredLamports: ((await solanaNeed(transactions.map((x) => x.serializedBase64), owner)) + SOL_BUFFER_LAMPORTS).toString(),
     transactions,
     legs: [
       ...assets.map((l) => ({
@@ -173,7 +181,12 @@ export async function submitGroup(ctx: OpCtx, opId: string, groupId: string, bod
 
   if (group.status !== "QUOTED") throw invalidTransition(`This batch is ${group.status.toLowerCase()}.`);
   if (group.sendBy <= new Date()) {
-    await db.update(operationGroups).set({ status: "EXPIRED", updatedAt: sql`now()` }).where(and(eq(operationGroups.id, group.id), eq(operationGroups.status, "QUOTED")));
+    // The legs leave the expired group with it, or no later group could take them.
+    await db.transaction(async (tx) => {
+      await lockOperation(tx, op.id);
+      const expired = await tx.update(operationGroups).set({ status: "EXPIRED", updatedAt: sql`now()` }).where(and(eq(operationGroups.id, group.id), eq(operationGroups.status, "QUOTED"))).returning({ id: operationGroups.id });
+      if (expired.length) await tx.update(operationLegs).set({ groupId: null, updatedAt: sql`now()` }).where(and(eq(operationLegs.groupId, group.id), eq(operationLegs.status, "PLANNED")));
+    });
     logger.info("group.expired", { tier: group.tier, walletName: group.walletName });
     throw createHttpError(409, "These quotes expired. Get new quotes.", { code: "GROUP_EXPIRED" });
   }
@@ -200,7 +213,9 @@ export async function submitGroup(ctx: OpCtx, opId: string, groupId: string, bod
         const v = verified.get(l.id)!;
         const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, l.id));
         if (current!.status !== "PLANNED" || current!.groupId !== group.id || current!.builtMessageHash !== l.builtMessageHash) throw invalidTransition("This batch changed. Get new quotes.");
-        await setLegStatus(tx, ctx, current!, "SUBMITTING", { sourceTx: v.signature, submittedAt: sql`now()` as unknown as Date, expectedTx: { ...(current!.expectedTx ?? {}), recentBlockhash: v.recentBlockhash, signedBase64: Buffer.from(v.raw).toString("base64") } });
+        const fresh = (current!.routeSummary?.quoted as Quoted | undefined)?.minOut; // what the user signed against; below the plan's floor only when they accepted the new prices
+        const lowered = fresh !== undefined && current!.minOut !== null && BigInt(fresh) < BigInt(current!.minOut);
+        await setLegStatus(tx, ctx, current!, "SUBMITTING", { sourceTx: v.signature, submittedAt: sql`now()` as unknown as Date, ...(lowered ? { minOut: fresh } : {}), expectedTx: { ...(current!.expectedTx ?? {}), recentBlockhash: v.recentBlockhash, signedBase64: Buffer.from(v.raw).toString("base64") } });
       }
     });
   } catch (err) {

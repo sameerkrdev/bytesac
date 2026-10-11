@@ -8,7 +8,7 @@ import { adminSql, resetDb } from "../../helpers/db";
 import { fakes } from "../../helpers/fakes";
 import { balanceKey } from "../../helpers/chain-mocks";
 import { USDC_MINT } from "../../helpers/execution";
-import { arrange, groupReq, groupRows, legs, opRow, post, quoted, signAll, submit } from "../../helpers/groups";
+import { addRecovery, arrange, groupReq, groupRows, legs, opRow, post, quoted, signAll, submit } from "../../helpers/groups";
 
 type Outcome = "ok" | "fail" | "leave";
 const cont = (h: Record<string, string>, opId: string, over: object = {}) => post(h, `/v1/operations/${opId}/continue`, { idempotencyKey: "cont-aaaaaaaa", ...over });
@@ -116,6 +116,19 @@ describe("continue", () => {
     expect(group.body.legs[0].minOut).toBe(((BigInt(buys[1]!.amount_in) * 9750n) / 10_000n).toString());
   });
 
+  it("a Continue that names no slippage keeps the operation's own; a raised one stays raised for the next Continue (review I3)", async () => {
+    const { user, op } = await sent(["ok", "fail", "ok", "ok"]);
+    const slippage = async () => (await adminSql<{ slippage_bps: number }[]>`SELECT slippage_bps FROM app.operations WHERE id = ${op.id}`)[0]!.slippage_bps;
+    await adminSql`UPDATE app.operations SET slippage_bps = 50 WHERE id = ${op.id}`;
+    expect((await cont(user.h, op.id)).status).toBe(200);
+    expect(await slippage()).toBe(50);
+    expect((await cont(user.h, op.id, { idempotencyKey: "cont-bbbbbbbb", slippageBps: 250 })).status).toBe(200);
+    expect((await cont(user.h, op.id, { idempotencyKey: "cont-cccccccc" })).status).toBe(200);
+    expect(await slippage()).toBe(250);
+    const audit = await adminSql<{ metadata: { slippageBps: number | null } }[]>`SELECT metadata FROM app.audit_events WHERE action = 'operation.continued' ORDER BY created_at, id`;
+    expect(audit.map((a) => a.metadata.slippageBps)).toEqual([null, 250, null]); // the audit never records a slippage nobody chose
+  });
+
   it("USDC short: 409 with the figures and nothing changed; Invest what's available scales the rest to what the wallet holds", async () => {
     const { user, op, chain, buys } = await sent(["ok", "fail", "ok", "ok"]);
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 100_000_000n);
@@ -166,6 +179,16 @@ describe("continue", () => {
     expect(await legs(op.id)).toHaveLength(6);
   });
 
+  it("a replay of a Continue that ended the investment answers the same view, not a 409 (review M5)", async () => {
+    const { user, op, buys } = await sent(["ok", "fail", "ok", "ok"]);
+    const first = await cont(user.h, op.id, { skipLegIds: [buys[1]!.id] });
+    expect(first.status).toBe(200);
+    expect(first.body.status).toBe("PARTIAL");
+    const again = await cont(user.h, op.id, { skipLegIds: [buys[1]!.id] });
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual(first.body);
+  });
+
   it("a plain operation, or one that is not running, has nothing to continue", async () => {
     const { user, op } = await arrange();
     expect((await cont(user.h, op.id)).body.error.code).toBe("INVALID_TRANSITION");
@@ -191,9 +214,11 @@ describe("stop and the 24-hour auto-stop", () => {
   it("stops an investment that has needed action for 24 hours: audit, one notice, a status like Stop's", async () => {
     const { op } = await sent(["ok", "fail", "ok", "ok"]);
     await adminSql`UPDATE app.operations SET needs_action_since = now() - interval '23 hours' WHERE id = ${op.id}`;
+    await adminSql`UPDATE app.operation_groups SET created_at = now() - interval '23 hours' WHERE operation_id = ${op.id}`; // the last group counts as progress too
     await stopStalledInvests();
     expect((await opRow(op.id)).status).toBe("IN_PROGRESS");
     await adminSql`UPDATE app.operations SET needs_action_since = now() - interval '25 hours' WHERE id = ${op.id}`;
+    await adminSql`UPDATE app.operation_groups SET created_at = now() - interval '25 hours' WHERE operation_id = ${op.id}`;
     await stopStalledInvests();
     await stopStalledInvests();
     expect((await opRow(op.id)).status).toBe("PARTIAL");
@@ -207,9 +232,33 @@ describe("stop and the 24-hour auto-stop", () => {
     expect(fakes.queue.jobs.filter((j) => j.name === "notifications")).toHaveLength(1);
   });
 
+  it("a quoted batch that was never signed stops the clock only for 24 hours: then the investment is auto-stopped (review I2)", async () => {
+    const { user, op } = await sent(["ok", "fail", "ok", "ok"]);
+    await cont(user.h, op.id);
+    expect((await groupReq(user.h, op.id, { idempotencyKey: "grp-bbbbbbbb" })).status).toBe(200); // quoting clears the mark; the wallet popup is then rejected and the tab closed
+    expect((await opRow(op.id)).needs_action_since).toBeNull();
+    await adminSql`UPDATE app.operation_groups SET created_at = now() - interval '23 hours' WHERE operation_id = ${op.id}`;
+    await stopStalledInvests();
+    expect((await opRow(op.id)).status).toBe("IN_PROGRESS");
+    await adminSql`UPDATE app.operation_groups SET created_at = now() - interval '25 hours' WHERE operation_id = ${op.id}`;
+    await stopStalledInvests();
+    expect((await opRow(op.id)).status).toBe("PARTIAL");
+    expect((await groupRows(op.id)).at(-1)!.status).toBe("RELEASED");
+  });
+
+  it("skips an investment with a recovery that is not final: the recovery keeps its own 7-day stop (review I7)", async () => {
+    const { op, buys } = await sent(["ok", "fail", "ok", "ok"]);
+    await addRecovery(op.id, buys[1]!);
+    await adminSql`UPDATE app.operations SET needs_action_since = now() - interval '25 hours' WHERE id = ${op.id}`;
+    await adminSql`UPDATE app.operation_groups SET created_at = now() - interval '25 hours' WHERE operation_id = ${op.id}`;
+    await stopStalledInvests();
+    expect((await opRow(op.id)).status).toBe("IN_PROGRESS");
+  });
+
   it("does nothing while a leg is unknown, and never touches an operation without groups", async () => {
     const { op, buys } = await sent(["ok", "fail", "ok", "ok"]);
     await adminSql`UPDATE app.operations SET needs_action_since = now() - interval '25 hours' WHERE id = ${op.id}`;
+    await adminSql`UPDATE app.operation_groups SET created_at = now() - interval '25 hours' WHERE operation_id = ${op.id}`;
     await adminSql`UPDATE app.operation_legs SET status = 'UNKNOWN' WHERE id = ${buys[0]!.id}`;
     await stopStalledInvests();
     expect((await opRow(op.id)).status).toBe("IN_PROGRESS");
