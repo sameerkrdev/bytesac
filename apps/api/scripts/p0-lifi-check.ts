@@ -43,7 +43,7 @@ async function userFeePayerQuote(label: string, toChain: "solana" | "ethereum", 
   try {
     const q = await lifiCall("/quote", { params: {
       fromChain: CHAIN_IDS.solana, toChain: CHAIN_IDS[toChain], fromToken: USDC_SOLANA_MINT, toToken, fromAmount: "1000000",
-      fromAddress: solana!, toAddress, slippage: SLIPPAGE_BPS / 10_000, integrator: env.LIFI_INTEGRATOR,
+      fromAddress: solana!, toAddress, slippage: SLIPPAGE_BPS / 10_000, integrator: env.LIFI_INTEGRATOR, maxPriceImpact: 0.05, // as production
     } }) as { tool?: string; transactionRequest?: { data?: string } };
     const receivedAt = Date.now();
     const data = q.transactionRequest?.data;
