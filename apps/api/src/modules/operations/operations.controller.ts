@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { K_SIGN_ALL, type ContinueRequest, type GroupRequest, type GroupSubmit, type InvestRequest, type LegSubmit, type RebalanceRequest, type RepairRequest, type SellRequest } from "@repo/validator";
+import { K_SIGN_ALL, type ContinueRequest, type GroupRequest, type GroupSent, type GroupSubmit, type InvestRequest, type LegSubmit, type RebalanceRequest, type RepairRequest, type SellRequest } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import * as operationsService from "./operations.service";
 import * as planService from "./plan.service";
@@ -95,6 +95,33 @@ export const submitGroup = async (req: Request, res: Response, next: NextFunctio
   try {
     await consume(limits.submitsUser, req.auth!.userId);
     res.json(await groupsService.submitGroup(ctx(req), req.params.id as string, req.params.groupId as string, req.body as GroupSubmit));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const claimGroup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.submitsUser, req.auth!.userId);
+    res.json(await groupsService.claimGroup(ctx(req), req.params.id as string, req.params.groupId as string));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sentGroup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.submitsUser, req.auth!.userId);
+    res.json(await groupsService.sentGroup(ctx(req), req.params.id as string, req.params.groupId as string, req.body as GroupSent));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const releaseGroup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.submitsUser, req.auth!.userId);
+    res.json(await groupsService.releaseGroup(ctx(req), req.params.id as string, req.params.groupId as string));
   } catch (error) {
     next(error);
   }

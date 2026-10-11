@@ -66,6 +66,8 @@ export interface Signer {
   signSolana(serializedBase64: string): Promise<string>;
   /** One wallet approval for the whole batch, in order (the web only; mobile signs one leg at a time). Throws "not supported" when the wallet cannot. */
   signSolanaAll?(serializedBase64: string[]): Promise<string[]>;
+  /** The wallet signs AND broadcasts each transaction (MetaMask: 2 approvals for a batch). Returns the raw 64-byte signatures in input order. */
+  signAndSendSolanaAll?(serializedBase64: string[]): Promise<Uint8Array[]>;
   sendEvm(tx: { to: string; data: string; value: string; chainId: number; approval?: { token: string; spender: string; amount: string } | null }): Promise<string>;
   /** Absent when the wallet cannot sign a Bitcoin PSBT: the leg is then continued on the web. */
   signPsbt?(psbtBase64: string, inputCount: number): Promise<string>;
@@ -108,7 +110,7 @@ export const LEG_STEP_LABEL: Partial<Record<LegSignerState["kind"], string>> = {
   quoting: "Getting a quote", awaitingGasDrop: "Waiting for the gas top-up to confirm", signing: "Approve in your wallet", submitting: "Submitting",
 };
 
-const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+export const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Step 1: a fresh quote and, on EVM, the confirmed gas top-up. The wallet is not opened. Throws (after dispatching `failed`) on any failure. */
 export async function prepareLeg(api: LegSignerApi, operationId: string, leg: Leg, dispatch: Dispatch, opts: { sleep?: (ms: number) => Promise<void>; pollMs?: number; maxPolls?: number } = {}): Promise<Prepared> {

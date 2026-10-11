@@ -215,6 +215,8 @@ Brief: Android device run of the mobile app with MetaMask, Trust Wallet and Phan
 | 13 | Spec 22 approval | approve · changes | **Approved**; every DEFAULT row incl. B-16 approved as written | Spec status APPROVED |
 | 14 | Send timing (user + reviewer) | clock only · real blockhash check | **Also `isBlockhashValid` with a small margin before each send; P0 measures 12-tx signing time; tune `sendBy`/K from P0 and telemetry** | `sendBy` gates submit and fee wait; each buy gated by `isBlockhashValid` + 20-block margin; P0 lab times 12-tx batches and LI.FI blockhash lifetime |
 | 15 | Next step | write P0 + P1 plans | **Write P0 (wallet lab) and P1 (first investment) plans** | `plans/2026-10-11-spec22-p0-wallet-lab.md`, `plans/2026-10-11-spec22-p1-first-investment.md` |
+| 16 | Pilot run: fee tx took minutes, buys `QUOTE_STALE`; MetaMask 4–6 popups for 4 txs | fix package (right-size fee CU + market priority, rebroadcast identical bytes, gate next group on `confirmed`, build B-07 for MetaMask) with: fee first confirmed (rec.) · send all back-to-back · Jito bundle | **Fee first, confirmed** (package approved) | Spec §16 B-24..B-27; plan `plans/2026-10-11-spec22-p1b-landing-and-metamask.md` |
+| 17 | Goal restated: fewest approvals and shortest time, non-custodial, platform never holds funds; next reduction after P1b | lab then Jito + MetaMask fee-in-batch (rec.) · only raise K from the lab · explore spending limits · jump to rebalance P3 | **Only raise K from the lab** | Other options recorded in FUTURE-PLANS ("Fewer approvals and faster landing") |
 
 ## Roadmap decisions
 

@@ -1,5 +1,5 @@
 import createHttpError from "http-errors";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { basketPositions, baskets, contacts, db, instrumentDeployments, operationFeeCharges, operationGroups, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
 import { LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, minOut, type OperationView, type WaivedReason } from "@repo/validator";
 import type { RouteFee } from "@/providers/routes/types";
@@ -75,6 +75,12 @@ export async function getOperation(ctx: OpCtx, id: string): Promise<OperationVie
   if (!op) throw notFound();
   return operationView(db, op);
 }
+
+/** A planned leg's own SOL cost from plan time (signatures, priority fee, rent). 5000: a retry copied from a plan made before user-paid gas. */
+export const userLamports = (l: Pick<Leg, "expectedTx">) => BigInt((l.expectedTx as { userLamports?: string } | null)?.userLamports ?? "5000");
+
+/** The floor a leg had before its group was claimed (the claim lowers it when the user accepts new prices): a released or retried leg goes back to it, so the next group still asks before signing below it (D-073 waived). */
+export const plannedFloor = (l: Pick<Leg, "routeSummary" | "minOut">) => (l.routeSummary?.quoted as { plannedMinOut?: string | null } | undefined)?.plannedMinOut ?? l.minOut;
 
 export const auditBase = (ctx: OpCtx | null, entityId: string) => ({
   actorType: ctx ? ("user" as const) : ("system" as const), actorUserId: ctx?.userId ?? null, sessionId: ctx?.sessionId ?? null, requestId: ctx?.meta.requestId ?? `track-${entityId}`,
@@ -202,7 +208,9 @@ export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: st
 /** Expired plans (nothing submitted within 30 minutes) are cancelled when next touched, which frees the user's one active-operation slot. */
 export async function cancelIfExpired(tx: Tx, ctx: OpCtx | null, op: Op): Promise<boolean> {
   if (op.status !== "PLANNED" || op.expiresAt > new Date()) return false;
-  const [claimed] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, op.id), ne(operationLegs.status, "PLANNED"))).limit(1);
+  // A sign-and-send claim the sweep proved never landed (FAILED / NOT_LANDED) sent nothing, so it does not keep the plan alive.
+  const [claimed] = await tx.select({ id: operationLegs.id }).from(operationLegs)
+    .where(and(eq(operationLegs.operationId, op.id), ne(operationLegs.status, "PLANNED"), or(ne(operationLegs.status, "FAILED"), sql`${operationLegs.failureReason} is distinct from 'NOT_LANDED'`))).limit(1);
   if (claimed) return false; // a signed transaction is being sent: the plan is not abandoned
   await releaseQuotedGroups(tx, op.id);
   await setOperationStatus(tx, ctx, op, "CANCELLED");

@@ -60,11 +60,11 @@ export async function enqueue<N extends keyof JobData>(name: N, data: JobData[N]
       const { basketId, versionId, attempt = 0 } = data as JobData["embed-basket"];
       await queues[name].add(name, data, { jobId: `embed_${basketId}_${versionId}_${attempt}` });
     } else if (name === "track-leg") {
-      // First tracking: back off 15 s, 30 s, 60 s ... (the tracker itself marks the leg UNKNOWN once it is 30 minutes old); rechecks run once, hourly.
+      // First tracking: back off 5 s, 10 s, 20 s ... (the tracker itself marks the leg UNKNOWN once it is 30 minutes old); rechecks run once, hourly.
       const { legId, recheck = 0 } = data as JobData["track-leg"];
       await queues[name].add(name, data, recheck
         ? { jobId: `leg_${legId}_recheck_${recheck}`, delay: 3_600_000, attempts: 1 }
-        : { jobId: `leg_${legId}`, attempts: 12, backoff: { type: "exponential", delay: 15_000 } });
+        : { jobId: `leg_${legId}`, attempts: 12, backoff: { type: "exponential", delay: 5_000 } });
     } else if (name === "notifications") {
       const d = data as JobData["notifications"];
       const jobId = d.job === "deliver" ? `deliver_${d.notificationId}` : d.job === "version-published" ? `published_${d.versionId}` : `notice_${d.kind}_${d.eventId}`;

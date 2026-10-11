@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Callout, Eyebrow, Tile } from "@/components/ui/kit";
 import { appKit } from "@/lib/appkit";
-import { buildMemoBatch, classifyWalletError, compareSigned, failureDetail, LAB_BATCH_SIZES, revertVerdict, scrubAddresses, sendPlan, standardWalletFeatures, USDC_BY_CHAIN, type LabResult } from "@/lib/wallet-lab";
+import { standardWallets } from "@/lib/wallet/standard-wallets";
+import { buildMemoBatch, classifyWalletError, compareSigned, failureDetail, LAB_BATCH_SIZES, revertVerdict, scrubAddresses, sendPlan, USDC_BY_CHAIN, type LabResult } from "@/lib/wallet-lab";
 
 /** Dev-only (Spec 22 P0): measures how each wallet handles batched signing. It builds harmless transactions and sends nothing unless a button says so. */
 
@@ -42,7 +43,7 @@ export function WalletLab() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { void standardWalletFeatures().then(setStd); }, [sol.address]);
+  useEffect(() => { void standardWallets().then((ws) => setStd(ws.map((w) => ({ name: w.name, features: Object.keys(w.features) })))); }, [sol.address]);
 
   const patch = (row: number, p: Partial<LabResult>) => setRows((prev) => prev.map((r, k) => (k === row ? { ...r, ...p } : r)));
 

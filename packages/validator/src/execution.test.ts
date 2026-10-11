@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { K_SIGN_ALL, LEG_STATES, continueRequestSchema, approvalsEstimate, feeShares, groupSubmitSchema, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
+import { K_SIGN_ALL, K_SIGN_AND_SEND, LEG_STATES, continueRequestSchema, approvalsEstimate, feeShares, groupRequestSchema, groupSentSchema, groupSubmitSchema, resolveLegRequestSchema, LEG_TRANSITIONS, OPERATION_STATES, OPERATION_TRANSITIONS, investRequestSchema, legSubmitSchema, minOut, networkFeeMicro, splitInvestment } from "./execution";
 
 describe("splitInvestment", () => {
   it("splits deployable by bps and gives the remainder to the largest weight", () => {
@@ -105,6 +105,18 @@ describe("approvalsEstimate", () => {
     expect(approvalsEstimate({ tier: "sign_all", solanaLegs: 50, charged: true })).toBe(5);
     expect(approvalsEstimate({ tier: "single", solanaLegs: 50, charged: true })).toBe(51);
     expect(approvalsEstimate({ tier: "sign_and_send", solanaLegs: 24, charged: true })).toBe(4);
+  });
+});
+
+describe("groupSentSchema", () => {
+  it("takes 1 to K signatures of 80 to 90 characters per leg, and tier sign_and_send is a group tier", () => {
+    const one = { legId: "0190a7b2-0000-7000-8000-000000000001", signature: "1".repeat(87) };
+    expect(groupSentSchema.safeParse({ signatures: [] }).success).toBe(false);
+    expect(groupSentSchema.safeParse({ signatures: Array(K_SIGN_AND_SEND + 1).fill(one) }).success).toBe(false);
+    expect(groupSentSchema.safeParse({ signatures: [{ ...one, signature: "short" }] }).success).toBe(false);
+    expect(groupSentSchema.safeParse({ signatures: [{ ...one, extra: 1 }] }).success).toBe(false);
+    expect(groupSentSchema.safeParse({ signatures: [one] }).success).toBe(true);
+    expect(groupRequestSchema.safeParse({ chain: "solana", tier: "sign_and_send", idempotencyKey: "grp-aaaaaaaa" }).success).toBe(true);
   });
 });
 

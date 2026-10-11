@@ -15,7 +15,7 @@ vi.mock("@/lib/api", () => ({
     investPlan: (b: unknown) => api.investPlan(b), cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id),
   },
 }));
-vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({}) }));
+vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({ chooseTier: async () => "sign_all" }) }));
 import { DeclarationForm } from "@/components/eligibility/declaration-form";
 import { InvestWizard } from "@/components/invest/invest-wizard";
 import { AssetDeployments } from "@/components/ops/assets/asset-deployments";

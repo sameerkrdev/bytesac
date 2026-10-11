@@ -1,9 +1,10 @@
 import { ApiError } from "@repo/api-client";
 import type { GroupResponse, OperationView } from "@repo/validator";
-import { describe, expect, it, vi } from "vitest";
+import bs58 from "bs58";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { groupSignerReducer, runGroup, type GroupSignerApi, type GroupSignerEvent, type GroupSignerState } from "./group-signer";
 import type { Signer } from "./leg-signer";
-import { WalletRejectedError } from "./wallet";
+import { WalletRejectedError, WrongWalletError } from "./wallet";
 
 const group = (o: Partial<GroupResponse> = {}): GroupResponse => ({
   groupId: "G1", status: "quoted", expiresAt: "2026-10-11T12:01:00.000Z", sendBy: "2026-10-11T12:00:40.000Z", priceMoved: false, approvalsEstimate: 1, solRequiredLamports: "5000000",
@@ -15,12 +16,15 @@ const op = (o: Partial<OperationView> = {}) => ({ id: "O1", status: "IN_PROGRESS
 const run = (events: GroupSignerEvent[], from: GroupSignerState = { kind: "idle" }) => events.reduce(groupSignerReducer, from);
 const trace = () => { const events: GroupSignerEvent[] = []; return { events, dispatch: (e: GroupSignerEvent) => void events.push(e) }; };
 const api = (o: Partial<GroupSignerApi> = {}) => ({
-  requestGroup: vi.fn<GroupSignerApi["requestGroup"]>().mockResolvedValue(group()), submitGroup: vi.fn<GroupSignerApi["submitGroup"]>().mockResolvedValue(op({ status: "COMPLETED" })), ...o,
+  requestGroup: vi.fn<GroupSignerApi["requestGroup"]>().mockResolvedValue(group()), submitGroup: vi.fn<GroupSignerApi["submitGroup"]>().mockResolvedValue(op({ status: "COMPLETED" })),
+  claimGroup: vi.fn<GroupSignerApi["claimGroup"]>().mockResolvedValue(op()), sentGroup: vi.fn<GroupSignerApi["sentGroup"]>().mockResolvedValue(op({ status: "COMPLETED" })),
+  releaseGroup: vi.fn<GroupSignerApi["releaseGroup"]>().mockResolvedValue(op()), ...o,
 });
 const signer = (o: Partial<Signer> = {}): Signer => ({
-  signSolana: vi.fn(async (t: string) => `one:${t}`), signSolanaAll: vi.fn(async (ts: string[]) => ts.map((t) => `all:${t}`)), sendEvm: vi.fn(), ...o,
+  signSolana: vi.fn(async (t: string) => `one:${t}`), signSolanaAll: vi.fn(async (ts: string[]) => ts.map((t) => `all:${t}`)), sendEvm: vi.fn(),
+  signAndSendSolanaAll: vi.fn(async (ts: string[]) => ts.map((_, i) => new Uint8Array(64).fill(i + 1))), ...o,
 });
-const opts = (o: Partial<Parameters<typeof runGroup>[4]> = {}) => ({ tier: "sign_all" as const, acceptNewPrices: vi.fn().mockResolvedValue(true), onDowngrade: vi.fn(), ...o });
+const opts = (o: Partial<Parameters<typeof runGroup>[4]> = {}) => ({ tier: "sign_all" as Parameters<typeof runGroup>[4]["tier"], acceptNewPrices: vi.fn().mockResolvedValue(true), onDowngrade: vi.fn(), ...o });
 
 describe("groupSignerReducer", () => {
   it("walks quote, sign, send, done", () => {
@@ -136,5 +140,121 @@ describe("runGroup", () => {
     const a = api({ requestGroup: vi.fn<GroupSignerApi["requestGroup"]>().mockRejectedValue(new ApiError("SOL_REQUIRED", 409, "need SOL", undefined, details)) });
     await runGroup(a, signer(), "O1", t.dispatch, opts());
     expect(run(t.events)).toMatchObject({ kind: "failed", code: "SOL_REQUIRED", details });
+  });
+});
+
+describe("runGroup at tier sign_and_send", () => {
+  const sig = (i: number) => new Uint8Array(64).fill(i);
+  const sendOpts = () => opts({ tier: "sign_and_send", walletName: "MetaMask" });
+
+  it("claims before the wallet opens and reports the signatures in transaction order, base58", async () => {
+    const a = api(), s = signer(), t = trace();
+    const out = await runGroup(a, s, "O1", t.dispatch, sendOpts());
+    expect(a.requestGroup).toHaveBeenCalledWith("O1", { chain: "solana", tier: "sign_and_send", walletName: "MetaMask", idempotencyKey: expect.any(String) });
+    expect(a.claimGroup).toHaveBeenCalledWith("O1", "G1");
+    expect(s.signAndSendSolanaAll).toHaveBeenCalledWith(["tx-fee", "tx-a", "tx-b"]);
+    expect(vi.mocked(a.claimGroup).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(s.signAndSendSolanaAll!).mock.invocationCallOrder[0]!);
+    expect(a.sentGroup).toHaveBeenCalledWith("O1", "G1", { signatures: [{ legId: "F", signature: bs58.encode(sig(1)) }, { legId: "A", signature: bs58.encode(sig(2)) }, { legId: "B", signature: bs58.encode(sig(3)) }] });
+    expect(vi.mocked(s.signAndSendSolanaAll!).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(a.sentGroup).mock.invocationCallOrder[0]!);
+    expect(a.submitGroup).not.toHaveBeenCalled();
+    expect(s.signSolanaAll).not.toHaveBeenCalled();
+    expect(out?.status).toBe("COMPLETED");
+    expect(run(t.events).kind).toBe("done");
+  });
+
+  it("reports only the signatures the wallet returned", async () => {
+    const a = api();
+    await runGroup(a, signer({ signAndSendSolanaAll: vi.fn().mockResolvedValue([sig(1)]) }), "O1", trace().dispatch, sendOpts());
+    expect(a.sentGroup).toHaveBeenCalledWith("O1", "G1", { signatures: [{ legId: "F", signature: bs58.encode(sig(1)) }] });
+  });
+
+  it("a rejection releases the claim, ends WALLET_REJECTED and does not downgrade", async () => {
+    const a = api(), t = trace(), o = sendOpts();
+    const s = signer({ signAndSendSolanaAll: vi.fn().mockRejectedValue(new WalletRejectedError()) });
+    expect(await runGroup(a, s, "O1", t.dispatch, o)).toBeNull();
+    expect(a.releaseGroup).toHaveBeenCalledWith("O1", "G1");
+    expect(o.onDowngrade).not.toHaveBeenCalled();
+    expect(a.requestGroup).toHaveBeenCalledTimes(1);
+    expect(a.sentGroup).not.toHaveBeenCalled();
+    expect(run(t.events)).toMatchObject({ kind: "failed", code: "WALLET_REJECTED" });
+  });
+
+  it("a wrong wallet (nothing was opened) releases the claim too", async () => {
+    const a = api(), t = trace();
+    await runGroup(a, signer({ signAndSendSolanaAll: vi.fn().mockRejectedValue(new WrongWalletError("Connect MetaMask")) }), "O1", t.dispatch, sendOpts());
+    expect(a.releaseGroup).toHaveBeenCalledTimes(1);
+    expect(run(t.events)).toMatchObject({ kind: "failed", code: "WRONG_WALLET" });
+  });
+
+  it("any other wallet error ends OUTCOME_UNKNOWN and keeps the claim (no release)", async () => {
+    const a = api(), t = trace();
+    const s = signer({ signAndSendSolanaAll: vi.fn().mockRejectedValue(new Error("socket closed")) });
+    expect(await runGroup(a, s, "O1", t.dispatch, sendOpts())).toBeNull();
+    expect(a.releaseGroup).not.toHaveBeenCalled();
+    expect(a.sentGroup).not.toHaveBeenCalled();
+    expect(run(t.events)).toMatchObject({ kind: "failed", code: "OUTCOME_UNKNOWN", message: "Confirming with the network — don't sign again" });
+  });
+
+  it("a network failure while reporting the signatures is also OUTCOME_UNKNOWN; a server answer keeps its own code", async () => {
+    const t = trace();
+    await runGroup(api({ sentGroup: vi.fn().mockRejectedValue(new TypeError("fetch failed")) }), signer(), "O1", t.dispatch, sendOpts());
+    expect(run(t.events)).toMatchObject({ kind: "failed", code: "OUTCOME_UNKNOWN" });
+    const u = trace(), a = api({ sentGroup: vi.fn().mockRejectedValue(new ApiError("TX_MISMATCH", 409, "no")) });
+    await runGroup(a, signer(), "O1", u.dispatch, sendOpts());
+    expect(a.releaseGroup).not.toHaveBeenCalled();
+    expect(run(u.events)).toMatchObject({ kind: "failed", code: "TX_MISMATCH" });
+  });
+
+  it("an expired claim ends GROUP_EXPIRED without opening the wallet", async () => {
+    const t = trace(), s = signer();
+    const a = api({ claimGroup: vi.fn().mockRejectedValue(new ApiError("GROUP_EXPIRED", 409, "expired")) });
+    await runGroup(a, s, "O1", t.dispatch, sendOpts());
+    expect(s.signAndSendSolanaAll).not.toHaveBeenCalled();
+    expect(a.releaseGroup).not.toHaveBeenCalled();
+    expect(run(t.events)).toMatchObject({ kind: "failed", code: "GROUP_EXPIRED" });
+  });
+});
+
+describe("runGroup waiting for the previous fee", () => {
+  afterEach(() => vi.useRealTimers());
+  const confirming = () => new ApiError("OPERATION_IN_PROGRESS", 409, "busy", undefined, { reason: "fee_confirming" });
+
+  it("repeats the request every second until it passes, with one idempotency key", async () => {
+    vi.useFakeTimers();
+    const t = trace();
+    const a = api({ requestGroup: vi.fn<GroupSignerApi["requestGroup"]>().mockRejectedValueOnce(confirming()).mockRejectedValueOnce(confirming()).mockResolvedValue(group()) });
+    const p = runGroup(a, signer(), "O1", t.dispatch, opts());
+    await vi.advanceTimersByTimeAsync(999);
+    expect(a.requestGroup).toHaveBeenCalledTimes(1);
+    expect(run(t.events).kind).toBe("feeConfirming");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(a.requestGroup).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((await p)?.status).toBe("COMPLETED");
+    expect(a.requestGroup).toHaveBeenCalledTimes(3);
+    expect(new Set(vi.mocked(a.requestGroup).mock.calls.map(([, b]) => b.idempotencyKey)).size).toBe(1);
+    expect(run(t.events).kind).toBe("done");
+  });
+
+  it("gives up after 60 seconds with the server's error", async () => {
+    vi.useFakeTimers();
+    const t = trace();
+    const a = api({ requestGroup: vi.fn<GroupSignerApi["requestGroup"]>().mockRejectedValue(confirming()) });
+    const p = runGroup(a, signer(), "O1", t.dispatch, opts());
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(a.requestGroup).toHaveBeenCalledTimes(60);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await p).toBeNull();
+    expect(a.requestGroup).toHaveBeenCalledTimes(61);
+    expect(run(t.events)).toMatchObject({ kind: "failed", code: "OPERATION_IN_PROGRESS" });
+  });
+
+  it("does not retry a plain OPERATION_IN_PROGRESS or a TX_MISMATCH", async () => {
+    for (const err of [new ApiError("OPERATION_IN_PROGRESS", 409, "busy"), new ApiError("TX_MISMATCH", 409, "no", undefined, { reason: "fee_confirming" })]) {
+      const t = trace(), a = api({ requestGroup: vi.fn<GroupSignerApi["requestGroup"]>().mockRejectedValue(err) });
+      expect(await runGroup(a, signer(), "O1", t.dispatch, opts())).toBeNull();
+      expect(a.requestGroup).toHaveBeenCalledTimes(1);
+      expect(run(t.events)).toMatchObject({ kind: "failed", code: err.code });
+    }
   });
 });

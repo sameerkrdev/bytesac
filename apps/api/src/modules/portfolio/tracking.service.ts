@@ -1,4 +1,5 @@
 import createHttpError from "http-errors";
+import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFeeCharges, operationFees, operationGroups, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
@@ -6,7 +7,7 @@ import { CONFIRMATIONS, INVEST_AUTO_STOP_HOURS, USDC_DECIMALS, USDC_SOLANA_MINT,
 import { bitcoinTx } from "@/providers/bitcoin";
 import { evmNativeReceived, evmReceipt } from "@/providers/evm-rpc";
 import { routeProviderById } from "@/providers/routes";
-import { solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
+import { connection, landedMatchesPrepared, landedTx, sameExceptComputeBudget, solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
 import { enqueue } from "@/config/queues";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, releaseQuotedGroups, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
@@ -17,6 +18,9 @@ import { notify } from "@/modules/notifications/notifications.service";
 import { routeDenyList } from "@/modules/routing/routing.service";
 
 const TRACK_WINDOW_MS = 30 * 60_000;
+
+/** A blockhash lives about 150 blocks (60 to 90 s): two minutes after a wallet reported a signature, every blockhash it could have signed with has expired. */
+const WALLET_SENT_EXPIRY_GRACE_MS = 2 * 60_000;
 
 const MAX_RECHECKS = 168; // hourly, seven days
 
@@ -143,14 +147,120 @@ async function markStaleUnknown(legId: string): Promise<void> {
   });
 }
 
+const preparedOf = (leg: Pick<Leg, "expectedTx">): VersionedTransaction | null => {
+  const base64 = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
+  return base64 ? VersionedTransaction.deserialize(Buffer.from(base64, "base64")) : null;
+};
+
+/** The RPC's largest page of signatures, how many pages the sweep reads for one wallet, and how many of those transactions it fetches, before it gives up proving that a claim never landed. */
+const SIGNATURE_PAGE = 1_000;
+const SIGNATURE_PAGES = 3;
+const LANDED_LOOKUPS = 100;
+
+/**
+ * Sign-and-send claims the wallet never reported a signature for (spec 22 section 6.4, step 4): looks the owner's signatures since the claim up (paging back
+ * past it) and matches each landed message, oldest first (a claimed transaction lands right after its claim), to the claimed leg's prepared one (ComputeBudget
+ * differences allowed). A match records the signature and tracks the leg. No match is FAILED / NOT_LANDED only when the blockhash had expired before the lookup
+ * AND every signature since the claim was read and compared; a history too long to read, or more transactions than the lookup budget, keeps the claim (it may
+ * have landed). Nothing is resent and nothing is rebuilt. Every claim is handled on its own.
+ */
+async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<void> {
+  const owner = new PublicKey(addressOn(await userAddresses(db, userId), "solana"));
+  const sinceOf = (leg: Leg) => (leg.submittedAt ?? leg.updatedAt).getTime() - 10_000; // block times are coarse: a little before the claim still counts
+  // Expiry first, then the lookup (as `solanaFinality`): a transaction that lands in between is still in the pages read below.
+  const expired = new Map<string, boolean>();
+  for (const leg of claims) {
+    const prepared = preparedOf(leg);
+    if (prepared) expired.set(leg.id, !(await connection.isBlockhashValid(prepared.message.recentBlockhash, { commitment: "confirmed" })).value);
+  }
+  const oldest = Math.min(...claims.map(sinceOf));
+  const recent: Awaited<ReturnType<typeof connection.getSignaturesForAddress>> = [];
+  let complete = false; // the pages reach back past every claim, or to the start of the wallet's history
+  for (let n = 0; n < SIGNATURE_PAGES && !complete; n++) {
+    const page = await connection.getSignaturesForAddress(owner, { limit: SIGNATURE_PAGE, before: recent.at(-1)?.signature }, "confirmed");
+    recent.push(...page);
+    complete = page.length < SIGNATURE_PAGE || (page.at(-1)!.blockTime ?? Infinity) * 1000 < oldest;
+  }
+  const oldestFirst = [...recent].reverse();
+  const landed = new Map<string, VersionedTransaction | null>(); // one lookup per signature, however many claims
+  const taken = new Set<string>();
+  for (const leg of claims) {
+    try {
+      const prepared = preparedOf(leg);
+      if (!prepared) continue;
+      const since = sinceOf(leg);
+      let found: string | null = null;
+      let unread = false; // a signature since the claim was left unfetched (lookup budget spent)
+      for (const { signature, blockTime } of oldestFirst) {
+        if (taken.has(signature) || (blockTime ?? Infinity) * 1000 < since) continue;
+        if (!landed.has(signature)) {
+          if (landed.size >= LANDED_LOOKUPS) { unread = true; break; }
+          landed.set(signature, await landedTx(signature));
+        }
+        const tx = landed.get(signature);
+        if (tx && sameExceptComputeBudget(prepared, tx)) { found = signature; break; }
+      }
+      if (!found && !expired.get(leg.id)) continue; // it may still land
+      if (!found && (!complete || unread)) {
+        logger.warn("sweep: the wallet's history since the claim is too long to show that it never landed; it stays claimed", { legId: leg.id, operationId: leg.operationId });
+        continue;
+      }
+      if (found) taken.add(found);
+      const recorded = await db.transaction(async (tx) => {
+        await lockOperation(tx, leg.operationId);
+        const [current] = await tx.select().from(operationLegs).where(eq(operationLegs.id, leg.id));
+        if (current!.status !== "SUBMITTING" || current!.sourceTx) return false; // resolved meanwhile (a late /sent)
+        if (found) await tx.update(operationLegs).set({ sourceTx: found, expectedTx: { ...(current!.expectedTx ?? {}), recentBlockhash: prepared.message.recentBlockhash }, updatedAt: sql`now()` }).where(eq(operationLegs.id, leg.id));
+        else {
+          await setLegStatus(tx, null, current!, "FAILED", { failureReason: "NOT_LANDED" });
+          await refreshOperationStatus(tx, null, leg.operationId);
+        }
+        return !!found;
+      });
+      if (recorded) {
+        await markSubmitted(null, leg.operationId, leg.id);
+        await enqueue("track-leg", { legId: leg.id });
+      }
+    } catch (err) {
+      logger.warn("sweep: could not resolve a claim without a signature", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+}
+
+/**
+ * Proof that a sign-and-send leg's reported signature is our prepared transaction (message equal beyond ComputeBudget, fee payer the user), checked before it can be
+ * settled or ledgered. `pending` while the transaction cannot be fetched (or the lookup failed); `mismatch` is an alert (audit + error log). Other tiers need no proof.
+ */
+async function proveSignAndSend(op: Op, leg: Leg): Promise<"ok" | "pending" | "mismatch"> {
+  try {
+    const prepared = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
+    const [group] = leg.groupId ? await db.select({ tier: operationGroups.tier }).from(operationGroups).where(eq(operationGroups.id, leg.groupId)) : [];
+    if (group?.tier !== "sign_and_send") return "ok";
+    if (!prepared) return "mismatch";
+    const matches = await landedMatchesPrepared(leg.sourceTx!, prepared, addressOn(await userAddresses(db, op.userId), "solana"));
+    if (matches === null) return "pending";
+    if (matches) return "ok";
+    logger.error("a sign-and-send transaction landed with a message that is not the prepared one", { legId: leg.id, operationId: op.id });
+    await db.transaction((tx) => writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "leg.tx_mismatch_after_send", entityType: "operation_leg", entityId: leg.id, requestId: `track-${leg.id}`, metadata: { operationId: op.id } }));
+    return "mismatch";
+  } catch (err) {
+    logger.warn("could not compare a landed transaction with its prepared one", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
+    return "pending";
+  }
+}
+
 /**
  * Liveness sweep (every 5 minutes). Legs claimed (SUBMITTING) but never confirmed as sent, for example after a crash between the claim and the send,
- * are handed to the tracker. A SUBMITTED or PENDING_CHAIN leg past the 30-minute window whose tracking job is gone (a queue outage, a flushed Redis) is
+ * are handed to the tracker; sign-and-send claims without a signature are resolved from the chain (`resolveUnsignedClaims`). A SUBMITTED or PENDING_CHAIN leg past the 30-minute window whose tracking job is gone (a queue outage, a flushed Redis) is
  * checked right here in recheck mode, which makes it UNKNOWN (so the user can stop and ops can resolve it) and restarts the recheck chain.
  */
 export async function trackStaleClaims(): Promise<void> {
-  const claimed = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
-  for (const l of claimed) await enqueue("track-leg", { legId: l.id }).catch((err) => logger.warn("sweep: could not enqueue a claimed leg", { legId: l.id, errMessage: err instanceof Error ? err.message : "unknown" }));
+  const claimed = await db.select({ leg: operationLegs, userId: operations.userId }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId))
+    .where(and(eq(operationLegs.status, "SUBMITTING"), sql`${operationLegs.updatedAt} < now() - interval '2 minutes'`));
+  for (const { leg } of claimed.filter((c) => c.leg.sourceTx)) await enqueue("track-leg", { legId: leg.id }).catch((err) => logger.warn("sweep: could not enqueue a claimed leg", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" }));
+  const unsigned = new Map<string, Leg[]>();
+  for (const { leg, userId } of claimed.filter((c) => !c.leg.sourceTx)) unsigned.set(userId, [...(unsigned.get(userId) ?? []), leg]);
+  for (const [userId, legs] of unsigned) await resolveUnsignedClaims(userId, legs).catch((err) => logger.warn("sweep: could not look up a wallet's recent signatures", { userId, errMessage: err instanceof Error ? err.message : "unknown" }));
   const stuck = await db.select({ id: operationLegs.id }).from(operationLegs).where(and(inArray(operationLegs.status, ["SUBMITTED", "PENDING_CHAIN"]), sql`${operationLegs.submittedAt} < now() - interval '35 minutes'`));
   for (const l of stuck) await trackLeg(l.id, 1).catch((err) => logger.warn("sweep: recheck of a stuck leg failed", { legId: l.id, errMessage: err instanceof Error ? err.message : "unknown" }));
 }
@@ -233,6 +343,7 @@ export async function stopStalledInvests(): Promise<void> {
 async function trackOnce(legId: string, recheck: number): Promise<boolean> {
   const [row] = await db.select({ leg: operationLegs, op: operations }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
   if (!row || !["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(row.leg.status) || !row.leg.sourceTx) return false;
+  if (row.leg.failureReason === "TX_MISMATCH_AFTER_SEND") return false; // ops resolve it; the reported signature is never followed to a settlement
   const { op } = row;
   const sourceTx = row.leg.sourceTx;
   let { leg } = row;
@@ -264,8 +375,26 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
     return true;
   };
 
-  const recentBlockhash = (leg.expectedTx as { recentBlockhash?: string } | null)?.recentBlockhash;
-  const source = await finality(leg.fromChain, sourceTx, recentBlockhash);
+  const { recentBlockhash, walletSentAt } = (leg.expectedTx ?? {}) as { recentBlockhash?: string; walletSentAt?: string };
+  let source = await finality(leg.fromChain, sourceTx, recentBlockhash);
+  // A wallet that signed and sent (sign-and-send) may have used a newer blockhash than the prepared one: that copy fails the proof but can still move money,
+  // so the leg counts as never landed only once any blockhash fetched before the report is gone too.
+  if (source === "expired" && walletSentAt && Date.now() - Date.parse(walletSentAt) < WALLET_SENT_EXPIRY_GRACE_MS) source = "pending";
+  // Every settlement of a sign-and-send leg needs the proof first (SUBMITTED, or UNKNOWN after the window); PENDING_CHAIN is only reached through it. Fails closed: no proof, no settlement.
+  if ((leg.status === "SUBMITTED" || leg.status === "UNKNOWN") && (source === "finalized" || source === "failed") && leg.fromChain === "solana") {
+    const proof = await proveSignAndSend(op, leg);
+    if (proof === "pending") return notFinal();
+    if (proof === "mismatch") {
+      // Not our transaction: nothing is settled or ledgered from it, and it waits for ops (UNKNOWN, D-075). A fee leg too: its USDC may have moved, so failing it
+      // would charge an honest user again; while it is UNKNOWN the next group is refused, so a forged signature buys nothing.
+      await db.transaction(async (tx) => {
+        await lockOperation(tx, op.id);
+        if (leg.status === "UNKNOWN") await tx.update(operationLegs).set({ failureReason: "TX_MISMATCH_AFTER_SEND", updatedAt: sql`now()` }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "UNKNOWN")));
+        else await setLegStatus(tx, null, leg, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date, failureReason: "TX_MISMATCH_AFTER_SEND" });
+      });
+      return false;
+    }
+  }
   if (source === "failed") return fail("The source transaction failed.");
   if (source === "expired") return fail("The transaction never landed and its blockhash expired, so it can no longer execute.");
   if (source === "pending") return notFinal();
@@ -383,10 +512,25 @@ export async function resolveLeg(ctx: OpCtx, opId: string, legId: string, body: 
   const conflict = (message: string) => createHttpError(409, message, { code: "INVALID_TRANSITION" });
   let received: bigint | null = null;
   let verified = true;
+  // A wallet-sent leg whose landed message is not the prepared one: that transaction is not ours, so its finality proves neither outcome.
+  const mismatched = leg.failureReason === "TX_MISMATCH_AFTER_SEND";
   if (body.status === "FAILED") {
-    if (leg.fromChain === leg.toChain && leg.sourceTx && (await finality(leg.fromChain, leg.sourceTx)) === "finalized") throw conflict("The transaction finalized on-chain: it did not fail.");
+    if (!mismatched && leg.fromChain === leg.toChain && leg.sourceTx && (await finality(leg.fromChain, leg.sourceTx)) === "finalized") throw conflict("The transaction finalized on-chain: it did not fail.");
   } else if (leg.kind === "network_fee") {
     if (!leg.sourceTx || (await finality(leg.fromChain, leg.sourceTx)) !== "finalized") throw conflict("The fee transaction is not final on-chain.");
+    if (mismatched) {
+      // Settling writes the fee charges and covers the legs, so it needs chain evidence that every charged amount reached its recipient in that transaction.
+      const charges = (leg.routeSummary?.feeCharges ?? null) as Record<string, string> | null;
+      if (!charges) throw conflict("This fee leg records no charges to check.");
+      const due = new Map<string, bigint>();
+      for (const r of await db.select({ kind: operationFees.kind, recipient: operationFees.recipientAddress }).from(operationFees).where(eq(operationFees.operationId, op.id))) {
+        const amount = BigInt(charges[r.kind] ?? "0");
+        if (amount > 0n) due.set(r.recipient ?? "", (due.get(r.recipient ?? "") ?? 0n) + amount);
+      }
+      for (const [recipient, amount] of due) {
+        if (!recipient || ((await receivedOnChain("solana", recipient, USDC_SOLANA_MINT, leg.sourceTx)) ?? 0n) < amount) throw conflict("The chain does not show every fee transfer in that transaction.");
+      }
+    }
   } else {
     if ((await finality(leg.toChain, body.txEvidence)) !== "finalized") throw conflict("The destination transaction is not final on-chain.");
     received = await receivedOnChain(leg.toChain, addressOn(await userAddresses(db, op.userId), leg.toChain), await destinationToken(leg), body.txEvidence);

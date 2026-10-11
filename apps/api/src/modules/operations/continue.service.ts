@@ -5,11 +5,10 @@ import { USDC_SOLANA_MINT, type ContinueRequest, type OperationView } from "@rep
 import { writeAudit } from "@/modules/audit/audit.service";
 import { FEE_TRANSFER_USER_LAMPORTS, solanaBalance } from "@/providers/solana-tx";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
-import { type Leg, type OpCtx, auditBase, freeUsdcMicro, getOperation, hasGroups, invalidTransition, lockOperation, notFound, refreshOperationStatus, releaseQuotedGroups, setLegStatus } from "./operations.service";
+import { type Leg, type OpCtx, auditBase, freeUsdcMicro, getOperation, hasGroups, invalidTransition, lockOperation, notFound, plannedFloor, refreshOperationStatus, releaseQuotedGroups, setLegStatus, userLamports } from "./operations.service";
 import { assertSolFor } from "./plan.service";
 
 const shareOf = (l: Pick<Leg, "feeShare">) => Object.values(l.feeShare ?? {}).reduce((t, v) => t + BigInt(v), 0n);
-const userLamports = (l: Pick<Leg, "expectedTx">) => BigInt((l.expectedTx as { userLamports?: string } | null)?.userLamports ?? "5000"); // 5000: a retry copied from a plan made before user-paid gas
 
 /**
  * Continue an unfinished batched investment (spec 22 B-08, section 8.2): skips the legs the user gave up on, makes a retry leg for every failed one (same
@@ -44,7 +43,7 @@ export async function continueOperation(ctx: OpCtx, opId: string, body: Continue
       if (!isAsset(l) || l.status !== "FAILED" || replaced.has(l.id) || skip.has(l.id) || l.failureReason === "SKIPPED" || l.failureReason === "DESTINATION_SWAP_FAILED" || l.recoveryToken) continue;
       const { tool: _t, routeFees: _f, priceImpact: _p, quoted: _q, ...route } = l.routeSummary ?? {};
       await tx.insert(operationLegs).values({
-        operationId: opId, sequence: ++sequence, kind: l.kind, fromChain: l.fromChain, fromDeploymentId: l.fromDeploymentId, toChain: l.toChain, toDeploymentId: l.toDeploymentId, amountIn: l.amountIn, minOut: l.minOut,
+        operationId: opId, sequence: ++sequence, kind: l.kind, fromChain: l.fromChain, fromDeploymentId: l.fromDeploymentId, toChain: l.toChain, toDeploymentId: l.toDeploymentId, amountIn: l.amountIn, minOut: plannedFloor(l),
         provider: l.provider, routeSummary: route, expectedTx: { userLamports: userLamports(l).toString() }, gasPayer: l.gasPayer, feeShare: l.feeShare, feeCoveredBy: l.feeCoveredBy, retryOf: l.id,
       });
       retries += 1;

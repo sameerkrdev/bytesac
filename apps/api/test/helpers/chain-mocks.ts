@@ -77,6 +77,10 @@ export function mockChains(): ChainState {
     const s = state.signatureStatus.get(sig) ?? "confirmed";
     return s === "none" ? null : { slot: 1, confirmations: null, err: s === "failed" ? { InstructionError: [0, "Custom"] } : null, confirmationStatus: s === "failed" ? "confirmed" : s };
   }) }));
+  // No recent fees (the fee transfer gets the floor price), no recent signatures and no landed transaction unless a test says otherwise.
+  vi.spyOn(solanaTx.connection, "getRecentPrioritizationFees").mockResolvedValue([]);
+  vi.spyOn(solanaTx.connection, "getSignaturesForAddress").mockResolvedValue([]);
+  vi.spyOn(solanaTx.connection, "getTransaction").mockResolvedValue(null as never);
   vi.spyOn(solanaTx.connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
   vi.spyOn(solanaTx.connection, "sendRawTransaction").mockImplementation(async (raw) => bs58.encode(VersionedTransaction.deserialize(raw as Uint8Array).signatures[0]!));
   vi.spyOn(bitcoin, "bitcoinBalance").mockImplementation(async (address) => state.balances.get(balanceKey(address, null)) ?? 0n);

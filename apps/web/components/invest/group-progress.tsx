@@ -3,7 +3,7 @@
 import { useAppKit } from "@reown/appkit/react";
 import { ApiError } from "@repo/api-client";
 import {
-  describeError, formatSol, groupSignerReducer, initialGroupSignerState, LEG_IN_FLIGHT, legAmounts, legRoute, legTitle, OPERATION_STATUS_LABEL, runGroup, useCountdown,
+  describeError, formatSol, groupSignerReducer, initialGroupSignerState, LEG_IN_FLIGHT, legAmounts, legRoute, legTitle, OPERATION_STATUS_LABEL, OUTCOME_UNKNOWN, runGroup, useCountdown,
   type GroupSignerEvent, type GroupSignerState,
 } from "@repo/app-core";
 import { SOL_BUFFER_LAMPORTS, type ErrorCode, type GroupResponse, type OperationView } from "@repo/validator";
@@ -69,12 +69,13 @@ function PricesStrip({ group, op, onDecide }: { group: GroupResponse; op: Operat
 function failureCopy(f: Extract<GroupSignerState, { kind: "failed" }>) {
   if (f.code === "WALLET_REJECTED") return describeError("WALLET_REJECTED");
   if (f.code === "WRONG_WALLET") return { title: "Wrong wallet", message: f.message };
+  if (f.code === OUTCOME_UNKNOWN) return { title: "Confirming with the network", message: f.message };
   return toDisplayError(new ApiError(f.code as ErrorCode, 0, f.message, undefined, f.details));
 }
 
 /**
- * Signs and tracks a grouped investment: quotes a chunk, opens the wallet once (or once per transaction when the wallet cannot sign a batch), submits,
- * and repeats until nothing is left to sign. The server prepares and checks everything; nothing here resends a submitted group.
+ * Signs and tracks a grouped investment: quotes a chunk, opens the wallet once (twice on MetaMask, which signs and sends; once per transaction when the wallet
+ * cannot sign a batch), submits, and repeats until nothing is left to sign. The server prepares and checks everything; nothing here resends a submitted group.
  */
 export function GroupProgress({ operationId, autoStart = false }: { operationId: string; autoStart?: boolean }) {
   const qc = useQueryClient();
@@ -96,12 +97,12 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
   const stop = useMutation({ mutationFn: () => api.cancelOperation(operationId), onSuccess: setOp });
 
   /**
-   * Groups until nothing is left to sign or something this drive sent failed (the server then waits for Continue or Stop). The next chunk is requested only once
-   * the previous chunk's fee has settled: the server refuses a group while a fee is in flight, so the website waits (never retries the request).
+   * Groups until nothing is left to sign or something this drive sent failed (the server then waits for Continue or Stop). The server refuses the next group
+   * while the previous fee is not confirmed on chain; that request is repeated for up to a minute ("Confirming fee…"), never any submission.
    */
   const drive = async () => {
     setRunning(true);
-    let now = tier;
+    let now = tier === "single" ? tier : await wallet.chooseTier();
     const leftOut = new Set<string>();
     const signed = new Set<string>();
     const track = (e: GroupSignerEvent) => {
@@ -112,16 +113,16 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
     };
     try {
       for (;;) {
-        let o = await runGroup(api, toSigner(wallet), operationId, track, {
+        const o = await runGroup(api, toSigner(wallet), operationId, track, {
           tier: now, walletName: wallet.walletName,
           acceptNewPrices: () => new Promise<boolean>((resolve) => { decision.current = resolve; }),
           onDowngrade: () => { now = "single"; setTier("single"); },
         });
-        if (!o) return;
-        while (alive.current && o.legs.some((l) => l.kind === "network_fee" && LEG_IN_FLIGHT.includes(l.status))) {
-          setOp(o);
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-          o = await api.getOperation(operationId);
+        if (!o) {
+          // A failed group returns no view, and after OUTCOME_UNKNOWN the server still holds the claim (legs SUBMITTING): the fresh view shows them in flight, so
+          // the page waits instead of offering "Try again".
+          void qc.invalidateQueries({ queryKey: ["operation", operationId] });
+          return;
         }
         setOp(o);
         const broke = o.legs.some((l) => signed.has(l.id) && (l.status === "FAILED" || (l.status === "PLANNED" && !!l.lastError)));
@@ -150,7 +151,7 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
   const left = assets.some((l) => l.status === "PLANNED" && !l.recoveryOf);
   const recovery = o.legs.find((l) => l.recoveryOf && l.status === "PLANNED");
   const failure = state.kind === "failed" ? failureCopy(state) : null;
-  const busy = running || state.kind === "quoting" || state.kind === "sending";
+  const busy = running || state.kind === "quoting" || state.kind === "feeConfirming" || state.kind === "sending";
 
   return (
     <div className="space-y-4">
@@ -160,6 +161,7 @@ export function GroupProgress({ operationId, autoStart = false }: { operationId:
 
       {(state.kind === "priceMoved" || state.kind === "signing" || state.kind === "sending") && <PricesStrip group={state.group} op={o} onDecide={(accept) => decision.current?.(accept)} />}
       {state.kind === "quoting" && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Getting fresh prices…</p>}
+      {state.kind === "feeConfirming" && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Confirming fee…</p>}
       {state.kind === "signing" && <p role="status" className="text-sm text-ink">Approve in your wallet{tier === "single" && ". Your wallet signs one transaction at a time, so you will be asked several times"}.</p>}
       {state.kind === "sending" && <p role="status" className="text-sm text-ink-muted"><Loader2 aria-hidden className="mr-2 inline size-4 animate-spin" />Sending…</p>}
 

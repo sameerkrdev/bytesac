@@ -8,7 +8,7 @@ import { buyLeg, feeLeg, me, operation, renderApp } from "./invest-fixtures";
 
 const api = { investPlan: vi.fn(), cancelOperation: vi.fn(), getOperation: vi.fn() };
 vi.mock("@/lib/api", () => ({ api: { investPlan: (b: unknown) => api.investPlan(b), cancelOperation: (id: string) => api.cancelOperation(id), getOperation: (id: string) => api.getOperation(id) } }));
-vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({}) }));
+vi.mock("@/lib/wallet/use-leg-signer", () => ({ useLegSigner: () => ({ chooseTier: async () => "sign_all" }) }));
 import { InvestWizard } from "@/components/invest/invest-wizard";
 
 const open = () => renderApp(<InvestWizard basketId="b" name="Core Crypto" minimumUsdc="250" incrementUsdc="50" open onOpenChange={() => undefined} />);
