@@ -219,6 +219,18 @@ export async function blockhashUsable(recentBlockhash: string, quoteBlockHeight:
 /** One attempt, never retried. A `SendTransactionError` is a definitive refusal; any other failure leaves the outcome unknown. */
 export const sendSolana = (raw: Uint8Array): Promise<string> => connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 0 });
 
+/** True once `signature` is confirmed or finalized without error; false when it failed or `waitMs` passes first (always asks at least once). Polls every 500 ms. */
+export async function solanaConfirmed(signature: string, waitMs: number): Promise<boolean> {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const status = (await connection.getSignatureStatuses([signature])).value[0];
+    if (status?.err) return false;
+    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return true;
+    if (Date.now() >= until) return false;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 /**
  * `finalized` and `failed` are terminal; `pending` covers not-yet-seen and not-yet-finalized. With `recentBlockhash`: a signature that is still not
  * found after that blockhash expired can never land, so it is `expired` (checked in this order: the expiry first, then the lookup).

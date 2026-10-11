@@ -35,6 +35,18 @@ export async function assertOperable(ctx: OpCtx, op: Op): Promise<void> {
 
 export const sha256Hex = (s: string) => createHash("sha256").update(s.toLowerCase()).digest("hex");
 
+/** Spec 11: an RWA leg (the asset bought, or the asset sold) is evaluated again at every quote, per leg or in a group: rules or the declaration may have changed since the plan. Earlier settled legs stand. */
+export async function assertLegAllowed(ctx: OpCtx, op: Op, leg: Leg): Promise<void> {
+  const rwaDeploymentId = leg.kind === "network_fee" ? null : (leg.fromDeploymentId ?? leg.toDeploymentId);
+  const [rwa] = rwaDeploymentId ? await db.select({ instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType }).from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.id, rwaDeploymentId)) : [];
+  if (rwa && isRwa(rwa.assetType)) {
+    const action = leg.fromDeploymentId ? "sell" : "acquire";
+    const results = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: [{ ...rwa, deploymentId: rwaDeploymentId!, action }] });
+    await recordDecisions(db, [{ operationId: op.id, legId: leg.id, userId: ctx.userId, ipCountry: ctx.meta.ipCountry, instrumentId: rwa.instrumentId, action, result: results.get(rwa.instrumentId)! }]);
+    assertAllowed(results);
+  }
+}
+
 export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise<LegQuoteResponse> {
   let { op, legs, leg } = await loadLeg(ctx, opId, legId);
   await assertOperable(ctx, op);
@@ -46,15 +58,7 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
     ? legs.some((l) => l.id !== leg.id && !l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")
     : legs.some((l) => l.sequence < leg.sequence && !(l.status === "SETTLED" || l.recoveryToken || (l.kind === "network_fee" && l.status === "PENDING_CHAIN")))) throw invalidTransition("Finish the previous leg first.");
 
-  // Spec 11: an RWA leg (the asset bought, or the asset sold) is evaluated again at every quote: rules or the declaration may have changed since the plan. Earlier settled legs stand.
-  const rwaDeploymentId = leg.kind === "network_fee" ? null : (leg.fromDeploymentId ?? leg.toDeploymentId);
-  const [rwa] = rwaDeploymentId ? await db.select({ instrumentId: instrumentDeployments.instrumentId, assetType: instruments.assetType }).from(instrumentDeployments).innerJoin(instruments, eq(instruments.id, instrumentDeployments.instrumentId)).where(eq(instrumentDeployments.id, rwaDeploymentId)) : [];
-  if (rwa && isRwa(rwa.assetType)) {
-    const action = leg.fromDeploymentId ? "sell" : "acquire";
-    const results = await evaluateFor(db, { userId: ctx.userId, ipCountry: ctx.meta.ipCountry, items: [{ ...rwa, deploymentId: rwaDeploymentId!, action }] });
-    await recordDecisions(db, [{ operationId: op.id, legId: leg.id, userId: ctx.userId, ipCountry: ctx.meta.ipCountry, instrumentId: rwa.instrumentId, action, result: results.get(rwa.instrumentId)! }]);
-    assertAllowed(results);
-  }
+  await assertLegAllowed(ctx, op, leg);
 
   // A rebalance's buys are sized once, at the first buy's quote, from the basket cash that actually arrived (spec section 4.3).
   const isBuy = leg.fromDeploymentId === null && leg.kind !== "network_fee" && !leg.recoveryOf;

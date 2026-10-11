@@ -204,6 +204,12 @@ export async function usdcPrice(): Promise<string> {
   return price?.value && Number(price.value) > 0 ? price.value : "1"; // a stablecoin: without a fresh, positive market price the peg is used
 }
 
+/** A stopped or cancelled operation gives up its quoted (unsigned) groups: they are RELEASED and their PLANNED legs leave them. */
+export async function releaseQuotedGroups(tx: Tx, opId: string): Promise<void> {
+  const released = await tx.update(operationGroups).set({ status: "RELEASED", updatedAt: sql`now()` }).where(and(eq(operationGroups.operationId, opId), eq(operationGroups.status, "QUOTED"))).returning({ id: operationGroups.id });
+  if (released.length) await tx.update(operationLegs).set({ groupId: null, updatedAt: sql`now()` }).where(and(inArray(operationLegs.groupId, released.map((g) => g.id)), eq(operationLegs.status, "PLANNED")));
+}
+
 /**
  * Cancels a plan nothing was submitted for, or stops an operation between legs: PARTIAL once an asset leg settled or a leg's outcome is still unknown
  * (that leg keeps being tracked and reconciled), otherwise FAILED. A leg being sent or confirmed blocks it; an UNKNOWN one does not.
@@ -214,6 +220,7 @@ export async function cancelOperation(ctx: OpCtx, opId: string): Promise<Operati
     if (op.userId !== ctx.userId) throw notFound();
     const legs = await tx.select({ kind: operationLegs.kind, status: operationLegs.status, recoveryToken: operationLegs.recoveryToken }).from(operationLegs).where(eq(operationLegs.operationId, opId));
     if (legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"].includes(l.status))) throw invalidTransition("A transaction is still pending. Wait for it to finish.");
+    await releaseQuotedGroups(tx, opId);
     if (op.status === "PLANNED") return setOperationStatus(tx, ctx, op, "CANCELLED");
     if (op.status === "IN_PROGRESS") {
       return setOperationStatus(tx, ctx, op, stopStatus(legs));
