@@ -19,6 +19,7 @@ Consolidated list of everything still open after Spec 14 (2026-10-03). This is t
 - [ ] Firebase project, VAPID key and service account (`FIREBASE_SERVICE_ACCOUNT`, `NEXT_PUBLIC_FIREBASE_*`).
 - [ ] Cloudflare R2 bucket and credentials.
 - [ ] Bundle id `com.bytesac.app`, production metadata URL and icons.
+- [ ] **Spec 22 P0 wallet lab (user action, mainnet, tiny amounts).** Set `NEXT_PUBLIC_WALLET_LAB=1` locally, open `/dev/wallet-lab`, and run every batch size with Phantom, Solflare, Backpack, MetaMask (Solana), Coinbase, Bitget, OKX and Trust (WalletConnect). On EVM, run MetaMask, Coinbase, Rabby, Phantom EVM, Trust and OKX on Base, Arbitrum and Polygon (Ethereum capabilities only). Run `scripts/p0-lifi-check.ts`. Paste the results into INTEGRATION-AUDIT §Batch signing (P0). Cost: about 0.000005 SOL per sent Solana transaction plus EVM gas for the calls.
 
 ## 2. Platform wallets and treasury (user actions)
 
