@@ -1,9 +1,9 @@
 import express from "express";
-import { investRequestSchema, sellRequestSchema, rebalanceRequestSchema, repairRequestSchema, legSubmitSchema, groupRequestSchema, groupSubmitSchema, z } from "@repo/validator";
+import { investRequestSchema, sellRequestSchema, rebalanceRequestSchema, repairRequestSchema, legSubmitSchema, groupRequestSchema, groupSubmitSchema, continueRequestSchema, z } from "@repo/validator";
 import { requireSession } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import * as operationsService from "./operations.service";
-import { cancelOperation, createInvestPlan, createRebalancePlan, createRepairPlan, createSellPlan, getOperation, quoteLeg, requestGroup, submitGroup, submitLeg } from "./operations.controller";
+import { cancelOperation, continueOperation, createInvestPlan, createRebalancePlan, createRepairPlan, createSellPlan, getOperation, quoteLeg, requestGroup, submitGroup, submitLeg } from "./operations.controller";
 
 const idParam = z.object({ id: z.uuid() });
 
@@ -35,6 +35,8 @@ router.post("/:id/legs/:legId/submit", validate({ params: legParams, body: legSu
 router.post("/:id/groups", validate({ params: idParam, body: groupRequestSchema }), requestGroup);
 
 router.post("/:id/groups/:groupId/submit", validate({ params: groupParams, body: groupSubmitSchema }), submitGroup);
+
+router.post("/:id/continue", validate({ params: idParam, body: continueRequestSchema }), continueOperation);
 
 router.post("/:id/cancel", validate({ params: idParam }), cancelOperation);
 

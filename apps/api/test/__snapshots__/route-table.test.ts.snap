@@ -121,6 +121,7 @@ exports[`mounts exactly the same endpoints and middleware 1`] = `
   "POST /v1/memberships/:mid/verification/documents/:docId/confirm handlers=2",
   "POST /v1/memberships/:mid/verification/submit handlers=2",
   "POST /v1/operations/:id/cancel handlers=2",
+  "POST /v1/operations/:id/continue handlers=2",
   "POST /v1/operations/:id/groups handlers=2",
   "POST /v1/operations/:id/groups/:groupId/submit handlers=2",
   "POST /v1/operations/:id/legs/:legId/quote handlers=2",

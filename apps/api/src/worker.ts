@@ -8,13 +8,13 @@ import { reconcileRevenue } from "@/modules/fees/fees.service";
 import { checkGasWallets, seedPlatformWallets } from "@/modules/operations/gas.service";
 import { deliverNotification, fanOutToHolders } from "@/modules/notifications/notifications.service";
 import { onVersionPublished } from "@/modules/rebalance/rebalance.service";
-import { expireStalePlans, stopStalledRecoveries, trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
+import { expireStalePlans, stopStalledInvests, stopStalledRecoveries, trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
 import { reconcilePositions } from "@/modules/portfolio/reconciliation.service";
 import { runBasketPerformance, runPriceSnapshot } from "@/modules/discovery/performance.service";
 import { embedBasket, refreshSearchIndex, sweepEmbeddings } from "@/modules/discovery/search-index.service";
 
 /** Every 5 minutes: hand stuck legs to the tracker and cancel expired, untouched plans (releasing their gas reservations). */
-const sweepOperations = async () => { await trackStaleClaims(); await expireStalePlans(); await stopStalledRecoveries(); };
+const sweepOperations = async () => { await trackStaleClaims(); await expireStalePlans(); await stopStalledRecoveries(); await stopStalledInvests(); };
 
 /**
  * Starts one Worker per queue and registers the repeatable jobs. `upsertJobScheduler` is keyed by a fixed id, so any number of instances (or restarts)

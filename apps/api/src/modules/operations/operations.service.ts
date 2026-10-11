@@ -90,7 +90,7 @@ export async function setLegStatus(tx: Tx, ctx: OpCtx | null, leg: Pick<Leg, "id
 
 export async function setOperationStatus(tx: Tx, ctx: OpCtx | null, op: Pick<Op, "id" | "status">, to: Op["status"]): Promise<void> {
   if (!canTransition(OPERATION_TRANSITIONS, op.status, to)) throw invalidTransition(`An operation cannot go from ${op.status} to ${to}.`);
-  const rows = await tx.update(operations).set({ status: to, updatedAt: sql`now()` }).where(and(eq(operations.id, op.id), eq(operations.status, op.status))).returning({ id: operations.id });
+  const rows = await tx.update(operations).set({ status: to, updatedAt: sql`now()`, ...(to === "IN_PROGRESS" ? {} : { needsActionSince: null }) }).where(and(eq(operations.id, op.id), eq(operations.status, op.status))).returning({ id: operations.id });
   if (rows.length !== 1) throw invalidTransition("This operation changed. Reload and try again.");
   await writeAudit(tx, { ...auditBase(ctx, op.id), action: `operation.${to.toLowerCase()}`, entityType: "operation", entityId: op.id, metadata: { from: op.status, to } });
   // Every terminal status gives back what was reserved and will never be spent (idempotent; a sent drop and a submitted leg's fee stay counted).
@@ -165,10 +165,21 @@ export async function assertNoneInFlight(conn: DbOrTx, userId: string, asset: st
 export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: string): Promise<void> {
   const op = await lockOperation(tx, opId);
   if (op.status !== "IN_PROGRESS") return;
-  const all = await tx.select({ id: operationLegs.id, kind: operationLegs.kind, status: operationLegs.status, recoveryOf: operationLegs.recoveryOf }).from(operationLegs).where(eq(operationLegs.operationId, opId));
+  const all = await tx.select({ id: operationLegs.id, kind: operationLegs.kind, status: operationLegs.status, recoveryOf: operationLegs.recoveryOf, retryOf: operationLegs.retryOf, failureReason: operationLegs.failureReason, recoveryToken: operationLegs.recoveryToken }).from(operationLegs).where(eq(operationLegs.operationId, opId));
   if (all.some((l) => l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")) return;
   const recovered = new Set(all.filter((l) => l.recoveryOf && l.status !== "FAILED" && l.status !== "UNKNOWN").map((l) => l.recoveryOf));
   const legs = all.filter((l) => !recovered.has(l.id));
+  if (await hasGroups(opId)) {
+    // Spec 22 B-08: a grouped operation never ends on its own after a failure; it waits for Continue or Stop (or the 24 h auto-stop).
+    const replaced = new Set(all.filter((l) => l.retryOf).map((l) => l.retryOf));
+    const assets = legs.filter((l) => l.kind !== "network_fee" && !replaced.has(l.id));
+    if (assets.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status))) return;
+    if (assets.every((l) => l.status === "SETTLED")) return setOperationStatus(tx, ctx, op, "COMPLETED");
+    const actionable = assets.some((l) => l.status === "PLANNED" || (l.status === "FAILED" && l.failureReason !== "SKIPPED" && !l.recoveryToken));
+    if (!actionable) return setOperationStatus(tx, ctx, op, stopStatus(all)); // only skips are left: PARTIAL, or FAILED when nothing settled
+    await tx.update(operations).set({ needsActionSince: sql`coalesce(${operations.needsActionSince}, now())` }).where(eq(operations.id, op.id));
+    return;
+  }
   if (legs.every((l) => l.status === "SETTLED")) {
     await setOperationStatus(tx, ctx, op, "COMPLETED");
     if (op.kind === "rebalance") await applyVersion(tx, ctx, { positionId: op.positionId!, userId: op.userId, versionId: op.versionId });

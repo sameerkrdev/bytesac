@@ -1,15 +1,15 @@
 import createHttpError from "http-errors";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
-import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFeeCharges, operationFees, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
+import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFeeCharges, operationFees, operationGroups, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
-import { CONFIRMATIONS, USDC_DECIMALS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
+import { CONFIRMATIONS, INVEST_AUTO_STOP_HOURS, USDC_DECIMALS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
 import { bitcoinTx } from "@/providers/bitcoin";
 import { evmNativeReceived, evmReceipt } from "@/providers/evm-rpc";
 import { routeProviderById } from "@/providers/routes";
 import { solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
 import { enqueue } from "@/config/queues";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
+import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, releaseQuotedGroups, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
 import { gasPayerFor } from "@/modules/operations/plan.service";
 import { markSubmitted } from "@/modules/operations/submit.service";
@@ -195,6 +195,33 @@ export async function stopStalledRecoveries(): Promise<void> {
       if (notificationId) await enqueue("notifications", { job: "deliver", notificationId });
     } catch (err) {
       logger.warn("sweep: could not auto-stop an operation", { operationId: id, errMessage: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+}
+
+/**
+ * A batched investment that has needed the user's action (Continue or Stop) for 24 hours with nothing in flight is stopped as the user's Stop would (PARTIAL
+ * once an asset leg settled, else FAILED; their USDC is in their wallet), its unsigned groups are released, it is audited and the user is told. Re-checked under
+ * the operation's lock; an operation without groups (the per-leg path) is never touched.
+ */
+export async function stopStalledInvests(): Promise<void> {
+  const due = await db.select({ id: operations.id }).from(operations)
+    .where(and(eq(operations.status, "IN_PROGRESS"), sql`${operations.needsActionSince} < now() - ${`${INVEST_AUTO_STOP_HOURS} hours`}::interval`, inArray(operations.id, db.select({ id: operationGroups.operationId }).from(operationGroups))));
+  for (const { id } of due) {
+    try {
+      const notificationId = await db.transaction(async (tx) => {
+        const op = await lockOperation(tx, id);
+        const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, id));
+        if (op.status !== "IN_PROGRESS" || !op.needsActionSince || Date.now() - op.needsActionSince.getTime() < INVEST_AUTO_STOP_HOURS * 3_600_000 || legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status))) return null;
+        await releaseQuotedGroups(tx, id);
+        await setOperationStatus(tx, null, op, stopStatus(legs));
+        await writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "operation.auto_stopped", entityType: "operation", entityId: op.id, requestId: `auto-stop-${op.id}`, metadata: { reason: "needs_action_timeout" } });
+        const [b] = op.basketId ? await tx.select({ slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, op.basketId)) : [];
+        return notify(tx, { userId: op.userId, kind: "execution_incomplete", basketId: op.basketId ?? undefined, data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id, autoStopped: true, investment: true }, dedupeKey: `incomplete:${op.id}` });
+      });
+      if (notificationId) await enqueue("notifications", { job: "deliver", notificationId });
+    } catch (err) {
+      logger.warn("sweep: could not auto-stop an investment", { operationId: id, errMessage: err instanceof Error ? err.message : "unknown" });
     }
   }
 }
