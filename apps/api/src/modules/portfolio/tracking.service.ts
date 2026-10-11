@@ -7,7 +7,7 @@ import { CONFIRMATIONS, INVEST_AUTO_STOP_HOURS, USDC_DECIMALS, USDC_SOLANA_MINT,
 import { bitcoinTx } from "@/providers/bitcoin";
 import { evmNativeReceived, evmReceipt } from "@/providers/evm-rpc";
 import { routeProviderById } from "@/providers/routes";
-import { connection, sameExceptComputeBudget, solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
+import { connection, landedMatchesPrepared, landedTx, sameExceptComputeBudget, solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
 import { enqueue } from "@/config/queues";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, releaseQuotedGroups, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
@@ -144,12 +144,6 @@ async function markStaleUnknown(legId: string): Promise<void> {
   });
 }
 
-/** The landed transaction as a comparable message, or null when the RPC does not show it. */
-async function landedTx(signature: string): Promise<VersionedTransaction | null> {
-  const landed = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
-  return landed ? new VersionedTransaction(landed.transaction.message) : null;
-}
-
 const preparedOf = (leg: Pick<Leg, "expectedTx">): VersionedTransaction | null => {
   const base64 = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
   return base64 ? VersionedTransaction.deserialize(Buffer.from(base64, "base64")) : null;
@@ -200,18 +194,25 @@ async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<voi
   }
 }
 
-/** After the fact (sign-and-send): the wallet built the transaction, so once it landed its message is compared with the prepared one. A difference beyond ComputeBudget is an alert (audit + error log); tracking goes on from chain evidence. */
-async function checkLandedMessage(op: Op, leg: Leg): Promise<void> {
+/**
+ * Proof that a sign-and-send leg's reported signature is our prepared transaction (message equal beyond ComputeBudget, fee payer the user), checked before it can be
+ * settled or ledgered. `pending` while the transaction cannot be fetched (or the lookup failed); `mismatch` is an alert (audit + error log). Other tiers need no proof.
+ */
+async function proveSignAndSend(op: Op, leg: Leg): Promise<"ok" | "pending" | "mismatch"> {
   try {
-    const prepared = preparedOf(leg);
+    const prepared = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
     const [group] = leg.groupId ? await db.select({ tier: operationGroups.tier }).from(operationGroups).where(eq(operationGroups.id, leg.groupId)) : [];
-    if (group?.tier !== "sign_and_send" || !prepared) return;
-    const landed = await landedTx(leg.sourceTx!);
-    if (!landed || sameExceptComputeBudget(prepared, landed)) return;
+    if (group?.tier !== "sign_and_send") return "ok";
+    if (!prepared) return "mismatch";
+    const matches = await landedMatchesPrepared(leg.sourceTx!, prepared, addressOn(await userAddresses(db, op.userId), "solana"));
+    if (matches === null) return "pending";
+    if (matches) return "ok";
     logger.error("a sign-and-send transaction landed with a message that is not the prepared one", { legId: leg.id, operationId: op.id });
     await db.transaction((tx) => writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "leg.tx_mismatch_after_send", entityType: "operation_leg", entityId: leg.id, requestId: `track-${leg.id}`, metadata: { operationId: op.id } }));
+    return "mismatch";
   } catch (err) {
     logger.warn("could not compare a landed transaction with its prepared one", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
+    return "pending";
   }
 }
 
@@ -309,6 +310,7 @@ export async function stopStalledInvests(): Promise<void> {
 async function trackOnce(legId: string, recheck: number): Promise<boolean> {
   const [row] = await db.select({ leg: operationLegs, op: operations }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
   if (!row || !["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(row.leg.status) || !row.leg.sourceTx) return false;
+  if (row.leg.failureReason === "TX_MISMATCH_AFTER_SEND") return false; // ops resolve it; the reported signature is never followed to a settlement
   const { op } = row;
   const sourceTx = row.leg.sourceTx;
   let { leg } = row;
@@ -342,7 +344,23 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
 
   const recentBlockhash = (leg.expectedTx as { recentBlockhash?: string } | null)?.recentBlockhash;
   const source = await finality(leg.fromChain, sourceTx, recentBlockhash);
-  if (leg.status === "SUBMITTED" && (source === "finalized" || source === "failed") && leg.fromChain === "solana") await checkLandedMessage(op, leg);
+  // Every settlement of a sign-and-send leg needs the proof first (SUBMITTED, or UNKNOWN after the window); PENDING_CHAIN is only reached through it. Fails closed: no proof, no settlement.
+  if ((leg.status === "SUBMITTED" || leg.status === "UNKNOWN") && (source === "finalized" || source === "failed") && leg.fromChain === "solana") {
+    const proof = await proveSignAndSend(op, leg);
+    if (proof === "pending") return notFinal();
+    if (proof === "mismatch") {
+      // Not our transaction: nothing is settled or ledgered from it. A fee leg fails (its legs are charged again); an asset leg waits for ops (UNKNOWN, D-075).
+      await db.transaction(async (tx) => {
+        await lockOperation(tx, op.id);
+        if (leg.kind === "network_fee") {
+          await setLegStatus(tx, null, leg, "FAILED", { failureReason: "TX_MISMATCH_AFTER_SEND" });
+          await refreshOperationStatus(tx, null, op.id);
+        } else if (leg.status === "UNKNOWN") await tx.update(operationLegs).set({ failureReason: "TX_MISMATCH_AFTER_SEND", updatedAt: sql`now()` }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "UNKNOWN")));
+        else await setLegStatus(tx, null, leg, "UNKNOWN", { unknownSince: sql`now()` as unknown as Date, failureReason: "TX_MISMATCH_AFTER_SEND" });
+      });
+      return false;
+    }
+  }
   if (source === "failed") return fail("The source transaction failed.");
   if (source === "expired") return fail("The transaction never landed and its blockhash expired, so it can no longer execute.");
   if (source === "pending") return notFinal();

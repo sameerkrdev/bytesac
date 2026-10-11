@@ -11,14 +11,21 @@ import { arrange, groupReq, groupRows, legs, opRow, post, walletSign, type H, ty
 
 // Spec 22 B-27 / section 6.4: the wallet signs and sends; the server claims first, records the signatures it is told, and resolves the rest from the chain.
 
-beforeEach(resetDb);
+const onChain = new Map<string, string>(); // signature -> the transaction the wallet really sent, for the proof the server asks the RPC for
+beforeEach(async () => { onChain.clear(); await resetDb(); });
 afterEach(() => vi.restoreAllMocks());
 
 const req = (extra: object = {}) => ({ tier: "sign_and_send", ...extra });
 const step = (h: H, opId: string, groupId: string, name: "claim" | "sent" | "release", body?: object) => post(h, `/v1/operations/${opId}/groups/${groupId}/${name}`, body);
 /** What the wallet's signAndSend would return for a transaction: its first signature, base58. */
 const signatureOf = (t: Tx, wallet: Wallet) => bs58.encode(VersionedTransaction.deserialize(Buffer.from(walletSign(t.serializedBase64, wallet), "base64")).signatures[0]!);
-const sentBody = (txs: Tx[], wallet: Wallet) => ({ signatures: txs.map((t) => ({ legId: t.legId, signature: signatureOf(t, wallet) })) });
+/** What the wallet reports; the RPC then shows exactly those transactions (override `getTransaction` to show something else). */
+const sentBody = (txs: Tx[], wallet: Wallet) => {
+  const signatures = txs.map((t) => ({ legId: t.legId, signature: signatureOf(t, wallet) }));
+  signatures.forEach((s, n) => onChain.set(s.signature, txs[n]!.serializedBase64));
+  vi.mocked(connection.getTransaction).mockImplementation((async (sig: string) => (onChain.has(sig) ? landedAs(onChain.get(sig)!) : null)) as never);
+  return { signatures };
+};
 const kinds = (txs: Tx[]) => txs.map((t) => t.kind);
 
 /** A plan whose fee shares are all covered, so a sign-and-send group is the asset chunk itself (as after a confirmed fee). */
@@ -289,13 +296,13 @@ describe("a sign-and-send transaction that landed (after-the-fact check)", () =>
   }
   const audits = (legId: string) => adminSql<{ action: string }[]>`SELECT action FROM app.audit_events WHERE action = 'leg.tx_mismatch_after_send' AND entity_id = ${legId}`;
 
-  it("a landed message that is not the prepared one writes tx_mismatch_after_send and logs an error; tracking goes on from chain evidence", async () => {
+  it("a landed message that is not the prepared one writes tx_mismatch_after_send and logs an error; the asset leg becomes UNKNOWN, not a settlement", async () => {
     const error = vi.spyOn(logger, "error");
     const legId = await sentAndFailed((_own, other) => landedAs(other.serializedBase64));
     await trackLeg(legId);
     expect(await audits(legId)).toHaveLength(1);
     expect(error).toHaveBeenCalledTimes(1);
-    expect((await adminSql<{ status: string }[]>`SELECT status FROM app.operation_legs WHERE id = ${legId}`)[0]!.status).toBe("FAILED");
+    expect((await adminSql<{ status: string; failure_reason: string }[]>`SELECT status, failure_reason FROM app.operation_legs WHERE id = ${legId}`)[0]).toMatchObject({ status: "UNKNOWN", failure_reason: "TX_MISMATCH_AFTER_SEND" });
   });
 
   it("the prepared message, or one that differs only in ComputeBudget, raises nothing", async () => {
@@ -304,5 +311,113 @@ describe("a sign-and-send transaction that landed (after-the-fact check)", () =>
     await trackLeg(legId);
     expect(await audits(legId)).toHaveLength(0);
     expect(error).not.toHaveBeenCalled();
+    expect((await adminSql<{ status: string }[]>`SELECT status FROM app.operation_legs WHERE id = ${legId}`)[0]!.status).toBe("FAILED"); // it failed on chain, and it is ours
+  });
+});
+
+describe("a reported signature must be our prepared transaction before it gates or settles anything", () => {
+  const count = async (table: string) => Number((await adminSql<{ n: string }[]>`SELECT count(*) AS n FROM ${adminSql(`app.${table}`)}`)[0]!.n);
+  const row = async (legId: string) => (await adminSql<{ status: string; failure_reason: string | null }[]>`SELECT status, failure_reason FROM app.operation_legs WHERE id = ${legId}`)[0]!;
+  /** The fee-only group claimed and reported with the wallet's signature; the fee is confirmed in the signature status. */
+  async function feeReported() {
+    const ctx = await arrange();
+    const g1 = (await groupReq(ctx.user.h, ctx.op.id, req())).body as { groupId: string; transactions: Tx[] };
+    await step(ctx.user.h, ctx.op.id, g1.groupId, "claim");
+    const body = sentBody(g1.transactions, ctx.wallet);
+    expect((await step(ctx.user.h, ctx.op.id, g1.groupId, "sent", body)).status).toBe(200);
+    const fee = g1.transactions[0]!;
+    return { ...ctx, fee, signature: body.signatures[0]!.signature, unrelated: landedAs(fee.serializedBase64, (ix) => ix.slice(0, 2)) }; // the same payer and blockhash, none of the transfers
+  }
+
+  it("(gate) an unrelated confirmed signature for the fee is 409 TX_MISMATCH and no asset group is formed; unreadable or missing keeps it fee_confirming", async () => {
+    const { user, op, fee, unrelated } = await feeReported();
+    vi.mocked(connection.getTransaction).mockResolvedValue(unrelated);
+    const mismatch = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }));
+    expect(mismatch.status).toBe(409);
+    expect(mismatch.body.error.code).toBe("TX_MISMATCH");
+    expect(await groupRows(op.id)).toHaveLength(1);
+
+    // Fails closed: an RPC error or nothing fetched yet never count as landed.
+    for (const lookup of [() => vi.mocked(connection.getTransaction).mockRejectedValue(new Error("rpc down")), () => vi.mocked(connection.getTransaction).mockResolvedValue(null as never)]) {
+      lookup();
+      const waiting = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-cccccccc" }));
+      expect(waiting.status).toBe(409);
+      expect(waiting.body.error).toMatchObject({ code: "OPERATION_IN_PROGRESS", details: { reason: "fee_confirming" } });
+      expect(await groupRows(op.id)).toHaveLength(1);
+    }
+
+    vi.mocked(connection.getTransaction).mockResolvedValue(landedAs(fee.serializedBase64));
+    expect((await groupReq(user.h, op.id, req({ idempotencyKey: "grp-dddddddd" }))).status).toBe(200); // ours: the next group is formed
+  });
+
+  it("(gate) the fee payer must be the user's address", async () => {
+    const { user, op, fee } = await feeReported();
+    const other = (await import("@solana/web3.js")).Keypair.generate().publicKey;
+    // Same instructions, another payer: the message differs (payer and accounts), so it is not ours.
+    const decompiled = TransactionMessage.decompile(VersionedTransaction.deserialize(Buffer.from(fee.serializedBase64, "base64")).message);
+    const foreign = { transaction: { message: new TransactionMessage({ payerKey: other, recentBlockhash: decompiled.recentBlockhash, instructions: decompiled.instructions }).compileToV0Message(), signatures: [] }, slot: 1, meta: null } as never;
+    vi.mocked(connection.getTransaction).mockResolvedValue(foreign);
+    expect((await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }))).body.error.code).toBe("TX_MISMATCH");
+  });
+
+  it("(tracker) a mismatched fee fails: no fee charge row, the covered legs are charged again by the next fee group", async () => {
+    const { user, chain, op, fee, signature, unrelated } = await feeReported();
+    chain.solanaFinality.set(signature, "finalized");
+    vi.mocked(connection.getTransaction).mockResolvedValue(unrelated);
+    await trackLeg(fee.legId);
+    expect(await row(fee.legId)).toEqual({ status: "FAILED", failure_reason: "TX_MISMATCH_AFTER_SEND" });
+    expect(await count("operation_fee_charges")).toBe(0);
+    expect((await legs(op.id)).every((l) => l.fee_covered_by === null)).toBe(true);
+    const again = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }));
+    expect(again.status).toBe(200);
+    expect(kinds(again.body.transactions)).toEqual(["fee"]); // the shares are uncovered again
+  });
+
+  it("(tracker) fails closed: an RPC error or a transaction not yet visible leaves the fee and an asset leg pending, never settled or ledgered", async () => {
+    const { chain, fee, signature } = await feeReported();
+    chain.solanaFinality.set(signature, "finalized");
+    for (const lookup of [() => vi.mocked(connection.getTransaction).mockRejectedValue(new Error("rpc down")), () => vi.mocked(connection.getTransaction).mockResolvedValue(null as never)]) {
+      lookup();
+      await expect(trackLeg(fee.legId)).rejects.toThrow(); // retried by the queue
+      await trackLeg(fee.legId, 1); // an hourly recheck never throws
+      expect(await row(fee.legId)).toEqual({ status: "SUBMITTED", failure_reason: null });
+    }
+    expect(await count("operation_fee_charges")).toBe(0);
+
+    await resetDb();
+    const ctx = await arrangeAssets();
+    await step(ctx.user.h, ctx.op.id, ctx.group.groupId, "claim");
+    const body = sentBody(ctx.group.transactions, ctx.wallet);
+    await step(ctx.user.h, ctx.op.id, ctx.group.groupId, "sent", { signatures: body.signatures.slice(0, 1) });
+    const sig = body.signatures[0]!.signature;
+    ctx.chain.solanaFinality.set(sig, "finalized");
+    ctx.chain.solanaReceived.set(`${sig}:${ctx.user.solanaAddress}`, 1_000_000n);
+    vi.mocked(connection.getTransaction).mockRejectedValue(new Error("rpc down"));
+    await expect(trackLeg(body.signatures[0]!.legId)).rejects.toThrow();
+    expect((await row(body.signatures[0]!.legId)).status).toBe("SUBMITTED");
+    expect(await count("position_ledger_entries")).toBe(0);
+  });
+
+  it("(tracker) a mismatched asset leg is UNKNOWN for ops: nothing is ledgered, not even by an hourly recheck or after the 30-minute window", async () => {
+    const { user, chain, group, wallet, op } = await arrangeAssets();
+    await step(user.h, op.id, group.groupId, "claim");
+    const body = sentBody(group.transactions, wallet);
+    await step(user.h, op.id, group.groupId, "sent", { signatures: body.signatures.slice(0, 2) });
+    const [a, b] = body.signatures as [{ legId: string; signature: string }, { legId: string; signature: string }];
+    for (const s of [a, b]) {
+      chain.solanaFinality.set(s.signature, "finalized");
+      chain.solanaReceived.set(`${s.signature}:${user.solanaAddress}`, 1_000_000n); // the chain does show a transfer in that transaction, but it is not ours
+    }
+    vi.mocked(connection.getTransaction).mockResolvedValue(landedAs(group.transactions[3]!.serializedBase64));
+    await trackLeg(a.legId);
+    expect(await row(a.legId)).toEqual({ status: "UNKNOWN", failure_reason: "TX_MISMATCH_AFTER_SEND" });
+    await trackLeg(a.legId, 1);
+    expect((await row(a.legId)).status).toBe("UNKNOWN");
+
+    // A leg that went UNKNOWN only because tracking ran out its window gets the same proof on its recheck.
+    await adminSql`UPDATE app.operation_legs SET status = 'UNKNOWN', unknown_since = now() WHERE id = ${b.legId}`;
+    await trackLeg(b.legId, 1);
+    expect(await row(b.legId)).toEqual({ status: "UNKNOWN", failure_reason: "TX_MISMATCH_AFTER_SEND" });
+    expect(await count("position_ledger_entries")).toBe(0);
   });
 });

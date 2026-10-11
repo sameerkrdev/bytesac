@@ -203,6 +203,22 @@ export function sameExceptComputeBudget(prepared: VersionedTransaction, signed: 
   return JSON.stringify(nonComputeCore(prepared)) === JSON.stringify(nonComputeCore(signed));
 }
 
+/** The landed transaction as a comparable message, or null when the RPC does not show it. */
+export async function landedTx(signature: string): Promise<VersionedTransaction | null> {
+  const landed = await connection.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+  return landed ? new VersionedTransaction(landed.transaction.message) : null;
+}
+
+/**
+ * Proof that a signature a wallet reported (sign-and-send) is OUR prepared transaction: the landed message equals the prepared one (ComputeBudget differences
+ * allowed) and its fee payer is `owner`. Null while the transaction cannot be fetched yet.
+ */
+export async function landedMatchesPrepared(signature: string, preparedBase64: string, owner: string): Promise<boolean | null> {
+  const landed = await landedTx(signature);
+  if (!landed) return null;
+  return landed.message.staticAccountKeys[0]!.toBase58() === owner && sameExceptComputeBudget(VersionedTransaction.deserialize(Buffer.from(preparedBase64, "base64")), landed);
+}
+
 /**
  * Verifies the user-signed transaction matches the prepared message (byte-identical, or only ComputeBudget differs when `preparedBase64`
  * is the quote we stored) and is still safe to sponsor, then adds the platform fee-payer signature. Nothing is sent: the caller claims

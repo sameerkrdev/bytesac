@@ -6,7 +6,7 @@ import { db, isUniqueViolation, operationFees, operationGroups, operationLegs, o
 import { GROUP_SEND_WINDOW_MS, K_SIGN_ALL, K_SIGN_AND_SEND, SOL_BUFFER_LAMPORTS, USDC_SOLANA_MINT, approvalsEstimate, type GroupRequest, type GroupResponse, type GroupSent, type GroupSubmit, type OperationView } from "@repo/validator";
 import { logger } from "@repo/logger";
 import { enqueue } from "@/config/queues";
-import { blockhashUsable, buildFeeTransfer, connection, sendSolana, solanaBalance, solanaNeed, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
+import { blockhashUsable, buildFeeTransfer, connection, landedMatchesPrepared, sendSolana, solanaBalance, solanaNeed, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
 import { type Leg, type OpCtx, freeUsdcMicro, getOperation, invalidTransition, lockOperation, notFound, setLegStatus } from "./operations.service";
 import { assertSolFor } from "./plan.service";
@@ -42,10 +42,15 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   const owner = addressOn(addresses, "solana");
 
   // B-26: the next group waits for the previous fee transaction to be confirmed on chain, not settled. Read before the lock; a fee that is not in this map blocks without a reason.
-  const feeLegs = await db.select({ id: operationLegs.id, sourceTx: operationLegs.sourceTx }).from(operationLegs)
-    .where(and(eq(operationLegs.operationId, opId), eq(operationLegs.kind, "network_fee"), inArray(operationLegs.status, ["SUBMITTED", "PENDING_CHAIN"]), isNotNull(operationLegs.sourceTx)));
+  const feeLegs = await db.select({ id: operationLegs.id, sourceTx: operationLegs.sourceTx, status: operationLegs.status, expectedTx: operationLegs.expectedTx, tier: operationGroups.tier }).from(operationLegs)
+    .leftJoin(operationGroups, eq(operationGroups.id, operationLegs.groupId)).where(and(eq(operationLegs.operationId, opId), eq(operationLegs.kind, "network_fee"), inArray(operationLegs.status, ["SUBMITTED", "PENDING_CHAIN"]), isNotNull(operationLegs.sourceTx)));
   const statuses = feeLegs.length ? (await connection.getSignatureStatuses(feeLegs.map((l) => l.sourceTx!), { searchTransactionHistory: true }).catch(() => null))?.value ?? [] : [];
-  const feeState = new Map(feeLegs.map((l, n) => [l.id, statuses[n]?.err ? "failed" : statuses[n]?.confirmationStatus === "confirmed" || statuses[n]?.confirmationStatus === "finalized" ? "confirmed" : "pending"] as const));
+  const feeState = new Map<string, "confirmed" | "failed" | "pending" | "mismatch">(feeLegs.map((l, n) => [l.id, statuses[n]?.err ? "failed" : statuses[n]?.confirmationStatus === "confirmed" || statuses[n]?.confirmationStatus === "finalized" ? "confirmed" : "pending"]));
+  // A signature the wallet reported (sign-and-send) unlocks the next group only once it is proven to be our prepared transaction; the tracker proves it for PENDING_CHAIN.
+  await Promise.all(feeLegs.filter((l) => l.tier === "sign_and_send" && l.status === "SUBMITTED" && feeState.get(l.id) === "confirmed").map(async (l) => {
+    const matches = await landedMatchesPrepared(l.sourceTx!, (l.expectedTx as { preparedBase64?: string } | null)?.preparedBase64 ?? "", owner).catch(() => null);
+    feeState.set(l.id, matches === null ? "pending" : matches ? "confirmed" : "mismatch");
+  }));
 
   const prep = await db.transaction(async (tx) => {
     const op = await lockOperation(tx, opId);
@@ -56,6 +61,7 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
     const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, opId)).orderBy(asc(operationLegs.sequence));
     if (!groups.length && legs.some((l) => l.status !== "PLANNED")) throw invalidTransition("This investment is being signed one transaction at a time.");
     const blocking = legs.filter((l) => l.kind === "network_fee" && (IN_FLIGHT as readonly string[]).includes(l.status) && feeState.get(l.id) !== "confirmed");
+    if (blocking.some((l) => feeState.get(l.id) === "mismatch")) throw createHttpError(409, "The reported fee transaction is not the prepared one.", { code: "TX_MISMATCH" });
     if (blocking.length) throw inProgress(blocking.every((l) => feeState.get(l.id) === "pending") ? "fee_confirming" : undefined);
     // A claimed group whose legs are all past the claim (a send that ended) no longer holds the chain's one open slot.
     await tx.update(operationGroups).set({ status: "SENT", updatedAt: sql`now()` })
