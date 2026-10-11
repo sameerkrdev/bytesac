@@ -9,6 +9,7 @@ import { useEffect, type ReactNode } from "react";
 import { cookieStorage, cookieToInitialState, createStorage, WagmiProvider, type Config } from "wagmi";
 import { themes } from "@repo/design-tokens";
 import { resolvedTheme, useResolvedTheme } from "@/lib/theme";
+import { WalletConnectionsProvider } from "@/lib/wallet/use-wallet-for-chain";
 
 const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
 if (!projectId && typeof window !== "undefined") console.error("NEXT_PUBLIC_REOWN_PROJECT_ID is not set");
@@ -44,5 +45,5 @@ export function WalletProviders({ children, cookies }: { children: ReactNode; co
     appKit.setThemeMode(theme);
     appKit.setThemeVariables({ "--w3m-accent": themes[theme].primary });
   }, [theme]);
-  return <WagmiProvider config={wagmiAdapter.wagmiConfig as Config} initialState={initialState}>{children}</WagmiProvider>;
+  return <WagmiProvider config={wagmiAdapter.wagmiConfig as Config} initialState={initialState}><WalletConnectionsProvider>{children}</WalletConnectionsProvider></WagmiProvider>;
 }
