@@ -155,6 +155,14 @@ describe("request a group", () => {
     expect(q.body.error.code).toBe("INVALID_TRANSITION");
   });
 
+  it("counts each leg of a group against the quote rate limit: 60 per minute is 5 groups of 12", async () => {
+    const { user, op } = await arrange();
+    for (let n = 0; n < 5; n += 1) expect((await groupReq(user.h, op.id)).status).toBe(200);
+    const limited = await groupReq(user.h, op.id);
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe("RATE_LIMITED");
+  });
+
   it("logs the batch with the wallet name and tier and no address (telemetry)", async () => {
     const info = spyInfo();
     const { user } = await quoted();

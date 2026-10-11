@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import type { InvestRequest, SellRequest, RebalanceRequest, RepairRequest, LegSubmit, GroupRequest, GroupSubmit, ContinueRequest } from "@repo/validator";
+import { K_SIGN_ALL, type ContinueRequest, type GroupRequest, type GroupSubmit, type InvestRequest, type LegSubmit, type RebalanceRequest, type RepairRequest, type SellRequest } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import * as operationsService from "./operations.service";
 import * as planService from "./plan.service";
@@ -84,7 +84,7 @@ export const cancelOperation = async (req: Request, res: Response, next: NextFun
 
 export const requestGroup = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await consume(limits.quotesUser, req.auth!.userId);
+    await consume(limits.quotesUser, req.auth!.userId, K_SIGN_ALL); // a group quotes up to K legs: each counts, like a per-leg quote
     res.json(await groupsService.requestGroup(ctx(req), req.params.id as string, req.body as GroupRequest));
   } catch (error) {
     next(error);
