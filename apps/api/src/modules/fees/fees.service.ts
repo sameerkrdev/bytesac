@@ -1,14 +1,14 @@
 import createHttpError from "http-errors";
 import { PublicKey } from "@solana/web3.js";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from "drizzle-orm";
-import { basketVersions, baskets, db, operationFees, operationLegs, operations, organizationPayoutWallets, organizations, platformFeeSchedules, type DbOrTx } from "@repo/db";
+import { basketVersions, baskets, db, operationFeeCharges, operationFees, operationLegs, operations, organizationPayoutWallets, organizations, platformFeeSchedules, type DbOrTx } from "@repo/db";
 import { logger } from "@repo/logger";
 import {
-  FEE_DUST_MICRO, USDC_SOLANA_MINT, managerFeeMicro, micro, microToUsdc, networkFeeMicro, platformFeeMicro, resolvePlatformSchedule,
+  FEE_DUST_MICRO, USDC_SOLANA_MINT, managerFeeMicro, micro, microToUsdc, platformFeeMicro, resolvePlatformSchedule,
   type Earnings, type EarningsQuery, type Fee, type FeeKind, type PlatformFeeList, type PlatformFeeOperation, type PlatformFeeOverrideInput, type PlatformFeeScheduleInput, type PlatformFeeScheduleView, type Revenue, type WaivedReason,
 } from "@repo/validator";
 import { env } from "@/config/dotenv";
-import { SOL_USD_FALLBACK, TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection, tokenAccountMissing } from "@/providers/solana-tx";
+import { TOKEN_ACCOUNT_RENT_LAMPORTS, ata, connection, tokenAccountMissing } from "@/providers/solana-tx";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { requirePermission } from "@/modules/members/access.service";
 import { notifyOwner } from "@/modules/organizations/organizations.service";
@@ -21,9 +21,6 @@ export interface PlanFeesInput {
   manager: { kind: "manager_entry" | "manager_rebalance"; fee: Fee | undefined; baseMicro: bigint } | null;
   organizationId: string | null;
   basketId: string | null;
-  usdcPrice: string;
-  /** SOL price from the plan's route quotes, for the token-account rent; the fallback applies only when no quote carries one. */
-  solPriceUsd?: number | null;
 }
 export interface PlannedFee {
   kind: FeeKind; baseMicro: bigint; bps: number | null; capMicro: bigint | null; amountMicro: bigint; recipientAddress: string | null;
@@ -31,14 +28,15 @@ export interface PlannedFee {
 }
 export interface PlannedFees {
   rows: PlannedFee[]; totalMicro: bigint; transfers: { recipient: string; amountMicro: bigint }[];
-  /** Token-account rent the platform may fund for the manager and platform recipients (reserved with the plan). */
+  /** Token-account rent the user funds as fee payer for each charged manager/platform recipient whose account is missing (part of the SOL requirement). */
   rentLamports: bigint;
 }
 
 /**
  * Every fee of a plan, snapshotted now: network (always), manager (to the organization's VERIFIED payout wallet) and platform (the schedule in force now).
  * A fee below the dust threshold, a manager fee without a verified payout wallet and a platform fee without a price are recorded with a waiver, not charged.
- * The network row also carries the token-account rent of each charged manager/platform recipient whose account is missing (the platform creates it).
+ * The network fee is the caller's `networkMicro` (EVM gas drops only: the user pays Solana gas, Spec 22 B-03). Token-account rent of a missing recipient
+ * account is returned in `rentLamports` and is also the user's, not part of any fee.
  */
 const validAddress = (a: string | undefined | null) => { try { return !!a && !!new PublicKey(a); } catch { return false; } };
 
@@ -82,7 +80,6 @@ export async function planFees(conn: DbOrTx, i: PlanFeesInput): Promise<PlannedF
   const charged = rows.filter((r) => r.kind !== "network" && r.amountMicro > 0n);
   const missing = await Promise.all([...new Set(charged.map((r) => r.recipientAddress!))].map((a) => tokenAccountMissing(a, USDC_SOLANA_MINT)));
   const extra = BigInt(missing.filter(Boolean).length);
-  if (extra > 0n) network.amountMicro += networkFeeMicro([(Number(TOKEN_ACCOUNT_RENT_LAMPORTS * extra) / 1e9) * (i.solPriceUsd ?? SOL_USD_FALLBACK)], i.usdcPrice);
   const transfers = rows.filter((r) => r.amountMicro > 0n).map((r) => ({ recipient: r.recipientAddress!, amountMicro: r.amountMicro }));
   return { rows, totalMicro: transfers.reduce((s, t) => s + t.amountMicro, 0n), transfers, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS * extra };
 }
@@ -151,12 +148,12 @@ export async function endOverride(actor: Actor, id: string): Promise<PlatformFee
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Earnings (organization) and revenue (ops): settled fees only
+// Earnings (organization) and revenue (ops): settled fee charges only (one row per fee leg and kind, spec 22 B-06)
 // ---------------------------------------------------------------------------------------------------------------------
 
 const MANAGER_KINDS = ["manager_entry", "manager_rebalance"] as const;
-const month = sql<string>`to_char(date_trunc('month', ${operationFees.settledAt} at time zone 'UTC'), 'YYYY-MM')`;
-const settledBetween = (q: EarningsQuery) => and(isNotNull(operationFees.settledAt), q.from ? gte(operationFees.settledAt, new Date(q.from)) : undefined, q.to ? lte(operationFees.settledAt, new Date(q.to)) : undefined);
+const month = sql<string>`to_char(date_trunc('month', ${operationFeeCharges.settledAt} at time zone 'UTC'), 'YYYY-MM')`;
+const settledBetween = (q: EarningsQuery) => and(isNotNull(operationFeeCharges.settledAt), q.from ? gte(operationFeeCharges.settledAt, new Date(q.from)) : undefined, q.to ? lte(operationFeeCharges.settledAt, new Date(q.to)) : undefined);
 /** One CSV line: a value starting with = + - @ tab or CR gets a leading ', one with a comma, quote or line break is quoted, quotes doubled. */
 const csvLine = (cols: (string | null)[]) => cols.map((raw) => {
   const c = raw !== null && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw; // a spreadsheet would run it as a formula
@@ -169,11 +166,11 @@ export async function getEarnings(userId: string, orgId: string, q: EarningsQuer
   await requirePermission(db, userId, orgId, "earnings.read");
   const where = and(eq(operationFees.organizationId, orgId), inArray(operationFees.kind, [...MANAGER_KINDS]), settledBetween(q));
   const groups = await db.select({
-    basketId: operationFees.basketId, basketName: basketVersions.name, versionNumber: basketVersions.versionNumber, kind: operationFees.kind, month, amount: sql<string>`sum(${operationFees.amountMicro})`,
-  }).from(operationFees).innerJoin(operations, eq(operations.id, operationFees.operationId)).leftJoin(basketVersions, eq(basketVersions.id, operations.versionId))
+    basketId: operationFees.basketId, basketName: basketVersions.name, versionNumber: basketVersions.versionNumber, kind: operationFees.kind, month, amount: sql<string>`sum(${operationFeeCharges.amountMicro})`,
+  }).from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).innerJoin(operations, eq(operations.id, operationFees.operationId)).leftJoin(basketVersions, eq(basketVersions.id, operations.versionId))
     .where(where).groupBy(operationFees.basketId, basketVersions.name, basketVersions.versionNumber, operationFees.kind, month).orderBy(desc(month), asc(operationFees.basketId), asc(operationFees.kind));
-  const recent = await db.select({ settledAt: operationFees.settledAt, basketId: operationFees.basketId, kind: operationFees.kind, amount: operationFees.amountMicro, tx: operationLegs.sourceTx })
-    .from(operationFees).leftJoin(operationLegs, eq(operationLegs.id, operationFees.legId)).where(where).orderBy(desc(operationFees.settledAt), desc(operationFees.id)).limit(50);
+  const recent = await db.select({ settledAt: operationFeeCharges.settledAt, basketId: operationFees.basketId, kind: operationFees.kind, amount: operationFeeCharges.amountMicro, tx: operationLegs.sourceTx })
+    .from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).leftJoin(operationLegs, eq(operationLegs.id, operationFeeCharges.feeLegId)).where(where).orderBy(desc(operationFeeCharges.settledAt), desc(operationFeeCharges.id)).limit(50);
   const [waived] = await db.select({ n: sql<number>`count(*)::int` }).from(operationFees).where(and(
     eq(operationFees.organizationId, orgId), inArray(operationFees.kind, [...MANAGER_KINDS]), isNotNull(operationFees.waivedReason),
     q.from ? gte(operationFees.createdAt, new Date(q.from)) : undefined, q.to ? lte(operationFees.createdAt, new Date(q.to)) : undefined,
@@ -188,16 +185,16 @@ export async function getEarnings(userId: string, orgId: string, q: EarningsQuer
 /** One row per settled manager fee: date, basket, version, kind, amount in USDC and the fee transaction. */
 export async function getEarningsCsv(userId: string, orgId: string, q: EarningsQuery): Promise<string> {
   await requirePermission(db, userId, orgId, "earnings.read");
-  const rows = await db.select({ settledAt: operationFees.settledAt, basket: basketVersions.name, version: basketVersions.versionNumber, kind: operationFees.kind, amount: operationFees.amountMicro, tx: operationLegs.sourceTx })
-    .from(operationFees).innerJoin(operations, eq(operations.id, operationFees.operationId)).leftJoin(basketVersions, eq(basketVersions.id, operations.versionId)).leftJoin(operationLegs, eq(operationLegs.id, operationFees.legId))
-    .where(and(eq(operationFees.organizationId, orgId), inArray(operationFees.kind, [...MANAGER_KINDS]), settledBetween(q))).orderBy(asc(operationFees.settledAt), asc(operationFees.id));
+  const rows = await db.select({ settledAt: operationFeeCharges.settledAt, basket: basketVersions.name, version: basketVersions.versionNumber, kind: operationFees.kind, amount: operationFeeCharges.amountMicro, tx: operationLegs.sourceTx })
+    .from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).innerJoin(operations, eq(operations.id, operationFees.operationId)).leftJoin(basketVersions, eq(basketVersions.id, operations.versionId)).leftJoin(operationLegs, eq(operationLegs.id, operationFeeCharges.feeLegId))
+    .where(and(eq(operationFees.organizationId, orgId), inArray(operationFees.kind, [...MANAGER_KINDS]), settledBetween(q))).orderBy(asc(operationFeeCharges.settledAt), asc(operationFeeCharges.id));
   return [csvLine(["date", "basket", "version", "kind", "amount_usdc", "tx"]), ...rows.map((r) => csvLine([r.settledAt!.toISOString(), r.basket, r.version?.toString() ?? null, r.kind, microToUsdc(BigInt(r.amount)), r.tx]))].join("\n") + "\n";
 }
 
 /** Platform fees by operation kind and month (settled only) and the manager fees that were waived, by reason. */
 export async function getRevenue(q: EarningsQuery): Promise<Revenue> {
-  const platform = await db.select({ operationKind: platformFeeSchedules.operationKind, month, amount: sql<string>`sum(${operationFees.amountMicro})` })
-    .from(operationFees).innerJoin(platformFeeSchedules, eq(platformFeeSchedules.id, operationFees.scheduleId))
+  const platform = await db.select({ operationKind: platformFeeSchedules.operationKind, month, amount: sql<string>`sum(${operationFeeCharges.amountMicro})` })
+    .from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).innerJoin(platformFeeSchedules, eq(platformFeeSchedules.id, operationFees.scheduleId))
     .where(and(eq(operationFees.kind, "platform"), settledBetween(q))).groupBy(platformFeeSchedules.operationKind, month).orderBy(desc(month), asc(platformFeeSchedules.operationKind));
   const waived = await db.select({ reason: operationFees.waivedReason, n: sql<number>`count(*)::int` }).from(operationFees).where(and(
     inArray(operationFees.kind, [...MANAGER_KINDS]), isNotNull(operationFees.waivedReason), q.from ? gte(operationFees.createdAt, new Date(q.from)) : undefined, q.to ? lte(operationFees.createdAt, new Date(q.to)) : undefined,
@@ -210,9 +207,9 @@ export async function getRevenue(q: EarningsQuery): Promise<Revenue> {
 }
 
 export async function getRevenueCsv(q: EarningsQuery): Promise<string> {
-  const rows = await db.select({ settledAt: operationFees.settledAt, operationKind: platformFeeSchedules.operationKind, amount: operationFees.amountMicro, tx: operationLegs.sourceTx })
-    .from(operationFees).innerJoin(platformFeeSchedules, eq(platformFeeSchedules.id, operationFees.scheduleId)).leftJoin(operationLegs, eq(operationLegs.id, operationFees.legId))
-    .where(and(eq(operationFees.kind, "platform"), settledBetween(q))).orderBy(asc(operationFees.settledAt), asc(operationFees.id));
+  const rows = await db.select({ settledAt: operationFeeCharges.settledAt, operationKind: platformFeeSchedules.operationKind, amount: operationFeeCharges.amountMicro, tx: operationLegs.sourceTx })
+    .from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).innerJoin(platformFeeSchedules, eq(platformFeeSchedules.id, operationFees.scheduleId)).leftJoin(operationLegs, eq(operationLegs.id, operationFeeCharges.feeLegId))
+    .where(and(eq(operationFees.kind, "platform"), settledBetween(q))).orderBy(asc(operationFeeCharges.settledAt), asc(operationFeeCharges.id));
   return [csvLine(["date", "operation", "amount_usdc", "tx"]), ...rows.map((r) => csvLine([r.settledAt!.toISOString(), r.operationKind, microToUsdc(BigInt(r.amount)), r.tx]))].join("\n") + "\n";
 }
 
@@ -221,7 +218,7 @@ export async function getRevenueCsv(q: EarningsQuery): Promise<string> {
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** The fee's on-chain time when known, else when it was recorded: the day it belongs to for comparison with the treasury's history. */
-const chainDay = sql<Date>`coalesce(${operationFees.settledChainAt}, ${operationFees.settledAt})`;
+const chainDay = sql<Date>`coalesce(${operationFeeCharges.settledChainAt}, ${operationFeeCharges.settledAt})`;
 
 /**
  * Compares the platform fees settled in a UTC day (default: yesterday) with the USDC that arrived in the revenue treasury's token account that day (signatures
@@ -234,7 +231,7 @@ export async function reconcileRevenue(day = new Date(Date.now() - 86_400_000).t
   const end = new Date(start.getTime() + 86_400_000);
   try {
     const owner = new PublicKey(env.REVENUE_TREASURY_SOLANA_ADDRESS);
-    const [settled] = await db.select({ total: sql<string>`coalesce(sum(${operationFees.amountMicro}), 0)` }).from(operationFees)
+    const [settled] = await db.select({ total: sql<string>`coalesce(sum(${operationFeeCharges.amountMicro}), 0)` }).from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId))
       .where(and(eq(operationFees.kind, "platform"), sql`${chainDay} >= ${start.toISOString()}::timestamptz`, sql`${chainDay} < ${end.toISOString()}::timestamptz`));
     // Signatures come newest first, up to 1,000 per page: page back until the day is behind us.
     const signatures: string[] = [];

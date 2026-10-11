@@ -18,8 +18,9 @@ import { toDisplayError } from "@/lib/errors";
 import { useLegSigner } from "@/lib/wallet/use-leg-signer";
 
 /** Adapts the web wallet hooks to the shared `Signer` (the hooks keep their own call shapes). */
-const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
+export const toSigner = (w: ReturnType<typeof useLegSigner>): Signer => ({
   signSolana: (b64) => w.signSolana(b64),
+  signSolanaAll: (b64s) => w.signSolanaAll(b64s),
   sendEvm: ({ approval, ...tx }) => w.sendEvm(tx, approval ?? null),
   signPsbt: (psbt, inputCount) => w.signBitcoin(psbt, inputCount),
 });
@@ -54,8 +55,11 @@ export function LegRow({ leg: l, buying, showStatus = true }: { leg: Leg; buying
   );
 }
 
-/** Signs and tracks every leg of one operation, one leg at a time. The server prepares each transaction and checks what comes back; nothing here retries a submitted leg. */
-export function LegProgress({ operationId }: { operationId: string }) {
+/**
+ * Signs and tracks every leg of one operation, one leg at a time. The server prepares each transaction and checks what comes back; nothing here retries a submitted leg.
+ * With `legId` it signs only that leg and shows just its prepare and approve steps: the "Complete swap" of a recovery on an investment signed in groups.
+ */
+export function LegProgress({ operationId, legId }: { operationId: string; legId?: string }) {
   const qc = useQueryClient();
   const { data: me } = useMe();
   const signer = useLegSigner(me);
@@ -97,7 +101,7 @@ export function LegProgress({ operationId }: { operationId: string }) {
   if (!op.data) return <p role="alert" className="text-sm text-danger">{toDisplayError(op.error).title}</p>;
   const o = op.data;
   const buying = o.kind === "invest";
-  const next = nextLeg(o.legs);
+  const next = legId ? o.legs.find((l) => l.id === legId && l.status === "PLANNED") : nextLeg(o.legs);
   const inFlight = o.legs.some((l) => IN_FLIGHT.includes(l.status));
   const expired = sign.error instanceof ApiError && sign.error.code === "QUOTE_EXPIRED";
   const failure = prepare.error ?? sign.error ?? stop.error;
@@ -112,10 +116,8 @@ export function LegProgress({ operationId }: { operationId: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="flex items-center gap-2 text-sm text-ink">Status <StatusBadge {...OPERATION_STATUS_LABEL[o.status]} /></p>
-      <ol className="space-y-3">
-        {o.legs.map((l) => <LegRow key={l.id} leg={l} buying={buying} />)}
-      </ol>
+      {!legId && <p className="flex items-center gap-2 text-sm text-ink">Status <StatusBadge {...OPERATION_STATUS_LABEL[o.status]} /></p>}
+      {!legId && <ol className="space-y-3">{o.legs.map((l) => <LegRow key={l.id} leg={l} buying={buying} />)}</ol>}
 
       {err && <div role="alert" className="rounded-tile border border-danger/25 p-3 text-sm text-ink"><p className="font-medium">{expired ? "Quote expired" : err.title}</p><p className="text-ink-muted">{expired ? "Get a new quote, then sign again. Nothing was submitted." : err.message}</p></div>}
       {sign.error instanceof WrongWalletError && !busy && (
@@ -138,12 +140,12 @@ export function LegProgress({ operationId }: { operationId: string }) {
         <div className="flex flex-wrap gap-3">
           {next && !busy && !fresh && <Button  onClick={() => prepare.mutate(next)}>{expired ? "Get a new quote" : next.recoveryOf ? "Complete swap" : `Review step ${next.sequence}`}</Button>}
           {fresh && !busy && <Button  onClick={() => sign.mutate(fresh)}>Approve step {fresh.leg.sequence} in your wallet</Button>}
-          {!inFlight && !busy && <Button variant="secondary"  disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
+          {!legId && !inFlight && !busy && <Button variant="secondary"  disabled={stop.isPending} onClick={() => stop.mutate()}>{done || unknown || o.legs.some((l) => l.recoveryToken) ? "Stop here" : "Cancel"}</Button>}
         </div>
       )}
 
-      {o.status === "COMPLETED" && <p role="status" className="text-sm text-ink">All steps are settled.{o.kind === "invest" && " Your basket is in your wallet and shown in your portfolio."}</p>}
-      {(o.status === "PARTIAL" || o.status === "FAILED") && (
+      {!legId && o.status === "COMPLETED" && <p role="status" className="text-sm text-ink">All steps are settled.{o.kind === "invest" && " Your basket is in your wallet and shown in your portfolio."}</p>}
+      {!legId && (o.status === "PARTIAL" || o.status === "FAILED") && (
         <p role="status" className="text-sm text-ink">
           {o.status === "PARTIAL" ? "Some steps settled and some did not run. What you received is in your wallet." : "No assets were bought or sold."}
           {unknown && " A step is still being checked with the chain; its result is added to your portfolio when it settles."}
@@ -151,8 +153,8 @@ export function LegProgress({ operationId }: { operationId: string }) {
           {remaining.length > 0 && ` Not run: ${remaining.map((l) => legTitle(l, buying)).join(", ")}.`} Start a new plan to continue. Unspent USDC stays in your wallet.
         </p>
       )}
-      {o.status === "CANCELLED" && <p role="status" className="text-sm text-ink">Cancelled. Nothing was submitted.</p>}
-      <FeeLines fees={o.fees} />
+      {!legId && o.status === "CANCELLED" && <p role="status" className="text-sm text-ink">Cancelled. Nothing was submitted.</p>}
+      {!legId && <FeeLines fees={o.fees} />}
     </div>
   );
 }

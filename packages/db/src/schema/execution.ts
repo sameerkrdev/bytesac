@@ -1,10 +1,11 @@
 import { sql } from "drizzle-orm";
-import { type AnyPgColumn, check, date, index, integer, jsonb, numeric, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, bigint, check, date, index, integer, jsonb, numeric, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { assetChain, instrumentDeployments } from "./assets";
 import { basketVersions, baskets } from "./baskets";
 import { app } from "./enums";
 import { users } from "./identity";
+import type { feeKind } from "./fees";
 
 export const positionStatus = app.enum("position_status", ["OPEN", "CLOSED"]);
 export const ledgerReason = app.enum("ledger_reason", ["invest", "sell", "rebalance", "repair", "sync"]);
@@ -15,7 +16,9 @@ export const operationKind = app.enum("operation_kind", ["invest", "sell_to_usdc
 export const operationStatus = app.enum("operation_status", ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"]);
 export const legKind = app.enum("leg_kind", ["network_fee", "swap", "cross_chain"]);
 export const legStatus = app.enum("leg_status", ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"]);
-export const gasPayer = app.enum("gas_payer", ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"]);
+export const gasPayer = app.enum("gas_payer", ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs", "user_solana"]);
+export const signingTier = app.enum("signing_tier", ["sign_all", "sign_and_send", "single", "evm_calls", "evm_single", "psbt"]);
+export const groupStatus = app.enum("group_status", ["QUOTED", "CLAIMED", "SENT", "EXPIRED", "RELEASED"]);
 export const platformWalletPurpose = app.enum("platform_wallet_purpose", ["solana_fee_payer", "evm_gas", "gas_treasury", "revenue_treasury"]);
 export const gasDropStatus = app.enum("gas_drop_status", ["pending", "confirmed", "failed"]);
 export const reconciliationStatus = app.enum("reconciliation_status", ["OK", "SHORT", "SURPLUS"]);
@@ -70,6 +73,13 @@ export const operations = app.table(
     expiresAt: ts("expires_at").notNull(),
     /** Platform gas reserved with the plan, per chain in native base units (the budget day is `created_at` in UTC); emptied when the unspent part is released on CANCELLED. */
     gasReserved: jsonb("gas_reserved").$type<Record<string, string>>().notNull().default({}),
+    /** Grouped invest: since when it has needed the user's action (the 24 h auto-stop clock); null while nothing is waiting. */
+    needsActionSince: ts("needs_action_since"),
+    /** Plan-time SOL the user needs for the whole plan (lamports, spec 22 §5.3). */
+    solRequiredLamports: numeric("sol_required_lamports"),
+    approvalsEstimate: integer("approvals_estimate"),
+    /** Idempotency key of the last Continue; a repeat returns the current operation. */
+    lastContinueKey: text("last_continue_key"),
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
@@ -114,6 +124,14 @@ export const operationLegs = app.table(
     /** A recovery leg points at the leg whose destination swap failed (one recovery per leg). */
     recoveryOf: uuid("recovery_of").unique().references((): AnyPgColumn => operationLegs.id),
     /** Set with FAILED / DESTINATION_SWAP_FAILED: the token that arrived instead, amount from chain evidence. */
+    /** The signing group that last quoted this leg. */
+    groupId: uuid("group_id").references((): AnyPgColumn => operationGroups.id),
+    /** Planned per-kind fee share (micro-USDC strings); a fee leg that settles covers the legs whose shares it charged. */
+    feeShare: jsonb("fee_share").$type<Partial<Record<(typeof feeKind.enumValues)[number], string>>>(),
+    feeCoveredBy: uuid("fee_covered_by").references((): AnyPgColumn => operationLegs.id),
+    /** A retry leg points at the failed leg it replaces (one retry per leg). */
+    retryOf: uuid("retry_of").unique().references((): AnyPgColumn => operationLegs.id),
+    lastError: text("last_error"),
     recoveryToken: jsonb("recovery_token").$type<{ chain: (typeof assetChain.enumValues)[number]; address: string | null; decimals: number; symbol: string; amount: string }>(),
     submittedAt: ts("submitted_at"),
     unknownSince: ts("unknown_since"),
@@ -125,6 +143,33 @@ export const operationLegs = app.table(
     // A transaction is one leg's: the claim (SUBMITTING) records the deterministic id before anything is sent.
     uniqueIndex("operation_legs_source_tx").on(t.fromChain, t.sourceTx).where(sql`${t.sourceTx} is not null`),
     check("operation_legs_amount_positive", sql`${t.amountIn} > 0`),
+  ],
+);
+
+/** Legs of one operation that share a source chain, quoted together and approved in one wallet interaction (spec 22 B-01). */
+export const operationGroups = app.table(
+  "operation_groups",
+  {
+    id: id(),
+    operationId: uuid("operation_id").notNull().references(() => operations.id),
+    chain: assetChain("chain").notNull(),
+    tier: signingTier("tier").notNull(),
+    status: groupStatus("status").notNull().default("QUOTED"),
+    feeLegId: uuid("fee_leg_id").references((): AnyPgColumn => operationLegs.id),
+    /** Server block height at quote time; the per-leg send gate measures the blockhash lifetime from it. */
+    quoteBlockHeight: bigint("quote_block_height", { mode: "number" }),
+    expiresAt: ts("expires_at").notNull(),
+    /** Quote time + 40 s: the submit deadline. */
+    sendBy: ts("send_by").notNull(),
+    /** Client-reported, telemetry only. */
+    walletName: text("wallet_name"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("operation_groups_key").on(t.operationId, t.idempotencyKey),
+    uniqueIndex("operation_groups_one_open").on(t.operationId, t.chain).where(sql`${t.status} in ('QUOTED', 'CLAIMED')`),
   ],
 );
 

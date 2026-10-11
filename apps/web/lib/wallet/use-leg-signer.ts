@@ -2,6 +2,7 @@
 
 import type { BitcoinConnector } from "@reown/appkit-adapter-bitcoin";
 import type { Provider as SolanaProvider } from "@reown/appkit-adapter-solana/react";
+import { useWalletInfo } from "@reown/appkit/react";
 import { VersionedTransaction } from "@solana/web3.js";
 import { isUserRejection, linkedAddressFor, shortAddress, WalletRejectedError, WrongWalletError } from "@repo/app-core";
 import { ASSET_CHAINS, chainFromEvmChainId, type AssetChain, type MeResponse } from "@repo/validator";
@@ -10,6 +11,9 @@ import { useConfig, useSendTransaction, useSwitchChain } from "wagmi";
 import { getAccount, waitForTransactionReceipt } from "wagmi/actions";
 import { appKit } from "@/lib/appkit";
 import { same, useWalletForChain } from "@/lib/wallet/use-wallet-for-chain";
+
+const fromBase64 = (b64: string) => VersionedTransaction.deserialize(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+const toBase64 = (tx: VersionedTransaction) => btoa(String.fromCharCode(...tx.serialize()));
 
 /**
  * The only place the invest flow touches wallets. Each method signs exactly what the server prepared for one leg and returns what the API wants back:
@@ -25,9 +29,19 @@ export function useLegSigner(me: MeResponse | undefined) {
     const row = me ? linkedAddressFor(me.wallet.addresses, chain) : undefined;
     throw new WrongWalletError(`Connect ${row?.walletName ?? "the wallet"} (${row ? shortAddress(row.address) : "linked address"}) to sign this ${ASSET_CHAINS[chain].label} step`, true);
   };
+  /** The connected Solana wallet's name for the group request (telemetry only; never an address). */
+  const walletName = useWalletInfo("solana").walletInfo?.name?.slice(0, 64) || undefined;
   const config = useConfig();
   const { switchChainAsync } = useSwitchChain();
   const { sendTransactionAsync } = useSendTransaction();
+
+  /** The provider and address are read after a possible wallet switch (hook values would be from the last render). */
+  const solana = async () => {
+    await select("solana");
+    const provider = appKit.getProvider<SolanaProvider>("solana");
+    if (!provider || appKit.getAddress("solana") !== linked("solana")) throw new WrongWalletError("Solana wallet");
+    return provider;
+  };
 
   const guard = async <T,>(run: () => Promise<T>): Promise<T> => {
     try {
@@ -39,13 +53,14 @@ export function useLegSigner(me: MeResponse | undefined) {
 
   return {
     connectionKey,
-    signSolana: (serializedBase64: string) => guard(async () => {
-      await select("solana");
-      // Read the provider and address after a possible wallet switch (hook values would be from the last render).
-      const solanaProvider = appKit.getProvider<SolanaProvider>("solana");
-      if (!solanaProvider || appKit.getAddress("solana") !== linked("solana")) throw new WrongWalletError("Solana wallet");
-      const signed = await solanaProvider.signTransaction(VersionedTransaction.deserialize(Uint8Array.from(atob(serializedBase64), (c) => c.charCodeAt(0))));
-      return btoa(String.fromCharCode(...signed.serialize()));
+    walletName,
+    signSolana: (serializedBase64: string) => guard(async () => toBase64(await (await solana()).signTransaction(fromBase64(serializedBase64)))),
+
+    /** One approval for a whole signing group, in order. A wallet or provider without `signAllTransactions` throws "not supported", which the group signer treats as a downgrade. */
+    signSolanaAll: (serializedBase64: string[]) => guard(async () => {
+      const provider = await solana();
+      if (typeof provider.signAllTransactions !== "function") throw new Error("signAllTransactions is not supported by this wallet");
+      return (await provider.signAllTransactions(serializedBase64.map(fromBase64))).map(toBase64);
     }),
 
     /** Optional exact-amount ERC-20 approval first (mined before the main transaction), then the LI.FI transaction. Returns the main transaction hash. */

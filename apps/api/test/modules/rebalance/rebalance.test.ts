@@ -9,6 +9,13 @@ import { fakes } from "../../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet, type ChainState } from "../../helpers/chain-mocks";
 import { USDC_MINT, seedBasket, seedCash, seedPosition, seedPrices, seedUser, seedVersion, type SeedAsset } from "../../helpers/execution";
 
+// The revenue treasury address is switchable per test (the parsed env is read-only).
+const revenue = vi.hoisted(() => ({ address: "" }));
+vi.mock("@/config/dotenv", async (original) => {
+  const m = await original<typeof import("@/config/dotenv")>();
+  return { ...m, env: new Proxy({} as typeof m.env, { get: (_, k) => (k === "REVENUE_TREASURY_SOLANA_ADDRESS" ? revenue.address : Reflect.get(m.env, k)) }) };
+});
+
 // SOL at $100 (9 decimals) and TKN at $1 (6 decimals), both on Solana, 50/50 in version 1.
 const SOL: SeedAsset = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 5000, decimals: 9 };
 const TKN: SeedAsset = { symbol: "TKN", chain: "solana", tokenStandard: "spl", bps: 5000, decimals: 6 };
@@ -50,10 +57,16 @@ async function arrange(over: { usdc?: bigint; sol?: bigint; walletSol?: bigint; 
   else chain.balances.set(balanceKey(user.solanaAddress, second!.address), secondQty);
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.usdc ?? 50_000_000n);
   const v2 = over.v2 === null ? undefined : await seedVersion(basket, 2, over.v2 ?? [3000, 7000]);
+  if (v2) {
+    // The user pays Solana gas, so a fee exists only when one is charged: version 2 carries a 0.25% manager rebalance fee (1 USDC on the $400 traded) to a verified payout wallet.
+    await adminSql`UPDATE app.basket_versions SET fees = ${adminSql.json({ entry: { type: "percent", bps: 0 }, management: { type: "percent", bps: 0 }, rebalance: { type: "percent", bps: 25 }, subscription: null })} WHERE id = ${v2}`;
+    await adminSql`INSERT INTO app.organization_payout_wallets (id, organization_id, chain, address, status, requested_by_user_id, verified_at, activated_at)
+      VALUES (gen_random_uuid(), ${basket.owner.id}, 'solana', ${solanaTestWallet().address}, 'VERIFIED', ${basket.owner.userId}, now(), now())`;
+  }
   return { chain, wallet, basket, user, positionId, v2: v2!, sol: first!, tkn: second! };
 }
 
-beforeEach(resetDb);
+beforeEach(async () => { revenue.address = ""; await resetDb(); });
 afterEach(() => vi.restoreAllMocks());
 
 describe("rebalance plan", () => {
@@ -61,9 +74,9 @@ describe("rebalance plan", () => {
     const { user, positionId, v2 } = await arrange();
     const res = await rebalance(user.h, positionId);
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ kind: "rebalance", status: "PLANNED", positionId, amountUsdc: null, sellPercent: null });
+    expect(res.body).toMatchObject({ kind: "rebalance", status: "PLANNED", positionId, amountUsdc: null, sellPercent: null, networkFeeUsdc: "0" });
     const legs = await legsOf(res.body.id);
-    expect(legs.map((l) => [l.kind, l.amount_in])).toEqual([["network_fee", res.body.networkFeeUsdc], ["swap", "4000000000"], ["swap", "400000000"]]); // sell 4 SOL ($400), buy $400 of TKN
+    expect(legs.map((l) => [l.kind, l.amount_in])).toEqual([["network_fee", "1000000"], ["swap", "4000000000"], ["swap", "400000000"]]); // the 1 USDC fee, sell 4 SOL ($400), buy $400 of TKN
     expect(legs[0]!.route_summary).toBeNull();
     expect(legs[2]!.route_summary).toMatchObject({ planned: true });
     expect((await adminSql`SELECT version_id FROM app.operations WHERE id = ${res.body.id}`)[0]).toEqual({ version_id: v2 });
@@ -76,7 +89,7 @@ describe("rebalance plan", () => {
     const legs = await legsOf(res.body.id);
     expect(legs.map((l) => l.kind)).toEqual(["swap", "network_fee", "swap"]);
     expect(legs[1]!.route_summary).toEqual({ fromCash: true });
-    expect(BigInt(legs[2]!.amount_in)).toBe(400_000_000n - BigInt(res.body.networkFeeUsdc));
+    expect(BigInt(legs[2]!.amount_in)).toBe(400_000_000n - 1_000_000n);
   });
 
   it("an EVM sell without free USDC for the fee is INSUFFICIENT_BALANCE (D-071)", async () => {
@@ -135,7 +148,8 @@ describe("rebalance plan", () => {
     void chain;
     const res = await rebalance(user.h, positionId);
     const legs = await legsOf(res.body.id);
-    expect(legs[1]).toMatchObject({ kind: "swap", amount_in: "4000000000" }); // 4 of the allocated 10 SOL; the 5 extra SOL are not touched
+    expect(legs.map((l) => l.kind)).toEqual(["swap", "swap"]); // version 4 charges nothing and the user pays gas: no fee leg
+    expect(legs[0]).toMatchObject({ kind: "swap", amount_in: "4000000000" }); // 4 of the allocated 10 SOL; the 5 extra SOL are not touched
     expect((await adminSql`SELECT version_id FROM app.operations WHERE id = ${res.body.id}`)[0]).toEqual({ version_id: v4 });
     expect((await position(positionId)).applied_version_id).not.toBe(v4);
   });
@@ -211,7 +225,7 @@ describe("rebalance plan", () => {
       const [sell, fee] = await legsOf(op.id);
       await settle(a.chain, a.user.solanaAddress, op.id, sell!.id, 400_000_000n);
       await settle(a.chain, a.user.solanaAddress, op.id, fee!.id, null);
-      expect((await cash(a.positionId)).map((c) => [c.reason, c.amount_micro])).toEqual([["rebalance_sell", "400000000"], ["network_fee", String(-BigInt(op.networkFeeUsdc))]]);
+      expect((await cash(a.positionId)).map((c) => [c.reason, c.amount_micro])).toEqual([["rebalance_sell", "400000000"], ["network_fee", "-1000000"]]);
     });
   });
 });
@@ -229,6 +243,9 @@ describe("basket cash is not free USDC", () => {
 
   async function sellHalf() {
     const a = await arrange({ v2: null, usdc: 500_000_000n });
+    // The user pays Solana gas, so the sell has a fee leg only when a fee is charged: a 0.25% platform fee on the sale (2.5 USDC), paid first from the free USDC.
+    revenue.address = solanaTestWallet().address;
+    await adminSql`INSERT INTO app.platform_fee_schedules (id, scope, operation_kind, bps, reason, created_by) VALUES (gen_random_uuid(), 'default', 'sell_to_usdc', 25, 'test', ${a.basket.ownerId})`;
     await seedCash(a.user.userId, a.basket, a.positionId, 200_000_000n);
     const op = (await post(a.user.h, "/v1/operations/sell", { positionId: a.positionId, percent: 50, slippageBps: 100, idempotencyKey: "sell-aaaaaaaa" })).body;
     return { ...a, op, legs: await legsOf(op.id) };

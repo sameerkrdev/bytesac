@@ -37,6 +37,7 @@ async function arrange(assets: SeedAsset[] = [SOL, BASE_NATIVE]) {
   const basket = await seedBasket({ assets });
   const user = await seedUser({ wallet: solanaTestWallet(), evmByChain: { base: OLD, ethereum: OLD } });
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the user pays Solana gas
   return { chain, basket, user };
 }
 

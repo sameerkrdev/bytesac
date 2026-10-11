@@ -9,6 +9,7 @@ export const leg = (over: Partial<Leg> = {}): Leg => ({
   routeSummary: { tool: "jupiter", estimatedOut: "330000000", symbol: "SOL", decimals: 9 },
   quoteExpiresAt: null, gasPayer: "platform_fee_payer", sourceTx: null, destinationTx: null, failureReason: null,
   priceImpact: 0.0123, routeFees: [{ name: "LI.FI", amountUsd: 0.12, included: true }], providerSubstatus: null, recoveryOf: null, recoveryToken: null, feeOnTransfer: false,
+  groupId: null, feeShare: null, feeCoveredBy: null, retryOf: null, lastError: null,
   ...over,
 });
 
@@ -20,7 +21,8 @@ export const fees: OperationView["fees"] = [
 
 export const operation = (over: Partial<OperationView> = {}): OperationView => ({
   id: ID(1), kind: "invest", status: "PLANNED", basketId: ID(2), positionId: null, amountUsdc: "50000000", sellPercent: null, slippageBps: 100, networkFeeUsdc: "50000",
-  expiresAt: "2026-10-04T00:00:00.000Z", createdAt: "2026-10-03T00:00:00.000Z", legs: [leg()], fees, ...over,
+  expiresAt: "2026-10-04T00:00:00.000Z", createdAt: "2026-10-03T00:00:00.000Z", legs: [leg()], fees,
+  needsAction: false, needsActionSince: null, groups: [], approvalsEstimate: null, solRequiredLamports: null, charged: [], ...over,
 });
 
 type Position = Portfolio["positions"][number];

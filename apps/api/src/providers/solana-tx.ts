@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import bs58 from "bs58";
 import createHttpError from "http-errors";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { ComputeBudgetProgram, Connection, Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
-import { USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
+import { BLOCKHASH_LIFETIME_BLOCKS, BLOCKHASH_MARGIN_BLOCKS, USDC_DECIMALS, USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "@/config/dotenv";
 
 export const connection = new Connection(`https://solana-mainnet.g.alchemy.com/v2/${env.ALCHEMY_API_KEY}`, { commitment: "confirmed" });
@@ -11,7 +12,7 @@ const TOKEN_PROGRAM = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
 const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
 
-/** The platform fee payer. The key never leaves this module; an empty `SOLANA_FEE_PAYER_SECRET` disables Solana legs. */
+/** The platform fee payer, used only by legacy legs planned before user-paid gas (co-signed). The key never leaves this module; an empty `SOLANA_FEE_PAYER_SECRET` refuses those legs. */
 let keypair: Keypair | undefined;
 export function feePayer(): Keypair {
   if (!env.SOLANA_FEE_PAYER_SECRET) throw createHttpError("Solana fee sponsoring is not configured.", { code: "ROUTE_UNAVAILABLE" });
@@ -32,17 +33,21 @@ export const tokenAccountMissing = (owner: string, mint: string): Promise<boolea
 
 /**
  * The fee leg: compute-budget (same CU limit/price as live LI.FI Solana quotes), then one USDC TransferChecked per recorded fee from the user's
- * token account to each recipient's (network, manager, platform, in that order). Fee payer = platform (which also creates a recipient token
- * account that is missing). Server-built; co-sign allows wallet compute-budget padding when non-CU instructions still match.
+ * token account to each recipient's (network, manager, platform, in that order). The payer also funds any recipient token account that is missing.
+ * Server-built; verification allows wallet compute-budget padding when non-CU instructions still match. The payer is the user (new legs: they pay
+ * the fee in SOL, one signature) or the platform (legs planned before user-paid gas: co-signed).
  */
 const FEE_LEG_CU_LIMIT = 1_400_000;
 const FEE_LEG_CU_PRICE_MICRO = 16_001n;
 const FEE_LEG_PRIORITY_LAMPORTS = (FEE_LEG_CU_PRICE_MICRO * BigInt(FEE_LEG_CU_LIMIT) + 999_999n) / 1_000_000n;
 /** Two signatures plus the fee-leg priority fee. Token-account rent is added by the planner per missing recipient ATA. */
 export const SOLANA_FEE_TRANSFER_LAMPORTS = 10_000n + FEE_LEG_PRIORITY_LAMPORTS;
+/** What the user pays for the fee transfer as fee payer: one signature plus the priority fee. Token-account rent is added per missing recipient account. */
+export const FEE_TRANSFER_USER_LAMPORTS = 5_000n + FEE_LEG_PRIORITY_LAMPORTS;
 
-export async function buildFeeTransfer(i: { owner: string; transfers: { recipient: string; amountMicro: bigint }[] }): Promise<{ serializedBase64: string; messageHash: string }> {
-  const [payer, owner, mint] = [feePayer().publicKey, new PublicKey(i.owner), new PublicKey(USDC_SOLANA_MINT)];
+export async function buildFeeTransfer(i: { owner: string; payer: "user" | "platform"; transfers: { recipient: string; amountMicro: bigint }[] }): Promise<{ serializedBase64: string; messageHash: string }> {
+  const [owner, mint] = [new PublicKey(i.owner), new PublicKey(USDC_SOLANA_MINT)];
+  const payer = i.payer === "user" ? owner : feePayer().publicKey;
   const from = ata(owner, mint);
   const instructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: FEE_LEG_CU_LIMIT }),
@@ -72,8 +77,6 @@ export async function buildFeeTransfer(i: { owner: string; transfers: { recipien
 
 /** Token-program account rent (165 bytes): what the fee payer funds for each `CreateIdempotent` that creates an account. */
 export const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280n;
-/** Used for the rent estimate only when LI.FI's gas costs carry no native token price. */
-export const SOL_USD_FALLBACK = 150;
 const LAMPORTS_PER_SIGNATURE = 5_000n;
 /** Priority fee the platform will pay for one transaction (price x limit), the instruction and static-account counts it accepts. */
 const MAX_PRIORITY_LAMPORTS = 1_000_000n;
@@ -118,6 +121,48 @@ export function sponsorExposure(serializedBase64: string): { lamports: bigint; r
   return { lamports: BigInt(message.header.numRequiredSignatures) * LAMPORTS_PER_SIGNATURE + priority + rentLamports, rentLamports };
 }
 
+/**
+ * What a user-paid transaction costs its fee payer `payer` before rent: signatures and the priority fee (price x limit; 1.4M when unset), plus the token
+ * accounts the payer funds (`CreateIdempotent`, address null when it sits behind a lookup table and cannot be read). Refuses nothing: the user signs it knowingly.
+ */
+export function solanaCost(serializedBase64: string, payer: string): { lamports: bigint; funded: (string | null)[] } {
+  const message = VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64")).message;
+  const keys = message.staticAccountKeys;
+  const payerIndex = keys.findIndex((k) => k.toBase58() === payer);
+  let price = 0n;
+  let limit: bigint | null = null;
+  const funded: (string | null)[] = [];
+  for (const ix of message.compiledInstructions) {
+    const program = keys[ix.programIdIndex]!.toBase58();
+    const data = Buffer.from(ix.data);
+    if (program === COMPUTE_BUDGET && data[0] === 2 && data.length >= 5) limit = BigInt(data.readUInt32LE(1));
+    if (program === COMPUTE_BUDGET && data[0] === 3 && data.length >= 9) price = data.readBigUInt64LE(1);
+    if (program === ATA_PROGRAM.toBase58() && data[0] === 1 && ix.accountKeyIndexes[0] === payerIndex) funded.push(keys[ix.accountKeyIndexes[1]!]?.toBase58() ?? null);
+  }
+  return { lamports: BigInt(message.header.numRequiredSignatures) * LAMPORTS_PER_SIGNATURE + (price * (limit ?? 1_400_000n) + 999_999n) / 1_000_000n, funded };
+}
+
+/**
+ * What `payer` must hold for these transactions: their `solanaCost` plus rent for each funded token account that does not exist yet (spec 22 B-23; an account two
+ * transactions both fund counts once). An RPC error counts every account as missing, as `tokenAccountMissing` does: the estimate stays conservative.
+ */
+export async function solanaNeed(txs: string[], payer: string): Promise<bigint> {
+  const costs = txs.map((t) => solanaCost(t, payer));
+  const addresses = [...new Set(costs.flatMap((c) => c.funded).filter((a): a is string => a !== null))];
+  const infos = addresses.length ? await connection.getMultipleAccountsInfo(addresses.map((a) => new PublicKey(a)), "confirmed").catch(() => addresses.map(() => null)) : [];
+  const missing = infos.filter((info) => !info).length + costs.reduce((t, c) => t + c.funded.filter((a) => a === null).length, 0);
+  return costs.reduce((t, c) => t + c.lamports, 0n) + BigInt(missing) * TOKEN_ACCOUNT_RENT_LAMPORTS;
+}
+
+/** Bytes that are not a transaction at all are the caller's mismatch (409), never a 500. */
+function deserializeOrMismatch(input: string | Uint8Array): VersionedTransaction {
+  try {
+    return VersionedTransaction.deserialize(typeof input === "string" ? Buffer.from(input, "base64") : input);
+  } catch {
+    throw createHttpError(409, "The signed transaction isn't a valid transaction.", { code: "TX_MISMATCH" });
+  }
+}
+
 /** Non-compute-budget instructions as program + accounts + data (pubkeys resolved from static keys only). */
 function nonComputeCore(tx: VersionedTransaction): { program: string; accounts: string[]; data: string }[] {
   const keys = tx.message.staticAccountKeys;
@@ -155,7 +200,7 @@ function sameExceptComputeBudget(prepared: VersionedTransaction, signed: Version
  */
 export function cosign(signedBase64: string, storedMessageHash: string, preparedBase64?: string): { raw: Uint8Array; signature: string; recentBlockhash: string } {
   const mismatch = () => createHttpError(409, "The transaction changed after it was prepared.", { code: "TX_MISMATCH" });
-  const tx = VersionedTransaction.deserialize(Buffer.from(signedBase64, "base64"));
+  const tx = deserializeOrMismatch(signedBase64);
   if (!storedMessageHash) throw mismatch();
   if (!tx.message.staticAccountKeys[0]!.equals(feePayer().publicKey)) throw createHttpError(409, "Unexpected fee payer.", { code: "TX_MISMATCH" });
   if (messageHash(tx) !== storedMessageHash) {
@@ -168,8 +213,46 @@ export function cosign(signedBase64: string, storedMessageHash: string, prepared
   return { raw: tx.serialize(), signature: bs58.encode(tx.signatures[0]!), recentBlockhash: tx.message.recentBlockhash };
 }
 
+/**
+ * A user-paid transaction the user signed: the fee payer (index 0) is `owner`, the message is the quoted one (byte-identical, or ComputeBudget-only
+ * changes against `preparedBase64`), and the owner's ed25519 signature verifies. Nothing is sent; the caller claims first (ADR-014 claim before send).
+ */
+export function verifyUserSigned(signedBase64: string, i: { owner: string; storedMessageHash: string; preparedBase64?: string }): { raw: Uint8Array; signature: string; recentBlockhash: string } {
+  const mismatch = (why: string) => createHttpError(409, `The transaction changed after it was prepared (${why}).`, { code: "TX_MISMATCH" });
+  const raw = Buffer.from(signedBase64, "base64");
+  if (raw.length > 1232) throw mismatch("size");
+  const tx = deserializeOrMismatch(raw);
+  const owner = new PublicKey(i.owner);
+  if (!i.storedMessageHash || !tx.message.staticAccountKeys[0]!.equals(owner)) throw mismatch("fee payer");
+  if (messageHash(tx) !== i.storedMessageHash) {
+    if (!i.preparedBase64) throw mismatch("message");
+    const prepared = VersionedTransaction.deserialize(Buffer.from(i.preparedBase64, "base64"));
+    if (messageHash(prepared) !== i.storedMessageHash || !sameExceptComputeBudget(prepared, tx)) throw mismatch("message");
+  }
+  if (!ed25519.verify(tx.signatures[0]!, tx.message.serialize(), owner.toBytes())) throw mismatch("signature");
+  return { raw: tx.serialize(), signature: bs58.encode(tx.signatures[0]!), recentBlockhash: tx.message.recentBlockhash };
+}
+
+/** The send gate (spec 22 section 6.2 step 9): the blockhash is still valid and, measured from the group's quote height, has at least the margin left. */
+export async function blockhashUsable(recentBlockhash: string, quoteBlockHeight: number): Promise<boolean> {
+  const [valid, height] = await Promise.all([connection.isBlockhashValid(recentBlockhash, { commitment: "confirmed" }), connection.getBlockHeight("confirmed")]);
+  return valid.value && height <= quoteBlockHeight + BLOCKHASH_LIFETIME_BLOCKS - BLOCKHASH_MARGIN_BLOCKS;
+}
+
 /** One attempt, never retried. A `SendTransactionError` is a definitive refusal; any other failure leaves the outcome unknown. */
 export const sendSolana = (raw: Uint8Array): Promise<string> => connection.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 0 });
+
+/** True once `signature` is confirmed or finalized without error; false when it failed or `waitMs` passes first (always asks at least once). Polls every 500 ms. */
+export async function solanaConfirmed(signature: string, waitMs: number): Promise<boolean> {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const status = (await connection.getSignatureStatuses([signature])).value[0];
+    if (status?.err) return false;
+    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return true;
+    if (Date.now() >= until) return false;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
 
 /**
  * `finalized` and `failed` are terminal; `pending` covers not-yet-seen and not-yet-finalized. With `recentBlockhash`: a signature that is still not

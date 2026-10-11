@@ -23,6 +23,9 @@ export const formatFraction = (f: string, signed = false): string => `${signed &
 
 const microOf = (v: string) => { const [w = "0", f = ""] = v.split("."); return BigInt(w) * 1_000_000n + BigInt(f.padEnd(6, "0")); };
 
+/** Lamports as SOL, rounded up to 4 decimals so a top-up is never short: 4_200_001n -> "0.0043". */
+export const formatSol = (lamports: bigint): string => (Number((lamports + 99_999n) / 100_000n) / 1e4).toFixed(4);
+
 /** Why an invest amount can't be planned, or null. The server checks the same rules and the wallet balance. */
 export function investAmountProblem(amount: string, minimum: string | null, increment: string | null): string | null {
   if (!/^\d{1,12}(\.\d{1,6})?$/.test(amount)) return "Enter an amount in USDC, with up to 6 decimals.";

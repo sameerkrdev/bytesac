@@ -3,14 +3,27 @@ import { assetChainSchema } from "./assets";
 import { challengeResponseSchema } from "./auth";
 import { decimalStringSchema } from "./baskets";
 import { chainFamilySchema } from "./chains";
-import { operationFeeViewSchema } from "./fees";
+import { FEE_KINDS, type FeeKind, operationFeeViewSchema } from "./fees";
 import { positionExtrasSchema, repairSchema } from "./rebalance";
 
 export const LEG_STATES = ["PLANNED", "SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "SETTLED", "FAILED", "UNKNOWN"] as const;
 export const OPERATION_STATES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "PARTIAL", "FAILED", "CANCELLED"] as const;
 export const LEG_KINDS = ["network_fee", "swap", "cross_chain"] as const;
-export const GAS_PAYERS = ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs"] as const;
+export const GAS_PAYERS = ["platform_fee_payer", "platform_gas_drop", "user_btc_inputs", "user_solana"] as const;
 export const OPERATION_KINDS = ["invest", "sell_to_usdc", "sell_former", "rebalance", "repair"] as const;
+export const SIGNING_TIERS = ["sign_all", "sign_and_send", "single", "evm_calls", "evm_single", "psbt"] as const;
+export type SigningTier = (typeof SIGNING_TIERS)[number];
+/** Transactions per wallet approval (B-17); tuned after the Spec 22 P0 wallet lab. */
+export const K_SIGN_ALL = 12;
+export const K_SIGN_AND_SEND = 12;
+/** A group's submit must arrive within this window of its quote; the fee wait is capped by it (spec §6.2). */
+export const GROUP_SEND_WINDOW_MS = 40_000;
+export const BLOCKHASH_LIFETIME_BLOCKS = 150;
+/** A leg is not sent with fewer than this many blocks (~8 s) of its blockhash left (approximate: measured from the group's quote height). */
+export const BLOCKHASH_MARGIN_BLOCKS = 20;
+/** Keeps the wallet above the 890 880-lamport rent-exempt floor and absorbs wallet priority-fee padding (spec §5.3). */
+export const SOL_BUFFER_LAMPORTS = 1_000_000n;
+export const INVEST_AUTO_STOP_HOURS = 24;
 export type LegState = (typeof LEG_STATES)[number];
 export type OperationState = (typeof OPERATION_STATES)[number];
 
@@ -40,6 +53,33 @@ export function splitInvestment(amountMicro: bigint, feeMicro: bigint, weights: 
   return shares;
 }
 
+/**
+ * Per-leg fee shares (B-06): each kind split by base, floor, remainder to the largest base (first on ties). Kinds whose total is 0 are omitted.
+ * The shares of a kind always sum to its total, so charging every share charges exactly the planned fee.
+ */
+export function feeShares(totals: Partial<Record<FeeKind, bigint>>, bases: bigint[]): Partial<Record<FeeKind, bigint>>[] {
+  const sum = bases.reduce((t, b) => t + b, 0n);
+  const shares: Partial<Record<FeeKind, bigint>>[] = bases.map(() => ({}));
+  if (!bases.length || sum === 0n) return shares;
+  const largest = bases.reduce((best, b, i) => (b > bases[best]! ? i : best), 0);
+  for (const [kind, total] of Object.entries(totals) as [FeeKind, bigint][]) {
+    if (!total) continue;
+    let given = 0n;
+    bases.forEach((b, i) => { const s = (total * b) / sum; shares[i]![kind] = s; given += s; });
+    shares[largest]![kind] = shares[largest]![kind]! + (total - given);
+  }
+  return shares;
+}
+
+/** "About N wallet approvals" for a Solana-only plan (spec §5.2). */
+export function approvalsEstimate(i: { tier: SigningTier; solanaLegs: number; charged: boolean; k?: number }): number {
+  const fee = i.charged ? 1 : 0;
+  if (i.tier === "single") return i.solanaLegs + fee;
+  const k = i.k ?? (i.tier === "sign_and_send" ? K_SIGN_AND_SEND : K_SIGN_ALL);
+  if (i.tier === "sign_and_send") return Math.ceil(i.solanaLegs / k) * (1 + fee);
+  return Math.ceil(i.solanaLegs / (k - fee));
+}
+
 /** Floor of `quoted * (10000 - slippageBps) / 10000`. */
 export const minOut = (quotedOut: bigint, slippageBps: number): bigint => (quotedOut * BigInt(10_000 - slippageBps)) / 10_000n;
 
@@ -58,8 +98,10 @@ export function networkFeeMicro(gasUsd: number[], usdcPrice: string): bigint {
 
 const slippage = z.number().int().min(1).max(SLIPPAGE_MAX_BPS).default(SLIPPAGE_DEFAULT_BPS);
 const idempotencyKey = z.string().trim().min(8).max(128);
+const iso = z.iso.datetime({ offset: true });
+const routeFee = z.object({ name: z.string(), amountUsd: z.number(), included: z.boolean() });
 
-export const investRequestSchema = z.strictObject({ basketId: z.uuid(), amountUsdc: decimalStringSchema, slippageBps: slippage, idempotencyKey });
+export const investRequestSchema = z.strictObject({ basketId: z.uuid(), amountUsdc: decimalStringSchema, slippageBps: slippage, idempotencyKey, tier: z.enum(["sign_all", "single"]).optional() });
 export type InvestRequest = z.infer<typeof investRequestSchema>;
 export const sellRequestSchema = z.strictObject({ positionId: z.uuid(), percent: z.number().int().min(1).max(100), slippageBps: slippage, idempotencyKey });
 export type SellRequest = z.infer<typeof sellRequestSchema>;
@@ -75,6 +117,15 @@ export const legSubmitSchema = z.strictObject({
   signedPsbt: z.string().min(1).max(50_000).optional(),
 }).refine((b) => [b.signedTx, b.txHash, b.signedPsbt].filter((x) => x !== undefined).length === 1, { message: "Send exactly one of signedTx, txHash, signedPsbt." });
 export type LegSubmit = z.infer<typeof legSubmitSchema>;
+
+export const groupRequestSchema = z.strictObject({ chain: z.literal("solana"), tier: z.enum(["sign_all", "single"]), walletName: z.string().trim().min(1).max(64).optional(), idempotencyKey });
+export type GroupRequest = z.infer<typeof groupRequestSchema>;
+/** 1644 is the base64 length of 1232 bytes; the server still checks the decoded length. */
+export const groupSubmitSchema = z.strictObject({ signed: z.array(z.strictObject({ legId: z.uuid(), signedTx: z.string().min(4).max(1644) })).min(1).max(K_SIGN_ALL) });
+export type GroupSubmit = z.infer<typeof groupSubmitSchema>;
+// No default here: a Continue that names no slippage keeps the operation's own (`slippage` would reset it to the default).
+export const continueRequestSchema = z.strictObject({ idempotencyKey, slippageBps: z.number().int().min(1).max(SLIPPAGE_MAX_BPS).optional(), skipLegIds: z.array(z.uuid()).max(100).optional(), scaleToAvailable: z.boolean().optional() });
+export type ContinueRequest = z.infer<typeof continueRequestSchema>;
 
 /** Ops resolution of a leg stuck UNKNOWN: the evidence is a transaction id/hash; SETTLED asset legs also need the amount received (verified on-chain where possible). */
 export const resolveLegRequestSchema = z.strictObject({
@@ -137,7 +188,7 @@ export const legSchema = z.object({
   failureReason: z.string().nullable(),
   /** LI.FI route fees and price impact from the plan (null on a leg without a route, such as the network fee). */
   priceImpact: z.number().nullable(),
-  routeFees: z.array(z.object({ name: z.string(), amountUsd: z.number(), included: z.boolean() })),
+  routeFees: z.array(routeFee),
   /** LI.FI substatus of the transfer (for example PARTIAL, REFUNDED, NOT_PROCESSABLE_REFUND_NEEDED), from the last status check. */
   providerSubstatus: z.string().nullable(),
   /** Set on a recovery leg: the leg whose destination swap failed. */
@@ -146,6 +197,13 @@ export const legSchema = z.object({
   recoveryToken: z.object({ chain: assetChainSchema, address: z.string().nullable(), decimals: z.number().int(), symbol: z.string(), amount: z.string() }).nullable(),
   /** The leg touches a deployment ops flagged as fee-on-transfer: the received amount can be below the quote. */
   feeOnTransfer: z.boolean(),
+  groupId: z.uuid().nullable(),
+  feeShare: z.partialRecord(z.enum(FEE_KINDS), z.string()).nullable(),
+  /** The fee leg that charged this leg's fee share. */
+  feeCoveredBy: z.uuid().nullable(),
+  /** Set on a retry leg: the failed leg it replaces. */
+  retryOf: z.uuid().nullable(),
+  lastError: z.string().nullable(),
 });
 export type Leg = z.infer<typeof legSchema>;
 
@@ -163,6 +221,15 @@ export const operationSchema = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   legs: z.array(legSchema),
   fees: z.array(operationFeeViewSchema),
+  /** Grouped invest: it needs the user's action (Continue or Stop) since `needsActionSince`. */
+  needsAction: z.boolean(),
+  needsActionSince: iso.nullable(),
+  groups: z.array(z.object({ id: z.uuid(), chain: assetChainSchema, tier: z.enum(SIGNING_TIERS), status: z.enum(["QUOTED", "CLAIMED", "SENT", "EXPIRED", "RELEASED"]), sendBy: iso, createdAt: iso })),
+  approvalsEstimate: z.number().int().nullable(),
+  /** Lamports of SOL the plan needs in the user's wallet (string integer). */
+  solRequiredLamports: z.string().nullable(),
+  /** What each settled fee leg charged. */
+  charged: z.array(z.object({ kind: z.enum(FEE_KINDS), amountMicro: z.string(), feeLegId: z.uuid(), settledAt: iso.nullable() })),
   /** Sell plans only: tokenized assets left out because the user may not sell them (they stay in the wallet). */
   excluded: z.array(z.object({ instrumentId: z.uuid(), symbol: z.string(), notice: z.string() })).optional(),
 });
@@ -224,6 +291,28 @@ export const legQuoteResponseSchema = z.object({
   gasDrop: z.object({ status: z.enum(["pending", "confirmed", "failed", "skipped"]), txHash: z.string().nullable() }).nullable(),
 });
 export type LegQuoteResponse = z.infer<typeof legQuoteResponseSchema>;
+
+/** A signing group: the transactions the wallet signs in one interaction (fee first), and each leg's fresh quote. */
+export const groupResponseSchema = z.object({
+  groupId: z.uuid(),
+  status: z.literal("quoted"),
+  expiresAt: iso,
+  sendBy: iso,
+  priceMoved: z.boolean(),
+  approvalsEstimate: z.number().int(),
+  solRequiredLamports: z.string(),
+  transactions: z.array(z.object({ legId: z.uuid(), kind: z.enum(["fee", "asset"]), serializedBase64: z.string() })),
+  legs: z.array(z.object({
+    legId: z.uuid(),
+    estimatedOut: z.string().nullable(),
+    minOut: z.string().nullable(),
+    plannedMinOut: z.string().nullable(),
+    routeFees: z.array(routeFee),
+    priceImpact: z.number().nullable(),
+    error: z.object({ code: z.string(), message: z.string() }).nullable(),
+  })),
+});
+export type GroupResponse = z.infer<typeof groupResponseSchema>;
 
 /** Ops route policy: a LI.FI bridge or exchange (`/v1/tools` key) denied on every estimate and quote until allowed again. */
 export const ROUTE_TOOL_KINDS = ["bridge", "exchange"] as const;

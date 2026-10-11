@@ -1,4 +1,5 @@
 import type { ErrorCode } from "@repo/validator";
+import { formatSol } from "./format";
 
 export type Recovery = "retry" | "restart" | "reauthenticate" | "fix-input" | "wait" | "contact-support";
 export type DescribableCode = ErrorCode | "NETWORK_ERROR" | "WALLET_REJECTED";
@@ -48,6 +49,7 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   DECLARATION_REQUIRED: { title: "Eligibility declaration needed", message: "Tell us your country and investor status to continue with tokenized assets.", recovery: "fix-input" },
   OPERATION_IN_PROGRESS: { title: "Another operation is running", message: "Finish or cancel your current operation first.", recovery: "wait" },
   QUOTE_EXPIRED: { title: "Quote expired", message: "Get a new quote and sign again.", recovery: "retry" },
+  GROUP_EXPIRED: { title: "Quotes expired", message: "These quotes expired before they were sent. Get new quotes — nothing was spent.", recovery: "retry" },
   TX_MISMATCH: { title: "Transaction changed", message: "The transaction no longer matches the prepared one. Nothing was sent. Get a new quote.", recovery: "retry" },
   PSBT_MISMATCH: { title: "Transaction changed", message: "The Bitcoin transaction no longer matches the prepared one. Nothing was sent. Get a new quote.", recovery: "retry" },
   GAS_BUDGET_EXHAUSTED: { title: "Network gas budget reached", message: "Today's sponsored gas budget is used up. Try again later.", recovery: "wait" },
@@ -67,6 +69,14 @@ const COPY: Record<DescribableCode, { title: string; message: string; recovery: 
   WALLET_REJECTED: { title: "Signature cancelled", message: "You cancelled the request in your wallet. Try again when ready.", recovery: "retry" },
 };
 
-export function describeError(code: DescribableCode) {
-  return COPY[code];
+/** `details` is the API error's extra data: with the SOL shortfall of `SOL_REQUIRED` the message names the amount to add. */
+export function describeError(code: DescribableCode, details?: unknown) {
+  const copy = COPY[code];
+  if (code === "SOL_REQUIRED" && typeof details === "object" && details !== null) {
+    const { lamportsRequired: need, lamportsHeld: held } = details as Record<string, unknown>;
+    if (typeof need === "string" && typeof held === "string" && /^\d+$/.test(need) && /^\d+$/.test(held) && BigInt(need) > BigInt(held)) {
+      return { ...copy, message: `Add about ${formatSol(BigInt(need) - BigInt(held))} SOL to your Solana wallet, then continue.` };
+    }
+  }
+  return copy;
 }

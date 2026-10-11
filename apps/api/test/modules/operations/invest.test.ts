@@ -9,7 +9,7 @@ import { seedPlatformWallets } from "@/modules/operations/gas.service";
 import { adminSql, resetDb } from "../../helpers/db";
 import { fakes } from "../../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "../../helpers/chain-mocks";
-import { USDC_MINT, seedBasket, seedUser, type SeedAsset } from "../../helpers/execution";
+import { USDC_MINT, chargeEntryFee, seedBasket, seedUser, type SeedAsset } from "../../helpers/execution";
 
 const SOL: SeedAsset = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 5000 };
 const ETH: SeedAsset = { symbol: "ETH", chain: "ethereum", tokenStandard: "native", bps: 3000 };
@@ -27,12 +27,15 @@ async function arrange(over: { assets?: SeedAsset[]; usdc?: bigint } = {}) {
   await seedPlatformWallets();
   const wallet = solanaTestWallet();
   const basket = await seedBasket({ assets: over.assets ?? [SOL, ETH, BTC] });
+  // The user pays Solana gas, so the network fee is 0: a 0.1% manager entry fee (0.5 USDC on 500) gives the plan its fee leg.
+  await chargeEntryFee(basket, 10);
   const user = await seedUser({ wallet, bitcoin: true });
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.usdc ?? 1_000_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 10n ** 9n);
   return { chain, wallet, basket, user };
 }
 
-/** The wallet's step: signs a planner-built transaction and returns it with the fee-payer slot empty. */
+/** The wallet's step: signs a planner-built transaction. The user is the fee payer, so theirs is the only signature. */
 const walletSign = (serializedBase64: string, wallet: ReturnType<typeof solanaTestWallet>) => {
   const tx = VersionedTransaction.deserialize(Buffer.from(serializedBase64, "base64"));
   tx.sign([wallet.keypair]);
@@ -43,24 +46,22 @@ beforeEach(resetDb);
 afterEach(() => vi.restoreAllMocks());
 
 describe("invest plan", () => {
-  it("builds the network fee leg first and splits the rest by weight; reserves the platform gas", async () => {
+  it("builds the fee leg first and splits the rest by weight; the user pays Solana gas, so nothing is reserved", async () => {
     const { basket, user, chain } = await arrange();
     const res = await invest(user.h, basket.basketId);
     expect(res.status).toBe(201);
     const op = res.body;
-    expect(op).toMatchObject({ kind: "invest", status: "PLANNED", amountUsdc: "500000000", networkFeeUsdc: "186000", slippageBps: 100 });
-    // fee = (0.005 + 3 x 0.05) USD x 1.2 = 0.186 USDC; deployable 499.814 USDC split 50/30/20
+    expect(op).toMatchObject({ kind: "invest", status: "PLANNED", amountUsdc: "500000000", networkFeeUsdc: "0", slippageBps: 100 });
+    // no platform gas: the network fee is 0, the fee is the manager's 0.1% = 0.5 USDC; deployable 499.5 USDC split 50/30/20
     expect(op.legs.map((l: { kind: string; toChain: string; amountIn: string }) => [l.kind, l.toChain, l.amountIn])).toEqual([
-      ["network_fee", "solana", "186000"], ["swap", "solana", "249907000"], ["cross_chain", "ethereum", "149944200"], ["cross_chain", "bitcoin", "99962800"],
+      ["network_fee", "solana", "500000"], ["swap", "solana", "249750000"], ["cross_chain", "ethereum", "149850000"], ["cross_chain", "bitcoin", "99900000"],
     ]);
-    expect(op.legs.every((l: { status: string; gasPayer: string }) => l.status === "PLANNED" && l.gasPayer === "platform_fee_payer")).toBe(true);
-    expect(BigInt(op.legs[1].minOut)).toBe((249_907_000n * 9900n) / 10_000n);
-    expect(chain.quotes.every((q) => q.fromChain === "solana" && q.svmSponsor)).toBe(true);
+    expect(op.legs.every((l: { status: string; gasPayer: string }) => l.status === "PLANNED" && l.gasPayer === "user_solana")).toBe(true);
+    expect(BigInt(op.legs[1].minOut)).toBe((249_750_000n * 9900n) / 10_000n);
+    expect(chain.quotes.every((q) => q.fromChain === "solana" && q.svmSponsor === undefined)).toBe(true);
     expect(chain.quotes.map((q) => q.toAddress)).toContain(user.btcAddress);
-    const [usage] = await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} AND chain = 'solana'`;
-    // fee transfer 32,402 (2 signatures + CU priority) + 3 legs x (2 signatures x 5,000): the decoded fee-payer exposure, not LI.FI's smaller 5,000 figure
-    expect(BigInt(usage!.amount_native)).toBe(32_402n + 3n * 10_000n);
-    expect((await adminSql<{ gas_reserved: Record<string, string> }[]>`SELECT gas_reserved FROM app.operations`)[0]!.gas_reserved).toEqual({ solana: "62402" });
+    expect(await adminSql`SELECT 1 FROM app.sponsor_usage WHERE user_id = ${user.userId}`).toHaveLength(0);
+    expect((await adminSql<{ gas_reserved: Record<string, string> }[]>`SELECT gas_reserved FROM app.operations`)[0]!.gas_reserved).toEqual({});
     expect(await adminSql`SELECT 1 FROM app.audit_events WHERE action = 'operation.planned'`).toHaveLength(1);
   });
 
@@ -98,14 +99,12 @@ describe("invest plan", () => {
     expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(1);
   });
 
-  it("refuses over the gas budget before any operation row exists (Review Focus 5)", async () => {
+  it("the platform's Solana gas budget no longer applies: the user pays, so a used-up budget does not refuse the plan (Review Focus 5 is the EVM drop, see gas.test.ts)", async () => {
     const { basket, user } = await arrange();
     await adminSql`INSERT INTO app.sponsor_usage (user_id, chain, day, amount_native) VALUES (${user.userId}, 'solana', (now() at time zone 'utc')::date, 19990000)`;
     const res = await invest(user.h, basket.basketId);
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe("GAS_BUDGET_EXHAUSTED");
-    expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(0);
-    expect(await adminSql`SELECT 1 FROM app.operation_legs`).toHaveLength(0);
+    expect(res.status).toBe(201);
+    expect((await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage`)[0]!.amount_native).toBe("19990000");
   });
 
   it("checks investability, eligibility, amount rules and the USDC balance", async () => {
@@ -142,7 +141,7 @@ describe("quote and submit a Solana leg", () => {
   const quote = (h: H, opId: string, legId: string) => post(h, `/v1/operations/${opId}/legs/${legId}/quote`);
   const submit = (h: H, opId: string, legId: string, body: object) => post(h, `/v1/operations/${opId}/legs/${legId}/submit`, body);
 
-  it("quotes the network fee transfer, then co-signs the user's signature and submits once", async () => {
+  it("quotes the network fee transfer, then verifies the user's signature and submits once", async () => {
     const { user, wallet, op, feeLeg, chain } = await planned();
     const q = await quote(user.h, op.id, feeLeg.id);
     expect(q.status).toBe(200);
@@ -160,7 +159,7 @@ describe("quote and submit a Solana leg", () => {
     expect((await adminSql`SELECT action FROM app.audit_events WHERE entity_id = ${feeLeg.id}`).map((r) => r.action)).toEqual(["leg.submitting", "leg.submitted"]);
   });
 
-  it("refuses a swap leg until the fee leg is on-chain, then quotes it with the sponsor and the user's own addresses", async () => {
+  it("refuses a swap leg until the fee leg is on-chain, then quotes it for the user as fee payer with the user's own addresses", async () => {
     const { user, wallet, op, feeLeg, solLeg, chain } = await planned();
     expect((await quote(user.h, op.id, solLeg.id)).body.error.code).toBe("INVALID_TRANSITION");
     const fee = await quote(user.h, op.id, feeLeg.id);
@@ -169,9 +168,9 @@ describe("quote and submit a Solana leg", () => {
     await adminSql`UPDATE app.operation_legs SET status = 'PENDING_CHAIN' WHERE id = ${feeLeg.id}`;
     const q = await quote(user.h, op.id, solLeg.id);
     expect(q.status).toBe(200);
-    expect(q.body).toMatchObject({ estimatedOut: "249907000", minOut: "247407930", approval: null, gasDrop: null });
+    expect(q.body).toMatchObject({ estimatedOut: "249750000", minOut: "247252500", approval: null, gasDrop: null });
     expect(chain.quotes.at(-1)).toMatchObject({ fromChain: "solana", toChain: "solana", toAddress: user.solanaAddress });
-    expect(chain.quotes.at(-1)!.svmSponsor).toBeTruthy();
+    expect(chain.quotes.at(-1)!.svmSponsor).toBeUndefined();
   });
 
   it("rejects a transaction changed after it was prepared: TX_MISMATCH, nothing sent, the leg stays PLANNED (Review Focus 1)", async () => {
@@ -212,7 +211,7 @@ describe("quote and submit a Solana leg", () => {
     expect(unknown.status).toBe(200);
     expect(unknown.body.legs[0].status).toBe("SUBMITTED");
     const expected = bs58.encode(VersionedTransaction.deserialize(Buffer.from(signedTx, "base64")).signatures[0]!);
-    expect(unknown.body.legs[0].sourceTx).not.toBe(expected); // the co-signed signature is the fee payer's, not the unsigned slot
+    expect(unknown.body.legs[0].sourceTx).toBe(expected); // nobody co-signs: the transaction id is the user's own (first) signature
     expect(unknown.body.legs[0].sourceTx).toMatch(/^[1-9A-HJ-NP-Za-km-z]{80,90}$/);
     expect(fakes.queue.jobs.filter((j) => j.name === "track-leg")).toHaveLength(1);
   });
@@ -309,23 +308,23 @@ describe("review fixes", () => {
     expect((await opRow(op.id)).status).toBe("PLANNED");
   });
 
-  it("D3: cancelling a plan releases its unspent gas reservation, so going Back repeatedly does not burn the day's budget", async () => {
+  it("D3: the user pays Solana gas, so planning and cancelling repeatedly reserves and burns nothing of the platform's budget", async () => {
     const { user, basket } = await arrange();
     for (const key of ["key-back0001", "key-back0002", "key-back0003", "key-back0004"]) {
       const op = (await invest(user.h, basket.basketId, { idempotencyKey: key })).body;
-      expect(await usage()).toBe(62_402n);
+      expect(await usage()).toBe(0n);
       expect((await cancel(user.h, op.id)).body.status).toBe("CANCELLED");
       expect(await usage()).toBe(0n);
     }
     expect((await adminSql<{ gas_reserved: object }[]>`SELECT gas_reserved FROM app.operations LIMIT 1`)[0]!.gas_reserved).toEqual({});
   });
 
-  it("D3: an expired plan releases its reservation when it is next touched", async () => {
+  it("D3: an expired plan is cancelled when next touched and the new plan reserves nothing either", async () => {
     const { user, basket } = await arrange();
     const op = (await invest(user.h, basket.basketId)).body;
     await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;
     expect((await invest(user.h, basket.basketId, { idempotencyKey: "key-after001" })).status).toBe(201);
-    expect(await usage()).toBe(62_402n); // only the new plan's
+    expect(await usage()).toBe(0n);
   });
 
   it("I6/D6: a fresh quote below the plan's minimum is accepted while D-073 is waived (pilot); the stored floor drops to the fresh minimum", async () => {
@@ -340,8 +339,9 @@ describe("review fixes", () => {
     expect((await legs(op.id))[1]!.built_message_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("I4: a provider transaction in which the fee payer would pay for anything but fees and token-account rent is refused at quote time", async () => {
+  it("I4: on a leg planned with the platform as fee payer, a provider transaction in which it would pay for anything but fees and token-account rent is refused at quote time", async () => {
     const { user, op, feeLeg, solLeg, chain } = await ready();
+    await adminSql`UPDATE app.operation_legs SET gas_payer = 'platform_fee_payer' WHERE operation_id = ${op.id}`;
     await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${feeLeg.id}`;
     await redis.set("lifi:tools", JSON.stringify({ bridges: [], exchanges: [] }), "EX", 3600);
     const { lifi } = await import("@/providers/routes/lifi");
@@ -361,22 +361,20 @@ describe("review fixes", () => {
     expect((await legs(op.id))[1]!.built_message_hash).toBeNull();
   });
 
-  it("spec 7: a plan is refused while the platform fee payer cannot fund it, before any row exists", async () => {
+  it("spec 7: the platform fee payer is not used for a new plan, so an empty one does not refuse it", async () => {
     const { user, basket, chain } = await arrange();
     const { feePayer } = await import("@/providers/solana-tx");
     chain.balances.set(balanceKey(feePayer().publicKey.toBase58(), null), 1_000n);
     const res = await invest(user.h, basket.basketId);
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
-    expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(0);
+    expect(res.status).toBe(201);
     expect(await usage()).toBe(0n);
   });
 
-  it("N2: the sweeper cancels expired untouched plans and releases their reservation, but leaves a plan with a claimed leg", async () => {
+  it("N2: the sweeper cancels expired untouched plans, but leaves a plan with a claimed leg", async () => {
     const { expireStalePlans } = await import("@/modules/portfolio/tracking.service");
     const { user, basket } = await arrange();
     const op = (await invest(user.h, basket.basketId)).body;
-    expect(await usage()).toBe(62_402n);
+    expect(await usage()).toBe(0n);
     await expireStalePlans(); // not expired yet
     expect((await opRow(op.id)).status).toBe("PLANNED");
     await adminSql`UPDATE app.operations SET expires_at = now() - interval '1 minute' WHERE id = ${op.id}`;

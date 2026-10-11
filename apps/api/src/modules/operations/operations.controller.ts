@@ -1,9 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
-import type { InvestRequest, SellRequest, RebalanceRequest, RepairRequest, LegSubmit } from "@repo/validator";
+import { K_SIGN_ALL, type ContinueRequest, type GroupRequest, type GroupSubmit, type InvestRequest, type LegSubmit, type RebalanceRequest, type RepairRequest, type SellRequest } from "@repo/validator";
 import { consume, limits } from "@/middlewares/rate-limit.middleware";
 import * as operationsService from "./operations.service";
 import * as planService from "./plan.service";
 import * as quoteService from "./quote.service";
+import * as continueService from "./continue.service";
+import * as groupsService from "./groups.service";
 import * as submitService from "./submit.service";
 import * as rebalanceService from "@/modules/rebalance/rebalance.service";
 import { ctx } from "@/middlewares/request-context.middleware";
@@ -75,6 +77,33 @@ export const submitLeg = async (req: Request, res: Response, next: NextFunction)
 export const cancelOperation = async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await operationsService.cancelOperation(ctx(req), req.params.id as string));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const requestGroup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.quotesUser, req.auth!.userId, K_SIGN_ALL); // a group quotes up to K legs: each counts, like a per-leg quote
+    res.json(await groupsService.requestGroup(ctx(req), req.params.id as string, req.body as GroupRequest));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const submitGroup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.submitsUser, req.auth!.userId);
+    res.json(await groupsService.submitGroup(ctx(req), req.params.id as string, req.params.groupId as string, req.body as GroupSubmit));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const continueOperation = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await consume(limits.operationsUser, req.auth!.userId);
+    res.json(await continueService.continueOperation(ctx(req), req.params.id as string, req.body as ContinueRequest));
   } catch (error) {
     next(error);
   }

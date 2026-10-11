@@ -16,7 +16,7 @@ export const me = (): MeResponse => ({
 export const feeLeg = (o: Partial<Leg> = {}): Leg => ({
   id: ID(10), sequence: 1, kind: "network_fee", status: "PLANNED", fromChain: "solana", toChain: "solana", fromDeploymentId: null, toDeploymentId: null, amountIn: "70000", minOut: null,
   amountReceived: null, provider: null, routeSummary: null, quoteExpiresAt: null, gasPayer: "platform_fee_payer", sourceTx: null, destinationTx: null, failureReason: null,
-  priceImpact: null, routeFees: [], providerSubstatus: null, recoveryOf: null, recoveryToken: null, feeOnTransfer: false, ...o,
+  priceImpact: null, routeFees: [], providerSubstatus: null, recoveryOf: null, recoveryToken: null, feeOnTransfer: false, groupId: null, feeShare: null, feeCoveredBy: null, retryOf: null, lastError: null, ...o,
 });
 
 /** A buy leg: USDC on Solana to an asset on another chain. */
@@ -33,7 +33,7 @@ export const sellLeg = (o: Partial<Leg> = {}): Leg => ({
 
 export const operation = (o: Partial<OperationView> = {}): OperationView => ({
   id: ID(20), kind: "invest", status: "PLANNED", basketId: ID(3), positionId: null, amountUsdc: "100000000", sellPercent: null, slippageBps: 100, networkFeeUsdc: "70000",
-  expiresAt: "2026-10-01T12:30:00.000Z", createdAt: "2026-10-01T12:00:00.000Z", fees: [{ kind: "network", amountMicro: "70000", recipientLabel: "Bytesac (network)", waivedReason: null }], legs: [feeLeg(), buyLeg()], ...o,
+  expiresAt: "2026-10-01T12:30:00.000Z", createdAt: "2026-10-01T12:00:00.000Z", fees: [{ kind: "network", amountMicro: "70000", recipientLabel: "Bytesac (network)", waivedReason: null }], legs: [feeLeg(), buyLeg()], needsAction: false, needsActionSince: null, groups: [], approvalsEstimate: null, solRequiredLamports: null, charged: [], ...o,
 });
 
 type Position = Portfolio["positions"][number];

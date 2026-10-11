@@ -68,3 +68,18 @@ export const operationFees = app.table(
     index("operation_fees_operation_idx").on(t.operationId),
   ],
 );
+
+/** Append-only: one row per fee leg and fee kind that charged (spec 22 B-06). Earnings, revenue and reconciliation read these, not the plan rows. */
+export const operationFeeCharges = app.table(
+  "operation_fee_charges",
+  {
+    id: id(),
+    operationFeeId: uuid("operation_fee_id").notNull().references(() => operationFees.id),
+    feeLegId: uuid("fee_leg_id").notNull().references(() => operationLegs.id),
+    amountMicro: numeric("amount_micro").notNull(),
+    settledAt: ts("settled_at"),
+    settledChainAt: ts("settled_chain_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("operation_fee_charges_fee_leg").on(t.operationFeeId, t.feeLegId)],
+);

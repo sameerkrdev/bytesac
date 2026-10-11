@@ -178,6 +178,19 @@ describe("recovery after a failed destination swap", () => {
     expect(await ledger()).toHaveLength(0);
   });
 
+  it("an invest with no fee leg (nothing charged) gets its EVM recovery's gas top-up without waiting for a fee (review I8)", async () => {
+    const a = await arrange();
+    await adminSql`DELETE FROM app.operation_legs WHERE operation_id = ${a.opId} AND kind = 'network_fee'`;
+    partial(a, 299_000_000n);
+    await trackLeg(a.assetId);
+    const recovery = (await legs(a.opId)).find((l) => l.recovery_of)!;
+    fakes.evm.balances.clear();
+    const first = await post(a.user.h, `/v1/operations/${a.opId}/legs/${recovery.id}/quote`);
+    expect(first.status).toBe(200);
+    expect(first.body.gasDrop).toMatchObject({ status: "pending", txHash: "0xdrop1" }); // a drop was sent, not "pending" with no hash
+    expect(fakes.evm.sentNative).toEqual([{ chain: "base", to: a.user.evmAddress, value: 10_000n }]);
+  });
+
   it("invest: the recovery is quoted with a gas top-up within the caps, signed and settled: ledger invest from what it received, operation COMPLETED", async () => {
     const a = await arrange();
     partial(a, 299_000_000n);
@@ -242,7 +255,7 @@ describe("recovery after a failed destination swap", () => {
     expect(await adminSql`SELECT quantity_delta, reason, leg_id FROM app.position_ledger_entries WHERE reason = 'rebalance'`).toEqual([{ quantity_delta: "-400000", reason: "rebalance", leg_id: a.assetId }]);
     expect((await cash()).filter((c) => c.reason === "rebalance_sell")).toHaveLength(0);
     const recovery = (await legs(a.opId))[2]!;
-    expect(recovery).toMatchObject({ from_chain: "solana", to_chain: "solana", to_deployment_id: null, amount_in: "5000000", gas_payer: "platform_fee_payer", route_summary: { fromToken: WRAPPED } });
+    expect(recovery).toMatchObject({ from_chain: "solana", to_chain: "solana", to_deployment_id: null, amount_in: "5000000", gas_payer: "user_solana", route_summary: { fromToken: WRAPPED } });
     await settleRecovery(a, recovery.id, 4_900_000n);
     expect((await cash()).filter((c) => c.reason === "rebalance_sell")).toEqual([{ amount_micro: "4900000", reason: "rebalance_sell", leg_id: recovery.id }]);
     expect((await adminSql`SELECT 1 FROM app.position_ledger_entries WHERE reason = 'rebalance'`)).toHaveLength(1);
@@ -270,11 +283,29 @@ describe("recovery after a failed destination swap", () => {
     expect((await opRow(a.opId)).status).toBe("COMPLETED");
   });
 
-  it("stop during recovery: the operation is PARTIAL, the recovery leg is never sent, and the gas reserved for it (Solana, at quote time) is given back", async () => {
+  it("stop during recovery: the operation is PARTIAL and the recovery leg is never sent; a Solana recovery is user-paid, so nothing is reserved to give back", async () => {
     const a = await arrange("rebalance", "sell");
     partial(a, 5_000_000n);
     await trackLeg(a.assetId);
     const recovery = (await legs(a.opId))[2]!;
+    const quoted = await post(a.user.h, `/v1/operations/${a.opId}/legs/${recovery.id}/quote`);
+    expect(quoted.status).toBe(200);
+    expect(quoted.body.transaction.kind).toBe("solana");
+    expect(await adminSql`SELECT amount_native FROM app.sponsor_usage WHERE chain = 'solana'`).toEqual([]);
+    expect((await opRow(a.opId)).gas_reserved).toEqual({});
+    const stopped = await post(a.user.h, `/v1/operations/${a.opId}/cancel`);
+    expect(stopped.status).toBe(200);
+    expect((await opRow(a.opId)).status).toBe("PARTIAL");
+    expect((await legs(a.opId))[2]!.status).toBe("PLANNED");
+    expect(await adminSql`SELECT amount_native FROM app.sponsor_usage WHERE chain = 'solana'`).toEqual([]);
+  });
+
+  it("stop during recovery of a leg planned with the platform as fee payer: the gas reserved for it (Solana, at quote time) is given back", async () => {
+    const a = await arrange("rebalance", "sell");
+    partial(a, 5_000_000n);
+    await trackLeg(a.assetId);
+    const recovery = (await legs(a.opId))[2]!;
+    await adminSql`UPDATE app.operation_legs SET gas_payer = 'platform_fee_payer', expected_tx = ${adminSql.json({ gasReserved: false })} WHERE id = ${recovery.id}`; // a recovery created before user-paid gas: its Solana gas is reserved at quote time
     const quoted = await post(a.user.h, `/v1/operations/${a.opId}/legs/${recovery.id}/quote`);
     expect(quoted.status).toBe(200);
     expect(quoted.body.transaction.kind).toBe("solana");

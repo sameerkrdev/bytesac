@@ -49,10 +49,10 @@ export const limits = {
   previewGateIp: limiter("preview:gate:ip", 20, 3600),
 };
 
-/** Takes one point for `key`; throws 429 RATE_LIMITED past the limit. Returns a function that gives the point back. */
-export async function consume(rateLimiter: RateLimiterRedis, key: string): Promise<() => Promise<unknown>> {
+/** Takes `points` (default one) for `key`; throws 429 RATE_LIMITED past the limit. Returns a function that gives them back. */
+export async function consume(rateLimiter: RateLimiterRedis, key: string, points = 1): Promise<() => Promise<unknown>> {
   try {
-    await rateLimiter.consume(key);
+    await rateLimiter.consume(key, points);
   } catch (err) {
     if (!(err instanceof RateLimiterRes)) throw err;
     throw createHttpError("Too many requests. Try again later.", {
@@ -61,5 +61,5 @@ export async function consume(rateLimiter: RateLimiterRedis, key: string): Promi
     });
   }
   // Skip when the window already expired: reward() would recreate the key at -1 and grant a bonus point.
-  return async () => { if (await rateLimiter.get(key)) await rateLimiter.reward(key); };
+  return async () => { if (await rateLimiter.get(key)) await rateLimiter.reward(key, points); };
 }

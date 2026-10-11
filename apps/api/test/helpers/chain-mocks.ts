@@ -1,4 +1,4 @@
-import { createPrivateKey, randomBytes, sign } from "node:crypto";
+import { createHash, createPrivateKey, randomBytes, sign } from "node:crypto";
 import { Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { Script, Transaction } from "@scure/btc-signer";
 import bs58 from "bs58";
@@ -37,6 +37,10 @@ export interface ChainState {
   broadcasts: string[];
   /** Solana token accounts (base58) that exist; unlisted = missing. */
   tokenAccounts: Set<string>;
+  /** What `getBlockHeight` answers (the group send gate measures the blockhash lifetime from it). */
+  blockHeight: number;
+  /** What `getSignatureStatuses` answers per signature (the send loop waits for the fee to confirm); unlisted = confirmed. `none` = not seen. */
+  signatureStatus: Map<string, "confirmed" | "finalized" | "failed" | "none">;
 }
 
 export const balanceKey = (owner: string, token: string | null) => `${owner.toLowerCase()}:${(token ?? "native").toLowerCase()}`;
@@ -58,7 +62,7 @@ export function btcPsbt(refund: string, sats: bigint, over: { depositSats?: bigi
 
 /** Installs spies on every network-facing function the operations use. Call in `beforeEach`; `vi.restoreAllMocks()` undoes it. */
 export function mockChains(): ChainState {
-  const state: ChainState = { balances: new Map(), solanaFinality: new Map(), solanaReceived: new Map(), bitcoinTxs: new Map(), lifiStatus: new Map(), estimates: [], quotes: [], broadcasts: [], quoteOut: { numerator: 1n, denominator: 1n }, tokenAccounts: new Set() };
+  const state: ChainState = { balances: new Map(), solanaFinality: new Map(), solanaReceived: new Map(), bitcoinTxs: new Map(), lifiStatus: new Map(), estimates: [], quotes: [], broadcasts: [], quoteOut: { numerator: 1n, denominator: 1n }, tokenAccounts: new Set(), blockHeight: 1_000, signatureStatus: new Map() };
   // The platform wallets are funded unless a test says otherwise.
   state.balances.set(balanceKey(solanaTx.feePayer().publicKey.toBase58(), null), 10n ** 12n);
   fakes.evm.balances.set(`ethereum:${fakes.evm.gasWalletAddress()}`, 10n ** 20n);
@@ -66,7 +70,13 @@ export function mockChains(): ChainState {
   vi.spyOn(solanaTx, "solanaFinality").mockImplementation(async (sig) => state.solanaFinality.get(sig) ?? "pending");
   vi.spyOn(solanaTx, "solanaReceived").mockImplementation(async (sig, owner) => state.solanaReceived.get(`${sig}:${owner}`) ?? null);
   vi.spyOn(solanaTx.connection, "getAccountInfo").mockImplementation(async (key) => (state.tokenAccounts.has(key.toBase58()) ? ({ lamports: 2_039_280, data: Buffer.alloc(165), owner: key, executable: false } as never) : null));
+  vi.spyOn(solanaTx.connection, "getMultipleAccountsInfo").mockImplementation(async (keys) => keys.map((key) => (state.tokenAccounts.has(key.toBase58()) ? ({ lamports: 2_039_280, data: Buffer.alloc(165), owner: key, executable: false } as never) : null)));
   vi.spyOn(solanaTx.connection, "isBlockhashValid").mockResolvedValue({ context: { slot: 1 }, value: true });
+  vi.spyOn(solanaTx.connection, "getBlockHeight").mockImplementation(async () => state.blockHeight);
+  vi.spyOn(solanaTx.connection, "getSignatureStatuses").mockImplementation(async (sigs) => ({ context: { slot: 1 }, value: sigs.map((sig) => {
+    const s = state.signatureStatus.get(sig) ?? "confirmed";
+    return s === "none" ? null : { slot: 1, confirmations: null, err: s === "failed" ? { InstructionError: [0, "Custom"] } : null, confirmationStatus: s === "failed" ? "confirmed" : s };
+  }) }));
   vi.spyOn(solanaTx.connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
   vi.spyOn(solanaTx.connection, "sendRawTransaction").mockImplementation(async (raw) => bs58.encode(VersionedTransaction.deserialize(raw as Uint8Array).signatures[0]!));
   vi.spyOn(bitcoin, "bitcoinBalance").mockImplementation(async (address) => state.balances.get(balanceKey(address, null)) ?? 0n);
@@ -85,8 +95,9 @@ export function mockChains(): ChainState {
     const base = { estimatedOut: out, minOut: (out * BigInt(10_000 - i.slippageBps)) / 10_000n, toolSummary: "test-route", gasEstimateUsd: 0.05, nativePriceUsd: null, priceImpact: null, routeFees: [], expiresAt: new Date(Date.now() + 60_000), approvalAddress: null };
     if (i.fromChain === "solana") {
       const tx = new VersionedTransaction(new TransactionMessage({
-        payerKey: solanaTx.feePayer().publicKey, recentBlockhash: BLOCKHASH,
-        instructions: [SystemProgram.transfer({ fromPubkey: new PublicKey(i.fromAddress), toPubkey: new PublicKey(Buffer.alloc(32, 3)), lamports: i.fromAmount })],
+        // Sponsored (legacy leg): the platform pays. Otherwise the user is the fee payer, as LI.FI builds it without svmSponsor.
+        payerKey: i.svmSponsor ? solanaTx.feePayer().publicKey : new PublicKey(i.fromAddress), recentBlockhash: BLOCKHASH,
+        instructions: [SystemProgram.transfer({ fromPubkey: new PublicKey(i.fromAddress), toPubkey: new PublicKey(createHash("sha256").update(i.toToken ?? i.toChain).digest()), lamports: i.fromAmount })],
       }).compileToV0Message());
       return { ...base, gasNative: 5_000n, transaction: { kind: "solana", serializedBase64: Buffer.from(tx.serialize()).toString("base64") } };
     }

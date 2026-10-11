@@ -102,6 +102,7 @@ describe("notificationText", () => {
     expect(notificationText("repair_required", { asset: "d1" }).link).toBe("/portfolio/repair/d1");
     expect(notificationText("drifted", { positionId: "p1" }).link).toBe("/portfolio/p1/rebalance");
     expect(notificationText("execution_incomplete", { autoStopped: true }).link).toBe("/portfolio");
+    expect(notificationText("execution_incomplete", { autoStopped: true, investment: true })).toMatchObject({ body: "We stopped your unfinished investment; your USDC is still in your wallet.", link: "/portfolio" });
     expect(notificationText("execution_incomplete", { positionId: "p1" }).link).toBe("/portfolio/p1/rebalance");
     expect(notificationText("basket_paused", { basketSlug: "blue" }).link).toBe("/baskets/blue");
   });

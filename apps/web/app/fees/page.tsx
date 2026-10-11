@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/layout/page-layout";
 export const metadata: Metadata = { title: "Fees" };
 
 const KINDS = [
-  { icon: Fuel, t: "Network fee", who: "Paid to Bytesac", d: "For the gas Bytesac fronts on your behalf. Shown as an amount before you sign." },
+  { icon: Fuel, t: "Network fee", who: "Paid to Bytesac", d: "Only when a step needs EVM gas, which Bytesac fronts on your behalf. Solana network fees are paid by you in SOL. Shown as an amount before you sign." },
   { icon: Building2, t: "Manager fee", who: "Paid to the organization", d: "Set by the organization that runs the basket. Entry and rebalance fees are collected; management and subscription fees are disclosed but not collected in this release." },
   { icon: Landmark, t: "Platform fee", who: "Paid to Bytesac", d: "Bytesac’s own rate, by operation. A basket or organization may have a different rate, shown on the basket." },
 ];

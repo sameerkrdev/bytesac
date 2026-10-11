@@ -46,12 +46,15 @@ describe("lifi quote", () => {
     expect(q.expiresAt.getTime()).toBeGreaterThan(Date.now() + 50_000);
   });
 
-  it("does not send svmSponsor for a non-Solana source and refuses a Solana source without one", async () => {
+  it("does not send svmSponsor for a non-Solana source; a Solana source without one is quoted for the user as fee payer", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ...quoteBody(), action: { ...quoteBody().action, fromChainId: 1, toChainId: SOLANA, fromToken: { address: TOKEN.toUpperCase().replace("0X", "0x"), chainId: 1 }, toToken: { address: USDC_MINT, chainId: SOLANA }, toAddress: USER_SOL }, transactionRequest: { to: TOKEN, data: "0xabcd", value: "0x10", chainId: 1 } }));
     const q = await lifi.quote({ ...input, fromChain: "ethereum", fromToken: TOKEN, toChain: "solana", toToken: USDC_MINT, toAddress: USER_SOL, fromAddress: USER_EVM, svmSponsor: undefined });
     expect(calls()[0]!.url.searchParams.has("svmSponsor")).toBe(false);
     expect(q.transaction).toEqual({ kind: "evm", to: TOKEN, data: "0xabcd", value: "16", chainId: 1 });
-    await expect(lifi.quote({ ...input, svmSponsor: undefined })).rejects.toThrow("svmSponsor");
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(quoteBody()));
+    await lifi.quote({ ...input, svmSponsor: undefined });
+    expect(calls()[1]!.url.searchParams.has("svmSponsor")).toBe(false);
+    expect(calls()[1]!.url.searchParams.get("fromAddress")).toBe(USER_SOL);
   });
 
   it("converts a hex Bitcoin PSBT to base64", async () => {

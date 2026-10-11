@@ -14,8 +14,10 @@ async function fee(basket: Basket, o: { kind: string; amount: bigint; settledAt?
   const { legId, operationId } = await seedLeg(basket.ownerId, basket, { kind: "network_fee" });
   await adminSql`UPDATE app.operations SET status = 'COMPLETED' WHERE id = ${operationId}`; // one active operation per user
   if (o.tx) await adminSql`UPDATE app.operation_legs SET source_tx = ${o.tx} WHERE id = ${legId}`;
-  await adminSql`INSERT INTO app.operation_fees (id, operation_id, leg_id, kind, base_micro, amount_micro, organization_id, basket_id, waived_reason, schedule_id, settled_at)
-    VALUES (gen_random_uuid(), ${operationId}, ${legId}, ${o.kind}, 100000000, ${o.amount.toString()}, ${o.org ?? basket.owner.id}, ${basket.basketId}, ${o.waived ?? null}, ${o.scheduleId ?? null}, ${o.settledAt ?? null})`;
+  const [row] = await adminSql<{ id: string }[]>`INSERT INTO app.operation_fees (id, operation_id, leg_id, kind, base_micro, amount_micro, organization_id, basket_id, waived_reason, schedule_id, settled_at)
+    VALUES (gen_random_uuid(), ${operationId}, ${legId}, ${o.kind}, 100000000, ${o.amount.toString()}, ${o.org ?? basket.owner.id}, ${basket.basketId}, ${o.waived ?? null}, ${o.scheduleId ?? null}, ${o.settledAt ?? null}) RETURNING id`;
+  // Earnings and revenue read what the fee leg charged (spec 22 B-06): a settled fee has its charge.
+  if (o.settledAt) await adminSql`INSERT INTO app.operation_fee_charges (id, operation_fee_id, fee_leg_id, amount_micro, settled_at) VALUES (gen_random_uuid(), ${row!.id}, ${legId}, ${o.amount.toString()}, ${o.settledAt})`;
 }
 
 async function arrange() {

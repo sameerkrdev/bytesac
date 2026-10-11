@@ -188,9 +188,10 @@ describe("asset review: LI.FI verification and the fee-on-transfer flag", () => 
 
     const investor = await seedUser({ wallet: solanaTestWallet() });
     chain.balances.set(balanceKey(investor.solanaAddress, USDC_MINT), 1_000_000_000n);
+    chain.balances.set(balanceKey(investor.solanaAddress, null), 1_000_000_000n); // the user pays Solana gas
     const plan = await request(app).post("/v1/operations/invest").set(investor.h).send({ basketId: basket.basketId, amountUsdc: "500", slippageBps: 100, idempotencyKey: "key-aaaaaaaa" });
     expect(plan.status).toBe(201);
-    expect(plan.body.legs.map((l: { toDeploymentId: string | null; feeOnTransfer: boolean }) => [l.toDeploymentId === tkn!.deploymentId, l.feeOnTransfer])).toEqual([[false, false], [true, true], [false, false]]);
+    expect(plan.body.legs.map((l: { toDeploymentId: string | null; feeOnTransfer: boolean }) => [l.toDeploymentId === tkn!.deploymentId, l.feeOnTransfer])).toEqual([[true, true], [false, false]]); // the user pays Solana gas and nothing is charged: no fee leg
 
     expect((await request(app).patch(url).set(admin.h).send({ feeOnTransfer: false })).body.deployments[0].feeOnTransfer).toBe(false);
   });

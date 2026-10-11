@@ -12,11 +12,10 @@ export const metadata: Metadata = { title: "Your wallet, your signature", descri
 const YOU = [
   "Every transaction that moves your assets — each step of an investment, rebalance, repair or sale.",
   "EVM token approvals, for the exact amount of that step only.",
-  "The network fee step, which pays Bytesac back for gas it fronted.",
+  "The fee step, which pays the listed fees and any EVM gas Bytesac fronted. Your wallet also pays Solana network fees in SOL.",
   "Sign-in messages that prove you control your wallet (these never authorize spending).",
 ];
 const BYTESAC = [
-  "Co-signs Solana steps as the fee payer — only when the transaction is byte-for-byte the one you reviewed.",
   "Sends a small amount of gas to your EVM address when a step needs it.",
 ];
 const NEVER = [
@@ -55,7 +54,7 @@ export default function SelfCustodyPage() {
           <section aria-labelledby="we-sign" className="rounded-card border border-line bg-surface p-7">
             <h2 id="we-sign" className="type-eyebrow text-ink-faint">Bytesac signs</h2>
             <div className="mt-6"><List items={BYTESAC} icon="check" /></div>
-            <p className="mt-6 text-sm text-ink-faint">The gas Bytesac fronts is charged back as a listed network fee, paid in the first step you sign.</p>
+            <p className="mt-6 text-sm text-ink-faint">The EVM gas Bytesac fronts is charged back as a listed network fee, paid in the first step you sign.</p>
           </section>
           <section aria-labelledby="never" data-theme="dark" className="rounded-card bg-canvas p-7 text-ink">
             <h2 id="never" className="type-eyebrow text-ink-faint">Bytesac never</h2>

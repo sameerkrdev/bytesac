@@ -95,7 +95,7 @@ describe("Inline declaration when a plan needs one", () => {
     await fill();
     await userEvent.click(save());
     await waitFor(() => expect(api.investPlan).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("Continue to signing")).toBeInTheDocument();
+    expect(await screen.findByText("Confirm")).toBeInTheDocument();
   });
 });
 

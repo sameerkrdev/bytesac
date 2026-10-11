@@ -13,7 +13,7 @@ import { forgetRoutePolicy, routeDenyList } from "@/modules/routing/routing.serv
 import { adminSql, resetDb } from "../../helpers/db";
 import { fakes } from "../../helpers/fakes";
 import { balanceKey, mockChains, solanaTestWallet } from "../../helpers/chain-mocks";
-import { USDC_MINT, seedBasket, seedPosition, seedPrices, seedUser, seedVersion, type SeedAsset } from "../../helpers/execution";
+import { USDC_MINT, chargeEntryFee, seedBasket, seedPosition, seedPrices, seedUser, seedVersion, type SeedAsset } from "../../helpers/execution";
 
 const SOLANA = 1151111081099710;
 const USER_SOL = "UserSo1111111111111111111111111111111111111";
@@ -262,7 +262,7 @@ const post = (h: Record<string, string>, path: string, body: object) => request(
 const invest = (h: Record<string, string>, basketId: string, key = "key-aaaaaaaa") => post(h, "/v1/operations/invest", { basketId, amountUsdc: "500", slippageBps: 100, idempotencyKey: key });
 
 describe("planners", () => {
-  it("a rebalance with zero free USDC and all value in assets plans: buys come from estimate (minOut = scaled toAmountMin), sells from quote, and the Solana gas reservation holds LI.FI's gas figure plus rent for the missing token account", async () => {
+  it("a rebalance with zero free USDC and all value in assets plans: buys come from estimate (minOut = scaled toAmountMin), sells from quote, and the user's SOL requirement holds LI.FI's gas figure plus rent for the missing token account (nothing is reserved)", async () => {
     const chain = mockChains();
     await seedPlatformWallets();
     const basket = await seedBasket({ assets: [SOL, TKN] });
@@ -289,11 +289,11 @@ describe("planners", () => {
     // minOut is toAmountMin scaled to the (fee-reduced) buy amount: (2 x planned - 7) x amount / planned
     expect(BigInt(buy.min_out!)).toBe(((planned * 2n - 7n) * BigInt(buy.amount_in)) / planned);
     expect(buy.route_summary).toMatchObject({ priceImpact: 0.01, routeFees: [{ name: "LI.FI Fixed Fee", amountUsd: 0.1, included: true }] });
-    const [op] = await adminSql<{ gas_reserved: { solana: string } }[]>`SELECT gas_reserved FROM app.operations WHERE id = ${res.body.id}`;
-    // the buy's estimate gas (5,000) + the missing token account's rent + the fee transfer and the sell; no priority-fee ceiling is assumed
-    expect(BigInt(op!.gas_reserved.solana)).toBeGreaterThanOrEqual(5_000n + 2_039_280n + 10_000n);
-    expect(BigInt(op!.gas_reserved.solana)).toBeLessThan(5_000n + 1_000_000n + 2_039_280n + 10_000n);
-    expect(buy.expected_tx).toEqual({ reservedNative: String(5_000n + 2_039_280n) });
+    const [op] = await adminSql<{ gas_reserved: object; sol_required_lamports: string }[]>`SELECT gas_reserved, sol_required_lamports FROM app.operations WHERE id = ${res.body.id}`;
+    expect(op!.gas_reserved).toEqual({}); // the user pays Solana gas: the platform reserves nothing
+    // the buy's estimate gas (5,000) + the missing token account's rent; the sell's 5,000 (one user signature); 4 SOL sold; the buffer. Nothing is charged, so there is no fee transfer.
+    expect(BigInt(op!.sol_required_lamports)).toBe(5_000n + 2_039_280n + 5_000n + 4_000_000_000n + 1_000_000n);
+    expect(buy.expected_tx).toEqual({ userLamports: String(5_000n + 2_039_280n) });
   });
 
   it("an invest whose plan quote LI.FI refuses with 1001 retries with estimate and plans; another failure still fails the plan", async () => {
@@ -302,6 +302,7 @@ describe("planners", () => {
     const basket = await seedBasket({ assets: [SOL, TKN] });
     const user = await seedUser({ wallet: solanaTestWallet() });
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the estimate path still needs the user's SOL (checked by the plan)
     vi.mocked(lifi.quote).mockRejectedValue(createHttpError("LI.FI responded 400", { code: "ROUTE_UNAVAILABLE", lifiCode: 1001 }));
     const res = await invest(user.h, basket.basketId);
     expect(res.status).toBe(201);
@@ -313,13 +314,29 @@ describe("planners", () => {
     expect((await invest(user.h, basket.basketId, "key-cccccccc")).status).toBe(503);
   });
 
-  it("skips a Solana quote the fee payer cannot sponsor and plans with the next tool", async () => {
+  it("a quote LI.FI refuses because the wallet holds no SOL falls back to an estimate, and the plan then answers SOL_REQUIRED with the amounts", async () => {
+    const chain = mockChains();
+    await seedPlatformWallets();
+    const basket = await seedBasket({ assets: [SOL, TKN] });
+    const user = await seedUser({ wallet: solanaTestWallet() });
+    chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    vi.mocked(lifi.quote).mockRejectedValue(createHttpError(409, "Add a small amount of SOL", { code: "SOL_REQUIRED" }));
+    const res = await invest(user.h, basket.basketId);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("SOL_REQUIRED");
+    expect(res.body.error.details).toEqual({ lamportsRequired: String(2n * 5_000n + 2_039_280n + 1_000_000n), lamportsHeld: "0" }); // 2 estimates (5,000 gas each), the missing TKN account's rent, the buffer
+    expect(chain.estimates).toHaveLength(2);
+    expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(0);
+  });
+
+  it("on a leg planned with the platform as fee payer, a Solana quote it cannot sponsor is skipped at quote time and the next tool is taken", async () => {
     const chain = mockChains();
     await seedPlatformWallets();
     await redis.set("lifi:tools", JSON.stringify({ bridges: [], exchanges: [{ key: "titan", name: "Titan" }, { key: "jupiter", name: "Jupiter" }] }), "EX", 3600);
     const basket = await seedBasket({ assets: [{ ...TKN, bps: 10000 }] });
     const user = await seedUser({ wallet: solanaTestWallet() });
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n);
     const { feePayer } = await import("@/providers/solana-tx");
     const original = vi.mocked(lifi.quote).getMockImplementation()!;
     const drain = new VersionedTransaction(new TransactionMessage({
@@ -331,19 +348,28 @@ describe("planners", () => {
       if (i.deny?.exchanges.includes("titan")) return { ...q, toolSummary: "jupiter" };
       return { ...q, toolSummary: "titan", transaction: { kind: "solana" as const, serializedBase64: Buffer.from(drain.serialize()).toString("base64") } };
     });
+    // A new plan is user-paid: the sponsor check does not run, so the plan takes the first route.
     const res = await invest(user.h, basket.basketId);
     expect(res.status).toBe(201);
-    expect(res.body.legs.find((l: { kind: string }) => l.kind === "swap").routeSummary.tool).toBe("jupiter");
+    expect(res.body.legs.find((l: { kind: string }) => l.kind === "swap").routeSummary.tool).toBe("titan");
+    expect(vi.mocked(lifi.quote).mock.calls.every((c) => c[0].svmSponsor === undefined)).toBe(true);
+    // The same leg planned before user-paid gas (platform fee payer) is still sponsor-checked when it is quoted.
+    await adminSql`UPDATE app.operation_legs SET gas_payer = 'platform_fee_payer' WHERE operation_id = ${res.body.id}`;
+    const swap = res.body.legs.find((l: { kind: string }) => l.kind === "swap");
+    const q = await post(user.h, `/v1/operations/${res.body.id}/legs/${swap.id}/quote`, {});
+    expect(q.status).toBe(200);
+    expect((await adminSql<{ route_summary: { tool: string } }[]>`SELECT route_summary FROM app.operation_legs WHERE id = ${swap.id}`)[0]!.route_summary.tool).toBe("jupiter");
     expect(vi.mocked(lifi.quote).mock.calls.some((c) => c[0].deny?.exchanges.includes("titan"))).toBe(true);
   });
 
-  it("refuses the plan when every Solana route uses the fee payer beyond fees and rent", async () => {
+  it("refuses the quote of a platform-fee-payer leg when every Solana route uses the fee payer beyond fees and rent", async () => {
     const chain = mockChains();
     await seedPlatformWallets();
     await redis.set("lifi:tools", JSON.stringify({ bridges: [], exchanges: [{ key: "titan", name: "Titan" }] }), "EX", 3600);
     const basket = await seedBasket({ assets: [{ ...TKN, bps: 10000 }] });
     const user = await seedUser({ wallet: solanaTestWallet() });
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n);
     const { feePayer } = await import("@/providers/solana-tx");
     const original = vi.mocked(lifi.quote).getMockImplementation()!;
     const drain = new VersionedTransaction(new TransactionMessage({
@@ -355,9 +381,11 @@ describe("planners", () => {
       return { ...q, toolSummary: "titan", transaction: { kind: "solana" as const, serializedBase64: Buffer.from(drain.serialize()).toString("base64") } };
     });
     const res = await invest(user.h, basket.basketId);
-    expect(res.status).toBe(503);
-    expect(res.body.error.code).toBe("ROUTE_UNAVAILABLE");
-    expect(await adminSql`SELECT 1 FROM app.operations`).toHaveLength(0);
+    expect(res.status).toBe(201); // user-paid plan: no sponsor check
+    await adminSql`UPDATE app.operation_legs SET gas_payer = 'platform_fee_payer' WHERE operation_id = ${res.body.id}`;
+    const q = await post(user.h, `/v1/operations/${res.body.id}/legs/${res.body.legs[0].id}/quote`, {});
+    expect(q.status).toBe(503);
+    expect(q.body.error.code).toBe("ROUTE_UNAVAILABLE");
   });
 
   it("the plan quote and the execution quote both carry the deny list; a contract destination adds the mayan bridges", async () => {
@@ -365,8 +393,10 @@ describe("planners", () => {
     await seedPlatformWallets();
     stubFetchTools();
     const basket = await seedBasket({ assets: [ETH] });
+    await chargeEntryFee(basket, 10); // a manager fee gives the plan its fee leg (the user pays Solana gas, so there is no network fee)
     const user = await seedUser({ wallet: solanaTestWallet() });
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n);
     fakes.evm.contracts.add(user.evmAddress.toLowerCase());
     const res = await invest(user.h, basket.basketId);
     expect(res.status).toBe(201);
@@ -387,7 +417,8 @@ function stubFetchTools() {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Solana gas for estimate-path legs: LI.FI's figure (+ rent only for a missing account), topped up at quote time within the caps
+// Solana gas for estimate-path legs: the user's cost is LI.FI's figure (+ rent only for a missing account). A leg planned with the platform as fee payer
+// (before user-paid gas) still reserves it, topped up at quote time within the caps.
 // ---------------------------------------------------------------------------------------------------------------------
 
 describe("estimated Solana gas", () => {
@@ -410,18 +441,27 @@ describe("estimated Solana gas", () => {
     const res = await post(user.h, "/v1/operations/rebalance", { positionId, target: "latest", slippageBps: 100, idempotencyKey: "reb-aaaaaaaa" });
     return { chain, basket, user, positionId, res };
   }
-  const reserved = async (opId: string) => BigInt((await adminSql<{ gas_reserved: { solana: string } }[]>`SELECT gas_reserved FROM app.operations WHERE id = ${opId}`)[0]!.gas_reserved.solana);
+  const reserved = async (opId: string) => BigInt((await adminSql<{ gas_reserved: { solana?: string } }[]>`SELECT gas_reserved FROM app.operations WHERE id = ${opId}`)[0]!.gas_reserved.solana ?? "0");
 
-  it("8 buys stay inside the 0.02 SOL per-user cap when the token accounts exist (no per-buy constant), and the leg records what it reserved", async () => {
+  it("8 buys reserve nothing of the platform's budget (the user pays); each leg records the SOL it costs the user, and no rent is counted when the token accounts exist", async () => {
     const { res, user } = await planEight({ accounts: true, gasNative: 5_000n });
     expect(res.status).toBe(201);
     expect(res.body.legs.filter((l: { fromDeploymentId: string | null; kind: string }) => l.fromDeploymentId === null && l.kind !== "network_fee")).toHaveLength(8);
-    const total = await reserved(res.body.id);
-    expect(total).toBeLessThan(200_000n); // 8 x 5,000 + the fee transfer and the sell; no rent
-    expect(await adminSql`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId}`).toEqual([{ amount_native: total.toString() }]);
-    const buys = await adminSql<{ expected_tx: { reservedNative: string } }[]>`SELECT expected_tx FROM app.operation_legs WHERE operation_id = ${res.body.id} AND from_deployment_id IS NULL AND kind <> 'network_fee'`;
-    expect(buys.map((b) => b.expected_tx.reservedNative)).toEqual(Array(8).fill("5000"));
+    expect(await reserved(res.body.id)).toBe(0n);
+    expect(await adminSql`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId}`).toEqual([]);
+    const buys = await adminSql<{ expected_tx: { userLamports: string } }[]>`SELECT expected_tx FROM app.operation_legs WHERE operation_id = ${res.body.id} AND from_deployment_id IS NULL AND kind <> 'network_fee'`;
+    expect(buys.map((b) => b.expected_tx.userLamports)).toEqual(Array(8).fill("5000"));
+    // 8 buys and the SOL sell at 5,000 each, the 8 SOL sold, and the buffer
+    expect(BigInt(res.body.solRequiredLamports)).toBe(9n * 5_000n + 8_000_000_000n + 1_000_000n);
   });
+
+  /** Rewinds a plan to how it was made before user-paid gas: the buys are platform_fee_payer legs that reserved 1,000 lamports each (8,000 in the operation and the daily usage). */
+  async function asLegacy(p: Awaited<ReturnType<typeof planEight>>) {
+    const buys = await adminSql<{ id: string }[]>`SELECT id FROM app.operation_legs WHERE operation_id = ${p.res.body.id} AND from_deployment_id IS NULL AND kind <> 'network_fee'`;
+    await adminSql`UPDATE app.operation_legs SET gas_payer = 'platform_fee_payer', expected_tx = ${adminSql.json({ reservedNative: "1000" })} WHERE id = ANY(${buys.map((b) => b.id)})`;
+    await adminSql`UPDATE app.operations SET gas_reserved = ${adminSql.json({ solana: "8000" })} WHERE id = ${p.res.body.id}`;
+    await adminSql`INSERT INTO app.sponsor_usage (user_id, chain, day, amount_native) VALUES (${p.user.userId}, 'solana', (now() at time zone 'utc')::date, 8000)`;
+  }
 
   /** The fee and sell legs are final and the basket holds the proceeds: the first buy can be quoted. */
   async function toFirstBuy(p: Awaited<ReturnType<typeof planEight>>) {
@@ -434,8 +474,19 @@ describe("estimated Solana gas", () => {
     return buys[0]!;
   }
 
-  it("at quote time the reservation is topped up (under the same caps) when the built transaction needs more than LI.FI's figure", async () => {
+  it("at quote time a user-paid leg reserves nothing: the quote is built for the user as fee payer", async () => {
     const p = await planEight({ accounts: true, gasNative: 1_000n });
+    const buy = await toFirstBuy(p);
+    const q = await post(p.user.h, `/v1/operations/${p.res.body.id}/legs/${buy.id}/quote`, {});
+    expect(q.status).toBe(200);
+    expect(await reserved(p.res.body.id)).toBe(0n);
+    expect(await adminSql`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${p.user.userId}`).toEqual([]);
+    expect((await adminSql<{ built_message_hash: string | null }[]>`SELECT built_message_hash FROM app.operation_legs WHERE id = ${buy.id}`)[0]!.built_message_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("on a leg planned with the platform as fee payer the reservation is still topped up at quote time (under the same caps) when the built transaction needs more than LI.FI's figure", async () => {
+    const p = await planEight({ accounts: true, gasNative: 1_000n });
+    await asLegacy(p);
     const before = await reserved(p.res.body.id);
     const buy = await toFirstBuy(p);
     const q = await post(p.user.h, `/v1/operations/${p.res.body.id}/legs/${buy.id}/quote`, {});
@@ -449,8 +500,9 @@ describe("estimated Solana gas", () => {
     expect(await reserved(p.res.body.id)).toBe(after);
   });
 
-  it("a top-up that would exceed the daily cap is refused with 409 GAS_BUDGET_EXHAUSTED and nothing more is reserved", async () => {
+  it("on a platform-fee-payer leg a top-up that would exceed the daily cap is refused with 409 GAS_BUDGET_EXHAUSTED and nothing more is reserved", async () => {
     const p = await planEight({ accounts: true, gasNative: 1_000n });
+    await asLegacy(p);
     const before = await reserved(p.res.body.id);
     const buy = await toFirstBuy(p);
     await adminSql`UPDATE app.sponsor_usage SET amount_native = 20000000 - 1000 WHERE user_id = ${p.user.userId}`; // 0.02 SOL cap, 1,000 lamports of room

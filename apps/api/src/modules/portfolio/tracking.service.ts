@@ -1,15 +1,15 @@
 import createHttpError from "http-errors";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
-import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFees, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
+import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFeeCharges, operationFees, operationGroups, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
-import { CONFIRMATIONS, USDC_DECIMALS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
+import { CONFIRMATIONS, INVEST_AUTO_STOP_HOURS, USDC_DECIMALS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
 import { bitcoinTx } from "@/providers/bitcoin";
 import { evmNativeReceived, evmReceipt } from "@/providers/evm-rpc";
 import { routeProviderById } from "@/providers/routes";
 import { solanaBlockTime, solanaFinality, solanaReceived } from "@/providers/solana-tx";
 import { enqueue } from "@/config/queues";
 import { writeAudit } from "@/modules/audit/audit.service";
-import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
+import { closeIfEmpty, basketCashMicro, cancelIfExpired, lockOperation, operationView, refreshOperationStatus, releaseQuotedGroups, setLegStatus, setOperationStatus, stopStatus, type OpCtx } from "@/modules/operations/operations.service";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
 import { gasPayerFor } from "@/modules/operations/plan.service";
 import { markSubmitted } from "@/modules/operations/submit.service";
@@ -78,6 +78,16 @@ async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinatio
   if (leg.kind === "network_fee") {
     // Every charged fee of the plan is paid by this one transaction: earnings and revenue count them from now on.
     await tx.update(operationFees).set({ settledAt: sql`now()` }).where(and(eq(operationFees.operationId, op.id), sql`${operationFees.amountMicro} > 0`));
+    // What this fee leg charged: a group fee leg carries its per-kind charges and the legs it covers; the plan's single fee leg charges every fee row. The block time follows in `trackLeg`.
+    const charges = (leg.routeSummary?.feeCharges ?? null) as Record<string, string> | null;
+    const rows = await tx.select({ id: operationFees.id, kind: operationFees.kind, amountMicro: operationFees.amountMicro }).from(operationFees).where(eq(operationFees.operationId, op.id));
+    const values = rows.flatMap((r) => {
+      const amount = charges ? charges[r.kind] : r.amountMicro;
+      return amount && BigInt(amount) > 0n ? [{ operationFeeId: r.id, feeLegId: leg.id, amountMicro: amount, settledAt: sql`now()` as unknown as Date }] : [];
+    });
+    if (values.length) await tx.insert(operationFeeCharges).values(values).onConflictDoNothing();
+    const covers = (leg.routeSummary?.covers ?? null) as string[] | null;
+    await tx.update(operationLegs).set({ feeCoveredBy: leg.id }).where(and(eq(operationLegs.operationId, op.id), covers ? inArray(operationLegs.id, covers) : ne(operationLegs.kind, "network_fee"), isNull(operationLegs.feeCoveredBy)));
     if (op.kind === "rebalance" && leg.routeSummary?.fromCash) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "network_fee", legId: leg.id });
   } else {
     // A recovery completes the leg it recovers (the leg whose destination swap failed): that leg's source side was written when it failed, so only the
@@ -189,6 +199,36 @@ export async function stopStalledRecoveries(): Promise<void> {
   }
 }
 
+/**
+ * A batched investment with no progress for 24 hours and nothing in flight is stopped as the user's Stop would (PARTIAL once an asset leg settled, else FAILED;
+ * their USDC is in their wallet), its unsigned groups are released, it is audited and the user is told. Progress is the later of the last needs-action mark and the
+ * last group quoted (a wallet popup that was closed never reaches the server, and quoting clears the mark). Re-checked under the operation's lock; an operation
+ * without groups (the per-leg path) is never touched, nor is one with an unfinished recovery (that keeps its own 7-day stop).
+ */
+export async function stopStalledInvests(): Promise<void> {
+  const idle = sql`greatest(${operations.needsActionSince}, (select max(g.created_at) from app.operation_groups g where g.operation_id = ${operations.id})) < now() - ${`${INVEST_AUTO_STOP_HOURS} hours`}::interval`;
+  const due = await db.select({ id: operations.id }).from(operations)
+    .where(and(eq(operations.status, "IN_PROGRESS"), idle, inArray(operations.id, db.select({ id: operationGroups.operationId }).from(operationGroups))));
+  for (const { id } of due) {
+    try {
+      const notificationId = await db.transaction(async (tx) => {
+        const op = await lockOperation(tx, id);
+        const legs = await tx.select().from(operationLegs).where(eq(operationLegs.operationId, id));
+        const stillIdle = (await tx.select({ id: operations.id }).from(operations).where(and(eq(operations.id, id), idle))).length > 0;
+        if (op.status !== "IN_PROGRESS" || !stillIdle || legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status) || (l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED"))) return null;
+        await releaseQuotedGroups(tx, id);
+        await setOperationStatus(tx, null, op, stopStatus(legs));
+        await writeAudit(tx, { actorType: "system", actorUserId: op.userId, action: "operation.auto_stopped", entityType: "operation", entityId: op.id, requestId: `auto-stop-${op.id}`, metadata: { reason: "needs_action_timeout" } });
+        const [b] = op.basketId ? await tx.select({ slug: baskets.slug, name: sql<string>`(select v.name from app.basket_versions v where v.basket_id = ${baskets.id} order by v.version_number desc limit 1)` }).from(baskets).where(eq(baskets.id, op.basketId)) : [];
+        return notify(tx, { userId: op.userId, kind: "execution_incomplete", basketId: op.basketId ?? undefined, data: { basketName: b?.name, basketSlug: b?.slug, operationId: op.id, autoStopped: true, investment: true }, dedupeKey: `incomplete:${op.id}` });
+      });
+      if (notificationId) await enqueue("notifications", { job: "deliver", notificationId });
+    } catch (err) {
+      logger.warn("sweep: could not auto-stop an investment", { operationId: id, errMessage: err instanceof Error ? err.message : "unknown" });
+    }
+  }
+}
+
 /** Returns whether the leg is still open (needs another check). */
 async function trackOnce(legId: string, recheck: number): Promise<boolean> {
   const [row] = await db.select({ leg: operationLegs, op: operations }).from(operationLegs).innerJoin(operations, eq(operations.id, operationLegs.operationId)).where(eq(operationLegs.id, legId));
@@ -282,8 +322,8 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
                 operationId: op.id, sequence: next, kind: "swap", fromChain: leg.toChain, fromDeploymentId: null, toChain: leg.toChain, toDeploymentId: leg.toDeploymentId, amountIn: evidenced.toString(), minOut: estimate.minOut.toString(),
                 provider: leg.provider, gasPayer: payer, recoveryOf: leg.id,
                 routeSummary: { fromToken: recoveryToken.address, fromSymbol: recoveryToken.symbol, fromDecimals: recoveryToken.decimals, symbol: target?.symbol ?? "USDC", decimals: target?.decimals ?? 6, tool: estimate.toolSummary, estimatedOut: estimate.estimatedOut.toString(), routeFees: estimate.routeFees, priceImpact: estimate.priceImpact },
-                // The gas is reserved when the recovery is quoted, under the per-chain lock and the daily caps (an EVM drop is sized here, x1.5 x2 like an ERC-20 sell).
-                expectedTx: payer === "platform_gas_drop" ? { gasReserved: false, gasDropNative: ((estimate.gasNative * (native ? 3n : 4n)) / 2n).toString() } : { gasReserved: false },
+                // An EVM drop is sized here (x1.5 x2 like an ERC-20 sell) and reserved when the recovery is quoted, under the per-chain lock and the daily caps. A Solana recovery is user-paid: nothing to reserve.
+                expectedTx: payer === "platform_gas_drop" ? { gasReserved: false, gasDropNative: ((estimate.gasNative * (native ? 3n : 4n)) / 2n).toString() } : null,
               });
               return true;
             });
@@ -318,7 +358,10 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
     // The fee's on-chain time buckets revenue by day (settled_at is when this server noticed). Outside the transaction: a read failure only leaves the fallback.
     try {
       const blockTime = await solanaBlockTime(sourceTx);
-      if (blockTime) await db.update(operationFees).set({ settledChainAt: blockTime }).where(and(eq(operationFees.legId, leg.id), isNull(operationFees.settledChainAt)));
+      if (blockTime) {
+        await db.update(operationFees).set({ settledChainAt: blockTime }).where(and(eq(operationFees.legId, leg.id), isNull(operationFees.settledChainAt)));
+        await db.update(operationFeeCharges).set({ settledChainAt: blockTime }).where(and(eq(operationFeeCharges.feeLegId, leg.id), isNull(operationFeeCharges.settledChainAt)));
+      }
     } catch (err) {
       logger.warn("fee block time unavailable", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
     }

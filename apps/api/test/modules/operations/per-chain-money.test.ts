@@ -29,6 +29,7 @@ async function arrange() {
   const [base, arb] = basket.deployments;
   const positionId = await seedPosition(user.userId, basket, [{ deploymentId: base!.deploymentId, quantity: 2n * ONE }, { deploymentId: arb!.deploymentId, quantity: 2n * ONE }]);
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 50_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the user pays the fee transfer in SOL
   for (const c of ["base", "arbitrum"]) fakes.evm.balances.set(`${c}:${fakes.evm.gasWalletAddress()}`, 10n ** 20n); // the platform gas wallet can fund these chains
   // Each chain holds its asset only at its own address; the other addresses hold decoys that must never be read.
   fakes.evm.balances.set(`base:${ADDR.base}`, 2n * ONE);

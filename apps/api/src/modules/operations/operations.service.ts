@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { basketPositions, baskets, contacts, db, instrumentDeployments, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
+import { basketPositions, baskets, contacts, db, instrumentDeployments, operationFeeCharges, operationGroups, operationLegs, operations, operationFees, organizations, positionCashEntries, positionDecisions, positionLedgerEntries, type DbOrTx, type Tx } from "@repo/db";
 import { LEG_TRANSITIONS, OPERATION_TRANSITIONS, USDC_SOLANA_MINT, canTransition, minOut, type OperationView, type WaivedReason } from "@repo/validator";
 import type { RouteFee } from "@/providers/routes/types";
 import type { RequestMeta } from "@/middlewares/request-context.middleware";
@@ -13,10 +13,8 @@ import { getPrices } from "@/modules/assets/pricing.service";
 import type { AssetChain } from "@repo/validator";
 import { bitcoinBalance } from "@/providers/bitcoin";
 import { evmBalance } from "@/providers/evm-rpc";
-import { solanaBalance, SOLANA_FEE_TRANSFER_LAMPORTS } from "@/providers/solana-tx";
+import { solanaBalance } from "@/providers/solana-tx";
 import { type Addresses, addressOn } from "@/modules/auth/wallets.service";
-
-export { SOLANA_FEE_TRANSFER_LAMPORTS };
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
 
@@ -25,9 +23,6 @@ export type Op = typeof operations.$inferSelect;
 export type Leg = typeof operationLegs.$inferSelect;
 
 export const PLAN_TTL = "30 minutes";
-
-/** ponytail: a flat estimate for the network-fee transfer's own cost (two signatures plus the fee-leg priority fee). */
-export const FEE_LEG_GAS_USD = 0.005;
 
 /** Investing needs a verified email and phone. */
 export async function assertVerifiedContacts(userId: string): Promise<void> {
@@ -39,14 +34,26 @@ export const notFound = () => createHttpError("Operation not found", { code: "NO
 
 export const invalidTransition = (message: string) => createHttpError(409, message, { code: "INVALID_TRANSITION" });
 
+/** An operation with a signing group is driven through the group endpoints; the per-leg ones (mobile) refuse it. */
+export async function hasGroups(opId: string): Promise<boolean> {
+  return (await db.select({ id: operationGroups.id }).from(operationGroups).where(eq(operationGroups.operationId, opId)).limit(1)).length > 0;
+}
+
 export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> {
   const legs = await db.select().from(operationLegs).where(eq(operationLegs.operationId, op.id)).orderBy(asc(operationLegs.sequence));
   const flagged = new Set((await db.select({ id: instrumentDeployments.id }).from(instrumentDeployments).where(and(eq(instrumentDeployments.feeOnTransfer, true), inArray(instrumentDeployments.id, legs.flatMap((l) => [l.fromDeploymentId, l.toDeploymentId]).filter((d): d is string => !!d))))).map((d) => d.id));
   const fees = await db.select({ f: operationFees, org: orgDisplayName }).from(operationFees).leftJoin(organizations, eq(organizations.id, operationFees.organizationId))
     .where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFees.createdAt), asc(operationFees.id));
+  const groups = await db.select().from(operationGroups).where(eq(operationGroups.operationId, op.id)).orderBy(asc(operationGroups.createdAt), asc(operationGroups.id));
+  const charges = await db.select({ kind: operationFees.kind, amountMicro: operationFeeCharges.amountMicro, feeLegId: operationFeeCharges.feeLegId, settledAt: operationFeeCharges.settledAt })
+    .from(operationFeeCharges).innerJoin(operationFees, eq(operationFees.id, operationFeeCharges.operationFeeId)).where(eq(operationFees.operationId, op.id)).orderBy(asc(operationFeeCharges.createdAt), asc(operationFeeCharges.id));
   return {
     id: op.id, kind: op.kind, status: op.status, basketId: op.basketId, positionId: op.positionId, amountUsdc: op.amountUsdc, sellPercent: op.sellPercent, slippageBps: op.slippageBps,
     networkFeeUsdc: op.networkFeeUsdc, expiresAt: op.expiresAt.toISOString(), createdAt: op.createdAt.toISOString(),
+    needsAction: op.needsActionSince !== null, needsActionSince: op.needsActionSince?.toISOString() ?? null,
+    groups: groups.map((g) => ({ id: g.id, chain: g.chain, tier: g.tier, status: g.status, sendBy: g.sendBy.toISOString(), createdAt: g.createdAt.toISOString() })),
+    approvalsEstimate: op.approvalsEstimate, solRequiredLamports: op.solRequiredLamports,
+    charged: charges.map((c) => ({ kind: c.kind, amountMicro: c.amountMicro, feeLegId: c.feeLegId, settledAt: c.settledAt?.toISOString() ?? null })),
     // A pre-Spec-10 operation has no fee rows: its one fee is the network fee.
     fees: fees.length ? fees.map(({ f, org }) => ({
       kind: f.kind, amountMicro: f.amountMicro, waivedReason: f.waivedReason as WaivedReason | null,
@@ -58,6 +65,7 @@ export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> 
       id: l.id, sequence: l.sequence, kind: l.kind, status: l.status, fromChain: l.fromChain, toChain: l.toChain, fromDeploymentId: l.fromDeploymentId, toDeploymentId: l.toDeploymentId,
       amountIn: l.amountIn, minOut: l.minOut, amountReceived: l.amountReceived, provider: l.provider, routeSummary: l.routeSummary, quoteExpiresAt: l.quoteExpiresAt?.toISOString() ?? null,
       gasPayer: l.gasPayer, sourceTx: l.sourceTx, destinationTx: l.destinationTx, failureReason: l.failureReason,
+      groupId: l.groupId, feeShare: l.feeShare, feeCoveredBy: l.feeCoveredBy, retryOf: l.retryOf, lastError: l.lastError,
     })),
   };
 }
@@ -82,7 +90,7 @@ export async function setLegStatus(tx: Tx, ctx: OpCtx | null, leg: Pick<Leg, "id
 
 export async function setOperationStatus(tx: Tx, ctx: OpCtx | null, op: Pick<Op, "id" | "status">, to: Op["status"]): Promise<void> {
   if (!canTransition(OPERATION_TRANSITIONS, op.status, to)) throw invalidTransition(`An operation cannot go from ${op.status} to ${to}.`);
-  const rows = await tx.update(operations).set({ status: to, updatedAt: sql`now()` }).where(and(eq(operations.id, op.id), eq(operations.status, op.status))).returning({ id: operations.id });
+  const rows = await tx.update(operations).set({ status: to, updatedAt: sql`now()`, ...(to === "IN_PROGRESS" ? {} : { needsActionSince: null }) }).where(and(eq(operations.id, op.id), eq(operations.status, op.status))).returning({ id: operations.id });
   if (rows.length !== 1) throw invalidTransition("This operation changed. Reload and try again.");
   await writeAudit(tx, { ...auditBase(ctx, op.id), action: `operation.${to.toLowerCase()}`, entityType: "operation", entityId: op.id, metadata: { from: op.status, to } });
   // Every terminal status gives back what was reserved and will never be spent (idempotent; a sent drop and a submitted leg's fee stay counted).
@@ -157,10 +165,21 @@ export async function assertNoneInFlight(conn: DbOrTx, userId: string, asset: st
 export async function refreshOperationStatus(tx: Tx, ctx: OpCtx | null, opId: string): Promise<void> {
   const op = await lockOperation(tx, opId);
   if (op.status !== "IN_PROGRESS") return;
-  const all = await tx.select({ id: operationLegs.id, kind: operationLegs.kind, status: operationLegs.status, recoveryOf: operationLegs.recoveryOf }).from(operationLegs).where(eq(operationLegs.operationId, opId));
+  const all = await tx.select({ id: operationLegs.id, kind: operationLegs.kind, status: operationLegs.status, recoveryOf: operationLegs.recoveryOf, retryOf: operationLegs.retryOf, failureReason: operationLegs.failureReason, recoveryToken: operationLegs.recoveryToken }).from(operationLegs).where(eq(operationLegs.operationId, opId));
   if (all.some((l) => l.recoveryOf && l.status !== "SETTLED" && l.status !== "FAILED")) return;
   const recovered = new Set(all.filter((l) => l.recoveryOf && l.status !== "FAILED" && l.status !== "UNKNOWN").map((l) => l.recoveryOf));
   const legs = all.filter((l) => !recovered.has(l.id));
+  if (await hasGroups(opId)) {
+    // Spec 22 B-08: a grouped operation never ends on its own after a failure; it waits for Continue or Stop (or the 24 h auto-stop).
+    const replaced = new Set(all.filter((l) => l.retryOf).map((l) => l.retryOf));
+    const assets = legs.filter((l) => l.kind !== "network_fee" && !replaced.has(l.id));
+    if (assets.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN", "UNKNOWN"].includes(l.status))) return;
+    if (assets.every((l) => l.status === "SETTLED")) return setOperationStatus(tx, ctx, op, "COMPLETED");
+    const actionable = assets.some((l) => l.status === "PLANNED" || (l.status === "FAILED" && l.failureReason !== "SKIPPED" && !l.recoveryToken));
+    if (!actionable) return setOperationStatus(tx, ctx, op, stopStatus(all)); // only skips are left: PARTIAL, or FAILED when nothing settled
+    await tx.update(operations).set({ needsActionSince: sql`coalesce(${operations.needsActionSince}, now())` }).where(eq(operations.id, op.id));
+    return;
+  }
   if (legs.every((l) => l.status === "SETTLED")) {
     await setOperationStatus(tx, ctx, op, "COMPLETED");
     if (op.kind === "rebalance") await applyVersion(tx, ctx, { positionId: op.positionId!, userId: op.userId, versionId: op.versionId });
@@ -185,6 +204,7 @@ export async function cancelIfExpired(tx: Tx, ctx: OpCtx | null, op: Op): Promis
   if (op.status !== "PLANNED" || op.expiresAt > new Date()) return false;
   const [claimed] = await tx.select({ id: operationLegs.id }).from(operationLegs).where(and(eq(operationLegs.operationId, op.id), ne(operationLegs.status, "PLANNED"))).limit(1);
   if (claimed) return false; // a signed transaction is being sent: the plan is not abandoned
+  await releaseQuotedGroups(tx, op.id);
   await setOperationStatus(tx, ctx, op, "CANCELLED");
   return true;
 }
@@ -194,6 +214,12 @@ export async function usdcPrice(): Promise<string> {
     .where(and(eq(instrumentDeployments.chain, "solana"), eq(instrumentDeployments.address, USDC_SOLANA_MINT), eq(instrumentDeployments.status, "ACTIVE")));
   const price = usdc ? (await getPrices([usdc.instrumentId])).find((p) => p.kind === "market" && p.status === "ok" && !p.stale) : undefined;
   return price?.value && Number(price.value) > 0 ? price.value : "1"; // a stablecoin: without a fresh, positive market price the peg is used
+}
+
+/** A stopped or cancelled operation gives up its quoted (unsigned) groups: they are RELEASED and their PLANNED legs leave them. */
+export async function releaseQuotedGroups(tx: Tx, opId: string): Promise<void> {
+  const released = await tx.update(operationGroups).set({ status: "RELEASED", updatedAt: sql`now()` }).where(and(eq(operationGroups.operationId, opId), eq(operationGroups.status, "QUOTED"))).returning({ id: operationGroups.id });
+  if (released.length) await tx.update(operationLegs).set({ groupId: null, updatedAt: sql`now()` }).where(and(inArray(operationLegs.groupId, released.map((g) => g.id)), eq(operationLegs.status, "PLANNED")));
 }
 
 /**
@@ -206,6 +232,7 @@ export async function cancelOperation(ctx: OpCtx, opId: string): Promise<Operati
     if (op.userId !== ctx.userId) throw notFound();
     const legs = await tx.select({ kind: operationLegs.kind, status: operationLegs.status, recoveryToken: operationLegs.recoveryToken }).from(operationLegs).where(eq(operationLegs.operationId, opId));
     if (legs.some((l) => ["SUBMITTING", "SUBMITTED", "PENDING_CHAIN"].includes(l.status))) throw invalidTransition("A transaction is still pending. Wait for it to finish.");
+    await releaseQuotedGroups(tx, opId);
     if (op.status === "PLANNED") return setOperationStatus(tx, ctx, op, "CANCELLED");
     if (op.status === "IN_PROGRESS") {
       return setOperationStatus(tx, ctx, op, stopStatus(legs));
