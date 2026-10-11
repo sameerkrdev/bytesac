@@ -4,7 +4,7 @@ import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { USDC_SOLANA_MINT } from "@repo/validator";
 import { env } from "@/config/dotenv";
-import { buildFeeTransfer, connection, cosign, describeUnsigned, feePayer, sendSolana, solanaFinality, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS } from "@/providers/solana-tx";
+import { blockhashUsable, buildFeeTransfer, connection, cosign, describeUnsigned, FEE_TRANSFER_USER_LAMPORTS, feePayer, sendSolana, solanaCost, solanaFinality, SOLANA_FEE_TRANSFER_LAMPORTS, sponsorExposure, TOKEN_ACCOUNT_RENT_LAMPORTS, verifyUserSigned } from "@/providers/solana-tx";
 
 const BLOCKHASH = bs58.encode(Buffer.alloc(32, 7));
 const user = Keypair.generate();
@@ -169,7 +169,7 @@ describe("fee-payer exposure (I4)", () => {
 describe("network fee transfer", () => {
   it("builds a USDC TransferChecked from the user to the treasury with the platform as fee payer", async () => {
     vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
-    const built = await buildFeeTransfer({ owner: user.publicKey.toBase58(), transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 123_456n }] });
+    const built = await buildFeeTransfer({ owner: user.publicKey.toBase58(), payer: "platform", transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 123_456n }] });
     const tx = VersionedTransaction.deserialize(Buffer.from(built.serializedBase64, "base64"));
     expect(describeUnsigned(built.serializedBase64).messageHash).toBe(built.messageHash);
     expect(tx.message.staticAccountKeys[0]!.equals(feePayer().publicKey)).toBe(true);
@@ -186,6 +186,77 @@ describe("network fee transfer", () => {
     // The user is the owner (a required signer) of the transfer; the fee payer signs nothing the user did not see.
     expect(keys[transfer.accountKeyIndexes[3]!]).toBe(user.publicKey.toBase58());
     expect(sponsorExposure(built.serializedBase64)).toEqual({ lamports: SOLANA_FEE_TRANSFER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS });
+  });
+});
+
+describe("user-paid transactions", () => {
+  const owner = user.publicKey.toBase58();
+  const withBudget = (limit: number, price: bigint) => [ComputeBudgetProgram.setComputeUnitLimit({ units: limit }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: price })];
+  const mk = (instructions: TransactionInstruction[], payerKey = user.publicKey) =>
+    new VersionedTransaction(new TransactionMessage({ payerKey, recentBlockhash: BLOCKHASH, instructions }).compileToV0Message());
+  const transfer = () => SystemProgram.transfer({ fromPubkey: user.publicKey, toPubkey: recipient, lamports: 1n });
+
+  it("the fee transfer built for the user has the user as fee payer and funds recipient accounts with the user as funder; the platform build is unchanged", async () => {
+    vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({ blockhash: BLOCKHASH, lastValidBlockHeight: 1 });
+    const built = await buildFeeTransfer({ owner, payer: "user", transfers: [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS, amountMicro: 5n }] });
+    const tx = VersionedTransaction.deserialize(Buffer.from(built.serializedBase64, "base64"));
+    expect(tx.message.staticAccountKeys[0]!.toBase58()).toBe(owner);
+    expect(tx.message.header.numRequiredSignatures).toBe(1);
+    expect(solanaCost(built.serializedBase64, owner)).toEqual({ lamports: FEE_TRANSFER_USER_LAMPORTS + TOKEN_ACCOUNT_RENT_LAMPORTS, rentLamports: TOKEN_ACCOUNT_RENT_LAMPORTS });
+    // The same transaction costs a stranger nothing for rent: only the account the payer funds counts.
+    expect(solanaCost(built.serializedBase64, Keypair.generate().publicKey.toBase58()).rentLamports).toBe(0n);
+  });
+
+  it("solanaCost counts signatures, the priority fee (price x limit, 1.4M when no limit is set) and refuses nothing", () => {
+    const base = solanaCost(b64(mk([transfer()])), owner);
+    expect(base).toEqual({ lamports: 5_000n, rentLamports: 0n });
+    expect(solanaCost(b64(mk([...withBudget(200_000, 1_000_000n), transfer()])), owner).lamports).toBe(5_000n + 200_000n); // 200,000 units x 1 lamport
+    expect(solanaCost(b64(mk([ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000n }), transfer()])), owner).lamports).toBe(5_000n + 1_400_000n);
+    const huge = solanaCost(b64(mk([...withBudget(1_400_000, 10_000_000_000n), transfer()])), owner); // far over the platform's 1M cap: a user-paid cost, never a refusal
+    expect(huge.lamports).toBe(5_000n + 14_000_000_000n);
+  });
+
+  it("verifyUserSigned accepts the user's signature on the quoted message and on a ComputeBudget-only rewrite, and returns the id and blockhash", () => {
+    const prepared = mk([...withBudget(200_000, 1n), transfer()]);
+    const { messageHash } = describeUnsigned(b64(prepared));
+    const signedAsQuoted = VersionedTransaction.deserialize(prepared.serialize());
+    signedAsQuoted.sign([user]);
+    const ok = verifyUserSigned(b64(signedAsQuoted), { owner, storedMessageHash: messageHash });
+    expect(ok.signature).toBe(bs58.encode(signedAsQuoted.signatures[0]!));
+    expect(ok.recentBlockhash).toBe(BLOCKHASH);
+    expect(ok.raw).toEqual(signedAsQuoted.serialize());
+    const padded = mk([...withBudget(300_000, 50n), transfer()]);
+    padded.sign([user]);
+    expect(() => verifyUserSigned(b64(padded), { owner, storedMessageHash: messageHash })).toThrow(expect.objectContaining({ code: "TX_MISMATCH" })); // no prepared bytes to compare with
+    expect(verifyUserSigned(b64(padded), { owner, storedMessageHash: messageHash, preparedBase64: b64(prepared) }).signature).toBe(bs58.encode(padded.signatures[0]!));
+  });
+
+  it("verifyUserSigned refuses another fee payer, a changed instruction, a missing or foreign signature, a missing hash and an oversized transaction", () => {
+    const prepared = mk([...withBudget(200_000, 1n), transfer()]);
+    const { messageHash } = describeUnsigned(b64(prepared));
+    const mismatch = expect.objectContaining({ code: "TX_MISMATCH" });
+    const signed = (tx: VersionedTransaction, who = user) => { tx.sign([who]); return b64(tx); };
+    expect(() => verifyUserSigned(b64(prepared), { owner, storedMessageHash: messageHash })).toThrow(mismatch); // unsigned
+    const stranger = Keypair.generate();
+    expect(() => verifyUserSigned(signed(mk([...withBudget(200_000, 1n), SystemProgram.transfer({ fromPubkey: stranger.publicKey, toPubkey: recipient, lamports: 1n })], stranger.publicKey), stranger), { owner, storedMessageHash: messageHash })).toThrow(mismatch); // someone else's transaction
+    expect(() => verifyUserSigned(signed(unsigned(feePayer().publicKey, 1n)), { owner, storedMessageHash: messageHash })).toThrow(mismatch); // the platform as payer
+    const changed = mk([...withBudget(200_000, 1n), SystemProgram.transfer({ fromPubkey: user.publicKey, toPubkey: recipient, lamports: 2n })]);
+    expect(() => verifyUserSigned(signed(changed), { owner, storedMessageHash: messageHash, preparedBase64: b64(prepared) })).toThrow(mismatch);
+    expect(() => verifyUserSigned(signed(VersionedTransaction.deserialize(prepared.serialize())), { owner, storedMessageHash: "" })).toThrow(mismatch);
+    expect(() => verifyUserSigned(Buffer.alloc(1233).toString("base64"), { owner, storedMessageHash: messageHash })).toThrow(mismatch);
+  });
+
+  it("blockhashUsable needs a valid blockhash and at least the margin of blocks left from the quote height", async () => {
+    const valid = vi.spyOn(connection, "isBlockhashValid").mockResolvedValue({ context: { slot: 1 }, value: true });
+    const height = vi.spyOn(connection, "getBlockHeight").mockResolvedValue(1_000);
+    expect(await blockhashUsable(BLOCKHASH, 1_000)).toBe(true);
+    height.mockResolvedValue(1_000 + 130); // 150 - 20 blocks after the quote: still usable
+    expect(await blockhashUsable(BLOCKHASH, 1_000)).toBe(true);
+    height.mockResolvedValue(1_000 + 131);
+    expect(await blockhashUsable(BLOCKHASH, 1_000)).toBe(false);
+    height.mockResolvedValue(1_000);
+    valid.mockResolvedValue({ context: { slot: 1 }, value: false });
+    expect(await blockhashUsable(BLOCKHASH, 1_000)).toBe(false);
   });
 });
 

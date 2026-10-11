@@ -22,7 +22,9 @@ const parsed = (owner: string, pre: string, post: string) => ({ meta: { err: nul
 async function settledPlatformFee(amount: bigint, settledAt: string, chainAt: string | null = null) {
   const basket = await seedBasket({ assets: [{ symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 10_000 }] });
   const { legId, operationId } = await seedLeg(basket.ownerId, basket, { kind: "network_fee" });
-  await adminSql`INSERT INTO app.operation_fees (id, operation_id, leg_id, kind, base_micro, amount_micro, settled_at, settled_chain_at) VALUES (gen_random_uuid(), ${operationId}, ${legId}, 'platform', 100000000, ${amount.toString()}, ${settledAt}, ${chainAt})`;
+  const [fee] = await adminSql<{ id: string }[]>`INSERT INTO app.operation_fees (id, operation_id, leg_id, kind, base_micro, amount_micro, settled_at, settled_chain_at) VALUES (gen_random_uuid(), ${operationId}, ${legId}, 'platform', 100000000, ${amount.toString()}, ${settledAt}, ${chainAt}) RETURNING id`;
+  // Reconciliation reads what the fee leg charged (spec 22 B-06), not the plan row.
+  await adminSql`INSERT INTO app.operation_fee_charges (id, operation_fee_id, fee_leg_id, amount_micro, settled_at, settled_chain_at) VALUES (gen_random_uuid(), ${fee!.id}, ${legId}, ${amount.toString()}, ${settledAt}, ${chainAt})`;
 }
 
 let warn: ReturnType<typeof vi.spyOn>;

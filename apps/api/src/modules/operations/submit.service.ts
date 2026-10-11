@@ -5,9 +5,9 @@ import type { LegSubmit, OperationView } from "@repo/validator";
 import { broadcastBitcoin, checkPsbt, finalizePsbt, type PsbtInput, type PsbtOutput } from "@/providers/bitcoin";
 import { evmTransaction } from "@/providers/evm-rpc";
 import { SendTransactionError } from "@solana/web3.js";
-import { cosign, sendSolana } from "@/providers/solana-tx";
+import { cosign, sendSolana, verifyUserSigned } from "@/providers/solana-tx";
 import { enqueue } from "@/config/queues";
-import { type OpCtx, invalidTransition, getOperation, setLegStatus, setOperationStatus, lockOperation } from "./operations.service";
+import { type OpCtx, hasGroups, invalidTransition, getOperation, setLegStatus, setOperationStatus, lockOperation } from "./operations.service";
 import { userAddresses, addressOn } from "@/modules/auth/wallets.service";
 import { loadLeg, assertOperable, sha256Hex } from "./quote.service";
 
@@ -30,6 +30,7 @@ export async function markSubmitted(ctx: OpCtx | null, opId: string, legId: stri
 export async function submitLeg(ctx: OpCtx, opId: string, legId: string, body: LegSubmit): Promise<OperationView> {
   const { op, leg } = await loadLeg(ctx, opId, legId);
   await assertOperable(ctx, op);
+  if (await hasGroups(op.id)) throw invalidTransition("Continue this investment on the website.");
   if (leg.status !== "PLANNED") throw invalidTransition("This leg was already submitted.");
   if (!leg.quoteExpiresAt || leg.quoteExpiresAt <= new Date()) throw createHttpError(409, "The quote expired. Get a new quote and sign again.", { code: "QUOTE_EXPIRED" });
   const addresses = await userAddresses(db, ctx.userId);
@@ -43,7 +44,10 @@ export async function submitLeg(ctx: OpCtx, opId: string, legId: string, body: L
   if (leg.fromChain === "solana") {
     if (!body.signedTx || !leg.builtMessageHash) throw createHttpError("Send the signed transaction.", { code: "VALIDATION_FAILED" });
     const preparedBase64 = (leg.expectedTx as { preparedBase64?: string } | null)?.preparedBase64;
-    const signed = cosign(body.signedTx, leg.builtMessageHash, preparedBase64);
+    // A leg planned with the platform as fee payer is co-signed; every other Solana leg is signed by the user as fee payer and sent as it is.
+    const signed = leg.gasPayer === "platform_fee_payer"
+      ? cosign(body.signedTx, leg.builtMessageHash, preparedBase64)
+      : verifyUserSigned(body.signedTx, { owner: addressOn(addresses, "solana"), storedMessageHash: leg.builtMessageHash, preparedBase64 });
     ({ signature: sourceTx, recentBlockhash } = signed);
     send = () => sendSolana(signed.raw);
   } else if (leg.fromChain === "bitcoin") {

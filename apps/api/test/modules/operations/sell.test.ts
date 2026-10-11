@@ -9,7 +9,14 @@ import { seedPlatformWallets } from "@/modules/operations/gas.service";
 import { adminSql, resetDb } from "../../helpers/db";
 import { fakes } from "../../helpers/fakes";
 import { balanceKey, btcInputKey, btcPsbt, mockChains, solanaTestWallet } from "../../helpers/chain-mocks";
-import { USDC_MINT, bitcoinWallet, seedBasket, seedPosition, seedUser, type SeedAsset } from "../../helpers/execution";
+import { USDC_MINT, bitcoinWallet, seedBasket, seedPosition, seedPrices, seedUser, type SeedAsset } from "../../helpers/execution";
+
+// The revenue treasury address is switchable per test (the parsed env is read-only).
+const revenue = vi.hoisted(() => ({ address: "" }));
+vi.mock("@/config/dotenv", async (original) => {
+  const m = await original<typeof import("@/config/dotenv")>();
+  return { ...m, env: new Proxy({} as typeof m.env, { get: (_, k) => (k === "REVENUE_TREASURY_SOLANA_ADDRESS" ? revenue.address : Reflect.get(m.env, k)) }) };
+});
 
 const SOL: SeedAsset = { symbol: "SOL", chain: "solana", tokenStandard: "native", bps: 5000 };
 const ETH: SeedAsset = { symbol: "ETH", chain: "ethereum", tokenStandard: "native", bps: 3000 };
@@ -30,7 +37,8 @@ async function arrange(over: { usdc?: bigint } = {}) {
   const user = await seedUser({ wallet, bitcoin: true });
   const [sol, eth, btc] = basket.deployments;
   const positionId = await seedPosition(user.userId, basket, [{ deploymentId: sol!.deploymentId, quantity: 4_000_000_000n }, { deploymentId: eth!.deploymentId, quantity: 2n * 10n ** 18n }, { deploymentId: btc!.deploymentId, quantity: 100_000_000n }]);
-  chain.balances.set(balanceKey(user.solanaAddress, null), 4_000_000_000n);
+  // The user pays Solana gas, and a 100% sell of native SOL also needs the SOL left for the fees: the wallet holds the ledger's 4 SOL plus 1 SOL.
+  chain.balances.set(balanceKey(user.solanaAddress, null), 5_000_000_000n);
   chain.balances.set(balanceKey(user.btcAddress, null), 100_000_000n);
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.usdc ?? 50_000_000n); // an EVM sell needs the fee in USDC on Solana (it is paid first)
   // The user moved some ETH elsewhere: the wallet holds 0.5 ETH although the ledger says 2.
@@ -38,19 +46,22 @@ async function arrange(over: { usdc?: bigint } = {}) {
   return { chain, wallet, basket, user, positionId, deployments: { sol: sol!, eth: eth!, btc: btc! } };
 }
 
-/** A position that only holds a Solana asset, so no EVM gas is involved and the fee may be last. */
+/** A position that only holds a Solana asset, so no EVM gas is involved and the fee may be last. The user pays Solana gas, so a fee exists only with a platform fee (0.25% of the sale: 0.75 USDC). */
 async function arrangeSolanaOnly(usdc: bigint) {
+  revenue.address = solanaTestWallet().address;
   const chain = mockChains();
   await seedPlatformWallets();
   const basket = await seedBasket({ assets: [SOL] });
+  await adminSql`INSERT INTO app.platform_fee_schedules (id, scope, operation_kind, bps, reason, created_by) VALUES (gen_random_uuid(), 'default', 'sell_to_usdc', 25, 'test', ${basket.ownerId})`;
   const user = await seedUser({ wallet: solanaTestWallet() });
+  await seedPrices(basket.deployments, ["150"]);
   const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 4_000_000_000n }]);
-  chain.balances.set(balanceKey(user.solanaAddress, null), 4_000_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 5_000_000_000n);
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), usdc);
   return { chain, user, positionId };
 }
 
-beforeEach(resetDb);
+beforeEach(async () => { revenue.address = ""; await resetDb(); });
 afterEach(() => vi.restoreAllMocks());
 
 describe("sell plan", () => {
@@ -60,8 +71,8 @@ describe("sell plan", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ kind: "sell_to_usdc", status: "PLANNED", sellPercent: 50, amountUsdc: null });
     expect(res.body.legs.map((l: { kind: string; fromChain: string; amountIn: string; gasPayer: string }) => [l.kind, l.fromChain, l.amountIn, l.gasPayer])).toEqual([
-      ["network_fee", "solana", "186000", "platform_fee_payer"],
-      ["swap", "solana", "2000000000", "platform_fee_payer"],
+      ["network_fee", "solana", "120000", "user_solana"], // (0.05 + 0.05) USD of EVM and Bitcoin gas x 1.2: Solana gas is the user's
+      ["swap", "solana", "2000000000", "user_solana"],
       ["cross_chain", "ethereum", "500000000000000000", "platform_gas_drop"], // wallet (0.5) < ledger x 50% (1.0)
       ["cross_chain", "bitcoin", "50000000", "user_btc_inputs"],
     ]);
@@ -69,7 +80,7 @@ describe("sell plan", () => {
     expect(res.body.legs[0]).toMatchObject({ sequence: 1, kind: "network_fee" });
     expect(res.body.legs.every((l: { toChain: string }) => l.toChain === "solana")).toBe(true);
     const usage = await adminSql<{ chain: string; amount_native: string }[]>`SELECT chain, amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} ORDER BY chain`;
-    expect(Object.fromEntries(usage.map((u) => [u.chain, u.amount_native]))).toEqual({ solana: String(32_402 + 10_000), ethereum: "150000000000000" });
+    expect(Object.fromEntries(usage.map((u) => [u.chain, u.amount_native]))).toEqual({ ethereum: "150000000000000" }); // the EVM drop only: no platform Solana gas
   });
 
   it("skips deployments the wallet no longer holds and refuses when nothing is left", async () => {
@@ -77,7 +88,7 @@ describe("sell plan", () => {
     chain.balances.set(balanceKey(user.btcAddress, null), 0n);
     fakes.evm.balances.clear();
     const res = await sell(user.h, positionId);
-    expect(res.body.legs.map((l: { fromChain: string }) => l.fromChain)).toEqual(["solana", "solana"]);
+    expect(res.body.legs.map((l: { fromChain: string }) => l.fromChain)).toEqual(["solana"]); // no EVM or Bitcoin sell, so nothing is charged and there is no fee leg
     await post(user.h, `/v1/operations/${res.body.id}/cancel`);
     chain.balances.set(balanceKey(user.solanaAddress, null), 0n);
     const none = await sell(user.h, positionId, { idempotencyKey: "sell-bbbbbbbb" });
@@ -221,7 +232,7 @@ describe("review fixes", () => {
     const res = await sell(user.h, positionId);
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("INSUFFICIENT_BALANCE");
-    expect(res.body.error.message).toBe("Add at least $0.19 USDC on Solana to pay the network fee before selling assets on Ethereum.");
+    expect(res.body.error.message).toBe("Add at least $0.12 USDC on Solana to pay the network fee before selling assets on Ethereum.");
     expect(await adminSql`SELECT 1 FROM app.operations WHERE status = 'PLANNED'`).toHaveLength(0);
     expect(await adminSql`SELECT 1 FROM app.sponsor_usage`).toHaveLength(0);
     expect(fakes.evm.sentNative).toHaveLength(0);
@@ -285,6 +296,7 @@ describe("review fixes", () => {
     const basket = await seedBasket({ assets: [{ symbol: "TKN", chain: "ethereum", tokenStandard: "erc20", bps: 10_000 }] });
     const user = await seedUser({ wallet });
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 50_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the fee transfer is signed (and paid in SOL) by the user
     const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 1000n }]);
     fakes.evm.balances.set(`ethereum:${user.evmAddress}:${basket.deployments[0]!.address}`, 1000n);
     const op = (await sell(user.h, positionId)).body;

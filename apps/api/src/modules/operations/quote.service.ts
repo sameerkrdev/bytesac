@@ -2,17 +2,19 @@ import { createHash } from "node:crypto";
 import createHttpError from "http-errors";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db, instrumentDeployments, instruments, operationLegs, operations, operationFees } from "@repo/db";
-import { USDC_DECIMALS, USDC_SOLANA_MINT, minOut, scaleBuys, type AssetChain, type LegQuoteResponse } from "@repo/validator";
+import { USDC_DECIMALS, USDC_SOLANA_MINT, scaleBuys, type AssetChain, type LegQuoteResponse } from "@repo/validator";
 import { env } from "@/config/dotenv";
 import { logger } from "@repo/logger";
 import { expectedBtcTx, psbtInputs } from "@/providers/bitcoin";
+import { routeProviderById } from "@/providers/routes";
+import type { LegQuote } from "@/providers/routes/types";
 import { buildFeeTransfer, describeUnsigned, solanaBalance, sponsorExposure } from "@/providers/solana-tx";
 import { quoteSponsorable } from "./plan.service";
 import { platformAddress, reserveGas, sendGasDrop } from "./gas.service";
 import { assertAllowed, evaluateFor, isRwa, recordDecisions } from "@/modules/eligibility/eligibility.service";
 import { routeDenyList } from "@/modules/routing/routing.service";
-import { type OpCtx, type Op, type Leg, notFound, invalidTransition, setLegStatus, basketCashMicro, freeUsdcMicro, lockOperation, refreshOperationStatus, cancelIfExpired } from "./operations.service";
-import { userAddresses, addressOn } from "@/modules/auth/wallets.service";
+import { type OpCtx, type Op, type Leg, hasGroups, notFound, invalidTransition, setLegStatus, basketCashMicro, freeUsdcMicro, lockOperation, refreshOperationStatus, cancelIfExpired } from "./operations.service";
+import { type Addresses, userAddresses, addressOn } from "@/modules/auth/wallets.service";
 
 export async function loadLeg(ctx: OpCtx, opId: string, legId: string) {
   const [op] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
@@ -36,6 +38,7 @@ export const sha256Hex = (s: string) => createHash("sha256").update(s.toLowerCas
 export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise<LegQuoteResponse> {
   let { op, legs, leg } = await loadLeg(ctx, opId, legId);
   await assertOperable(ctx, op);
+  if (await hasGroups(op.id)) throw invalidTransition("Continue this investment on the website.");
   if (leg.status !== "PLANNED") throw invalidTransition("This leg was already submitted.");
   // Strictly sequential: each earlier leg is settled, except that the first asset leg may follow a network fee that is on-chain.
   // A leg that failed with a recovery (the funds arrived as another token) does not hold the legs after it back; its recovery goes last, once every other leg is final.
@@ -103,81 +106,100 @@ export async function quoteLeg(ctx: OpCtx, opId: string, legId: string): Promise
   if (leg.kind === "network_fee") {
     // The transfers are the fees recorded with the plan (network, manager, platform), never the schedule in force now. A pre-Spec-10 operation has no fee rows:
     // its leg is the single transfer of `amountIn` to the gas treasury, as before. With rows, they must add up to the leg, else nothing is built.
-    const rows = await db.select({ recipient: operationFees.recipientAddress, amountMicro: operationFees.amountMicro }).from(operationFees)
+    const rows = await db.select({ kind: operationFees.kind, recipient: operationFees.recipientAddress, amountMicro: operationFees.amountMicro }).from(operationFees)
       .where(eq(operationFees.operationId, op.id))
       .orderBy(sql`array_position(array['network','manager_entry','manager_rebalance','platform']::text[], ${operationFees.kind}::text)`);
-    const charged = rows.filter((r) => BigInt(r.amountMicro) > 0n);
+    // A group's fee leg (spec 22 B-06) carries the per-kind amounts it charges; the plan's single fee leg charges every row.
+    const feeCharges = (leg.routeSummary?.feeCharges ?? null) as Record<string, string> | null;
+    const charged = rows.map((r) => ({ ...r, amountMicro: feeCharges ? (feeCharges[r.kind] ?? "0") : r.amountMicro })).filter((r) => BigInt(r.amountMicro) > 0n);
     if (rows.length && charged.reduce((t, r) => t + BigInt(r.amountMicro), 0n) !== BigInt(leg.amountIn)) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
     if (!rows.length && !env.GAS_TREASURY_SOLANA_ADDRESS) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
     const transfers = rows.length ? charged.map((c) => ({ recipient: c.recipient!, amountMicro: BigInt(c.amountMicro) })) : [{ recipient: env.GAS_TREASURY_SOLANA_ADDRESS!, amountMicro: BigInt(leg.amountIn) }];
-    const built = await buildFeeTransfer({ owner: solanaAddress, transfers });
+    const built = await buildFeeTransfer({ owner: solanaAddress, payer: leg.gasPayer === "platform_fee_payer" ? "platform" : "user", transfers });
     // preparedBase64 lets submit accept wallet ComputeBudget padding while still matching this quote's transfers (ADR-014).
     await save({ builtMessageHash: built.messageHash, expectedTx: { ...(leg.expectedTx ?? {}), preparedBase64: built.serializedBase64 } });
     return response({ estimatedOut: null, minOut: null, transaction: { kind: "solana", serializedBase64: built.serializedBase64 } });
   }
 
-  const [from, to] = await Promise.all([legDeployment(leg.fromDeploymentId), legDeployment(leg.toDeploymentId)]);
-  // A recovery leg swaps the token that arrived (not a registry deployment: its address is in the route summary; null = the chain's native asset).
-  const recoveryFrom = leg.recoveryOf ? ((leg.routeSummary?.fromToken ?? null) as string | null) : undefined;
-  const fromToken = recoveryFrom !== undefined ? recoveryFrom : from ? from.address : USDC_SOLANA_MINT;
-  const planned = (leg.expectedTx ?? {}) as { gasDropNative?: string; gasReserved?: boolean };
   let gasDrop: LegQuoteResponse["gasDrop"] = null;
   if (leg.gasPayer === "platform_gas_drop") {
     // The platform's gas follows only once the operation's network fee has settled (an EVM sell plan always puts the fee first).
     const fee = legs.find((l) => l.kind === "network_fee");
     if (fee?.status !== "SETTLED") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop: { status: "pending", txHash: null } };
     // Selling the native asset: the wallet needs the amount sold plus gas.
-    gasDrop = await sendGasDrop(leg.id, leg.fromChain, addressOn(addresses, leg.fromChain), BigInt(planned.gasDropNative ?? 0), fromToken ? 0n : BigInt(leg.amountIn));
+    const planned = (leg.expectedTx ?? {}) as { gasDropNative?: string };
+    gasDrop = await sendGasDrop(leg.id, leg.fromChain, addressOn(addresses, leg.fromChain), BigInt(planned.gasDropNative ?? 0), sourceToken(leg, await legDeployment(leg.fromDeploymentId)) ? 0n : BigInt(leg.amountIn));
     if (gasDrop.status !== "confirmed" && gasDrop.status !== "skipped") return { legId: leg.id, estimatedOut: null, minOut: null, quoteExpiresAt: null, transaction: null, approval: null, gasDrop };
   }
 
-  const q = await quoteSponsorable({
+  const { patch, response: quoted } = await quoteAssetLeg(op, leg, addresses);
+  await save(patch);
+  return { ...response(quoted), gasDrop };
+}
+
+/** The token a leg spends: a recovery leg swaps the token that arrived (its address is in the route summary; null = the chain's native asset), any other leg its deployment's, a buy USDC. */
+const sourceToken = (leg: Leg, from: { address: string | null } | null): string | null =>
+  leg.recoveryOf ? ((leg.routeSummary?.fromToken ?? null) as string | null) : from ? from.address : USDC_SOLANA_MINT;
+
+/**
+ * One fresh quote for an asset leg, shared by the per-leg endpoint and the signing group. Returns the provider quote, the leg columns the quote sets (the caller
+ * saves them while the leg is still PLANNED) and the parts of the response that do not depend on how it is saved. A leg planned with the platform as fee payer
+ * (before user-paid Solana gas) still quotes with `svmSponsor` and reserves platform gas; every other Solana leg is quoted for the user as fee payer.
+ */
+export async function quoteAssetLeg(op: Op, leg: Leg, addresses: Addresses): Promise<{ q: LegQuote; patch: Partial<typeof operationLegs.$inferInsert>; response: Pick<LegQuoteResponse, "estimatedOut" | "minOut" | "transaction" | "approval"> }> {
+  const [from, to] = await Promise.all([legDeployment(leg.fromDeploymentId), legDeployment(leg.toDeploymentId)]);
+  const fromToken = sourceToken(leg, from);
+  let planned = (leg.expectedTx ?? {}) as Record<string, unknown>;
+  const input = {
     fromChain: leg.fromChain, fromToken, toChain: leg.toChain, toToken: to ? to.address : USDC_SOLANA_MINT, toDecimals: to ? to.decimals : USDC_DECIMALS, fromAmount: BigInt(leg.amountIn),
-    slippageBps: op.slippageBps, fromAddress: addressOn(addresses, leg.fromChain), toAddress: addressOn(addresses, leg.toChain),
-    svmSponsor: leg.fromChain === "solana" ? await platformAddress("solana", "solana_fee_payer") : undefined,
-    deny: await routeDenyList(leg.toChain, addressOn(addresses, leg.toChain)),
-  });
+    slippageBps: op.slippageBps, fromAddress: addressOn(addresses, leg.fromChain), toAddress: addressOn(addresses, leg.toChain), deny: await routeDenyList(leg.toChain, addressOn(addresses, leg.toChain)),
+  };
+  const legacy = leg.fromChain === "solana" && leg.gasPayer === "platform_fee_payer";
+  const q = legacy ? await quoteSponsorable({ ...input, svmSponsor: await platformAddress("solana", "solana_fee_payer") }) : await routeProviderById(env.ROUTE_PROVIDER_ORDER[0]!)!.quote(input);
   // A recovery has no plan floor: store the fresh quote's minimum. D-073 PRICE_MOVED is temporarily disabled for the pilot (2026-10-11): a worse
   // fresh quote is accepted, the stored floor is lowered to match, and the confirm step shows those figures before the wallet opens. Re-enable the
-  // 409 below (and the invest test) when pilot signing is stable. Batching every leg into one send is out of scope (ADR-014: one signed leg at a time).
-  if (leg.recoveryOf || (leg.minOut !== null && q.minOut < BigInt(leg.minOut))) {
-    if (!leg.recoveryOf) logger.warn("D-073 waived: accepting fresh minOut below plan", { legId: leg.id, plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() });
-    await db.update(operationLegs).set({ minOut: q.minOut.toString() }).where(and(eq(operationLegs.id, leg.id), eq(operationLegs.status, "PLANNED")));
-  }
-  const base = { routeSummary: { ...(leg.routeSummary ?? {}), tool: q.toolSummary, routeFees: q.routeFees, priceImpact: q.priceImpact } };
+  // 409 below (and the invest test) when pilot signing is stable.
+  const lowered = !!leg.recoveryOf || (leg.minOut !== null && q.minOut < BigInt(leg.minOut));
+  if (lowered && !leg.recoveryOf) logger.warn("D-073 waived: accepting fresh minOut below plan", { legId: leg.id, plannedMinOut: leg.minOut, quotedMinOut: q.minOut.toString() });
+  const patch: Partial<typeof operationLegs.$inferInsert> = { routeSummary: { ...(leg.routeSummary ?? {}), tool: q.toolSummary, routeFees: q.routeFees, priceImpact: q.priceImpact }, ...(lowered ? { minOut: q.minOut.toString() } : {}) };
   if (q.transaction.kind === "solana") {
-    const exposure = sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent
-    // A recovery's Solana fees were not reserved with the plan: reserve them now (per-chain lock and daily caps; refusal is 409 GAS_BUDGET_EXHAUSTED), once per leg.
-    // A planned estimate leg reserved LI.FI's gas figure (and rent if the account was missing): if this transaction needs more, the reservation is topped up under the same lock and caps.
-    await reserveLegGas(op, leg, "solana", exposure.lamports > q.gasNative ? exposure.lamports : q.gasNative);
-    await save({ ...base, builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash, expectedTx: { ...planned, preparedBase64: q.transaction.serializedBase64 } });
+    if (legacy) {
+      const exposure = sponsorExposure(q.transaction.serializedBase64); // refuses a transaction the platform fee payer would pay for beyond fees and token-account rent
+      // A recovery's Solana fees were not reserved with the plan: reserve them now (per-chain lock and daily caps; refusal is 409 GAS_BUDGET_EXHAUSTED), once per leg.
+      // A planned estimate leg reserved LI.FI's gas figure (and rent if the account was missing): if this transaction needs more, the reservation is topped up under the same lock and caps.
+      planned = (await reserveLegGas(op, leg, "solana", exposure.lamports > q.gasNative ? exposure.lamports : q.gasNative)) ?? planned; // the top-up rewrote the leg's expectedTx: keep it
+    }
+    Object.assign(patch, { builtMessageHash: describeUnsigned(q.transaction.serializedBase64).messageHash, expectedTx: { ...planned, preparedBase64: q.transaction.serializedBase64 } });
   } else if (q.transaction.kind === "evm") {
-    await save({ ...base, expectedTx: { ...planned, to: q.transaction.to.toLowerCase(), dataHash: sha256Hex(q.transaction.data), value: q.transaction.value } });
+    Object.assign(patch, { expectedTx: { ...planned, to: q.transaction.to.toLowerCase(), dataHash: sha256Hex(q.transaction.data), value: q.transaction.value } });
   } else {
-    await save({ ...base, expectedTx: { ...planned, ...expectedBtcTx(q.transaction.psbtBase64, addressOn(addresses, "bitcoin"), BigInt(leg.amountIn)) } });
+    Object.assign(patch, { expectedTx: { ...planned, ...expectedBtcTx(q.transaction.psbtBase64, addressOn(addresses, "bitcoin"), BigInt(leg.amountIn)) } });
   }
   const approval = q.approvalAddress && fromToken ? { token: fromToken, spender: q.approvalAddress, amount: leg.amountIn } : null;
-  const inputCount = q.transaction.kind === "bitcoin" ? psbtInputs(q.transaction.psbtBase64).length : 0;
-  return { ...response({ estimatedOut: q.estimatedOut.toString(), minOut: q.minOut.toString(), transaction: q.transaction.kind === "bitcoin" ? { ...q.transaction, inputCount } : q.transaction, approval }), gasDrop };
+  const transaction = q.transaction.kind === "bitcoin" ? { ...q.transaction, inputCount: psbtInputs(q.transaction.psbtBase64).length } : q.transaction;
+  return { q, patch, response: { estimatedOut: q.estimatedOut.toString(), minOut: q.minOut.toString(), transaction, approval } };
 }
 
 /**
  * Brings what a Solana leg has reserved up to `needed`: a recovery leg reserves in full at its first quote (nothing was held at plan time), a planned estimate leg
  * only the shortfall over its recorded `reservedNative`. Adds to the operation's reservation so a later release stays exact. Refusal is 409 GAS_BUDGET_EXHAUSTED.
+ * Returns the leg's new expectedTx when it changed (the caller must build on it, not on the copy it loaded before), else null.
  */
-async function reserveLegGas(op: Op, leg: Leg, chain: AssetChain, needed: bigint): Promise<void> {
-  await db.transaction(async (tx) => {
+async function reserveLegGas(op: Op, leg: Leg, chain: AssetChain, needed: bigint): Promise<Record<string, unknown> | null> {
+  return db.transaction(async (tx) => {
     const locked = await lockOperation(tx, op.id);
     // A stop, expiry or completion may have happened since the quote began: a closed operation reserves nothing.
     if (locked.status !== "PLANNED" && locked.status !== "IN_PROGRESS") throw createHttpError(409, "This operation is no longer open.", { code: "INVALID_TRANSITION" });
     const [current] = await tx.select({ expectedTx: operationLegs.expectedTx, status: operationLegs.status }).from(operationLegs).where(eq(operationLegs.id, leg.id));
     const ex = (current!.expectedTx ?? {}) as { gasReserved?: boolean; reservedNative?: string };
     const have = ex.gasReserved === false ? 0n : ex.reservedNative !== undefined ? BigInt(ex.reservedNative) : null;
-    if (current!.status !== "PLANNED" || have === null || needed <= have) return;
+    if (current!.status !== "PLANNED" || have === null || needed <= have) return null;
     const extra = needed - have;
     await reserveGas(tx, { userId: op.userId, chain, amountNative: extra });
     await tx.update(operations).set({ gasReserved: { ...locked.gasReserved, [chain]: (BigInt(locked.gasReserved[chain] ?? 0) + extra).toString() } }).where(eq(operations.id, op.id));
-    await tx.update(operationLegs).set({ expectedTx: { ...ex, gasReserved: true, reservedNative: needed.toString() } }).where(eq(operationLegs.id, leg.id));
+    const expectedTx = { ...ex, gasReserved: true, reservedNative: needed.toString() };
+    await tx.update(operationLegs).set({ expectedTx }).where(eq(operationLegs.id, leg.id));
+    return expectedTx;
   });
 }
 

@@ -1,6 +1,6 @@
 import createHttpError from "http-errors";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
-import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFees, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
+import { basketPositions, baskets, db, instrumentDeployments, instruments, operationFeeCharges, operationFees, operationLegs, operations, positionCashEntries, positionLedgerEntries, type Tx } from "@repo/db";
 import { logger } from "@repo/logger";
 import { CONFIRMATIONS, USDC_DECIMALS, USDC_SOLANA_MINT, splitRepair, type AssetChain, type OperationView, type ResolveLegRequest } from "@repo/validator";
 import { bitcoinTx } from "@/providers/bitcoin";
@@ -78,6 +78,16 @@ async function settleLeg(tx: Tx, ctx: OpCtx | null, op: Op, leg: Leg, destinatio
   if (leg.kind === "network_fee") {
     // Every charged fee of the plan is paid by this one transaction: earnings and revenue count them from now on.
     await tx.update(operationFees).set({ settledAt: sql`now()` }).where(and(eq(operationFees.operationId, op.id), sql`${operationFees.amountMicro} > 0`));
+    // What this fee leg charged: a group fee leg carries its per-kind charges and the legs it covers; the plan's single fee leg charges every fee row. The block time follows in `trackLeg`.
+    const charges = (leg.routeSummary?.feeCharges ?? null) as Record<string, string> | null;
+    const rows = await tx.select({ id: operationFees.id, kind: operationFees.kind, amountMicro: operationFees.amountMicro }).from(operationFees).where(eq(operationFees.operationId, op.id));
+    const values = rows.flatMap((r) => {
+      const amount = charges ? charges[r.kind] : r.amountMicro;
+      return amount && BigInt(amount) > 0n ? [{ operationFeeId: r.id, feeLegId: leg.id, amountMicro: amount, settledAt: sql`now()` as unknown as Date }] : [];
+    });
+    if (values.length) await tx.insert(operationFeeCharges).values(values).onConflictDoNothing();
+    const covers = (leg.routeSummary?.covers ?? null) as string[] | null;
+    await tx.update(operationLegs).set({ feeCoveredBy: leg.id }).where(and(eq(operationLegs.operationId, op.id), covers ? inArray(operationLegs.id, covers) : ne(operationLegs.kind, "network_fee"), isNull(operationLegs.feeCoveredBy)));
     if (op.kind === "rebalance" && leg.routeSummary?.fromCash) await tx.insert(positionCashEntries).values({ positionId: op.positionId!, amountMicro: (-BigInt(leg.amountIn)).toString(), reason: "network_fee", legId: leg.id });
   } else {
     // A recovery completes the leg it recovers (the leg whose destination swap failed): that leg's source side was written when it failed, so only the
@@ -282,8 +292,8 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
                 operationId: op.id, sequence: next, kind: "swap", fromChain: leg.toChain, fromDeploymentId: null, toChain: leg.toChain, toDeploymentId: leg.toDeploymentId, amountIn: evidenced.toString(), minOut: estimate.minOut.toString(),
                 provider: leg.provider, gasPayer: payer, recoveryOf: leg.id,
                 routeSummary: { fromToken: recoveryToken.address, fromSymbol: recoveryToken.symbol, fromDecimals: recoveryToken.decimals, symbol: target?.symbol ?? "USDC", decimals: target?.decimals ?? 6, tool: estimate.toolSummary, estimatedOut: estimate.estimatedOut.toString(), routeFees: estimate.routeFees, priceImpact: estimate.priceImpact },
-                // The gas is reserved when the recovery is quoted, under the per-chain lock and the daily caps (an EVM drop is sized here, x1.5 x2 like an ERC-20 sell).
-                expectedTx: payer === "platform_gas_drop" ? { gasReserved: false, gasDropNative: ((estimate.gasNative * (native ? 3n : 4n)) / 2n).toString() } : { gasReserved: false },
+                // An EVM drop is sized here (x1.5 x2 like an ERC-20 sell) and reserved when the recovery is quoted, under the per-chain lock and the daily caps. A Solana recovery is user-paid: nothing to reserve.
+                expectedTx: payer === "platform_gas_drop" ? { gasReserved: false, gasDropNative: ((estimate.gasNative * (native ? 3n : 4n)) / 2n).toString() } : null,
               });
               return true;
             });
@@ -318,7 +328,10 @@ async function trackOnce(legId: string, recheck: number): Promise<boolean> {
     // The fee's on-chain time buckets revenue by day (settled_at is when this server noticed). Outside the transaction: a read failure only leaves the fallback.
     try {
       const blockTime = await solanaBlockTime(sourceTx);
-      if (blockTime) await db.update(operationFees).set({ settledChainAt: blockTime }).where(and(eq(operationFees.legId, leg.id), isNull(operationFees.settledChainAt)));
+      if (blockTime) {
+        await db.update(operationFees).set({ settledChainAt: blockTime }).where(and(eq(operationFees.legId, leg.id), isNull(operationFees.settledChainAt)));
+        await db.update(operationFeeCharges).set({ settledChainAt: blockTime }).where(and(eq(operationFeeCharges.feeLegId, leg.id), isNull(operationFeeCharges.settledChainAt)));
+      }
     } catch (err) {
       logger.warn("fee block time unavailable", { legId: leg.id, errMessage: err instanceof Error ? err.message : "unknown" });
     }

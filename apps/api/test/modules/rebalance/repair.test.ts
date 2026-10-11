@@ -28,14 +28,15 @@ async function arrange(over: { usdc?: bigint; wallet?: bigint } = {}) {
   const pB = await seedPosition(user.userId, basketB, [{ deploymentId: shared.deploymentId, quantity: 15n }]);
   fakes.evm.balances.set(`ethereum:${user.evmAddress}:${shared.address}`, over.wallet ?? 10n);
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.usdc ?? 50_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the user pays Solana gas
   return { chain, user, shared, pA, pB };
 }
 
 /** The buy leg is sent and delivers `received` of the token to the user's EVM address. */
 async function deliver(a: Awaited<ReturnType<typeof arrange>>, opId: string, received: bigint) {
-  const [fee, buy] = await legsOf(opId);
+  const legs = await legsOf(opId); // the user pays Solana gas and nothing else is charged here, so there is no fee leg
+  const buy = legs.at(-1);
   await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${opId}`;
-  await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${fee!.id}`;
   await adminSql`UPDATE app.operation_legs SET status = 'SUBMITTED', source_tx = 'sig-repair', submitted_at = now() WHERE id = ${buy!.id}`;
   a.chain.solanaFinality.set("sig-repair", "finalized");
   a.chain.lifiStatus.set("sig-repair", { state: "DONE", destinationTx: "0xdest" });
@@ -48,7 +49,7 @@ beforeEach(resetDb);
 afterEach(() => vi.restoreAllMocks());
 
 describe("repair (buy back)", () => {
-  it("one operation for both baskets: the fee first, then one buy of the whole shortfall (Review Focus 4)", async () => {
+  it("one operation for both baskets: one buy of the whole shortfall, with no fee leg when nothing is charged (Review Focus 4)", async () => {
     const { user, shared, pA, pB } = await arrange();
     const res = await repair(user.h, shared.deploymentId);
     expect(res.status).toBe(201);
@@ -56,8 +57,8 @@ describe("repair (buy back)", () => {
     const [op] = await adminSql<{ repair_shares: Record<string, string>; deployment_id: string }[]>`SELECT repair_shares, deployment_id FROM app.operations WHERE id = ${res.body.id}`;
     expect(op).toEqual({ repair_shares: { [pA]: "6", [pB]: "9" }, deployment_id: shared.deploymentId });
     const legs = await legsOf(res.body.id);
-    expect(legs.map((l) => l.kind)).toEqual(["network_fee", "cross_chain"]);
-    expect(legs[1]!.amount_in).toBe("16"); // ceil(15 x $1 x 1.01) in micro-USDC
+    expect(legs.map((l) => l.kind)).toEqual(["cross_chain"]);
+    expect(legs[0]!.amount_in).toBe("16"); // ceil(15 x $1 x 1.01) in micro-USDC
     const again = await repair(user.h, shared.deploymentId);
     expect(again.body.id).toBe(res.body.id);
   });
@@ -70,8 +71,8 @@ describe("repair (buy back)", () => {
     expect(second.body.error.code).toBe("OPERATION_IN_PROGRESS");
   });
 
-  it("needs free USDC for the fee and the buy; basket cash does not count", async () => {
-    const { user, shared } = await arrange({ usdc: 10_000n });
+  it("needs free USDC for the buy (and the fee when one is charged); basket cash does not count", async () => {
+    const { user, shared } = await arrange({ usdc: 10n });
     const res = await repair(user.h, shared.deploymentId);
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("INSUFFICIENT_BALANCE");

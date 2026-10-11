@@ -190,6 +190,7 @@ describe("rebalance with a held asset that is not investable", () => {
     if (over.cash > 0n) await seedCash(user.userId, basket, positionId, over.cash);
     chain.balances.set(balanceKey(user.solanaAddress, bond!.address), over.bond);
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.cash + 50_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the user pays Solana gas
     if (over.v2) await seedVersion(basket, 2, over.v2);
     return { chain, user, positionId, sol: sol!, bond: bond! };
   }
@@ -241,15 +242,15 @@ describe("rebalance with a held asset that is not investable", () => {
     expect(res.body.error).toMatchObject({ code: "DATA_STALE", message: "No current price for BOND; the basket can't be valued right now." });
   });
 
-  it("every leg of a rebalance records its gas reservation, the network-fee leg included, summing to what the operation reserved", async () => {
+  it("every Solana leg of a rebalance records the SOL it costs the user and the operation the SOL it requires; the platform reserves nothing", async () => {
     const a = await arrange({ bond: 50_000_000n, cash: 50_000_000n });
     const res = await rebalance(a.user.h, a.positionId, { target: "applied" });
     expect(res.status).toBe(201);
-    const legs = await adminSql<{ kind: string; expected_tx: { reservedNative?: string } | null }[]>`SELECT kind, expected_tx FROM app.operation_legs WHERE operation_id = ${res.body.id}`;
-    const fee = legs.find((l) => l.kind === "network_fee")!;
-    expect(BigInt(fee.expected_tx?.reservedNative ?? "0")).toBeGreaterThan(0n);
-    const [op] = await adminSql<{ gas_reserved: { solana?: string } }[]>`SELECT gas_reserved FROM app.operations WHERE id = ${res.body.id}`;
-    expect(legs.reduce((t, l) => t + BigInt(l.expected_tx?.reservedNative ?? "0"), 0n).toString()).toBe(op!.gas_reserved.solana);
+    const legs = await adminSql<{ kind: string; gas_payer: string; expected_tx: { userLamports?: string } | null }[]>`SELECT kind, gas_payer, expected_tx FROM app.operation_legs WHERE operation_id = ${res.body.id}`;
+    expect(legs.every((l) => l.gas_payer === "user_solana" && BigInt(l.expected_tx?.userLamports ?? "0") > 0n)).toBe(true);
+    const [op] = await adminSql<{ gas_reserved: object; sol_required_lamports: string }[]>`SELECT gas_reserved, sol_required_lamports FROM app.operations WHERE id = ${res.body.id}`;
+    expect(op!.gas_reserved).toEqual({});
+    expect(BigInt(op!.sol_required_lamports)).toBe(legs.reduce((t, l) => t + BigInt(l.expected_tx?.userLamports ?? "0"), 0n) + 1_000_000n);
   });
 
   it("a sale needs an ACTIVE or PAUSED deployment: a retired one is refused, a paused one is not", async () => {

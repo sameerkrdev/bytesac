@@ -16,7 +16,7 @@ export interface LegQuoteInput extends ConnectionInput {
   slippageBps: number;
   /** The destination token's decimals from OUR registry (never the provider's response): the output tolerance scales with it. */
   toDecimals: number;
-  /** Platform fee payer; required when the source is Solana. */
+  /** Platform fee payer: only for a leg planned before user-paid Solana gas. Without it the user (`fromAddress`) pays the fee in SOL. */
   svmSponsor?: string;
 }
 

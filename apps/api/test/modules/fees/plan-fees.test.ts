@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "@/app";
 import { env } from "@/config/dotenv";
 import { lifi } from "@/providers/routes/lifi";
+import { FEE_TRANSFER_USER_LAMPORTS, TOKEN_ACCOUNT_RENT_LAMPORTS } from "@/providers/solana-tx";
 import { seedPlatformWallets } from "@/modules/operations/gas.service";
 import { trackLeg } from "@/modules/portfolio/tracking.service";
 import { adminSql, resetDb } from "../../helpers/db";
@@ -64,6 +65,7 @@ async function arrange(over: { assets?: SeedAsset[]; usdc?: bigint } = {}) {
   const basket = await seedBasket({ assets: over.assets ?? [SOL, TKN] });
   const user = await seedUser({ wallet: solanaTestWallet() });
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), over.usdc ?? 5_000_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the user pays Solana gas
   return { chain, basket, user };
 }
 
@@ -114,30 +116,30 @@ describe("invest fees", () => {
     const q = await quote(user.h, res.body.id, legs[0]!.id);
     expect(q.status).toBe(200);
     const tx = decode(q.body.transaction.serializedBase64);
-    expect(tx.creates).toBe(3);
+    expect(rows[0]!.amount_micro).toBe("0"); // the user pays Solana gas: no network fee, so no transfer to the gas treasury
+    expect(tx.creates).toBe(2);
     expect(tx.transfers).toEqual([
-      { to: ata(env.GAS_TREASURY_SOLANA_ADDRESS), amount: BigInt(rows[0]!.amount_micro) },
       { to: ata(payout), amount: 5_000_000n },
       { to: ata(revenue.address), amount: 2_500_000n },
     ]);
   });
 
-  it("the network fee covers the token-account rent of each charged recipient and the gas reservation counts it", async () => {
+  it("the token-account rent of each charged recipient is the user's, in the SOL requirement: the network fee stays 0 and nothing is reserved", async () => {
     const plain = await arrange();
     const res0 = await invest(plain.user.h, plain.basket.basketId);
-    const base = BigInt(res0.body.networkFeeUsdc);
+    const base = BigInt(res0.body.solRequiredLamports);
     await resetDb();
     const { basket, user } = await arrange();
     await configure(basket, { entry: { type: "percent", bps: 100 }, schedules: [{ op: "invest", bps: 25 }] });
     const res = await invest(user.h, basket.basketId);
-    expect(BigInt(res.body.networkFeeUsdc)).toBeGreaterThan(base);
-    const [usage] = await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} AND chain = 'solana'`;
-    expect(BigInt(usage!.amount_native)).toBeGreaterThanOrEqual(2n * 2_039_280n);
+    expect(res.body.networkFeeUsdc).toBe("0");
+    expect(BigInt(res.body.solRequiredLamports)).toBe(base + FEE_TRANSFER_USER_LAMPORTS + 2n * TOKEN_ACCOUNT_RENT_LAMPORTS); // the manager's and the revenue treasury's accounts are missing
+    expect(await adminSql`SELECT 1 FROM app.sponsor_usage`).toHaveLength(0);
   });
 
-  it("no rent is charged for a recipient whose token account already exists", async () => {
+  it("no rent is required for a recipient whose token account already exists", async () => {
     const plain = await arrange();
-    const base = BigInt((await invest(plain.user.h, plain.basket.basketId)).body.networkFeeUsdc);
+    const base = BigInt((await invest(plain.user.h, plain.basket.basketId)).body.solRequiredLamports);
     await resetDb();
     revenue.address = solanaTestWallet().address;
     const { basket, user, chain } = await arrange();
@@ -145,13 +147,12 @@ describe("invest fees", () => {
     chain.tokenAccounts.add(ata(payout));
     chain.tokenAccounts.add(ata(revenue.address));
     const res = await invest(user.h, basket.basketId);
-    expect(BigInt(res.body.networkFeeUsdc)).toBe(base);
-    const [usage] = await adminSql<{ amount_native: string }[]>`SELECT amount_native FROM app.sponsor_usage WHERE user_id = ${user.userId} AND chain = 'solana'`;
-    expect(BigInt(usage!.amount_native)).toBeLessThan(2_039_280n);
+    expect(BigInt(res.body.solRequiredLamports)).toBe(base + FEE_TRANSFER_USER_LAMPORTS);
   });
 
   it("a pre-Spec-10 operation (no fee rows) quotes one transfer of the leg amount to the gas treasury, shows one network fee and settles", async () => {
     const { basket, user, chain } = await arrange();
+    await configure(basket, { entry: { type: "percent", bps: 100 } }); // a charged fee gives the plan its fee leg
     const res = await invest(user.h, basket.basketId);
     await adminSql`DELETE FROM app.operation_fees WHERE operation_id = ${res.body.id}`;
     const leg = (await legsOf(res.body.id))[0]!;
@@ -169,6 +170,7 @@ describe("invest fees", () => {
 
   it("fee rows that don't add up to the fee leg are ROUTE_UNAVAILABLE and nothing is built", async () => {
     const { basket, user } = await arrange();
+    await configure(basket, { entry: { type: "percent", bps: 100 } });
     const res = await invest(user.h, basket.basketId);
     await adminSql`UPDATE app.operation_fees SET amount_micro = amount_micro::bigint + 1 WHERE operation_id = ${res.body.id}`;
     const q = await quote(user.h, res.body.id, (await legsOf(res.body.id))[0]!.id);
@@ -204,10 +206,9 @@ describe("invest fees", () => {
     await adminSql`UPDATE app.organization_payout_wallets SET status = 'REVOKED'`;
     const first = await invest(user.h, basket.basketId);
     const rows = await feeRows(first.body.id);
-    expect(rows.map((r) => [r.kind, r.amount_micro, r.waived_reason])).toEqual([["network", expect.any(String), null], ["manager_entry", "0", "payout_wallet_unavailable"]]);
-    const tx = decode((await quote(user.h, first.body.id, (await legsOf(first.body.id))[0]!.id)).body.transaction.serializedBase64);
-    expect(tx.transfers.map((t) => t.to)).toEqual([ata(env.GAS_TREASURY_SOLANA_ADDRESS)]);
-    expect(tx.transfers.some((t) => t.to === ata(payout))).toBe(false);
+    expect(rows.map((r) => [r.kind, r.amount_micro, r.waived_reason])).toEqual([["network", "0", null], ["manager_entry", "0", "payout_wallet_unavailable"]]);
+    expect((await legsOf(first.body.id)).some((l) => l.kind === "network_fee")).toBe(false); // nothing is charged, so there is no fee transaction to the manager or anyone
+    expect(payout).toBeTruthy();
     await adminSql`UPDATE app.operations SET status = 'CANCELLED'`;
     await invest(user.h, basket.basketId, { idempotencyKey: "key-bbbbbbbb" });
     // Resend dedupes on the key: both plans send the same one for the organization and the UTC day.
@@ -221,15 +222,15 @@ describe("invest fees", () => {
     await configure(basket, { schedules: [{ op: "invest", bps: 25, max: "5000" }] }); // capped at 0.005 USDC
     const res = await invest(user.h, basket.basketId);
     const rows = await feeRows(res.body.id);
-    expect(rows.map((r) => [r.kind, r.amount_micro, r.waived_reason])).toEqual([["network", expect.any(String), null], ["platform", "0", "dust"]]);
-    expect(decode((await quote(user.h, res.body.id, (await legsOf(res.body.id))[0]!.id)).body.transaction.serializedBase64).transfers).toHaveLength(1);
+    expect(rows.map((r) => [r.kind, r.amount_micro, r.waived_reason])).toEqual([["network", "0", null], ["platform", "0", "dust"]]);
+    expect((await legsOf(res.body.id)).some((l) => l.kind === "network_fee")).toBe(false); // no transfer at all
   });
 
-  it("no manager or platform fee: exactly one transfer, as before", async () => {
+  it("no manager or platform fee: the only fee row is the network fee at 0 and there is no fee transaction", async () => {
     const { basket, user } = await arrange();
     const res = await invest(user.h, basket.basketId);
-    expect(res.body.fees.map((f: { kind: string }) => f.kind)).toEqual(["network"]);
-    expect(decode((await quote(user.h, res.body.id, (await legsOf(res.body.id))[0]!.id)).body.transaction.serializedBase64).transfers).toHaveLength(1);
+    expect(res.body.fees.map((f: { kind: string; amountMicro: string }) => [f.kind, f.amountMicro])).toEqual([["network", "0"]]);
+    expect(res.body.legs.map((l: { kind: string }) => l.kind)).toEqual(["swap", "swap"]);
   });
 
   it("a platform fee without a revenue treasury is ROUTE_UNAVAILABLE", async () => {
@@ -267,10 +268,12 @@ describe("invest fees", () => {
       await trackLeg(leg.id);
       return (await feeRows(res.body.id)).map((r) => r.settled_at !== null);
     };
-    expect(await run("finalized")).toEqual([true, true, true]);
+    expect(await run("finalized")).toEqual([false, true, true]); // the network fee is 0: it is not charged, so not stamped
+    expect(await adminSql`SELECT 1 FROM app.operation_fee_charges`).toHaveLength(2);
     await resetDb();
     revenue.address = solanaTestWallet().address;
     expect(await run("failed")).toEqual([false, false, false]);
+    expect(await adminSql`SELECT 1 FROM app.operation_fee_charges`).toHaveLength(0);
   });
 });
 
@@ -286,7 +289,7 @@ describe("rebalance fees", () => {
     expect(legs.map((l) => l.kind)).toEqual(["network_fee", "swap", "swap"]);
     expect(BigInt(legs[0]!.amount_in)).toBe(rows.reduce((s, r) => s + BigInt(r.amount_micro), 0n));
     const tx = decode((await quote(user.h, res.body.id, legs[0]!.id)).body.transaction.serializedBase64);
-    expect(tx.transfers.map((t) => t.to)).toEqual([ata(env.GAS_TREASURY_SOLANA_ADDRESS), ata(payout), ata(revenue.address)]);
+    expect(tx.transfers.map((t) => t.to)).toEqual([ata(payout), ata(revenue.address)]); // no network fee: Solana-only legs, the user pays gas
   });
 
   it("no free USDC and Solana-only sells: the whole fee block goes between sells and buys, paid from basket cash", async () => {
@@ -332,8 +335,9 @@ describe("repair and sell fees", () => {
     await seedPosition(user.userId, basket, [{ deploymentId: d.deploymentId, quantity: 15n }]);
     fakes.evm.balances.set(`ethereum:${user.evmAddress}:${d.address}`, 10n);
     chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 50_000_000n);
+    chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n);
     const repair = (usdc: bigint) => { chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), usdc); return post(user.h, "/v1/operations/repair", { deploymentId: d.deploymentId, slippageBps: 100, idempotencyKey: "rep-aaaaaaaa" }); };
-    const tight = await repair(100_000n); // not enough for network + platform minimum + the buy
+    const tight = await repair(10_000n); // not enough for the platform minimum (0.02 USDC) + the buy; the network fee is 0, the user pays gas
     expect(tight.body.error.code).toBe("INSUFFICIENT_BALANCE");
     const res = await repair(50_000_000n);
     expect(res.status).toBe(201);
@@ -365,14 +369,14 @@ describe("repair and sell fees", () => {
 });
 
 describe("token-account rent price", () => {
-  /** EVM-sourced quotes carry the ETH price; the rent of a missing recipient account must not be priced with it. */
+  /** EVM-sourced quotes carry the ETH price; the rent of a missing recipient account is the user's in SOL and must not touch the network fee, whatever the price. */
   const withEvmPrice = (price: number | null) => {
     const base = vi.mocked(lifi.quote).getMockImplementation()!;
     vi.mocked(lifi.quote).mockImplementation(async (i) => ({ ...(await base(i)), nativePriceUsd: i.fromChain === "solana" ? null : price }));
   };
   const networkFee = async (opId: string) => BigInt((await feeRows(opId)).find((r) => r.kind === "network")!.amount_micro);
 
-  it("an ETH sell with a missing recipient account prices the rent at SOL's price, not ETH's", async () => {
+  it("an ETH sell with a missing recipient account: the network fee is the EVM gas alone, whatever the ETH price", async () => {
     const run = async (price: number | null) => {
       await resetDb();
       revenue.address = solanaTestWallet().address;
@@ -386,14 +390,16 @@ describe("token-account rent price", () => {
       const positionId = await seedPosition(user.userId, basket, [{ deploymentId: basket.deployments[0]!.deploymentId, quantity: 4n * 10n ** 18n }]);
       fakes.evm.balances.set(`ethereum:${user.evmAddress}`, 4n * 10n ** 18n);
       chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 50_000_000n);
+      chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n);
       const res = await post(user.h, "/v1/operations/sell", { positionId, percent: 50, slippageBps: 100, idempotencyKey: "sell-aaaaaaaa" });
       expect(res.status).toBe(201);
       return networkFee(res.body.id);
     };
-    expect(await run(3000)).toBe(await run(null));
+    expect(await run(3000)).toBe(60_000n); // (0.05 USD of gas) x 1.2
+    expect(await run(null)).toBe(60_000n);
   });
 
-  it("a rebalance with an EVM sell prices the rent at SOL's price, not ETH's", async () => {
+  it("a rebalance with an EVM sell: the network fee is the EVM gas alone, whatever the ETH price", async () => {
     const run = async (price: number | null) => {
       await resetDb();
       revenue.address = solanaTestWallet().address;

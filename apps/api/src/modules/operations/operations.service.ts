@@ -13,10 +13,8 @@ import { getPrices } from "@/modules/assets/pricing.service";
 import type { AssetChain } from "@repo/validator";
 import { bitcoinBalance } from "@/providers/bitcoin";
 import { evmBalance } from "@/providers/evm-rpc";
-import { solanaBalance, SOLANA_FEE_TRANSFER_LAMPORTS } from "@/providers/solana-tx";
+import { solanaBalance } from "@/providers/solana-tx";
 import { type Addresses, addressOn } from "@/modules/auth/wallets.service";
-
-export { SOLANA_FEE_TRANSFER_LAMPORTS };
 
 export interface OpCtx { userId: string; sessionId: string; meta: RequestMeta }
 
@@ -25,9 +23,6 @@ export type Op = typeof operations.$inferSelect;
 export type Leg = typeof operationLegs.$inferSelect;
 
 export const PLAN_TTL = "30 minutes";
-
-/** ponytail: a flat estimate for the network-fee transfer's own cost (two signatures plus the fee-leg priority fee). */
-export const FEE_LEG_GAS_USD = 0.005;
 
 /** Investing needs a verified email and phone. */
 export async function assertVerifiedContacts(userId: string): Promise<void> {
@@ -38,6 +33,11 @@ export async function assertVerifiedContacts(userId: string): Promise<void> {
 export const notFound = () => createHttpError("Operation not found", { code: "NOT_FOUND" });
 
 export const invalidTransition = (message: string) => createHttpError(409, message, { code: "INVALID_TRANSITION" });
+
+/** An operation with a signing group is driven through the group endpoints; the per-leg ones (mobile) refuse it. */
+export async function hasGroups(opId: string): Promise<boolean> {
+  return (await db.select({ id: operationGroups.id }).from(operationGroups).where(eq(operationGroups.operationId, opId)).limit(1)).length > 0;
+}
 
 export async function operationView(db: DbOrTx, op: Op): Promise<OperationView> {
   const legs = await db.select().from(operationLegs).where(eq(operationLegs.operationId, op.id)).orderBy(asc(operationLegs.sequence));

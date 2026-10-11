@@ -183,3 +183,13 @@ export async function seedCash(userId: string, basket: { basketId: string; versi
   await adminSql`UPDATE app.operations SET status = 'COMPLETED' WHERE id = ${operationId}`;
   await adminSql`INSERT INTO app.position_cash_entries (id, position_id, amount_micro, reason, leg_id) VALUES (gen_random_uuid(), ${positionId}, ${amountMicro.toString()}, 'rebalance_sell', ${legId})`;
 }
+
+/** A manager entry fee of `bps` on the basket's version, with a VERIFIED Solana payout wallet (a fresh address whose USDC account does not exist), so plans charge a fee. Returns the payout address. */
+export async function chargeEntryFee(basket: { versionId: string; owner: { id: string; userId: string } }, bps: number) {
+  const fees = { ...FEES, entry: { type: "percent", bps } };
+  await adminSql`UPDATE app.basket_versions SET fees = ${adminSql.json(fees as never)} WHERE id = ${basket.versionId}`;
+  const payout = newSolanaWallet().address;
+  await adminSql`INSERT INTO app.organization_payout_wallets (id, organization_id, chain, address, status, requested_by_user_id, verified_at, activated_at)
+    VALUES (gen_random_uuid(), ${basket.owner.id}, 'solana', ${payout}, 'VERIFIED', ${basket.owner.userId}, now(), now())`;
+  return payout;
+}

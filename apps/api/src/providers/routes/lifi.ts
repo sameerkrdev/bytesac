@@ -178,13 +178,12 @@ export const lifi: RouteProvider = {
   },
 
   async quote(i: LegQuoteInput) {
-    if (i.fromChain === "solana" && !i.svmSponsor) throw new Error("A Solana source needs the platform fee payer (svmSponsor).");
     const [fromToken, toToken] = [tokenId(i.fromChain, i.fromToken), tokenId(i.toChain, i.toToken)];
     const q = parse(quoteSchema, await lifiCall("/quote", { params: {
       fromChain: CHAIN_IDS[i.fromChain], toChain: CHAIN_IDS[i.toChain], fromToken, toToken, fromAmount: i.fromAmount.toString(),
       fromAddress: i.fromAddress, toAddress: i.toAddress, slippage: i.slippageBps / 10_000, integrator: env.LIFI_INTEGRATOR, maxPriceImpact: MAX_PRICE_IMPACT,
       ...(i.deny?.bridges.length ? { denyBridges: i.deny.bridges } : {}), ...(i.deny?.exchanges.length ? { denyExchanges: i.deny.exchanges } : {}),
-      ...(i.fromChain === "solana" ? { svmSponsor: i.svmSponsor! } : {}),
+      ...(i.fromChain === "solana" && i.svmSponsor ? { svmSponsor: i.svmSponsor } : {}),
     } }));
     // Provider responses are untrusted: the quote must be exactly the leg we asked for, delivered to the user's own address.
     const a = q.action;

@@ -47,6 +47,7 @@ async function arrange(assets: SeedAsset[] = [SOL, BOND]) {
   const user = await seedUser({ wallet: solanaTestWallet() });
   await seedPrices(basket.deployments, basket.deployments.map((_, n) => (assets[n]!.assetType ? "1" : "100")));
   chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), 1_000_000_000n);
+  chain.balances.set(balanceKey(user.solanaAddress, null), 1_000_000_000n); // the user pays Solana gas
   const rwa = (symbol: string) => basket.deployments.find((d) => d.symbol === symbol)!;
   return { chain, basket, user, rwa };
 }
@@ -157,10 +158,10 @@ describe("rule change between plan and signature (Review Focus 1)", () => {
     const ruleId = await addRule(a.rwa("BOND").instrumentId, "ALLOWED");
     await declare(a.user.userId);
     const op = (await invest(a.user.h, a.basket.basketId)).body;
-    const [fee, sol, bond] = op.legs;
+    const [sol, bond] = op.legs; // the user pays Solana gas and nothing is charged: no fee leg
     await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
-    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id IN (${fee.id}, ${sol.id})`;
-    return { ...a, op, fee, sol, bond, ruleId };
+    await adminSql`UPDATE app.operation_legs SET status = 'SETTLED' WHERE id = ${sol.id}`;
+    return { ...a, op, sol, bond, ruleId };
   }
 
   it("quoting the RWA leg is 409 NOT_ELIGIBLE, the decision is recorded and the settled legs stand", async () => {
