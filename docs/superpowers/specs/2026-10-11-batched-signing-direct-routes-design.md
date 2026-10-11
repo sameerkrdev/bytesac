@@ -212,8 +212,8 @@ The send loop runs inside the request (jobs never move money, D-018). A disconne
    - A user rejection calls `POST .../groups/:gid/release`, which returns the legs to `PLANNED`.
    - The client requests the asset chunk once the fee is `confirmed` on chain (B-26); until then the server answers `fee_confirming`.
 2. **Asset chunk.** Same claim, then sign-and-send, then `sent`. Order is not guaranteed, so several legs can fail at once.
-3. **Wallet error with an unclear outcome:** the server looks up signatures (`getSignaturesForAddress` since the claim) and matches each transaction to a claimed leg by the same message comparison as step 6 of §6.2.
-4. **Sweep:** a claim without a signature after 2 minutes gets the same lookup, paged back past the claim. Found means `SUBMITTED`. Not found, with the blockhash expired before the lookup and the history read back past the claim, means `FAILED` / `NOT_LANDED`; a history too long to read keeps the claim.
+3. **Wallet error with an unclear outcome:** the claim is kept ("don't sign again") and left to the sweep (step 4); the client never resends.
+4. **Sweep:** a claim without a signature after 2 minutes: the server looks up signatures (`getSignaturesForAddress` since the claim, paged back past it) and matches each transaction to a claimed leg by the same message comparison as step 6 of §6.2. Found means `SUBMITTED`. Not found, with the blockhash expired before the lookup and the history read back past the claim, means `FAILED` / `NOT_LANDED`; a history too long to read keeps the claim.
 5. **After-the-fact mismatch:** the transaction landed but does not match. The leg, fee or buy, is `UNKNOWN` for ops (nothing is settled or ledgered from it, and an unknown fee blocks the next group), and ops get `tx_mismatch_after_send`.
 
 ### 6.5 Single tier

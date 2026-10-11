@@ -152,15 +152,17 @@ const preparedOf = (leg: Pick<Leg, "expectedTx">): VersionedTransaction | null =
   return base64 ? VersionedTransaction.deserialize(Buffer.from(base64, "base64")) : null;
 };
 
-/** The RPC's largest page of signatures, and how many pages the sweep reads for one wallet before it gives up proving that a claim never landed. */
+/** The RPC's largest page of signatures, how many pages the sweep reads for one wallet, and how many of those transactions it fetches, before it gives up proving that a claim never landed. */
 const SIGNATURE_PAGE = 1_000;
 const SIGNATURE_PAGES = 3;
+const LANDED_LOOKUPS = 100;
 
 /**
  * Sign-and-send claims the wallet never reported a signature for (spec 22 section 6.4, step 4): looks the owner's signatures since the claim up (paging back
- * past it) and matches each landed message to the claimed leg's prepared one (ComputeBudget differences allowed). A match records the signature and tracks the
- * leg. No match is FAILED / NOT_LANDED only when the blockhash had expired before the lookup AND the pages reached back past the claim; a history too long to
- * read keeps the claim (it may have landed). Nothing is resent and nothing is rebuilt. Every claim is handled on its own.
+ * past it) and matches each landed message, oldest first (a claimed transaction lands right after its claim), to the claimed leg's prepared one (ComputeBudget
+ * differences allowed). A match records the signature and tracks the leg. No match is FAILED / NOT_LANDED only when the blockhash had expired before the lookup
+ * AND every signature since the claim was read and compared; a history too long to read, or more transactions than the lookup budget, keeps the claim (it may
+ * have landed). Nothing is resent and nothing is rebuilt. Every claim is handled on its own.
  */
 async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<void> {
   const owner = new PublicKey(addressOn(await userAddresses(db, userId), "solana"));
@@ -179,6 +181,7 @@ async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<voi
     recent.push(...page);
     complete = page.length < SIGNATURE_PAGE || (page.at(-1)!.blockTime ?? Infinity) * 1000 < oldest;
   }
+  const oldestFirst = [...recent].reverse();
   const landed = new Map<string, VersionedTransaction | null>(); // one lookup per signature, however many claims
   const taken = new Set<string>();
   for (const leg of claims) {
@@ -187,15 +190,19 @@ async function resolveUnsignedClaims(userId: string, claims: Leg[]): Promise<voi
       if (!prepared) continue;
       const since = sinceOf(leg);
       let found: string | null = null;
-      for (const { signature, blockTime } of recent) {
+      let unread = false; // a signature since the claim was left unfetched (lookup budget spent)
+      for (const { signature, blockTime } of oldestFirst) {
         if (taken.has(signature) || (blockTime ?? Infinity) * 1000 < since) continue;
-        if (!landed.has(signature)) landed.set(signature, await landedTx(signature));
+        if (!landed.has(signature)) {
+          if (landed.size >= LANDED_LOOKUPS) { unread = true; break; }
+          landed.set(signature, await landedTx(signature));
+        }
         const tx = landed.get(signature);
         if (tx && sameExceptComputeBudget(prepared, tx)) { found = signature; break; }
       }
       if (!found && !expired.get(leg.id)) continue; // it may still land
-      if (!found && !complete) {
-        logger.warn("sweep: the wallet's history is too long to show that a claim never landed; it stays claimed", { legId: leg.id, operationId: leg.operationId });
+      if (!found && (!complete || unread)) {
+        logger.warn("sweep: the wallet's history since the claim is too long to show that it never landed; it stays claimed", { legId: leg.id, operationId: leg.operationId });
         continue;
       }
       if (found) taken.add(found);
@@ -505,10 +512,25 @@ export async function resolveLeg(ctx: OpCtx, opId: string, legId: string, body: 
   const conflict = (message: string) => createHttpError(409, message, { code: "INVALID_TRANSITION" });
   let received: bigint | null = null;
   let verified = true;
+  // A wallet-sent leg whose landed message is not the prepared one: that transaction is not ours, so its finality proves neither outcome.
+  const mismatched = leg.failureReason === "TX_MISMATCH_AFTER_SEND";
   if (body.status === "FAILED") {
-    if (leg.fromChain === leg.toChain && leg.sourceTx && (await finality(leg.fromChain, leg.sourceTx)) === "finalized") throw conflict("The transaction finalized on-chain: it did not fail.");
+    if (!mismatched && leg.fromChain === leg.toChain && leg.sourceTx && (await finality(leg.fromChain, leg.sourceTx)) === "finalized") throw conflict("The transaction finalized on-chain: it did not fail.");
   } else if (leg.kind === "network_fee") {
     if (!leg.sourceTx || (await finality(leg.fromChain, leg.sourceTx)) !== "finalized") throw conflict("The fee transaction is not final on-chain.");
+    if (mismatched) {
+      // Settling writes the fee charges and covers the legs, so it needs chain evidence that every charged amount reached its recipient in that transaction.
+      const charges = (leg.routeSummary?.feeCharges ?? null) as Record<string, string> | null;
+      if (!charges) throw conflict("This fee leg records no charges to check.");
+      const due = new Map<string, bigint>();
+      for (const r of await db.select({ kind: operationFees.kind, recipient: operationFees.recipientAddress }).from(operationFees).where(eq(operationFees.operationId, op.id))) {
+        const amount = BigInt(charges[r.kind] ?? "0");
+        if (amount > 0n) due.set(r.recipient ?? "", (due.get(r.recipient ?? "") ?? 0n) + amount);
+      }
+      for (const [recipient, amount] of due) {
+        if (!recipient || ((await receivedOnChain("solana", recipient, USDC_SOLANA_MINT, leg.sourceTx)) ?? 0n) < amount) throw conflict("The chain does not show every fee transfer in that transaction.");
+      }
+    }
   } else {
     if ((await finality(leg.toChain, body.txEvidence)) !== "finalized") throw conflict("The destination transaction is not final on-chain.");
     received = await receivedOnChain(leg.toChain, addressOn(await userAddresses(db, op.userId), leg.toChain), await destinationToken(leg), body.txEvidence);

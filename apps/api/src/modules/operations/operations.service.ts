@@ -79,6 +79,9 @@ export async function getOperation(ctx: OpCtx, id: string): Promise<OperationVie
 /** A planned leg's own SOL cost from plan time (signatures, priority fee, rent). 5000: a retry copied from a plan made before user-paid gas. */
 export const userLamports = (l: Pick<Leg, "expectedTx">) => BigInt((l.expectedTx as { userLamports?: string } | null)?.userLamports ?? "5000");
 
+/** The floor a leg had before its group was claimed (the claim lowers it when the user accepts new prices): a released or retried leg goes back to it, so the next group still asks before signing below it (D-073 waived). */
+export const plannedFloor = (l: Pick<Leg, "routeSummary" | "minOut">) => (l.routeSummary?.quoted as { plannedMinOut?: string | null } | undefined)?.plannedMinOut ?? l.minOut;
+
 export const auditBase = (ctx: OpCtx | null, entityId: string) => ({
   actorType: ctx ? ("user" as const) : ("system" as const), actorUserId: ctx?.userId ?? null, sessionId: ctx?.sessionId ?? null, requestId: ctx?.meta.requestId ?? `track-${entityId}`,
 });

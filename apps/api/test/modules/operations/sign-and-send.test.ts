@@ -3,12 +3,14 @@ import { ComputeBudgetProgram, PublicKey, TransactionInstruction, TransactionMes
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "@repo/logger";
+import { app } from "@/app";
 import { connection, solanaFinality } from "@/providers/solana-tx";
 import { expireStalePlans, trackLeg, trackStaleClaims } from "@/modules/portfolio/tracking.service";
 import { balanceKey } from "../../helpers/chain-mocks";
 import { adminSql, resetDb } from "../../helpers/db";
 import { USDC_MINT } from "../../helpers/execution";
 import { fakes } from "../../helpers/fakes";
+import { opsUser } from "../manager-applications/helpers";
 import { arrange, groupReq, groupRows, legs, opRow, post, walletSign, type H, type LegRow, type Tx, type Wallet } from "../../helpers/groups";
 
 // Spec 22 B-27 / section 6.4: the wallet signs and sends; the server claims first, records the signatures it is told, and resolves the rest from the chain.
@@ -309,7 +311,7 @@ describe("the sweep resolves a claim without signatures (Review Focus 2)", () =>
 
   const unrelated = (from: number, n: number, blockTime: number) => Array.from({ length: n }, (_, i) => ({ signature: `spam-${from + i}`, slot: 1, err: null, memo: null, blockTime }));
 
-  it("never marks NOT_LANDED from a history it could not read back past the claim: full pages of newer signatures keep every claim (review I1)", async () => {
+  it("never marks NOT_LANDED from a history it could not read back past the claim, and fetches at most 100 transactions doing so (review I1, I-B)", async () => {
     const { op } = await claimedAndAged();
     vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
     vi.mocked(connection.getSignaturesForAddress).mockImplementation((async (_owner: unknown, o?: { before?: string }) => unrelated(o?.before ? Number(o.before.slice(5)) + 1 : 0, 1_000, nowSeconds())) as never);
@@ -319,22 +321,56 @@ describe("the sweep resolves a claim without signatures (Review Focus 2)", () =>
     expect(vi.mocked(connection.getSignaturesForAddress).mock.calls.map(([, o]) => o)).toEqual([
       { limit: 1_000, before: undefined }, { limit: 1_000, before: "spam-999" }, { limit: 1_000, before: "spam-1999" },
     ]);
-    expect(warn.mock.calls.filter(([m]) => String(m).includes("history is too long"))).toHaveLength(4);
+    expect(vi.mocked(connection.getTransaction).mock.calls.length).toBeLessThanOrEqual(100);
+    expect(warn.mock.calls.filter(([m]) => String(m).includes("too long to show"))).toHaveLength(4);
   });
 
-  it("pages back with before= to a transaction behind a full page of newer ones; once the history is read, the claims with no match are NOT_LANDED (review I1)", async () => {
+  it("pages back with before= (a null block time keeps paging) and finds, oldest first, a transaction behind a full page of newer ones; the claims it could not check stay (review I1, I-B)", async () => {
     const { group, op } = await claimedAndAged();
-    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
     const t0 = group.transactions[0]!;
     vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
-    vi.mocked(connection.getSignaturesForAddress).mockResolvedValueOnce(unrelated(0, 1_000, nowSeconds()))
+    const page1 = [...unrelated(0, 999, nowSeconds()), { signature: "sig-no-time", slot: 1, err: null, memo: null, blockTime: null }];
+    vi.mocked(connection.getSignaturesForAddress).mockResolvedValueOnce(page1)
       .mockResolvedValueOnce([{ signature: "sig-leg0", slot: 1, err: null, memo: null, blockTime: nowSeconds() - 120 }]);
     vi.mocked(connection.getTransaction).mockImplementation((async (signature: string) => (signature === "sig-leg0" ? landedAs(t0.serializedBase64) : null)) as never);
     await trackStaleClaims();
     const rows = (await legs(op.id)).filter((l) => l.kind !== "network_fee");
     expect(rows.find((l) => l.id === t0.legId)).toMatchObject({ status: "SUBMITTED", source_tx: "sig-leg0" });
+    expect(vi.mocked(connection.getTransaction).mock.calls[0]![0]).toBe("sig-leg0"); // oldest first
+    expect(vi.mocked(connection.getSignaturesForAddress).mock.calls[1]![1]).toMatchObject({ before: "sig-no-time" });
+    // 1 000 newer signatures, more than the 100 lookups: the other claims cannot be shown not to have landed.
+    expect(rows.filter((l) => l.id !== t0.legId).every((l) => l.status === "SUBMITTING" && l.source_tx === null)).toBe(true);
+    expect(vi.mocked(connection.getTransaction).mock.calls.length).toBeLessThanOrEqual(100);
+  });
+
+  it("once every signature since the claim was read and compared, the claims with no match are NOT_LANDED", async () => {
+    const { group, op } = await claimedAndAged();
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    const t0 = group.transactions[0]!;
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
+    vi.mocked(connection.getSignaturesForAddress).mockResolvedValue([...unrelated(0, 20, nowSeconds()), { signature: "sig-leg0", slot: 1, err: null, memo: null, blockTime: nowSeconds() - 120 }]);
+    vi.mocked(connection.getTransaction).mockImplementation((async (signature: string) => (signature === "sig-leg0" ? landedAs(t0.serializedBase64) : null)) as never);
+    await trackStaleClaims();
+    const rows = (await legs(op.id)).filter((l) => l.kind !== "network_fee");
+    expect(rows.find((l) => l.id === t0.legId)).toMatchObject({ status: "SUBMITTED", source_tx: "sig-leg0" });
     expect(rows.filter((l) => l.id !== t0.legId).every((l) => l.status === "FAILED" && l.failure_reason === "NOT_LANDED")).toBe(true);
-    expect(vi.mocked(connection.getSignaturesForAddress)).toHaveBeenCalledTimes(2);
+  });
+
+  it("Continue's retry of a claim that never landed keeps the plan's floor, not the one the claim lowered (review m3)", async () => {
+    const { user, chain, op } = await arrange();
+    await adminSql`UPDATE app.operation_legs SET fee_covered_by = ${op.legs[0].id} WHERE operation_id = ${op.id} AND kind <> 'network_fee'`;
+    await adminSql`UPDATE app.operations SET status = 'IN_PROGRESS' WHERE id = ${op.id}`;
+    const planned = new Map((await legs(op.id)).filter((l) => l.kind !== "network_fee").map((l) => [l.id, l.min_out]));
+    chain.quoteOut = { numerator: 99n, denominator: 100n };
+    const g = (await groupReq(user.h, op.id, req())).body;
+    await step(user.h, op.id, g.groupId, "claim"); // the user accepted the new prices: the claim lowers the floors
+    await adminSql`UPDATE app.operation_legs SET updated_at = now() - interval '3 minutes', submitted_at = now() - interval '3 minutes' WHERE operation_id = ${op.id}`;
+    vi.mocked(connection.isBlockhashValid).mockResolvedValue({ context: { slot: 1 }, value: false });
+    await trackStaleClaims();
+    expect((await post(user.h, `/v1/operations/${op.id}/continue`, { idempotencyKey: "cont-aaaaaaaa" })).status).toBe(200);
+    const retries = (await legs(op.id)).filter((l) => l.retry_of);
+    expect(retries).toHaveLength(4);
+    expect(retries.every((l) => l.min_out === planned.get(l.retry_of!))).toBe(true);
   });
 
   it("checks the blockhash before reading the signatures, so a transaction landing in between is found, never NOT_LANDED (review I1)", async () => {
@@ -388,6 +424,23 @@ describe("a fee-only group checks the buys it pays for (review I4)", () => {
     expect(res.body.error).toMatchObject({ code: "INSUFFICIENT_BALANCE", details: { usdcRequiredMicro: (BigInt(fee.amount_in) + buys).toString() } });
     expect(await groupRows(op.id)).toHaveLength(0);
     expect((await legs(op.id)).find((l) => l.id === fee.id)).toMatchObject({ status: "PLANNED", group_id: null });
+  });
+
+  it("counts every leg the fee unlocks, covered ones too (the next group buys them all), for sign_and_send and single (review m1)", async () => {
+    for (const tier of ["sign_and_send", "single"]) {
+      await resetDb();
+      const { user, chain, op } = await arrange();
+      const assets = (await legs(op.id)).filter((l) => l.kind !== "network_fee");
+      // The first two buys are covered already (an earlier fee); the fee-only group charges the shares of the last two.
+      await adminSql`UPDATE app.operation_legs SET fee_covered_by = ${op.legs[0].id} WHERE id IN ${adminSql(assets.slice(0, 2).map((l) => l.id))}`;
+      const fee = assets.slice(2).reduce((t, l) => t + Object.values(l.fee_share ?? {}).reduce((u, v) => u + BigInt(v), 0n), 0n);
+      const all = assets.reduce((t, l) => t + BigInt(l.amount_in), 0n);
+      chain.balances.set(balanceKey(user.solanaAddress, USDC_MINT), fee + all - 1n);
+      const res = await groupReq(user.h, op.id, req({ tier }));
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatchObject({ code: "INSUFFICIENT_BALANCE", details: { usdcRequiredMicro: (fee + all).toString() } });
+      expect(await groupRows(op.id)).toHaveLength(0);
+    }
   });
 
   it("refuses with SOL_REQUIRED when the wallet has SOL for the fee transaction but not for the buys it covers", async () => {
@@ -481,11 +534,49 @@ describe("a reported signature must be our prepared transaction before it gates 
     expect((await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }))).body.error.code).toBe("TX_MISMATCH");
   });
 
+  /** The fee as a wallet that added a Memo instruction would land it: the transfers happened, but the message is not the prepared one. */
+  const withMemo = (feeTx: Tx) => landedAs(feeTx.serializedBase64, (ix) => [...ix, new TransactionInstruction({ programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"), keys: [], data: Buffer.from("added by the wallet") })]);
+  /** A reported fee that finalized with a message that is not the prepared one, after the tracker made it UNKNOWN; and the ops resolve call for it. */
+  async function mismatchedFee() {
+    const ctx = await feeReported();
+    ctx.chain.solanaFinality.set(ctx.signature, "finalized");
+    vi.mocked(connection.getTransaction).mockResolvedValue(withMemo(ctx.fee));
+    await trackLeg(ctx.fee.legId);
+    const admin = await opsUser(app, "ops_admin");
+    const resolve = (status: "SETTLED" | "FAILED") => post(admin.h, `/v1/ops/operations/${ctx.op.id}/legs/${ctx.fee.legId}/resolve`, { status, txEvidence: ctx.signature, reason: "Checked on the explorer by ops." });
+    return { ...ctx, resolve };
+  }
+
+  it("(ops) a mismatched fee can be resolved FAILED although its transaction finalized (it is not ours); the next group then charges its legs again (review I-A)", async () => {
+    const { user, op, fee, resolve } = await mismatchedFee();
+    expect((await resolve("FAILED")).status).toBe(200);
+    expect((await row(fee.legId)).status).toBe("FAILED");
+    const again = await groupReq(user.h, op.id, req({ idempotencyKey: "grp-bbbbbbbb" }));
+    expect(again.status).toBe(200);
+    expect(kinds(again.body.transactions)).toEqual(["fee"]);
+  });
+
+  it("(ops) SETTLED for a mismatched fee needs the chain to show every charged amount reaching its recipient in that transaction (review I-A)", async () => {
+    const { chain, op, fee, signature, resolve } = await mismatchedFee();
+    expect((await resolve("SETTLED")).status).toBe(409); // a forged signature: nothing reached the recipients
+    expect(await count("operation_fee_charges")).toBe(0);
+    expect((await row(fee.legId)).status).toBe("UNKNOWN");
+    const charges = (await legs(op.id)).find((l) => l.id === fee.legId)!.route_summary!.feeCharges!;
+    const recipients = await adminSql<{ kind: string; recipient_address: string }[]>`SELECT kind, recipient_address FROM app.operation_fees WHERE operation_id = ${op.id}`;
+    const due = new Map<string, bigint>();
+    for (const r of recipients) if (charges[r.kind]) due.set(r.recipient_address, (due.get(r.recipient_address) ?? 0n) + BigInt(charges[r.kind]!));
+    const [first, ...rest] = [...due];
+    chain.solanaReceived.set(`${signature}:${first![0]}`, first![1]);
+    if (rest.length) expect((await resolve("SETTLED")).status).toBe(409); // one transfer is not all of them
+    for (const [recipient, amount] of rest) chain.solanaReceived.set(`${signature}:${recipient}`, amount);
+    expect((await resolve("SETTLED")).status).toBe(200); // an honest wallet that added an instruction: the fee was paid
+    expect(await count("operation_fee_charges")).toBe(Object.values(charges).filter((v) => BigInt(v) > 0n).length);
+  });
+
   it("(tracker) a landed fee whose message differs is UNKNOWN for ops, never FAILED (its USDC may have moved): no charge row, no new fee, the next group is a plain 409 (review I2)", async () => {
     const { user, chain, op, fee, signature } = await feeReported();
     chain.solanaFinality.set(signature, "finalized");
-    const memo = new TransactionInstruction({ programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"), keys: [], data: Buffer.from("added by the wallet") });
-    vi.mocked(connection.getTransaction).mockResolvedValue(landedAs(fee.serializedBase64, (ix) => [...ix, memo]));
+    vi.mocked(connection.getTransaction).mockResolvedValue(withMemo(fee));
     await trackLeg(fee.legId);
     expect(await row(fee.legId)).toEqual({ status: "UNKNOWN", failure_reason: "TX_MISMATCH_AFTER_SEND" });
     expect(await count("operation_fee_charges")).toBe(0);

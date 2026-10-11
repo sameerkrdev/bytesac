@@ -9,7 +9,7 @@ import { enqueue } from "@/config/queues";
 import { writeAudit } from "@/modules/audit/audit.service";
 import { blockhashUsable, buildFeeTransfer, connection, landedMatchesPrepared, sendSolana, solanaBalance, solanaNeed, solanaConfirmed, verifyUserSigned } from "@/providers/solana-tx";
 import { addressOn, userAddresses } from "@/modules/auth/wallets.service";
-import { type Leg, type OpCtx, auditBase, freeUsdcMicro, getOperation, invalidTransition, lockOperation, notFound, setLegStatus, userLamports } from "./operations.service";
+import { type Leg, type OpCtx, auditBase, freeUsdcMicro, getOperation, invalidTransition, lockOperation, notFound, plannedFloor, setLegStatus, userLamports } from "./operations.service";
 import { assertSolFor } from "./plan.service";
 import { assertLegAllowed, assertOperable, quoteAssetLeg } from "./quote.service";
 import { markSubmitted } from "./submit.service";
@@ -28,8 +28,6 @@ const hasShare = (l: Pick<Leg, "feeShare">) => Object.values(l.feeShare ?? {}).s
 const preparedOf = (l: Pick<Leg, "expectedTx">) => (l.expectedTx as { preparedBase64: string }).preparedBase64;
 /** What a leg's fresh group quote stored in its route summary (see `requestGroup`), for the response and its idempotent replay. */
 type Quoted = { estimatedOut: string; minOut: string; plannedMinOut: string | null };
-/** The floor a leg had before its group was claimed: a released leg goes back to it, so the next group still asks before signing below it (D-073 waived). */
-const plannedFloor = (l: Leg) => (l.routeSummary?.quoted as Quoted | undefined)?.plannedMinOut ?? l.minOut;
 
 /**
  * Forms a signing group (spec 22 section 6.2): the next chunk of PLANNED Solana legs plus one fee transaction charging their uncovered fee shares. The legs are
@@ -83,13 +81,14 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
     const window = body.tier === "sign_and_send" ? candidates.slice(0, K_SIGN_AND_SEND) : candidates;
     const feeFor = body.tier === "single" ? uncovered : body.tier === "sign_and_send" ? window.filter(isUncovered) : [];
     const take = feeFor.length ? [] : window.slice(0, body.tier === "single" ? 1 : body.tier === "sign_and_send" ? K_SIGN_AND_SEND : K_SIGN_ALL - (uncovered.length ? 1 : 0));
-    return { replay: null, op, take, feeOnly: feeFor.length ? feeFor : null, covering };
+    // A fee-only group unlocks the whole window (covered legs included): the wallet must be able to fund all of it before the fee is charged.
+    return { replay: null, op, take, feeOnly: feeFor.length ? feeFor : null, unlocks: feeFor.length ? window : null, covering };
   });
   if (prep.replay) {
     if (prep.replay.status !== "QUOTED") throw invalidTransition(`This batch is ${prep.replay.status.toLowerCase()}.`);
     return groupView(prep.replay, [], owner);
   }
-  const { op, take, feeOnly, covering } = prep;
+  const { op, take, feeOnly, unlocks, covering } = prep;
 
   // Height first: a blockhash fetched by the quotes below is at least this fresh, so the send gate only errs towards releasing early.
   const quoteBlockHeight = await connection.getBlockHeight("confirmed");
@@ -99,8 +98,7 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
     if (r.q.transaction.kind !== "solana") throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
     return { leg, ...r, serializedBase64: r.q.transaction.serializedBase64 };
   }));
-  const quoted = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-  const errors = settled.flatMap((r, n) => (r.status === "rejected"
+  const quoted = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));  const errors = settled.flatMap((r, n) => (r.status === "rejected"
     ? [{ legId: take[n]!.id, error: { code: String((r.reason as { code?: string }).code ?? "ROUTE_UNAVAILABLE"), message: createHttpError.isHttpError(r.reason) ? r.reason.message : "This route is unavailable." } }]
     : []));
   if (take.length && !quoted.length) throw (settled.find((r) => r.status === "rejected") as PromiseRejectedResult).reason;
@@ -116,12 +114,12 @@ export async function requestGroup(ctx: OpCtx, opId: string, body: GroupRequest)
   if (transfers.reduce((t, x) => t + x.amountMicro, 0n) !== feeMicro) throw createHttpError(503, "This route is unavailable. Plan again.", { code: "ROUTE_UNAVAILABLE" });
   const feeTx = feeMicro > 0n ? await buildFeeTransfer({ owner, payer: "user", transfers }) : null;
 
-  // A fee-only group also needs the buys it pays for to be fundable: its fee is not refunded (D-090), so it is never charged for buys the wallet cannot make.
-  const funded = feeOnly ?? quoted.map((q) => q.leg);
+  // A fee-only group also needs the buys it unlocks to be fundable: its fee is not refunded (D-090), so it is never charged for buys the wallet cannot make.
+  const funded = unlocks ?? quoted.map((q) => q.leg);
   const usdcRequired = feeMicro + funded.reduce((t, l) => t + BigInt(l.amountIn), 0n);
   const usdcHeld = await freeUsdcMicro(db, ctx.userId, await solanaBalance(owner, USDC_SOLANA_MINT));
   if (usdcHeld < usdcRequired) throw createHttpError(409, "Your Solana wallet doesn't hold enough USDC.", { code: "INSUFFICIENT_BALANCE", details: { usdcRequiredMicro: usdcRequired.toString(), usdcHeldMicro: usdcHeld.toString() } });
-  await assertSolFor(owner, (await solanaNeed([...quoted.map((q) => q.serializedBase64), ...(feeTx ? [feeTx.serializedBase64] : [])], owner)) + (feeOnly ?? []).reduce((t, l) => t + userLamports(l), 0n));
+  await assertSolFor(owner, (await solanaNeed([...quoted.map((q) => q.serializedBase64), ...(feeTx ? [feeTx.serializedBase64] : [])], owner)) + (unlocks ?? []).reduce((t, l) => t + userLamports(l), 0n));
 
   let group: typeof operationGroups.$inferSelect;
   try {
@@ -367,22 +365,17 @@ export async function sentGroup(ctx: OpCtx, opId: string, groupId: string, body:
   const [op] = await db.select().from(operations).where(and(eq(operations.id, opId), eq(operations.userId, ctx.userId)));
   if (!op) throw notFound();
   if (body.signatures.some((s) => !isSignature(s.signature))) throw createHttpError(400, "A signature is not valid.", { code: "VALIDATION_FAILED" });
-  // A signature for a claim the sweep already marked NOT_LANDED is refused below, but it may have landed after all: kept for ops (audit, never the log).
-  const late = await db.select({ id: operationLegs.id }).from(operationLegs)
-    .where(and(eq(operationLegs.operationId, op.id), eq(operationLegs.groupId, groupId), inArray(operationLegs.id, body.signatures.map((s) => s.legId)), eq(operationLegs.status, "FAILED"), eq(operationLegs.failureReason, "NOT_LANDED")));
-  if (late.length) {
-    logger.error("a wallet reported a signature for a claim the sweep marked NOT_LANDED", { operationId: op.id, legIds: late.map((l) => l.id) });
-    await db.transaction(async (tx) => {
-      for (const l of late) await writeAudit(tx, { ...auditBase(ctx, l.id), action: "leg.signature_after_not_landed", entityType: "operation_leg", entityId: l.id, metadata: { operationId: op.id, signature: body.signatures.find((s) => s.legId === l.id)!.signature } });
-    });
-  }
+  // A signature for a claim the sweep already marked NOT_LANDED is refused, but it may have landed after all: it is kept for ops (audit, never the log), decided
+  // under the lock so a sweep that commits meanwhile is seen, and written after the refusal rolled back.
+  let late: Leg[] = [];
   try {
     await db.transaction(async (tx) => {
       await lockOperation(tx, op.id);
       const [group] = await tx.select().from(operationGroups).where(and(eq(operationGroups.id, groupId), eq(operationGroups.operationId, op.id)));
       if (!group) throw notFound();
-      if (group.tier !== "sign_and_send" || group.status !== "CLAIMED") throw invalidTransition(`This batch is ${group.status.toLowerCase()}.`);
       const legs = await tx.select().from(operationLegs).where(eq(operationLegs.groupId, group.id));
+      late = legs.filter((l) => l.status === "FAILED" && l.failureReason === "NOT_LANDED" && body.signatures.some((s) => s.legId === l.id));
+      if (group.tier !== "sign_and_send" || group.status !== "CLAIMED") throw invalidTransition(`This batch is ${group.status.toLowerCase()}.`);
       const open = new Map(legs.filter((l) => l.status === "SUBMITTING" && !l.sourceTx).map((l) => [l.id, l]));
       const { signatures } = body;
       if (new Set(signatures.map((s) => s.legId)).size !== signatures.length || new Set(signatures.map((s) => s.signature)).size !== signatures.length || signatures.some((s) => !open.has(s.legId))) {
@@ -398,6 +391,12 @@ export async function sentGroup(ctx: OpCtx, opId: string, groupId: string, body:
       if (signatures.length === open.size) await tx.update(operationGroups).set({ status: "SENT", updatedAt: sql`now()` }).where(eq(operationGroups.id, group.id));
     });
   } catch (err) {
+    if (late.length) {
+      logger.error("a wallet reported a signature for a claim the sweep marked NOT_LANDED", { operationId: op.id, legIds: late.map((l) => l.id) });
+      await db.transaction(async (tx) => {
+        for (const l of late) await writeAudit(tx, { ...auditBase(ctx, l.id), action: "leg.signature_after_not_landed", entityType: "operation_leg", entityId: l.id, metadata: { operationId: op.id, signature: body.signatures.find((s) => s.legId === l.id)!.signature } });
+      });
+    }
     if (isUniqueViolation(err, "operation_legs_source_tx")) throw invalidTransition("That transaction is already recorded for another leg.");
     throw err;
   }
