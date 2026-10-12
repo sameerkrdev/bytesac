@@ -8,6 +8,8 @@
 </p>
 
 <p align="center">
+  <a href="https://bytesac.com">Website</a> ·
+  <a href="https://app.bytesac.com">Live beta</a> ·
   <a href="#introduction">Introduction</a> ·
   <a href="#the-problem">Problem</a> ·
   <a href="#the-solution">Solution</a> ·
@@ -24,7 +26,7 @@
 
 **Bytesac** is a platform where verified fund managers publish **baskets** — versioned portfolios with target weights across crypto assets, stablecoins, and approved tokenized real-world assets (RWAs) on several blockchains — and investors choose whether to follow those strategies from **their own wallets**.
 
-The initial settlement currency is **USDC on Solana**, with later currencies designed in (never hard-coded as the only option). Investors sign in with Solana or EVM wallets (Ethereum, Base, BNB Chain, Arbitrum). A Bitcoin address can be linked when a basket holds native BTC; Bitcoin is never a sign-in method.
+The initial settlement currency is **USDC on Solana**, with later currencies designed in (never hard-coded as the only option). Investors sign in with Solana or EVM wallets (Ethereum, Base, BNB Chain, Arbitrum, Polygon). A Bitcoin address can be linked when a basket holds native BTC; Bitcoin is never a sign-in method.
 
 This repository is the whole product:
 
@@ -34,7 +36,19 @@ This repository is the whole product:
 | Mobile app | Investors | Expo SDK 57 |
 | API + worker | All clients | Express 5 + BullMQ |
 
-> **Status:** pre-launch. Product specs 1–15 are on `main`. Deployment (Spec 16) has **not** happened. Legal and disclosure copy is placeholder text pending review. Open work lives in [`docs/OPEN-ITEMS.md`](docs/OPEN-ITEMS.md).
+> **Status:** closed beta at [app.bytesac.com](https://app.bytesac.com), behind a waitlist preview gate, while the first managers build and test baskets. There is a web app and an Android app. Legal and disclosure copy is placeholder text pending review. Open work lives in [`docs/OPEN-ITEMS.md`](docs/OPEN-ITEMS.md).
+
+### Team
+
+Built by three founders working together in Greater Noida, India:
+
+| | Role |
+|---|---|
+| **Sameer Kumar** | Tech: product, backend, web and mobile |
+| **Ishaan** | Business and manager onboarding |
+| **Manas** | Public presence and community |
+
+Website [bytesac.com](https://bytesac.com) · X [@byte_sac](https://x.com/byte_sac) · Telegram `bytesac`
 
 This software is **not financial advice**. Basket performance shown in the product is a **simulated model** and is always labelled as such. Nothing in this README is an offer to sell securities.
 
@@ -128,7 +142,9 @@ packages/
   logger/          winston logger
   eslint-config/ typescript-config/   Shared tooling
 docs/              Architecture, ADRs, domain specs, design system, open items, deployment
-docker/            Local Postgres image (pg_cron + pgvector)
+infra/             Docker images, local dev services (pnpm db:up), single-VM server kit
+scripts/           One-off maintenance scripts (CoinMarketCap ids, LI.FI seed check)
+motion-studio/     Promo video tooling; not part of the running product
 ```
 
 ### Tech stack
@@ -335,7 +351,7 @@ Filter one workspace, for example `pnpm --filter web test`. API tests need `TEST
 These are product invariants, not style preferences. Detail lives in ADRs; this is the map.
 
 - **Money is exact.** Quantities are integers in base units or `numeric`. Never JavaScript `number` for authoritative arithmetic. Fees are snapshotted when a plan is created, so later schedule changes never alter that plan.
-- **Operations and legs.** An investment, rebalance, repair, or sale is an operation of ordered legs (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`). Each leg is signed against a fresh ~60 s quote. Partial completion is a valid state. An unknown outcome is reconciled, never blindly retried. One active operation per user.
+- **Operations and legs.** An investment, rebalance, repair, or sale is an operation of ordered legs (`PLANNED → SUBMITTED → PENDING_CHAIN → SETTLED | FAILED | UNKNOWN`). On the web an invest signs in groups: up to 12 quoted Solana transactions, fee first, approved in one wallet interaction and sent in order by the server (ADR-023); mobile and other operations sign each leg against a fresh ~60 s quote. Partial completion is a valid state. An unknown outcome is reconciled, never blindly retried. One active operation per user.
 - **Signing safety.** Solana legs are co-signed by the platform fee payer only when the message is byte-identical to the provider’s (`TX_MISMATCH` otherwise). EVM gas drops are capped per user and per day; the network fee is charged in the first signed step. Bitcoin PSBTs are checked against quoted inputs and outputs.
 - **Chain evidence first.** Positions are a sub-ledger reconciled nightly and on demand against what wallets actually hold. Shortfalls and surpluses are surfaced with Buy back or Sync. A webhook is not proof of ownership.
 - **Eligibility.** RWAs are gated by an engine (declared country and investor status, deny by default). Every decision is stored. `permissioned` deployments are not investable in this release. Issuer subscription/redemption is future work.
@@ -344,13 +360,13 @@ These are product invariants, not style preferences. Detail lives in ADRs; this 
 - **Discovery.** Search index and simulated performance are derived by the worker. AI search (Gemini) only calls a read-only `search_baskets` tool; queries are not stored. Without a Gemini key, structured and keyword search still work.
 - **Design system.** Shared light/dark theme roles, Geist, and brand artwork in `@repo/design-tokens` ([`docs/design/DESIGN-SYSTEM.md`](docs/design/DESIGN-SYSTEM.md)).
 
-Supported **auth chains:** Solana, Ethereum, Base, BNB Chain, Arbitrum. **Asset chains** additionally include Polygon and Bitcoin; recording a chain in the registry does not make it executable.
+Supported **auth chains:** Solana, Ethereum, Base, BNB Chain, Arbitrum, Polygon. **Asset chains** additionally include Polygon and Bitcoin; recording a chain in the registry does not make it executable.
 
 ---
 
 ## Deployment
 
-Bytesac has not been deployed. [`docs/engineering/DEPLOYMENT.md`](docs/engineering/DEPLOYMENT.md) covers:
+The closed beta runs as a single-VM pilot. [`docs/engineering/DEPLOYMENT.md`](docs/engineering/DEPLOYMENT.md) covers:
 
 - Prerequisites (tools, infrastructure capabilities, accounts)
 - Services to run (API, worker, web, mobile, Postgres, Redis, R2)
