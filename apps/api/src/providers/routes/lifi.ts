@@ -1,5 +1,6 @@
 import createHttpError from "http-errors";
 import { minOut as slippageFloor, z, type AssetChain } from "@repo/validator";
+import { logger } from "@repo/logger";
 import { env } from "@/config/dotenv";
 import { redis } from "@/middlewares/rate-limit.middleware";
 import type { ConnectionInput, LegEstimateInput, LegQuoteInput, RouteFee, RouteProvider } from "./types";
@@ -56,10 +57,17 @@ function refusal(status: number, body: unknown): Error {
   const text = JSON.stringify(body) ?? "";
   const message = typeof b.message === "string" ? b.message : "";
   // Live check 2026-10-03: a wallet with no SOL gets 404 code 1002 "No available quotes" with the cause in `errors.filteredOut[].reason` ("SOL balance insufficient to cover temporary token account creation"); svmSponsor does not avoid it. SOL is the cause only when no route failed and every filtered reason is the SOL one. The evidence is mayanFastMCTP-only: with all tools, the same wallet got sponsored quotes.
-  const errs = (body as { errors?: { filteredOut?: { reason?: unknown }[]; failed?: unknown[] } } | null)?.errors;
+  const errs = (body as { errors?: { filteredOut?: { overallPath?: unknown; reason?: unknown }[]; failed?: unknown[] } } | null)?.errors;
   const needsSol = !errs?.failed?.length && !!errs?.filteredOut?.length && errs.filteredOut.every((r) => typeof r.reason === "string" && /SOL balance insufficient/i.test(r.reason));
   if (needsSol || (/\bSOL\b/.test(message) && /balance|rent|fee|gas|fund/i.test(message))) return createHttpError(409, "Add a small amount of SOL (~0.003) to your Solana wallet to continue.", { code: "SOL_REQUIRED" });
   if (/price.?impact/i.test(text)) return createHttpError("Price impact too high for this trade size.", { code: "ROUTE_UNAVAILABLE" });
+  // Why LI.FI refused (per-tool reasons), so a 404 "No available quotes" is diagnosable. Only paths and reason strings: `action` objects carry wallet addresses.
+  const failed = (errs?.failed ?? []) as { overallPath?: unknown; subpaths?: Record<string, { tool?: unknown; code?: unknown; message?: unknown }[]> }[];
+  logger.warn("lifi refusal", {
+    status, lifiCode: b.code, lifiMessage: message.slice(0, 300),
+    filteredOut: (errs?.filteredOut ?? []).slice(0, 10).map((r) => ({ path: r.overallPath, reason: r.reason })),
+    failed: failed.slice(0, 10).map((f) => ({ path: f.overallPath, errors: Object.values(f.subpaths ?? {}).flat().slice(0, 5).map((s) => ({ tool: s.tool, code: s.code, message: typeof s.message === "string" ? s.message.slice(0, 300) : undefined })) })),
+  });
   return createHttpError(`LI.FI responded ${status}`, { code: "ROUTE_UNAVAILABLE", lifiCode: typeof b.code === "number" ? b.code : undefined });
 }
 
