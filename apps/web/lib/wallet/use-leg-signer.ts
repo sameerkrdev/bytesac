@@ -14,10 +14,11 @@ import { standardWallets } from "@/lib/wallet/standard-wallets";
 import { same, useWalletForChain } from "@/lib/wallet/use-wallet-for-chain";
 
 /**
- * Wallets whose own popups cost one approval per transaction when asked to sign a batch, but only two when they sign AND send it (spec 22 B-27). The name is
- * the Reown `walletInfo.name`; another wallet joins once telemetry shows it benefits.
+ * Wallets that need fewer approvals when they sign AND send a batch than when they only sign it (spec 22 B-27, B-28). Matched by the Reown `walletInfo.name`.
+ * Empty since the P0 wallet lab (2026-10-12): MetaMask and Phantom confirm each transaction separately for both methods, so `sign_all` costs the same
+ * popups and keeps the server's fee-first order and stop-on-failure. A wallet joins only when the lab measures fewer popups with sign-and-send.
  */
-export const SIGN_AND_SEND_WALLETS = ["MetaMask"] as const;
+export const SIGN_AND_SEND_WALLETS: readonly string[] = [];
 const SIGN_AND_SEND = "solana:signAndSendTransaction";
 type SignAndSendFeature = { signAndSendTransaction(...inputs: { account: { address: string }; chain: string; transaction: Uint8Array }[]): Promise<{ signature: Uint8Array }[]> };
 
@@ -69,7 +70,7 @@ export function useLegSigner(me: MeResponse | undefined) {
     walletName,
     /** `sign_and_send` for a listed wallet that exposes the Wallet Standard feature, else `sign_all` (which downgrades to `single` when the wallet cannot sign a batch). */
     chooseTier: async (): Promise<"sign_and_send" | "sign_all"> =>
-      (SIGN_AND_SEND_WALLETS as readonly string[]).includes(walletName ?? "") && !!(await standard())?.features[SIGN_AND_SEND] ? "sign_and_send" : "sign_all",
+      SIGN_AND_SEND_WALLETS.includes(walletName ?? "") && !!(await standard())?.features[SIGN_AND_SEND] ? "sign_and_send" : "sign_all",
     signSolana: (serializedBase64: string) => guard(async () => toBase64(await (await solana()).signTransaction(fromBase64(serializedBase64)))),
 
     /** One approval for a whole signing group, in order. A wallet or provider without `signAllTransactions` throws "not supported", which the group signer treats as a downgrade. */
@@ -79,7 +80,7 @@ export function useLegSigner(me: MeResponse | undefined) {
       return (await provider.signAllTransactions(serializedBase64.map(fromBase64))).map(toBase64);
     }),
 
-    /** The wallet signs and broadcasts the batch (two approvals on MetaMask); returns the raw 64-byte signatures in input order, which app-core encodes. */
+    /** The wallet signs and broadcasts the batch (tier `sign_and_send`, no wallet listed today); returns the raw 64-byte signatures in input order, which app-core encodes. */
     signAndSendSolanaAll: (serializedBase64: string[]) => guard(async () => {
       await solana(); // selects the linked wallet and checks the address
       const wallet = await standard();

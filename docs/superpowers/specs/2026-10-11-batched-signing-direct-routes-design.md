@@ -269,7 +269,9 @@ Today's per-leg flow, with user-paid gas: `POST /legs/:legId/quote`, then `signT
 
   A cash shortfall returns Sync only.
 
-### 7.5 EVM groups (B-13, B-14)
+### 7.5 EVM groups (B-13, B-14, B-29)
+
+A group holds at most 10 calls (B-29, the MetaMask limit): with approve + swap per sell, at most 5 sells per chain per approval.
 
 1. **Gas drop.** `POST /operations/:id/groups { chain: "<evm>", tier }`:
    - Before the fee has settled it returns `{ status: "waiting_fee" }`.
@@ -586,3 +588,20 @@ The first live web run with MetaMask showed two problems:
 | B-27 | **B-07 (sign-and-send batch) is built now**, as written in §6.4. On the web, a Solana wallet in `SIGN_AND_SEND_WALLETS = ["MetaMask"]` (by Reown wallet name) that exposes the Wallet Standard `solana:signAndSendTransaction` uses tier `sign_and_send`: the fee as its own approval (wallet broadcasts; the server records the signature and waits for `confirmed`), then the asset chunk as one approval. MetaMask goes from 1 popup per transaction to **2**. The list is extended from `group.quoted` telemetry. |
 
 The fee-first, confirmed order is kept (B-02).
+
+## 17. Amendment — P0 wallet lab findings (2026-10-12, approved by the user)
+
+Measured with `/dev/wallet-lab` and `apps/web/e2e/wallet-lab-auto.mjs` (procedure: `docs/engineering/WALLET-BATCH-TEST-RUNBOOK.md`; results: `docs/engineering/INTEGRATION-AUDIT.md` §Batch signing).
+
+| Wallet | Solana `sign_all` | Solana sign-and-send | EVM `wallet_sendCalls` |
+|---|---|---|---|
+| Phantom | 1 popup, batches up to 30 tested; adds a priority fee only (ComputeBudget) | 1 popup per transaction | Not supported on any chain (`-32601`) |
+| Solflare | 1 popup up to 30; transactions unchanged | not measured | – (Solana only) |
+| MetaMask | 1 popup per transaction; Confirm disabled when the account has no SOL | 1 popup per transaction | `atomic: ready` on all 5 chains; **1 confirmation per batch**; **at most 10 calls** (12 refused with 5740) |
+
+| ID | Decision |
+|---|---|
+| B-28 | **B-27 is reversed: `SIGN_AND_SEND_WALLETS` is empty.** Sign-and-send costs one popup per transaction on MetaMask and Phantom, so MetaMask uses `sign_all`: the same popup count, with the server keeping fee-first order and stop-on-failure. The `sign_and_send` tier stays built (B-07) for a wallet the lab proves needs fewer popups with it. The review screen should say "approve each transaction" for wallets known to confirm one by one. |
+| B-29 | **An EVM group holds at most 10 calls** (`wallet_sendCalls`, B-13), the MetaMask limit. At approve + swap per sell, that is at most 5 sells per chain per approval; the group builder splits larger sets into consecutive groups. A 5740 refusal halves the batch for that wallet and chain. |
+| B-30 | **K stays 12** (B-17) although Phantom and Solflare accept at least 30 in one popup: the limit is the `sendBy` window. Raise K only after a real invest shows a larger chunk still signs and sends inside the window. |
+| B-31 | **EVM tier is detected per chain** with `wallet_getCapabilities`; a missing method (`-32601`, "does not exist") is `evm_single` (Phantom). Lab calls use non-empty call data, since MetaMask rejects `data: "0x"`. |

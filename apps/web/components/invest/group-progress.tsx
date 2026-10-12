@@ -74,7 +74,7 @@ function failureCopy(f: Extract<GroupSignerState, { kind: "failed" }>) {
 }
 
 /**
- * Signs and tracks a grouped investment: quotes a chunk, opens the wallet once (twice on MetaMask, which signs and sends; once per transaction when the wallet
+ * Signs and tracks a grouped investment: quotes a chunk, opens the wallet once (twice for a `sign_and_send` wallet, none listed today; once per transaction when the wallet
  * cannot sign a batch), submits, and repeats until nothing is left to sign. The server prepares and checks everything; nothing here resends a submitted group.
  */
 export function GroupProgress({ operationId, autoStart = false }: { operationId: string; autoStart?: boolean }) {

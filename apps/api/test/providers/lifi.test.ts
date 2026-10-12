@@ -80,6 +80,14 @@ describe("lifi quote", () => {
     await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
     await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE" });
   });
+
+  it("explains a 1002 refusal whose routes failed because the leg is too small", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      message: "No available quotes for the requested transfer", code: 1002,
+      errors: { filteredOut: [], failed: [{ overallPath: "x-mayan-1:SPYon", subpaths: { a: [{ tool: "mayan", code: "AMOUNT_TOO_LOW", message: "amount too small (min ~1 usdc)" }] } }] },
+    }, 404));
+    await expect(lifi.quote(input)).rejects.toMatchObject({ code: "ROUTE_UNAVAILABLE", lifiCode: 1002, message: expect.stringMatching(/too small to route/) });
+  });
 });
 
 describe("lifi quote with a realistic LI.FI body (C1 regression)", () => {

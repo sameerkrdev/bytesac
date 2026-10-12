@@ -468,11 +468,29 @@ Per-task checks (api, web and mobile tests, lint, check-types, web build) were r
 
 Filled in by the user from `/dev/wallet-lab` (JSON pasted below each table) and `scripts/p0-lifi-check.ts`. Decides K per tier, `sendBy` (40 s default) and whether B-07 is built.
 
+**Runs of 2026-10-12** (web, desktop, Playwright Chromium via `apps/web/e2e/wallet-lab-auto.mjs`; procedure in `WALLET-BATCH-TEST-RUNBOOK.md`). Wallet versions were not recorded.
+- Raw results: `apps/web/e2e/__wallet-lab__/*.json` (local, git-ignored, addresses scrubbed).
+- Popup counts are the script's window and click counts. MetaMask's were read by eye, because MetaMask shows requests only in Chrome's side panel, which Playwright cannot see.
+
 | Wallet | sign_all (n max) | ms for 12 | popups for 12 | rewrites | sign_and_send batch | single | Notes |
 |---|---|---|---|---|---|---|---|
+| Phantom | ≥ 30 (no limit found; 2, 5, 12, 20, 30 all ok) | 8 278 (auto) / 15 756 (manual) | **1** | ComputeBudget only (Phantom adds a priority fee); blockhash and fee payer unchanged; returned in order | **1 popup per transaction** (5 for 5, 36 s) | 5 for 5 | Mainnet and devnet identical. Signed batch of 12 sent: 12/12 accepted. Cancel rejects the whole batch (4001). Buttons "Confirm" / "Cancel". Wallet Standard: `solana:signTransaction`, `solana:signAndSendTransaction`. |
+| Solflare | ≥ 30 (no limit found) | 8 716 | **1** | **None** (byte-identical) | not run (no SOL) | 5 for 5 | Signing allowed with 0 SOL. Reject cancels the whole batch (4001 "Transaction cancelled"). Buttons "Approve" / "Reject". Solana only. |
+| MetaMask (Solana) | – | – | **12** (one per transaction) | – | one per transaction | one per transaction | From the live P1 pilot (BRAINSTORM-LOG row 16). The lab run could not count: side panel only. With 0 SOL its simulation fails ("reverted during simulation") and **Confirm stays disabled**, so MetaMask needs SOL even to sign. Locks on every browser start. |
 
 | Wallet | Chain | getCapabilities | sendCalls n | receipts / distinct `to` | revert behaviour | Notes |
 |---|---|---|---|---|---|---|
+| Phantom (EVM) | ethereum, base, arbitrum, polygon, bnb | `-32601` method does not exist | – (`wallet_sendCalls` does not exist) | – | – | No EIP-5792. Phantom EVM sells use `evm_single` (approve, then swap). |
+| MetaMask | ethereum | `atomic: ready`, `auxiliaryFunds`, `alternateGasFees` | – (the lab does not send on Ethereum) | – | – | |
+| MetaMask | base | `atomic: ready`, `auxiliaryFunds` | **5: one confirmation** ("Transaction request, includes 5 transactions"); 10 not seen (wallet locked); **12: refused 5740 "Batch size cannot exceed 10"** | not sent (rejected, free test) | not run (needs gas) | With 0 ETH the button reads "Review alert" (fee warning); the platform gas drop covers this in the real flow. No smart-account upgrade prompt for a non-atomic batch. MetaMask rejects empty call data `0x`, so the lab now calls USDC `decimals()`. |
+| MetaMask | arbitrum, polygon, bnb | `atomic: ready`, `auxiliaryFunds` | 12: refused 5740 (limit 10). 5 and 10: not seen (wallet locked during the run) | – | – | Expected to match Base. |
+
+**Findings so far:**
+- **Solana `sign_all` = 1 popup per batch on Phantom and Solflare**, up to at least 30 transactions. The batch limit there is our `sendBy` window, not the wallet.
+- **Sign-and-send batching gives no benefit on Phantom or MetaMask** (one popup per transaction on both). B-07 / B-27 should not route MetaMask to `sign_and_send`: `sign_all` gives the same popup count and keeps the server's fee-first and stop-on-failure control.
+- **MetaMask EVM: 1 confirmation per batch of at most 10 calls.** At 2 calls per sell (approve + swap), that is at most 5 sells per chain per popup. The group builder must split above 10 calls.
+- **Phantom has no EIP-5792 on any chain.**
+- **Automation works for wallets that use popup windows** (Phantom, Solflare). MetaMask stays manual (side panel; locks on restart; needs `--compat` to load at all).
 
 | LI.FI check | Result |
 |---|---|

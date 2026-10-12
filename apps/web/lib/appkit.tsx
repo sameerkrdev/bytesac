@@ -3,7 +3,7 @@
 import { BitcoinAdapter } from "@reown/appkit-adapter-bitcoin";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { SolanaAdapter } from "@reown/appkit-adapter-solana/react";
-import { arbitrum, base, bsc, bitcoin, mainnet, polygon, solana } from "@reown/appkit/networks";
+import { arbitrum, base, bsc, bitcoin, mainnet, polygon, solana, solanaDevnet, type AppKitNetwork } from "@reown/appkit/networks";
 import { createAppKit } from "@reown/appkit/react";
 import { useEffect, type ReactNode } from "react";
 import { cookieStorage, cookieToInitialState, createStorage, WagmiProvider, type Config } from "wagmi";
@@ -17,13 +17,16 @@ if (!projectId && typeof window !== "undefined") console.error("NEXT_PUBLIC_REOW
 // Polygon is for exit legs only (sign-in never accepts it); Bitcoin is link-and-sign only, never a sign-in network.
 const evmNetworks = [mainnet, base, bsc, arbitrum, polygon] as const;
 
+/** Solana devnet exists only for the dev-only wallet lab (free faucet SOL); the product itself never offers it. */
+const labNetworks: AppKitNetwork[] = process.env.NEXT_PUBLIC_WALLET_LAB === "1" ? [solanaDevnet] : [];
+
 export const wagmiAdapter = new WagmiAdapter({ networks: [...evmNetworks], projectId, ssr: true, storage: createStorage({ storage: cookieStorage }) });
 const solanaAdapter = new SolanaAdapter();
 const bitcoinAdapter = new BitcoinAdapter({ projectId });
 
 export const appKit = createAppKit({
   adapters: [wagmiAdapter, solanaAdapter, bitcoinAdapter],
-  networks: [mainnet, base, bsc, arbitrum, polygon, solana, bitcoin],
+  networks: [mainnet, base, bsc, arbitrum, polygon, solana, ...labNetworks, bitcoin],
   defaultNetwork: mainnet,
   projectId,
   metadata: {

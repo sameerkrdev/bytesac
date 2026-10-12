@@ -79,7 +79,7 @@ const feeConfirming = (err: unknown) => err instanceof ApiError && err.code === 
  * known, else a fresh `single` group is requested (the batch it was shown is too big to sign one by one). A cancelled popup never downgrades. Returns null when
  * the user declined new prices or the chunk failed (the state says why); nothing here resends a submitted group.
  *
- * Tier `sign_and_send` (MetaMask): the server claims the group BEFORE the wallet is opened, the wallet signs and broadcasts, and the signatures it returns are
+ * Tier `sign_and_send` (a wallet in SIGN_AND_SEND_WALLETS; none since the P0 lab): the server claims the group BEFORE the wallet is opened, the wallet signs and broadcasts, and the signatures it returns are
  * reported. Only a clear rejection releases the claim (nothing was broadcast); any other wallet error ends `OUTCOME_UNKNOWN` with the claim kept, and the server
  * sweep resolves it. Never sign again after that.
  *

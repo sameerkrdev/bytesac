@@ -21,10 +21,10 @@ const hook = () => renderHook(() => useLegSigner(user())).result.current;
 beforeEach(() => { state.walletName = "MetaMask"; state.wallets = []; state.ready = "ready"; });
 
 describe("tier choice", () => {
-  it("MetaMask with the Wallet Standard feature signs and sends", async () => {
-    expect(SIGN_AND_SEND_WALLETS).toEqual(["MetaMask"]);
+  it("no wallet is listed since the P0 lab: MetaMask with the Wallet Standard feature keeps sign_all (same popups, server keeps control)", async () => {
+    expect(SIGN_AND_SEND_WALLETS).toEqual([]);
     state.wallets = [wallet("MetaMask", sendFeature(vi.fn()))];
-    expect(await hook().chooseTier()).toBe("sign_and_send");
+    expect(await hook().chooseTier()).toBe("sign_all");
   });
   it("MetaMask without the feature, another wallet with it, and no wallet name all keep sign_all", async () => {
     state.wallets = [wallet("MetaMask", {})];

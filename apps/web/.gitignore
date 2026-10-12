@@ -36,3 +36,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 e2e/__screens__/
+e2e/__wallet-profiles__/
+e2e/__wallet-lab__/

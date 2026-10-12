@@ -68,6 +68,8 @@ function refusal(status: number, body: unknown): Error {
     filteredOut: (errs?.filteredOut ?? []).slice(0, 10).map((r) => ({ path: r.overallPath, reason: r.reason })),
     failed: failed.slice(0, 10).map((f) => ({ path: f.overallPath, errors: Object.values(f.subpaths ?? {}).flat().slice(0, 5).map((s) => ({ tool: s.tool, code: s.code, message: typeof s.message === "string" ? s.message.slice(0, 300) : undefined })) })),
   });
+  // Live 2026-10-12: a ~$0.9 Solana USDC -> SPYon (Ethereum) leg got 1002 with "amount too small (min ~1 usdc)" (mayan) and "too small to cover fees" (relay).
+  if (/too small/i.test(text)) return createHttpError("The amount for one of this basket's assets is too small to route. Try a larger amount.", { code: "ROUTE_UNAVAILABLE", lifiCode: typeof b.code === "number" ? b.code : undefined });
   return createHttpError(`LI.FI responded ${status}`, { code: "ROUTE_UNAVAILABLE", lifiCode: typeof b.code === "number" ? b.code : undefined });
 }
 

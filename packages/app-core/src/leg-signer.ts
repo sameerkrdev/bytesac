@@ -66,7 +66,7 @@ export interface Signer {
   signSolana(serializedBase64: string): Promise<string>;
   /** One wallet approval for the whole batch, in order (the web only; mobile signs one leg at a time). Throws "not supported" when the wallet cannot. */
   signSolanaAll?(serializedBase64: string[]): Promise<string[]>;
-  /** The wallet signs AND broadcasts each transaction (MetaMask: 2 approvals for a batch). Returns the raw 64-byte signatures in input order. */
+  /** The wallet signs AND broadcasts each transaction (tier `sign_and_send`). Returns the raw 64-byte signatures in input order. */
   signAndSendSolanaAll?(serializedBase64: string[]): Promise<Uint8Array[]>;
   sendEvm(tx: { to: string; data: string; value: string; chainId: number; approval?: { token: string; spender: string; amount: string } | null }): Promise<string>;
   /** Absent when the wallet cannot sign a Bitcoin PSBT: the leg is then continued on the web. */

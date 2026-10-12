@@ -95,14 +95,14 @@ const errorParts = (err: unknown) => {
 export function classifyWalletError(err: unknown): "rejected" | "unsupported" | "error" {
   const { code, message } = errorParts(err);
   if (code === 4001 || /reject|denied|cancel/i.test(message)) return "rejected";
-  if (code === 4200 || code === -32601 || code === 4100 || code === 5700 || code === 5710 || code === 5760 || /not supported|unsupported|not implemented|not a function|does not support|method not found/i.test(message)) return "unsupported";
+  if (code === 4200 || code === -32601 || code === 4100 || code === 5700 || code === 5710 || code === 5760 || /not supported|unsupported|not implemented|not a function|does not support|does not exist|is not available|method not found/i.test(message)) return "unsupported";
   return "error";
 }
 
-/** The code and the start of the message, addresses scrubbed: what a failed row exports so a size limit (5740) or a timeout is readable. */
+/** The code and the first 300 characters of the message, addresses scrubbed (enough to read a wallet's parameter complaint): what a failed row exports so a size limit (5740) or a timeout is readable. */
 export function failureDetail(err: unknown): string {
   const { code, message } = errorParts(err);
-  return scrubAddresses(`${typeof code === "number" || typeof code === "string" ? `${code} ` : ""}${message}`.trim()).slice(0, 120);
+  return scrubAddresses(`${typeof code === "number" || typeof code === "string" ? `${code} ` : ""}${message}`.trim()).slice(0, 300);
 }
 
 /** Once one blockhash is stale every later transaction is expired too (the same rule as P1). `builtAt` and `now` are for display only. */
