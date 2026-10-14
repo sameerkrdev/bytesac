@@ -21,6 +21,7 @@ Bytesac is a manager-led, multi-chain investment-basket platform. Initial settle
 8. `OPEN-ITEMS.md` — everything still open (user actions, compliance, manual checks, technical debt).
 9. `domains/FUTURE-PLANS.md` — deferred scope; not supported until separately approved.
 10. `design/DESIGN-SYSTEM.md` — web design system (tokens, type, components, motion, imagery). `design/MOTION-STUDY.md` — reference-video analysis. `design/MOBILE-UX-INVENTORY.md` — blueprint for the Expo redesign.
+11. `pitch/PITCH-DECK-PLAN.md` — investor and Solana hackathon pitch deck plan (research, slide-by-slide content, sources); `pitch/storyboard.html` is its visual storyboard.
 
 ## Document roles (one home per topic)
 
